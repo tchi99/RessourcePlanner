@@ -1,4 +1,4 @@
-# Planification MO — V1.1
+# Planification MO — V1.2
 
 Application locale Python pour piloter un classeur Excel de planification, y compris un classeur stocké dans un dossier **OneDrive synchronisé localement**.
 
@@ -67,19 +67,63 @@ Les changements faits directement dans Excel sont relus par l'application enviro
 - tableau de bord;
 - planification style Microsoft Shifts;
 - demandes / approbations;
-- historique;
+- **recherche du projet** lors de la création ou de la modification d'une demande (numéro, nom ou client);
+- **modification d'une demande existante** tant qu'elle n'est pas fermée ou annulée;
+- historique des changements de demandes;
 - création d'affectations dans `Liste_Effort`;
+- **gestion des disponibilités des employés** : horaires standards, jours fériés et vacances;
+- affichage des indisponibilités directement dans la vue Planification;
+- alerte visuelle lorsqu'une affectation existante tombe sur une journée indisponible;
 - navigation dans les feuilles Excel;
 - édition des feuilles maîtres;
 - protection des formules;
 - changement du classeur source dans **Paramètres**.
 
+## Disponibilités
+
+L'écran **Disponibilités** utilise une feuille Excel `Disponibilites` afin que les données demeurent dans le même classeur que la planification.
+
+### Horaire standard
+
+Un horaire standard est défini par employé avec :
+
+- les jours de la semaine applicables;
+- l'heure de début;
+- l'heure de fin;
+- une période de validité optionnelle.
+
+Le bouton **Initialiser horaires** crée, pour les employés qui n'en ont pas encore, un horaire par défaut du lundi au vendredi de 08:00 à 16:00.
+
+Si aucun horaire standard n'est enregistré pour un employé, la planification considère temporairement le lundi au vendredi 08:00–16:00 comme disponible et la fin de semaine comme indisponible.
+
+### Jours fériés
+
+Un jour férié peut être :
+
+- global, lorsque le champ Technicien est vide;
+- propre à un employé, lorsqu'un technicien est sélectionné.
+
+Le jour férié rend la ressource indisponible même si son horaire standard indique autrement.
+
+### Vacances
+
+Les vacances sont définies pour un employé avec une date de début et une date de fin. Elles ont priorité sur l'horaire standard.
+
+Dans la vue **Planification**, les cellules indisponibles sont grisées. Une affectation présente sur une journée indisponible affiche **Conflit disponibilité**.
+
+## Modification des demandes
+
+Sélectionne une demande dans **Demandes / approbations**, puis clique **Modifier la demande**. Les demandes `Fermé` et `Annulée` restent non modifiables depuis cet écran.
+
+Chaque enregistrement d'une modification est inscrit dans `Historique` par le mécanisme existant de `update_demand`.
+
 ## Feuilles ajoutées automatiquement
 
 Si elles n'existent pas, la première connexion ajoute au classeur sélectionné :
 
-- `DemandesMO`
-- `Historique`
+- `DemandesMO`;
+- `Historique`;
+- `Disponibilites`.
 
 Commence donc idéalement avec une copie de ton fichier de production pour les premiers essais.
 
