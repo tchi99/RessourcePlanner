@@ -1,0 +1,7 @@
+{
+  "workbook": "",
+  "refresh_seconds": 3,
+  "save_on_write": true,
+  "host": "127.0.0.1",
+  "port": 8080
+}
