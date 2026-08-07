@@ -1,0 +1,52 @@
+from __future__ import annotations
+
+import json
+from dataclasses import dataclass
+from pathlib import Path
+
+BASE_DIR = Path(__file__).resolve().parents[1]
+CONFIG_PATH = BASE_DIR / "app_config.json"
+
+
+@dataclass(slots=True)
+class AppConfig:
+    workbook: Path | None
+    refresh_seconds: float = 3.0
+    save_on_write: bool = True
+    host: str = "127.0.0.1"
+    port: int = 8080
+
+
+def _resolve_workbook(value: str | None) -> Path | None:
+    if not value or not str(value).strip():
+        return None
+    workbook = Path(str(value).strip().strip('"'))
+    if not workbook.is_absolute():
+        workbook = (BASE_DIR / workbook).resolve()
+    return workbook
+
+
+def load_config() -> AppConfig:
+    raw = json.loads(CONFIG_PATH.read_text(encoding="utf-8")) if CONFIG_PATH.exists() else {}
+    return AppConfig(
+        workbook=_resolve_workbook(raw.get("workbook")),
+        refresh_seconds=float(raw.get("refresh_seconds", 3.0)),
+        save_on_write=bool(raw.get("save_on_write", True)),
+        host=str(raw.get("host", "127.0.0.1")),
+        port=int(raw.get("port", 8080)),
+    )
+
+
+def save_workbook_path(path: str | Path | None) -> None:
+    raw = {}
+    if CONFIG_PATH.exists():
+        try:
+            raw = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
+        except Exception:
+            raw = {}
+    raw.setdefault("refresh_seconds", 3)
+    raw.setdefault("save_on_write", True)
+    raw.setdefault("host", "127.0.0.1")
+    raw.setdefault("port", 8080)
+    raw["workbook"] = "" if path is None else str(Path(path))
+    CONFIG_PATH.write_text(json.dumps(raw, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")

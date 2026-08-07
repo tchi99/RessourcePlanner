@@ -1,0 +1,5 @@
+Planification MO V1.1
+Build: 2026-08-07
+UI: NiceGUI
+Excel bridge: xlwings
+Workbook: external / user-configurable
