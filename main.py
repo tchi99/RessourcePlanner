@@ -4,7 +4,11 @@ from nicegui import ui
 
 from app.config import load_config
 from app.excel_repository import ExcelRepository
+from app.features import install_features
 from app.ui import PlannerUI
+
+
+install_features()
 
 
 def main() -> None:
@@ -16,7 +20,7 @@ def main() -> None:
         PlannerUI(repo, refresh_seconds=config.refresh_seconds).build()
 
     ui.run(
-        title="Planification MO — V1.1",
+        title="Planification MO — V1.2",
         host=config.host,
         port=config.port,
         reload=False,
