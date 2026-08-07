@@ -5,9 +5,11 @@ from nicegui import ui
 from app.config import load_config
 from app.excel_repository import ExcelRepository
 from app.features import install_features
+from app.features_runtime import apply_runtime_optimizations
 from app.ui import PlannerUI
 
 
+apply_runtime_optimizations()
 install_features()
 
 
