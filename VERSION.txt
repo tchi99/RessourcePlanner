@@ -1,5 +1,6 @@
-Planification MO V1.1
+Planification MO V1.2
 Build: 2026-08-07
 UI: NiceGUI
 Excel bridge: xlwings
 Workbook: external / user-configurable
+Features: searchable projects, editable requests, employee availability
