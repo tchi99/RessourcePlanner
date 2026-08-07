@@ -4,24 +4,42 @@ Application locale Python pour piloter un classeur Excel de planification, y com
 
 ## Le fichier Excel n'est pas inclus
 
-Le ZIP de l'application ne contient aucun fichier `.xlsx`. Au premier lancement, va dans **Paramètres** et choisis ton propre classeur.
+Le dépôt ne doit contenir aucun fichier `.xlsx` ou `.xlsm`. Au premier lancement, va dans **Paramètres** et choisis ton propre classeur.
+
+## Configuration locale
+
+Le fichier `app_config.json` est **local au poste** et n'est pas versionné dans Git. Il contient notamment le chemin vers le classeur Excel choisi dans l'application.
+
+Un modèle est fourni dans `app_config.example.json` :
+
+```json
+{
+  "workbook": "",
+  "refresh_seconds": 3,
+  "save_on_write": true,
+  "host": "127.0.0.1",
+  "port": 8080
+}
+```
+
+L'application peut fonctionner même si `app_config.json` n'existe pas encore; le chemin du classeur peut être défini depuis **Paramètres** puis enregistré localement.
 
 ## Choisir le fichier Excel
 
 1. Lance `Lancer_Application.bat`.
 2. Ouvre **Paramètres**.
 3. Clique **Parcourir...** ou colle le chemin complet.
-4. Sélectionne ton fichier `.xlsx`.
+4. Sélectionne ton fichier `.xlsx` ou `.xlsm`.
 5. Clique **Tester et enregistrer**.
 
-Le chemin est conservé dans `app_config.json` et peut être modifié à tout moment depuis l'application.
+Le chemin est ensuite conservé localement dans `app_config.json` et peut être modifié à tout moment depuis l'application.
 
 ## OneDrive
 
 Utilise le **chemin Windows local synchronisé**, par exemple :
 
 ```text
-C:\Users\Jean-Charles\OneDrive - Groupe LML\Planification\PlanificationMoyenLongTerme.xlsx
+C:\Users\Utilisateur\OneDrive - Entreprise\Planification\PlanificationMoyenLongTerme.xlsx
 ```
 
 Les URL `https://...sharepoint.com/...` et `https://onedrive.live.com/...` ne sont pas utilisées directement par `xlwings`.
@@ -64,3 +82,14 @@ Si elles n'existent pas, la première connexion ajoute au classeur sélectionné
 - `Historique`
 
 Commence donc idéalement avec une copie de ton fichier de production pour les premiers essais.
+
+## Fichiers ignorés par Git
+
+Le `.gitignore` exclut notamment :
+
+- `app_config.json`;
+- `*.xlsx` et `*.xlsm`;
+- les fichiers temporaires Excel `~$*.xlsx` et `~$*.xlsm`;
+- `.venv/` et les fichiers Python temporaires.
+
+Cela évite de pousser par erreur un chemin OneDrive personnel ou un classeur de production dans le dépôt.
