@@ -8,11 +8,13 @@ from app.excel_repository import ExcelRepository
 from app.features import install_features
 from app.features_runtime import apply_runtime_optimizations
 from app.ui import PlannerUI
+from app.v13 import install_v13_features
 
 
 apply_runtime_optimizations()
 install_features()
 install_bugfixes()
+install_v13_features()
 
 
 def main() -> None:
@@ -24,7 +26,7 @@ def main() -> None:
         PlannerUI(repo, refresh_seconds=config.refresh_seconds).build()
 
     ui.run(
-        title="Planification MO — V1.2",
+        title="Planification MO — V1.3",
         host=config.host,
         port=config.port,
         reload=False,
