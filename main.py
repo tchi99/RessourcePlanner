@@ -2,9 +2,17 @@ from __future__ import annotations
 
 from nicegui import ui
 
+from app.bugfixes import install_bugfixes
 from app.config import load_config
 from app.excel_repository import ExcelRepository
+from app.features import install_features
+from app.features_runtime import apply_runtime_optimizations
 from app.ui import PlannerUI
+
+
+apply_runtime_optimizations()
+install_features()
+install_bugfixes()
 
 
 def main() -> None:
@@ -16,7 +24,7 @@ def main() -> None:
         PlannerUI(repo, refresh_seconds=config.refresh_seconds).build()
 
     ui.run(
-        title="Planification MO — V1.1",
+        title="Planification MO — V1.2",
         host=config.host,
         port=config.port,
         reload=False,
