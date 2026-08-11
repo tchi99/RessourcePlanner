@@ -18,11 +18,11 @@ def _same_effort_row(value: Any, effort_row: int) -> bool:
 
 
 def _linked_demands_for_effort(repo: ExcelRepository, effort_row: int) -> list[dict[str, Any]]:
-    """Retourne les demandes liées directement OU par l'intermédiaire d'un segment.
+    """Retrouve les demandes liées directement ou par un segment.
 
-    Certains classeurs V1.3 ont des SegmentsMO avec SourceEffortRow alors que la demande
-    d'origine n'avait pas encore cette colonne renseignée. Le Gantt doit tout de même
-    retrouver cette demande afin de permettre sa modification.
+    Certains classeurs créés pendant la V1.3 possèdent un SourceEffortRow dans
+    SegmentsMO alors que la demande d'origine n'a pas encore ce lien. Le Gantt
+    récupère aussi ces demandes afin de permettre leur modification.
     """
     demands = {
         str(row.get("NoDemande") or "").strip(): row
@@ -128,19 +128,19 @@ def _demand_edit_form(
         with ui.row().classes("w-full"):
             resources = ui.number(
                 "Nombre de ressources",
-                value=demand.get("NombreRessources") or 1,
+                value=v13._number(demand.get("NombreRessources")) or 1,
                 min=1,
                 step=1,
             ).classes("flex-1")
             hours = ui.number(
                 "Temps estimé (h)",
-                value=demand.get("TempsEstimeHeures"),
+                value=v13._number(demand.get("TempsEstimeHeures")) or None,
                 min=0,
                 step=0.5,
             ).classes("flex-1")
             days_count = ui.number(
                 "Temps estimé (jours)",
-                value=demand.get("TempsEstimeJours"),
+                value=v13._number(demand.get("TempsEstimeJours")) or None,
                 min=0,
                 step=0.5,
             ).classes("flex-1")
@@ -232,10 +232,9 @@ def _open_effort_macro_dialog_fixed(
             ui.label(
                 "Les demandes liées sont modifiables directement ici. Le bouton Nouvelle demande reste disponible pour ajouter un besoin distinct."
             ).classes("text-xs muted")
-            with ui.scroll_area().classes("w-full max-h-[55vh]"):
-                with ui.column().classes("w-full gap-3 pr-2"):
-                    for demand in linked:
-                        _demand_edit_form(self, demand, row, dialog)
+            with ui.column().classes("w-full gap-3 max-h-[55vh] overflow-y-auto pr-2"):
+                for demand in linked:
+                    _demand_edit_form(self, demand, row, dialog)
 
         ui.separator()
         with ui.row().classes("w-full justify-end"):
