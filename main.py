@@ -16,6 +16,7 @@ from app.v14_runtime import install_v14_runtime
 from app.v15 import install_v15_features
 from app.v15_refinements import install_v15_refinements
 from app.v16 import install_v16_features
+from app.v16_refinements import install_v16_refinements
 
 
 apply_runtime_optimizations()
@@ -29,6 +30,7 @@ install_v14_runtime()
 install_v15_features()
 install_v15_refinements()
 install_v16_features()
+install_v16_refinements()
 
 
 def main() -> None:
