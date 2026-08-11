@@ -1,4 +1,4 @@
-# Planification MO — V1.5
+# Planification MO — V1.6
 
 Application locale Python pour piloter un classeur Excel de planification, y compris un classeur stocké dans un dossier **OneDrive synchronisé localement**.
 
@@ -21,22 +21,33 @@ Planning opérationnel
 Vue Shifts selon l'horaire, les décisions verrouillées et la capacité résiduelle
 ```
 
+## Ressources et compétences — V1.6
+
+La V1.6 ajoute une configuration explicite des ressources dans la feuille `RessourcesMO` et dans la page **Ressources & compétences** de l'application.
+
+Chaque technicien peut recevoir :
+
+- une classe parmi `Programmation`, `Installation`, `Monteur de panneau`, `Dessinateur`, `Gestion de projet`;
+- une ou plusieurs compétences provenant de la liste de compétences du classeur;
+- une note optionnelle.
+
+Une ressource sans classe reste volontairement dans `Non classé`. Le regroupement du Planning opérationnel n'essaie plus de déduire automatiquement la classe à partir de la description ou de l'équipe du technicien.
+
+Les compétences configurées sont utilisées par **Trouver une ressource**. Une correspondance exacte de compétence est priorisée avant la classe et la capacité disponible. La décision finale demeure manuelle.
+
+Le filtre **Projet** du Planning opérationnel affiche maintenant le numéro et le nom du projet, tout en conservant le numéro comme valeur de filtrage.
+
 ## Planification moyen terme
 
 La page **Planification moyen terme** est une vue Gantt de `Liste_Effort`. Une barre représente une fenêtre de besoin et non un quart continu.
 
 En cliquant sur un effort, l'application permet de **modifier directement la ligne correspondante de `Liste_Effort`** et de créer une nouvelle demande MO à partir de cette planification. Les demandes liées restent affichées comme référence, mais leur modification se fait dans **Demandes / approbations**.
 
-La V1.5 encadre également la **semaine courante en bleu** dans le Gantt.
+La semaine courante est mise en évidence dans le Gantt.
 
 ## Demandes, confirmation et réapprobation
 
-Une demande contient maintenant un niveau de confirmation :
-
-- `Confirmée`;
-- `Tentative`.
-
-Les anciennes demandes sans valeur sont traitées comme `Confirmée` afin de préserver le comportement existant.
+Une demande contient un niveau de confirmation `Confirmée` ou `Tentative`.
 
 Une demande tentative peut être approuvée et planifiée normalement, mais ses quarts sont affichés en **jaune pointillé** dans le Planning opérationnel afin de la distinguer visuellement.
 
@@ -47,68 +58,47 @@ Si une demande déjà approuvée est modifiée :
 3. une fois la nouvelle version approuvée, les segments sont synchronisés avec les nouvelles dates, heures, compétence, priorité, description et nombre de ressources;
 4. les affectations de techniciens déjà faites sont conservées autant que possible.
 
-Si le nombre de ressources diminue lors d'une réapprobation, les segments excédentaires sont annulés; s'il augmente, de nouveaux segments non assignés sont créés.
-
-Les demandes `Soumise` qui chevauchent la semaine affichée sont visibles dans le Planning opérationnel, mais comptent **0 h dans la charge** tant qu'elles ne sont pas approuvées. Une demande soumise et tentative utilise aussi le code visuel jaune.
+Les demandes `Soumise` visibles dans le Planning opérationnel comptent 0 h de charge tant qu'elles ne sont pas approuvées.
 
 ## Nombre de ressources
 
 `NombreRessources` correspond réellement au nombre de segments à créer.
 
-Exemple : une demande de 80 h pour 2 ressources génère deux segments de 40 h. Si un technicien a été proposé, le premier segment lui est assigné et le second reste **À assigner** afin qu'une deuxième ressource puisse être choisie indépendamment.
+Exemple : une demande de 80 h pour 2 ressources génère deux segments de 40 h. Si un technicien a été proposé, le premier segment lui est assigné et le second reste **À assigner**.
 
 ## Segments
 
-`SegmentsMO` représente le besoin opérationnel par ressource. Un segment contient notamment :
-
-- la demande et le projet;
-- une fenêtre de début et de fin;
-- un nombre d'heures prévues;
-- une compétence requise;
-- une priorité;
-- un type de planification `Flexible` ou `Fixe`;
-- un technicien facultatif;
-- un statut;
-- `HorsHoraireAutorise`.
+`SegmentsMO` représente le besoin opérationnel par ressource. Un segment contient notamment la demande, le projet, la fenêtre de dates, les heures prévues, la compétence requise, la priorité, le type `Flexible` ou `Fixe`, un technicien facultatif, un statut et `HorsHoraireAutorise`.
 
 Un segment sans technicien apparaît dans **Travaux à planifier** uniquement lorsque sa fenêtre chevauche la semaine présentement affichée.
 
-### Travail hors horaire au niveau du segment
+## Recommandation de ressources — V1.6
 
-Le champ `HorsHoraireAutorise` permet d'autoriser le moteur à placer automatiquement le reliquat d'un segment en dehors de l'horaire standard lorsque la capacité normale est insuffisante.
+Le bouton **Trouver une ressource** analyse toute la fenêtre du segment et classe les candidats selon :
 
-Les vacances restent exclues de cette logique automatique. Les journées sans horaire normal, comme les fins de semaine et jours fériés, sont privilégiées avant les heures supplémentaires de semaine.
+1. la compétence explicitement attribuée au technicien;
+2. la classe de ressource;
+3. la capacité prudente restante;
+4. la charge confirmée et tentative;
+5. les heures qui nécessiteraient du hors horaire.
 
-Si le segment **n'autorise pas** le hors horaire et que la capacité standard est insuffisante, le moteur affiche des quarts **Hors horaire requis** en orange pointillé. Ces quarts sont des avertissements/propositions et ne sont pas comptés dans la charge réelle tant qu'ils n'ont pas été confirmés.
+Les recommandations n'affectent jamais automatiquement un technicien. Le bouton **Assigner** applique le choix et relance le moteur d'allocations.
+
+## Planning opérationnel — V1.6
+
+Les ressources sont regroupées dans des sections rétractables selon les cinq classes configurables. À l'intérieur d'une classe, elles sont triées selon leur capacité prudente restante dans la semaine affichée.
+
+Les filtres disponibles comprennent la classe, la ressource, le projet, Confirmée/Tentative et les ressources ayant encore de la capacité. Le filtre Projet affiche `Numéro — Nom du projet`.
+
+## Travail hors horaire
+
+Le champ `HorsHoraireAutorise` permet au moteur de placer automatiquement le reliquat d'un segment en dehors de l'horaire standard lorsque la capacité normale est insuffisante.
+
+Si le segment n'autorise pas le hors horaire et que la capacité standard est insuffisante, le moteur affiche des quarts **Hors horaire requis** en orange pointillé. Ces quarts ne sont pas comptés dans la charge réelle tant qu'ils ne sont pas confirmés.
 
 ## Allocations automatiques et verrouillées
 
-`AllocationsMO` contient les heures réellement placées par journée.
-
-La V1.5 ajoute les colonnes :
-
-- `Verrouillee`;
-- `HorsHoraire`;
-- `Note`.
-
-Le moteur applique l'ordre suivant :
-
-1. allocations manuelles/verrouillées;
-2. segments fixes;
-3. segments flexibles;
-4. hors horaire réel ou requis lorsque la capacité standard ne suffit pas.
-
-Une allocation verrouillée est conservée lors des recalculs. Ses heures sont soustraites du segment puis le moteur redistribue uniquement le reliquat autour de cette décision.
-
-## Quart manuel
-
-Dans **Planning opérationnel**, le bouton **Quart manuel** permet de sélectionner un segment, un technicien, une date et un nombre d'heures.
-
-Un quart manuel est automatiquement verrouillé. Un quart automatique peut aussi être ouvert puis enregistré pour le transformer en décision verrouillée.
-
-Pour un samedi, dimanche, jour férié ou autre journée sans capacité standard, il faut cocher explicitement **Hors horaire** au niveau du quart, sauf si le moteur l'a déjà généré depuis un segment autorisé hors horaire.
-
-Depuis la fenêtre d'un quart, le bouton **Modifier le segment** donne un accès direct au segment parent.
+`AllocationsMO` contient les heures réellement placées par journée. Les allocations manuelles/verrouillées sont conservées lors des recalculs, puis le moteur redistribue seulement le reliquat.
 
 ## Code de couleur du Planning opérationnel
 
@@ -122,19 +112,11 @@ Depuis la fenêtre d'un quart, le bouton **Modifier le segment** donne un accès
 
 ## Capacité et tableau de bord
 
-La capacité hebdomadaire provient de `Disponibilites` et la charge réelle provient des allocations réellement planifiées dans `AllocationsMO`. Les quarts `Hors horaire requis` ne sont pas inclus dans la charge tant qu'ils restent des propositions.
-
-Le dashboard possède un sélecteur de semaine avec précédent / aujourd'hui / suivant. Les KPI, les travaux à assigner et la **charge réelle** sont calculés pour la semaine sélectionnée.
-
-Les heures `HorsHoraire` réellement planifiées sont indiquées séparément de la capacité standard.
+Le dashboard possède un sélecteur de semaine. La V1.6 ajoute une synthèse de capacité par classe avec charge confirmée, charge tentative et capacité prudente restante.
 
 ## Disponibilités
 
-L'écran **Disponibilités** utilise la feuille Excel `Disponibilites`.
-
-Un horaire standard est défini par employé avec les jours de la semaine, l'heure de début, l'heure de fin et une période de validité optionnelle. Les jours fériés et vacances ont priorité sur l'horaire standard.
-
-Un employé sans horaire standard actif n'est pas planifiable automatiquement et n'apparaît pas parmi les ressources normales du Planning opérationnel.
+L'écran **Disponibilités** utilise la feuille Excel `Disponibilites`. Un employé sans horaire standard actif n'est pas planifiable automatiquement.
 
 ## Feuilles applicatives
 
@@ -144,38 +126,13 @@ La connexion crée ou complète au besoin :
 - `Historique`;
 - `Disponibilites`;
 - `SegmentsMO`;
-- `AllocationsMO`.
+- `AllocationsMO`;
+- `RessourcesMO`.
 
-`DemandesMO` reçoit `Confirmation`. `SegmentsMO` reçoit `HorsHoraireAutorise`. `AllocationsMO` utilise `Verrouillee`, `HorsHoraire` et `Note`.
+`RessourcesMO` contient `Technicien`, `Classe`, `Competences` et `Note`.
 
 ## Configuration locale
 
 Le fichier `app_config.json` est local au poste et ignoré par Git. Un modèle `app_config.example.json` est fourni.
 
-```json
-{
-  "workbook": "",
-  "refresh_seconds": 3,
-  "save_on_write": true,
-  "host": "127.0.0.1",
-  "port": 8080
-}
-```
-
-Dans **Paramètres**, sélectionne le chemin Windows local de ton classeur `.xlsx` ou `.xlsm`.
-
-## OneDrive
-
-Utilise le chemin **local synchronisé** du fichier plutôt qu'une URL SharePoint, par exemple :
-
-```text
-C:\Users\Utilisateur\OneDrive - Entreprise\Planification\PlanificationMoyenLongTerme.xlsx
-```
-
-Il est recommandé de configurer le fichier ou son dossier avec **Toujours conserver sur cet appareil**.
-
-## Fichiers ignorés par Git
-
-Le `.gitignore` exclut notamment `app_config.json`, les fichiers `.xlsx/.xlsm`, les fichiers temporaires Excel et l'environnement Python local.
-
-Pour les essais de la V1.5, utilise idéalement une copie du classeur de production puisque la version complète `DemandesMO`, `SegmentsMO` et `AllocationsMO` avec de nouvelles colonnes et modifie le comportement de réapprobation.
+Dans **Paramètres**, sélectionne le chemin Windows local de ton classeur `.xlsx` ou `.xlsm`. Pour OneDrive, utilise le chemin **local synchronisé** du fichier plutôt qu'une URL SharePoint.
