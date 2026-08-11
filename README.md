@@ -29,28 +29,33 @@ En cliquant sur un effort, l'application permet de **modifier directement la lig
 
 La V1.5 encadre également la **semaine courante en bleu** dans le Gantt.
 
-## Demandes, modification et réapprobation
+## Demandes, confirmation et réapprobation
 
-Une demande approuvée passe à **En planification** et reçoit des segments opérationnels.
+Une demande contient maintenant un niveau de confirmation :
 
-Si une demande déjà approuvée est ensuite modifiée :
+- `Confirmée`;
+- `Tentative`.
 
-- elle retourne automatiquement au statut **Soumise**;
-- une nouvelle approbation est requise;
-- les informations de la précédente approbation sont réinitialisées;
-- les segments et allocations déjà créés ne sont **pas modifiés automatiquement**.
+Les anciennes demandes sans valeur sont traitées comme `Confirmée` afin de préserver le comportement existant.
 
-Les segments existants représentent donc la dernière version approuvée jusqu'à ce que la nouvelle demande soit approuvée.
+Une demande tentative peut être approuvée et planifiée normalement, mais ses quarts sont affichés en **jaune pointillé** dans le Planning opérationnel afin de la distinguer visuellement.
 
-Les demandes `Soumise` qui chevauchent la semaine affichée sont visibles dans le Planning opérationnel sous forme de cartes grises en pointillés. Elles servent à anticiper les besoins, mais comptent **0 h dans la charge** tant qu'elles ne sont pas approuvées.
+Si une demande déjà approuvée est modifiée :
+
+1. elle retourne automatiquement au statut **Soumise**;
+2. ses segments et allocations existants restent inchangés pendant l'attente de la nouvelle approbation;
+3. une fois la nouvelle version approuvée, les segments sont synchronisés avec les nouvelles dates, heures, compétence, priorité, description et nombre de ressources;
+4. les affectations de techniciens déjà faites sont conservées autant que possible.
+
+Si le nombre de ressources diminue lors d'une réapprobation, les segments excédentaires sont annulés; s'il augmente, de nouveaux segments non assignés sont créés.
+
+Les demandes `Soumise` qui chevauchent la semaine affichée sont visibles dans le Planning opérationnel, mais comptent **0 h dans la charge** tant qu'elles ne sont pas approuvées. Une demande soumise et tentative utilise aussi le code visuel jaune.
 
 ## Nombre de ressources
 
-`NombreRessources` crée maintenant réellement plusieurs segments lors de la première approbation.
+`NombreRessources` correspond réellement au nombre de segments à créer.
 
 Exemple : une demande de 80 h pour 2 ressources génère deux segments de 40 h. Si un technicien a été proposé, le premier segment lui est assigné et le second reste **À assigner** afin qu'une deuxième ressource puisse être choisie indépendamment.
-
-Si une demande déjà planifiée est réapprouvée avec davantage de ressources, les segments manquants sont ajoutés. Si le nombre de ressources diminue, aucun segment existant n'est supprimé silencieusement : l'écart est inscrit dans l'historique.
 
 ## Segments
 
@@ -63,9 +68,18 @@ Si une demande déjà planifiée est réapprouvée avec davantage de ressources,
 - une priorité;
 - un type de planification `Flexible` ou `Fixe`;
 - un technicien facultatif;
-- un statut.
+- un statut;
+- `HorsHoraireAutorise`.
 
 Un segment sans technicien apparaît dans **Travaux à planifier** uniquement lorsque sa fenêtre chevauche la semaine présentement affichée.
+
+### Travail hors horaire au niveau du segment
+
+Le champ `HorsHoraireAutorise` permet d'autoriser le moteur à placer automatiquement le reliquat d'un segment en dehors de l'horaire standard lorsque la capacité normale est insuffisante.
+
+Les vacances restent exclues de cette logique automatique. Les journées sans horaire normal, comme les fins de semaine et jours fériés, sont privilégiées avant les heures supplémentaires de semaine.
+
+Si le segment **n'autorise pas** le hors horaire et que la capacité standard est insuffisante, le moteur affiche des quarts **Hors horaire requis** en orange pointillé. Ces quarts sont des avertissements/propositions et ne sont pas comptés dans la charge réelle tant qu'ils n'ont pas été confirmés.
 
 ## Allocations automatiques et verrouillées
 
@@ -81,39 +95,38 @@ Le moteur applique l'ordre suivant :
 
 1. allocations manuelles/verrouillées;
 2. segments fixes;
-3. segments flexibles.
+3. segments flexibles;
+4. hors horaire réel ou requis lorsque la capacité standard ne suffit pas.
 
 Une allocation verrouillée est conservée lors des recalculs. Ses heures sont soustraites du segment puis le moteur redistribue uniquement le reliquat autour de cette décision.
 
-Ainsi, déplacer manuellement 8 h d'un segment flexible sur une journée précise ne crée pas 8 h supplémentaires : les autres allocations du segment sont recalculées afin de conserver son total prévu.
-
-## Quart manuel et travail hors horaire
+## Quart manuel
 
 Dans **Planning opérationnel**, le bouton **Quart manuel** permet de sélectionner un segment, un technicien, une date et un nombre d'heures.
 
 Un quart manuel est automatiquement verrouillé. Un quart automatique peut aussi être ouvert puis enregistré pour le transformer en décision verrouillée.
 
-Pour un samedi, dimanche, jour férié ou autre journée sans capacité standard, il faut cocher explicitement **Hors horaire**. L'horaire standard du technicien n'est donc pas falsifié pour représenter une exception ponctuelle.
+Pour un samedi, dimanche, jour férié ou autre journée sans capacité standard, il faut cocher explicitement **Hors horaire** au niveau du quart, sauf si le moteur l'a déjà généré depuis un segment autorisé hors horaire.
 
-Le quart hors horaire reste inclus dans les heures planifiées et est identifié séparément sur le dashboard.
+Depuis la fenêtre d'un quart, le bouton **Modifier le segment** donne un accès direct au segment parent.
 
 ## Code de couleur du Planning opérationnel
 
 - **Bleu** : flexible;
 - **Violet** : fixe ou verrouillé manuellement;
+- **Jaune pointillé** : demande tentative;
 - **Rouge** : journée en surcharge;
-- **Orange** : quart explicitement hors horaire;
-- **Gris pointillé** : demande en attente d'approbation, sans consommation de capacité.
-
-Cliquer sur une allocation permet de modifier sa journée, ses heures ou son technicien et de la verrouiller. Une allocation verrouillée peut ensuite être remise en mode automatique ou supprimée, après quoi le reliquat est recalculé.
+- **Orange** : quart hors horaire réellement planifié;
+- **Orange pointillé** : capacité insuffisante, quart hors horaire requis mais non confirmé;
+- **Gris pointillé** : demande confirmée en attente d'approbation, sans consommation de capacité.
 
 ## Capacité et tableau de bord
 
-La capacité hebdomadaire provient de `Disponibilites` et la charge provient de `AllocationsMO`.
+La capacité hebdomadaire provient de `Disponibilites` et la charge réelle provient des allocations réellement planifiées dans `AllocationsMO`. Les quarts `Hors horaire requis` ne sont pas inclus dans la charge tant qu'ils restent des propositions.
 
-Le dashboard possède maintenant un sélecteur de semaine avec précédent / aujourd'hui / suivant. Les KPI, les travaux à assigner et la **charge réelle** sont calculés pour la semaine sélectionnée.
+Le dashboard possède un sélecteur de semaine avec précédent / aujourd'hui / suivant. Les KPI, les travaux à assigner et la **charge réelle** sont calculés pour la semaine sélectionnée.
 
-Les heures `HorsHoraire` sont indiquées séparément de la capacité standard.
+Les heures `HorsHoraire` réellement planifiées sont indiquées séparément de la capacité standard.
 
 ## Disponibilités
 
@@ -133,7 +146,7 @@ La connexion crée ou complète au besoin :
 - `SegmentsMO`;
 - `AllocationsMO`.
 
-`SegmentsMO` conserve les colonnes `CompetenceRequise`, `TypePlanification` et `Priorite`. `AllocationsMO` reçoit les colonnes V1.5 `Verrouillee`, `HorsHoraire` et `Note`.
+`DemandesMO` reçoit `Confirmation`. `SegmentsMO` reçoit `HorsHoraireAutorise`. `AllocationsMO` utilise `Verrouillee`, `HorsHoraire` et `Note`.
 
 ## Configuration locale
 
@@ -165,4 +178,4 @@ Il est recommandé de configurer le fichier ou son dossier avec **Toujours conse
 
 Le `.gitignore` exclut notamment `app_config.json`, les fichiers `.xlsx/.xlsm`, les fichiers temporaires Excel et l'environnement Python local.
 
-Pour les premiers essais de la V1.5, utilise idéalement une copie du classeur de production puisque la version complète `AllocationsMO` avec de nouvelles colonnes et change le comportement de réapprobation des demandes.
+Pour les essais de la V1.5, utilise idéalement une copie du classeur de production puisque la version complète `DemandesMO`, `SegmentsMO` et `AllocationsMO` avec de nouvelles colonnes et modifie le comportement de réapprobation.
