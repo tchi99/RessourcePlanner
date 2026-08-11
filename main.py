@@ -14,6 +14,7 @@ from app.v14 import install_v14_features
 from app.v14_fixes import install_v14_fixes
 from app.v14_runtime import install_v14_runtime
 from app.v15 import install_v15_features
+from app.v15_refinements import install_v15_refinements
 
 
 apply_runtime_optimizations()
@@ -25,6 +26,7 @@ install_v14_features()
 install_v14_fixes()
 install_v14_runtime()
 install_v15_features()
+install_v15_refinements()
 
 
 def main() -> None:
