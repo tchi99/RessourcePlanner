@@ -1,6 +1,6 @@
-Planification MO V1.3
+Planification MO V1.4
 Build: 2026-08-10
 UI: NiceGUI
 Excel bridge: xlwings
 Workbook: external / user-configurable
-Features: medium-term Gantt, request-to-segment workflow, schedule-based capacity, operational Shifts
+Features: editable medium-term requests, unassigned segments, fixed/flexible allocation engine, daily operational allocations
