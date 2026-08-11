@@ -11,6 +11,7 @@ from app.ui import PlannerUI
 from app.v13 import install_v13_features
 from app.v13_fixes import install_v13_fixes
 from app.v14 import install_v14_features
+from app.v14_fixes import install_v14_fixes
 from app.v14_runtime import install_v14_runtime
 
 
@@ -20,6 +21,7 @@ install_bugfixes()
 install_v13_features()
 install_v13_fixes()
 install_v14_features()
+install_v14_fixes()
 install_v14_runtime()
 
 
