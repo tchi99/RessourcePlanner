@@ -56,7 +56,7 @@ def _profile_records(repo: ExcelRepository) -> list[dict[str, Any]]:
         headers = [str(value or "").strip() for value in matrix[0]]
         result: list[dict[str, Any]] = []
         for excel_row, row in enumerate(matrix[1:], start=2):
-            technician = str(row[0] if row else "" or "").strip()
+            technician = str((row[0] if row else "") or "").strip()
             if not technician:
                 continue
             item: dict[str, Any] = {"_row": excel_row}
@@ -379,7 +379,7 @@ def _render_resources(self: ui_module.PlannerUI) -> None:
     ensure_resource_profiles(self.repo)
     profiles = resource_profile_map(self.repo)
     technicians = self.repo.technicians()
-    competencies = list(self.repo.competencies())
+    base_competencies = list(self.repo.competencies())
 
     with ui.row().classes("w-full items-center"):
         with ui.column().classes("gap-0"):
@@ -401,6 +401,12 @@ def _render_resources(self: ui_module.PlannerUI) -> None:
             profile = profiles.get(name, {"class": v16.UNCLASSIFIED, "competencies": [], "note": ""})
             current_class = profile.get("class")
             class_value = None if current_class == v16.UNCLASSIFIED else current_class
+            profile_competencies = list(profile.get("competencies") or [])
+            competency_options = list(base_competencies)
+            for skill in profile_competencies:
+                if skill not in competency_options:
+                    competency_options.append(skill)
+
             with ui.card().classes("section-card w-full p-4"):
                 ui.label(name).classes("text-lg font-semibold")
                 details = " · ".join(
@@ -417,9 +423,9 @@ def _render_resources(self: ui_module.PlannerUI) -> None:
                     clearable=True,
                 ).classes("w-full")
                 competence_select = ui.select(
-                    competencies,
+                    competency_options,
                     label="Compétences",
-                    value=list(profile.get("competencies") or []),
+                    value=profile_competencies,
                     multiple=True,
                     with_input=True,
                     clearable=True,
