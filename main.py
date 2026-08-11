@@ -15,6 +15,7 @@ from app.v14_fixes import install_v14_fixes
 from app.v14_runtime import install_v14_runtime
 from app.v15 import install_v15_features
 from app.v15_refinements import install_v15_refinements
+from app.v16 import install_v16_features
 
 
 apply_runtime_optimizations()
@@ -27,6 +28,7 @@ install_v14_fixes()
 install_v14_runtime()
 install_v15_features()
 install_v15_refinements()
+install_v16_features()
 
 
 def main() -> None:
@@ -38,7 +40,7 @@ def main() -> None:
         PlannerUI(repo, refresh_seconds=config.refresh_seconds).build()
 
     ui.run(
-        title="Planification MO — V1.5",
+        title="Planification MO — V1.6",
         host=config.host,
         port=config.port,
         reload=False,
