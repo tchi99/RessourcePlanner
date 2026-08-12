@@ -1,122 +1,3 @@
-# Byte-compiled / optimized / DLL files
-__pycache__/
-*.py[codz]
-*$py.class
-
-# C extensions
-*.so
-
-# Distribution / packaging
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-share/python-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-MANIFEST
-
-# PyInstaller
-*.manifest
-*.spec
-
-# Installer logs
-pip-log.txt
-pip-delete-this-directory.txt
-
-# Unit test / coverage reports
-htmlcov/
-.tox/
-.nox/
-.coverage
-.coverage.*
-.cache
-nosetests.xml
-coverage.xml
-*.cover
-*.py.cover
-.hypothesis/
-.pytest_cache/
-cover/
-
-# Translations
-*.mo
-*.pot
-
-# Django stuff
-*.log
-local_settings.py
-db.sqlite3
-db.sqlite3-journal
-
-# Flask stuff
-instance/
-.webassets-cache
-
-# Scrapy
-.scrapy/
-
-# Sphinx documentation
-docs/_build/
-
-# PyBuilder
-.pybuilder/
-target/
-
-# Jupyter Notebook
-.ipynb_checkpoints
-
-# IPython
-profile_default/
-ipython_config.py
-
-# PDM / Pixi / virtual environments
-.pdm-python
-.pdm-build/
-.pixi
-__pypackages__/
-.env
-.envrc
-.venv/
-env/
-venv/
-ENV/
-env.bak/
-venv.bak/
-
-# Celery / Redis / RabbitMQ / ActiveMQ
-celerybeat-schedule
-celerybeat.pid
-*.rdb
-*.aof
-*.pid
-mnesia/
-rabbitmq/
-rabbitmq-data/
-activemq-data/
-
-# Other Python tooling
-*.sage.py
-.spyderproject
-.spyproject
-.ropeproject
-/site
-.mypy_cache/
-.dmypy.json
-dmypy.json
-.pyre/
-.pytype/
-cython_debug/
 .ruff_cache/
 .pypirc
 
@@ -126,8 +7,10 @@ tempCodeRunnerFile.py
 # Streamlit
 .streamlit/secrets.toml
 
-# RessourcePlanner local configuration
+# RessourcePlanner local configuration and per-user preferences
 app_config.json
+user_preferences.json
+user_preferences.json.tmp
 
 # Local confidential-term denylist used by tools/privacy_scan.py
 .privacy_terms.local

@@ -16,6 +16,12 @@ SKIP_DIRS = {
     ".git", ".venv", "venv", "env", "__pycache__", ".pytest_cache",
     ".mypy_cache", ".ruff_cache", "dist", "build", "node_modules",
 }
+LOCAL_STATE_FILES = {
+    "app_config.json",
+    "user_preferences.json",
+    "user_preferences.json.tmp",
+    ".privacy_terms.local",
+}
 PLACEHOLDER_USERNAMES = {
     "utilisateur", "votrenom", "user", "username", "example", "demo", "test", "...",
 }
@@ -98,7 +104,7 @@ def _iter_files(root: Path) -> Iterable[Path]:
         rel = path.relative_to(root).as_posix()
         if rel == SCANNER_PATH:
             continue
-        if path.name == ".privacy_terms.local":
+        if path.name in LOCAL_STATE_FILES:
             continue
         if path.suffix.lower() in {
             ".xlsx", ".xlsm", ".xlsb", ".pdf", ".png", ".jpg", ".jpeg", ".gif", ".zip"
@@ -168,7 +174,7 @@ def _tracked_sensitive_files(root: Path) -> list[Finding]:
     for raw in result.stdout.splitlines():
         rel = raw.strip().replace("\\", "/")
         lower = rel.lower()
-        if lower == "app_config.json":
+        if lower in {"app_config.json", "user_preferences.json", "user_preferences.json.tmp"}:
             findings.append(Finding("tracked_local_config", rel, 0))
         if lower.endswith((".xlsx", ".xlsm", ".xlsb")):
             findings.append(Finding("tracked_excel_workbook", rel, 0))
