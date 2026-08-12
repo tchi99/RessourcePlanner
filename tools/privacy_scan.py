@@ -1,10 +1,8 @@
 from __future__ import annotations
 
 import argparse
-import os
 import re
 import subprocess
-import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
@@ -19,7 +17,7 @@ SKIP_DIRS = {
     ".mypy_cache", ".ruff_cache", "dist", "build", "node_modules",
 }
 PLACEHOLDER_USERNAMES = {
-    "utilisateur", "votrenom", "user", "username", "example", "demo", "test",
+    "utilisateur", "votrenom", "user", "username", "example", "demo", "test", "...",
 }
 
 
@@ -63,7 +61,7 @@ PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     ),
     (
         "unc_path",
-        re.compile(r"\\\\[^\\\s]+\\[^\\\s]+"),
+        re.compile(r"\\\\" + r"[^\\\s]+" + r"\\" + r"[^\\\s]+"),
     ),
     (
         "credential_assignment",
@@ -96,9 +94,11 @@ def _iter_files(root: Path) -> Iterable[Path]:
             continue
         if any(part in SKIP_DIRS for part in path.parts):
             continue
-        if path.name in {".privacy_terms.local"}:
+        if path.name == ".privacy_terms.local":
             continue
-        if path.suffix.lower() in {".xlsx", ".xlsm", ".xlsb", ".pdf", ".png", ".jpg", ".jpeg", ".gif", ".zip"}:
+        if path.suffix.lower() in {
+            ".xlsx", ".xlsm", ".xlsb", ".pdf", ".png", ".jpg", ".jpeg", ".gif", ".zip"
+        }:
             continue
         if path.suffix and path.suffix.lower() not in TEXT_EXTENSIONS:
             continue
@@ -136,6 +136,9 @@ def _scan_text(path: Path, root: Path, terms: list[str]) -> list[Finding]:
         for category, pattern in PATTERNS:
             match = pattern.search(line)
             if not match:
+                continue
+            # The scanner's own regex declaration is not a data occurrence.
+            if rel == "tools/privacy_scan.py" and category == "unc_path" and "re.compile" in line:
                 continue
             if category == "credential_assignment" and _is_placeholder_secret(match.group(1)):
                 continue
