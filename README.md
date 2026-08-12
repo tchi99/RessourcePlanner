@@ -40,13 +40,7 @@ Le recalcul du moteur reste global dans cette première version de la V1.7 afin 
 
 ## Ressources et compétences
 
-`RessourcesMO` contient maintenant :
-
-- `Technicien`;
-- `Classe`;
-- `Competences`;
-- `Note`;
-- `Ordre` pour le tri manuel.
+`RessourcesMO` contient maintenant `Technicien`, `Classe`, `Competences`, `Note` et `Ordre`.
 
 Les classes disponibles sont : `Programmation`, `Installation`, `Monteur de panneau`, `Dessinateur`, `Gestion de projet`.
 
