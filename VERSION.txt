@@ -1,6 +1,6 @@
-Planification MO V1.6
+Planification MO V1.7
 Build: 2026-08-11
 UI: NiceGUI
 Excel bridge: xlwings
 Workbook: external / user-configurable
-Features: configurable resource classes and competencies, collapsible planning groups, skill/capacity-aware resource recommendations, project number+name filters, tentative-risk capacity, class-level dashboard capacity
+Features: interactive operational planning, drag-and-drop allocations, quick cell scheduling, locked moves, cross-resource split/reassign, clickable/collapsible pending demands, scroll-position preservation, resource creation, configurable resource classes and competencies, availability/alphabetical/manual resource sorting persisted in RessourcesMO
