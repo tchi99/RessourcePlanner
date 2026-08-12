@@ -6,15 +6,16 @@ on:
       - "main.py"
       - "app/config.py"
       - "app/v171_local_preferences.py"
+      - "app/v172_nicegui_compat.py"
       - "requirements.txt"
-      - "RELEASE_NOTES_V1.7.md"
+      - "RELEASE_NOTES_V1.7.2.md"
       - ".github/workflows/windows-release.yml"
-      - "release/v1.7.1.json"
+      - "release/v1.7.2.json"
   push:
     branches:
       - main
     paths:
-      - "release/v1.7.1.json"
+      - "release/v1.7.2.json"
 
 permissions:
   contents: write
@@ -40,39 +41,53 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -r requirements.txt "nicegui[native]>=2.20,<4" "pyinstaller==6.21.0"
 
+      - name: Smoke-test NiceGUI source startup
+        shell: pwsh
+        run: |
+          $stdout = Join-Path $env:RUNNER_TEMP "ressourceplanner-startup.out"
+          $stderr = Join-Path $env:RUNNER_TEMP "ressourceplanner-startup.err"
+          $process = Start-Process python -ArgumentList "main.py" -PassThru -RedirectStandardOutput $stdout -RedirectStandardError $stderr
+          Start-Sleep -Seconds 7
+          if ($process.HasExited) {
+            if (Test-Path $stdout) { Get-Content $stdout }
+            if (Test-Path $stderr) { Get-Content $stderr }
+            throw "RessourcePlanner exited during startup with code $($process.ExitCode)."
+          }
+          Stop-Process -Id $process.Id -Force
+
       - name: Build one-file Windows desktop application
         shell: pwsh
         run: |
-          nicegui-pack --onefile --windowed --name "RessourcePlanner-V1.7.1-Windows-x64" main.py
-          if (-not (Test-Path "dist/RessourcePlanner-V1.7.1-Windows-x64.exe")) {
+          nicegui-pack --onefile --windowed --name "RessourcePlanner-V1.7.2-Windows-x64" main.py
+          if (-not (Test-Path "dist/RessourcePlanner-V1.7.2-Windows-x64.exe")) {
             throw "Expected executable was not produced."
           }
 
       - name: Generate SHA256 checksum
         shell: pwsh
         run: |
-          $exe = "dist/RessourcePlanner-V1.7.1-Windows-x64.exe"
+          $exe = "dist/RessourcePlanner-V1.7.2-Windows-x64.exe"
           $hash = (Get-FileHash $exe -Algorithm SHA256).Hash.ToLowerInvariant()
-          "$hash  RessourcePlanner-V1.7.1-Windows-x64.exe" | Set-Content -Encoding ascii "dist/RessourcePlanner-V1.7.1-Windows-x64.exe.sha256"
+          "$hash  RessourcePlanner-V1.7.2-Windows-x64.exe" | Set-Content -Encoding ascii "dist/RessourcePlanner-V1.7.2-Windows-x64.exe.sha256"
 
       - name: Upload CI artifact
         uses: actions/upload-artifact@v4
         with:
-          name: RessourcePlanner-V1.7.1-Windows-x64
+          name: RessourcePlanner-V1.7.2-Windows-x64
           path: |
-            dist/RessourcePlanner-V1.7.1-Windows-x64.exe
-            dist/RessourcePlanner-V1.7.1-Windows-x64.exe.sha256
+            dist/RessourcePlanner-V1.7.2-Windows-x64.exe
+            dist/RessourcePlanner-V1.7.2-Windows-x64.exe.sha256
           if-no-files-found: error
 
-      - name: Publish official V1.7 release
+      - name: Publish official V1.7.2 release
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $tag = "v1.7.1"
-          $exe = "dist/RessourcePlanner-V1.7.1-Windows-x64.exe"
-          $sha = "dist/RessourcePlanner-V1.7.1-Windows-x64.exe.sha256"
+          $tag = "v1.7.2"
+          $exe = "dist/RessourcePlanner-V1.7.2-Windows-x64.exe"
+          $sha = "dist/RessourcePlanner-V1.7.2-Windows-x64.exe.sha256"
           gh release view $tag *> $null
           if ($LASTEXITCODE -eq 0) {
             gh release upload $tag $exe $sha --clobber
@@ -80,7 +95,7 @@ jobs:
           else {
             gh release create $tag $exe $sha `
               --target "${{ github.sha }}" `
-              --title "RessourcePlanner V1.7 (build 1.7.1)" `
-              --notes-file "RELEASE_NOTES_V1.7.md" `
+              --title "RessourcePlanner V1.7.2" `
+              --notes-file "RELEASE_NOTES_V1.7.2.md" `
               --latest
           }
