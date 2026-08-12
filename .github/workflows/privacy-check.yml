@@ -1,0 +1,17 @@
+name: Privacy scan
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  privacy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Scan current repository tree for common PII and secrets
+        run: python tools/privacy_scan.py
