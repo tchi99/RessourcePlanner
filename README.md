@@ -21,23 +21,6 @@ Planning opérationnel
 Vue Shifts selon l'horaire, les décisions verrouillées et la capacité résiduelle
 ```
 
-## Performance Excel — V1.7.1
-
-La V1.7.1 conserve Excel comme source de vérité mais réduit le coût des opérations répétitives :
-
-- les opérations composées peuvent regrouper plusieurs écritures derrière **une seule sauvegarde du classeur**;
-- l'affichage et le recalcul Excel sont suspendus temporairement pendant un lot d'écritures lorsque l'API Excel le permet, puis restaurés avant la sauvegarde;
-- les lectures répétitives de `Disponibilites` sont mises en cache pendant une courte fenêtre afin d'éviter de relire toute la feuille pour chaque technicien et chaque journée;
-- les initialisations de structure `Disponibilites`, `AllocationsMO` et `RessourcesMO` ne sont plus répétées à chaque lecture dans une même session;
-- les flèches d'**Ordre manuel** écrivent la colonne `Ordre` en une seule opération et, lorsque deux positions existent déjà, ne changent logiquement que les deux ressources concernées;
-- l'éditeur global d'ordre manuel sauvegarde toute la colonne en une seule écriture plutôt qu'une ressource à la fois;
-- la création/modification d'une demande regroupe l'écriture de la demande et de son historique derrière une seule sauvegarde;
-- l'initialisation de plusieurs horaires standards et le fractionnement d'un quart utilisent également le mode batch.
-
-Le repository expose aussi des métriques légères sur le dernier lot (`performance_snapshot()`). Lorsqu'un lot Excel dépasse une seconde, le temps total, le temps de sauvegarde et le nombre de demandes de sauvegarde regroupées sont inscrits dans la console locale sans afficher le contenu du classeur.
-
-Cette optimisation ne transforme pas Excel en base de données transactionnelle et ne change pas la source de vérité. Elle vise d'abord à réduire les appels COM, les sauvegardes OneDrive et les recalculs Excel inutiles.
-
 ## Planning opérationnel interactif — V1.7
 
 La V1.7 rend le Planning opérationnel manipulable directement :
@@ -51,13 +34,29 @@ La V1.7 rend le Planning opérationnel manipulable directement :
 - conserver la position de la page et le défilement du calendrier après les rafraîchissements;
 - trier les ressources à l'intérieur de chaque classe par disponibilité, disponibilité inverse, ordre alphabétique A→Z / Z→A ou ordre manuel.
 
-Le tri **Ordre manuel** est enregistré dans la colonne `Ordre` de `RessourcesMO`. La page **Ressources & compétences** contient un bouton **Ordre manuel** pour modifier rapidement les positions. Les valeurs peuvent être espacées (10, 20, 30...) pour faciliter l'insertion future d'une ressource entre deux autres.
+### Ordre manuel propre à chaque utilisateur
 
-Le recalcul du moteur reste global dans cette première version de la V1.7 afin de privilégier la cohérence du classeur Excel. Une optimisation par segment ou ressource pourra être faite après validation des interactions.
+À partir de la V1.7.1, le tri **Ordre manuel** n'est plus une donnée partagée du classeur Excel. Il est enregistré dans `user_preferences.json`, un fichier local ignoré par Git.
+
+Chaque poste peut donc organiser les techniciens différemment tout en travaillant avec le même classeur partagé. Le fichier local sépare aussi les préférences par classeur à l'aide d'une empreinte du chemin; le chemin Windows réel n'est pas stocké dans ce fichier.
+
+Lors de la première utilisation après mise à niveau, un ancien ordre V1.7 présent dans `RessourcesMO` peut être copié une seule fois vers les préférences locales afin de conserver l'ordre existant. Les modifications suivantes ne réécrivent plus l'ordre manuel dans Excel.
+
+## Performance Excel — V1.7.1
+
+La V1.7.1 réduit le coût des échanges avec Excel tout en conservant le classeur comme source de vérité :
+
+- plusieurs appels `save()` d'une même action sont regroupés derrière une seule sauvegarde réelle;
+- l'affichage, les événements et le recalcul Excel sont suspendus temporairement pendant certains lots d'écritures lorsque possible;
+- les lectures répétitives de `Disponibilites` sont mises en cache très brièvement pendant le rendu/calcul;
+- les initialisations de structure déjà effectuées ne sont pas rejouées inutilement à chaque lecture;
+- la création/modification d'une demande et son historique sont regroupés;
+- l'initialisation de plusieurs horaires standards et certaines opérations composées utilisent également le mode batch;
+- des métriques locales indiquent le temps total et le temps consacré à la sauvegarde Excel pour les opérations lentes.
 
 ## Ressources et compétences
 
-`RessourcesMO` contient maintenant `Technicien`, `Classe`, `Competences`, `Note` et `Ordre`.
+`RessourcesMO` contient les données partagées de ressource : `Technicien`, `Classe`, `Competences`, `Note` et, pour compatibilité avec la V1.7, éventuellement l'ancienne colonne `Ordre`.
 
 Les classes disponibles sont : `Programmation`, `Installation`, `Monteur de panneau`, `Dessinateur`, `Gestion de projet`.
 
@@ -128,8 +127,10 @@ Un segment peut autoriser explicitement le travail hors horaire. Si sa fenêtre 
 
 Les vacances restent exclues des propositions automatiques de hors horaire.
 
-## Source Excel
+## Source Excel et fichiers locaux
 
 Le chemin du classeur est configuré localement dans `app_config.json`, fichier ignoré par Git. Les fichiers `.xlsx` et `.xlsm` sont également ignorés par le dépôt.
+
+`user_preferences.json` est lui aussi local et ignoré par Git. Il contient les préférences propres au poste, notamment l'ordre manuel des ressources. Il peut contenir des noms de ressources et ne doit donc pas être partagé ou versionné.
 
 Le classeur peut être stocké dans un dossier OneDrive synchronisé localement. L'application utilise le chemin Windows local et communique avec Excel via `xlwings`.
