@@ -5,6 +5,13 @@ from multiprocessing import freeze_support
 
 from nicegui import native, ui
 
+from app.v172_nicegui_compat import install_v172_nicegui_compat
+
+# Install the compatibility shim before any historical feature installer runs. This
+# ensures every application-wide ui.add_head_html/ui.add_body_html/ui.add_css call is
+# explicitly shared when the app uses ui.page on recent NiceGUI versions.
+install_v172_nicegui_compat()
+
 from app.bugfixes import install_bugfixes
 from app.config import load_config
 from app.excel_repository import ExcelRepository
@@ -56,7 +63,7 @@ def main() -> None:
         PlannerUI(repo, refresh_seconds=config.refresh_seconds).build()
 
     ui.run(
-        title="Planification MO — V1.7.1",
+        title="Planification MO — V1.7.2",
         host="127.0.0.1" if packaged else config.host,
         port=native.find_open_port() if packaged else config.port,
         reload=False,
