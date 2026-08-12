@@ -129,6 +129,9 @@ tempCodeRunnerFile.py
 # RessourcePlanner local configuration
 app_config.json
 
+# Local confidential-term denylist used by tools/privacy_scan.py
+.privacy_terms.local
+
 # Excel workbooks and temporary lock files
 *.xlsx
 *.xlsm
