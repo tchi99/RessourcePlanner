@@ -21,6 +21,7 @@ from app.v17 import install_v17_features
 from app.v17_refinements import install_v17_refinements
 from app.v17_sort_fix import install_v17_sort_fix
 from app.v171_performance import install_v171_performance
+from app.v171_local_preferences import install_v171_local_preferences
 
 
 apply_runtime_optimizations()
@@ -39,6 +40,7 @@ install_v17_features()
 install_v17_refinements()
 install_v17_sort_fix()
 install_v171_performance()
+install_v171_local_preferences()
 
 
 def main() -> None:
