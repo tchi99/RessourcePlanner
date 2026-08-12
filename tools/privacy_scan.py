@@ -19,6 +19,7 @@ SKIP_DIRS = {
 PLACEHOLDER_USERNAMES = {
     "utilisateur", "votrenom", "user", "username", "example", "demo", "test", "...",
 }
+SCANNER_PATH = "tools/privacy_scan.py"
 
 
 @dataclass(frozen=True)
@@ -94,6 +95,9 @@ def _iter_files(root: Path) -> Iterable[Path]:
             continue
         if any(part in SKIP_DIRS for part in path.parts):
             continue
+        rel = path.relative_to(root).as_posix()
+        if rel == SCANNER_PATH:
+            continue
         if path.name == ".privacy_terms.local":
             continue
         if path.suffix.lower() in {
@@ -136,9 +140,6 @@ def _scan_text(path: Path, root: Path, terms: list[str]) -> list[Finding]:
         for category, pattern in PATTERNS:
             match = pattern.search(line)
             if not match:
-                continue
-            # The scanner's own regex declaration is not a data occurrence.
-            if rel == "tools/privacy_scan.py" and category == "unc_path" and "re.compile" in line:
                 continue
             if category == "credential_assignment" and _is_placeholder_secret(match.group(1)):
                 continue
