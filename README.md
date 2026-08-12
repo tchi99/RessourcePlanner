@@ -34,7 +34,7 @@ La V1.7 rend le Planning opérationnel manipulable directement :
 - conserver la position de la page et le défilement du calendrier après les rafraîchissements;
 - trier les ressources à l'intérieur de chaque classe par disponibilité, disponibilité inverse, ordre alphabétique A→Z / Z→A ou ordre manuel.
 
-Le tri **Ordre manuel** est enregistré dans la colonne `Ordre` de `RessourcesMO`. La page **Ressources & compétences** permet d'éditer cet ordre avec des valeurs numériques. Les valeurs peuvent être espacées (10, 20, 30...) pour faciliter l'insertion future d'une ressource entre deux autres.
+Le tri **Ordre manuel** est enregistré dans la colonne `Ordre` de `RessourcesMO`. La page **Ressources & compétences** contient un bouton **Ordre manuel** pour modifier rapidement les positions. Les valeurs peuvent être espacées (10, 20, 30...) pour faciliter l'insertion future d'une ressource entre deux autres.
 
 Le recalcul du moteur reste global dans cette première version de la V1.7 afin de privilégier la cohérence du classeur Excel. Une optimisation par segment ou ressource pourra être faite après validation des interactions.
 
