@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-from pathlib import Path
 from typing import Any
 
 from nicegui import ui
@@ -10,10 +9,11 @@ from nicegui import ui
 from . import ui as ui_module
 from . import v16, v16_refinements, v17_refinements, v17_sort_fix
 from .bugfixes import schedulable_technicians
+from .config import BASE_DIR
 from .excel_repository import ExcelRepository
 
 
-LOCAL_PREFERENCES_FILE = Path("user_preferences.json")
+LOCAL_PREFERENCES_FILE = BASE_DIR / "user_preferences.json"
 PREFERENCES_VERSION = 1
 
 

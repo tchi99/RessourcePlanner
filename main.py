@@ -1,6 +1,9 @@
 from __future__ import annotations
 
-from nicegui import ui
+import sys
+from multiprocessing import freeze_support
+
+from nicegui import native, ui
 
 from app.bugfixes import install_bugfixes
 from app.config import load_config
@@ -46,6 +49,7 @@ install_v171_local_preferences()
 def main() -> None:
     config = load_config()
     repo = ExcelRepository(config.workbook, save_on_write=config.save_on_write)
+    packaged = bool(getattr(sys, "frozen", False))
 
     @ui.page("/")
     def index() -> None:
@@ -53,13 +57,18 @@ def main() -> None:
 
     ui.run(
         title="Planification MO — V1.7.1",
-        host=config.host,
-        port=config.port,
+        host="127.0.0.1" if packaged else config.host,
+        port=native.find_open_port() if packaged else config.port,
         reload=False,
-        show=True,
+        show=not packaged,
+        native=packaged,
+        window_size=(1500, 950) if packaged else None,
         favicon="📅",
     )
 
 
-if __name__ in {"__main__", "__mp_main__"}:
+if __name__ == "__main__":
+    # Required by NiceGUI/PyInstaller native mode so spawned native-window processes
+    # do not restart the complete application recursively.
+    freeze_support()
     main()
