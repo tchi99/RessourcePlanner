@@ -1,4 +1,4 @@
-# Planification MO — V1.7
+# Planification MO — V1.7.1
 
 Application locale Python pour piloter un classeur Excel de planification, y compris un classeur stocké dans un dossier **OneDrive synchronisé localement**.
 
@@ -20,6 +20,23 @@ Heures réellement placées par journée
 Planning opérationnel
 Vue Shifts selon l'horaire, les décisions verrouillées et la capacité résiduelle
 ```
+
+## Performance Excel — V1.7.1
+
+La V1.7.1 conserve Excel comme source de vérité mais réduit le coût des opérations répétitives :
+
+- les opérations composées peuvent regrouper plusieurs écritures derrière **une seule sauvegarde du classeur**;
+- l'affichage et le recalcul Excel sont suspendus temporairement pendant un lot d'écritures lorsque l'API Excel le permet, puis restaurés avant la sauvegarde;
+- les lectures répétitives de `Disponibilites` sont mises en cache pendant une courte fenêtre afin d'éviter de relire toute la feuille pour chaque technicien et chaque journée;
+- les initialisations de structure `Disponibilites`, `AllocationsMO` et `RessourcesMO` ne sont plus répétées à chaque lecture dans une même session;
+- les flèches d'**Ordre manuel** écrivent la colonne `Ordre` en une seule opération et, lorsque deux positions existent déjà, ne changent logiquement que les deux ressources concernées;
+- l'éditeur global d'ordre manuel sauvegarde toute la colonne en une seule écriture plutôt qu'une ressource à la fois;
+- la création/modification d'une demande regroupe l'écriture de la demande et de son historique derrière une seule sauvegarde;
+- l'initialisation de plusieurs horaires standards et le fractionnement d'un quart utilisent également le mode batch.
+
+Le repository expose aussi des métriques légères sur le dernier lot (`performance_snapshot()`). Lorsqu'un lot Excel dépasse une seconde, le temps total, le temps de sauvegarde et le nombre de demandes de sauvegarde regroupées sont inscrits dans la console locale sans afficher le contenu du classeur.
+
+Cette optimisation ne transforme pas Excel en base de données transactionnelle et ne change pas la source de vérité. Elle vise d'abord à réduire les appels COM, les sauvegardes OneDrive et les recalculs Excel inutiles.
 
 ## Planning opérationnel interactif — V1.7
 
