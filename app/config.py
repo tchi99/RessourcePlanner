@@ -1,10 +1,25 @@
 from __future__ import annotations
 
 import json
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-BASE_DIR = Path(__file__).resolve().parents[1]
+
+def _runtime_base_dir() -> Path:
+    """Directory used for local per-installation files.
+
+    In normal Python development this is the repository root. In a PyInstaller/
+    nicegui-pack executable, ``sys.executable`` points to the distributed .exe,
+    so configuration and user preferences live beside that executable rather than
+    inside PyInstaller's temporary extraction directory.
+    """
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).resolve().parent
+    return Path(__file__).resolve().parents[1]
+
+
+BASE_DIR = _runtime_base_dir()
 CONFIG_PATH = BASE_DIR / "app_config.json"
 
 
