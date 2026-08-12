@@ -19,6 +19,7 @@ from app.v16 import install_v16_features
 from app.v16_refinements import install_v16_refinements
 from app.v17 import install_v17_features
 from app.v17_refinements import install_v17_refinements
+from app.v17_sort_fix import install_v17_sort_fix
 
 
 apply_runtime_optimizations()
@@ -35,6 +36,7 @@ install_v16_features()
 install_v16_refinements()
 install_v17_features()
 install_v17_refinements()
+install_v17_sort_fix()
 
 
 def main() -> None:
