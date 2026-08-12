@@ -5,6 +5,7 @@ RessourcePlanner doit rester séparé des données réelles de production dans G
 ## Règles du dépôt
 
 - Ne jamais versionner `app_config.json`.
+- Ne jamais versionner `user_preferences.json` : ce fichier local peut contenir des noms de ressources/employés et des préférences propres à l'utilisateur.
 - Ne jamais versionner de classeur `.xlsx`, `.xlsm` ou `.xlsb` provenant de la production.
 - Ne jamais copier dans le code, la documentation, les issues, les PR ou les logs des noms de clients, noms d'employés, adresses, numéros de téléphone, courriels, chemins utilisateurs réels, IP privées ou secrets.
 - Utiliser uniquement des exemples génériques (`Utilisateur`, `Entreprise`, `Client Démo`, etc.).
@@ -20,6 +21,8 @@ python tools/privacy_scan.py
 Le scan vérifie le contenu courant du dépôt pour plusieurs formes courantes de données sensibles : courriels, téléphones, codes postaux canadiens, adresses probables, chemins Windows utilisateurs réels, chemins UNC, IP privées et affectations de secrets.
 
 Les valeurs détectées ne sont volontairement jamais imprimées dans les logs : seulement la catégorie, le fichier et le numéro de ligne.
+
+Les fichiers locaux ignorés par Git (`app_config.json`, `user_preferences.json`, `.privacy_terms.local`) ne sont pas inspectés comme contenu du dépôt. Le scanner vérifie toutefois qu'ils ne sont pas suivis par Git; s'ils sont ajoutés accidentellement au dépôt, le scan échoue.
 
 ## Noms de clients et d'employés propres à l'entreprise
 
@@ -46,7 +49,7 @@ Puis exécuter localement :
 python tools/privacy_scan.py
 ```
 
-Le script signalera toute occurrence sans afficher la valeur recherchée.
+Le script signalera toute occurrence dans les fichiers du projet qui doivent être partageables, sans afficher la valeur recherchée. Les fichiers d'état local explicitement ignorés ne sont pas inclus dans cette recherche.
 
 ## Données de test
 
