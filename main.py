@@ -34,6 +34,7 @@ from app.v171_performance import install_v171_performance
 from app.v171_local_preferences import install_v171_local_preferences
 from app.v18 import install_v18_features
 from app.v18_fixes import install_v18_fixes
+from app.v18_refinements import install_v18_refinements
 
 
 apply_runtime_optimizations()
@@ -55,6 +56,7 @@ install_v171_performance()
 install_v171_local_preferences()
 install_v18_features()
 install_v18_fixes()
+install_v18_refinements()
 
 
 def main() -> None:
