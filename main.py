@@ -35,6 +35,7 @@ from app.v171_local_preferences import install_v171_local_preferences
 from app.v18 import install_v18_features
 from app.v18_fixes import install_v18_fixes
 from app.v18_refinements import install_v18_refinements
+from app.v18_single_scroll import install_v18_single_scroll
 
 
 apply_runtime_optimizations()
@@ -57,6 +58,7 @@ install_v171_local_preferences()
 install_v18_features()
 install_v18_fixes()
 install_v18_refinements()
+install_v18_single_scroll()
 
 
 def main() -> None:
