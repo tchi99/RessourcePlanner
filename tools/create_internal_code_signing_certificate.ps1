@@ -19,7 +19,7 @@ New-Item -ItemType Directory -Force -Path $resolvedOutput | Out-Null
 $pfxPath = Join-Path $resolvedOutput "RessourcePlanner-Internal-CodeSigning.pfx"
 $cerPath = Join-Path $resolvedOutput "RessourcePlanner-Internal-CodeSigning.cer"
 
-if (Test-Path $pfxPath -or Test-Path $cerPath) {
+if ((Test-Path $pfxPath) -or (Test-Path $cerPath)) {
     throw "Signing output already exists in $resolvedOutput. Move or delete the existing files before creating a new certificate."
 }
 
