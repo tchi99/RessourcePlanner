@@ -15,6 +15,13 @@ user_preferences.json.tmp
 # Local confidential-term denylist used by tools/privacy_scan.py
 .privacy_terms.local
 
+# Local code-signing material (never commit private keys or encoded PFX data)
+signing-output/
+*.pfx
+*.p12
+*.pfx.base64
+*.pfx.base64.txt
+
 # Excel workbooks and temporary lock files
 *.xlsx
 *.xlsm
