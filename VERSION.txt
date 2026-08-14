@@ -1,6 +1,6 @@
-Planification MO V1.7.2
+Planification MO V1.8
 Build: 2026-08-12
 UI: NiceGUI
 Excel bridge: xlwings
 Workbook: external / user-configurable
-Features: V1.7 interactive planning plus coalesced Excel saves, batch writes, cached availability reads, guarded schema setup, lightweight Excel performance metrics, per-user manual resource ordering persisted locally in gitignored user_preferences.json, and NiceGUI shared-asset startup compatibility
+Features: V1.7 interactive operational planning and V1.7.1 Excel performance/local preferences, plus stable IDEffort links, SourceEffortID migration, enriched 16-week medium-term mini-Gantt, project manager/resource/skill/status filters, project-manager grouping, class capacity heatmap, macro-vs-detailed comparison, and out-of-envelope segment warnings

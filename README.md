@@ -1,4 +1,4 @@
-# Planification MO — V1.7.1
+# Planification MO — V1.8
 
 Application locale Python pour piloter un classeur Excel de planification, y compris un classeur stocké dans un dossier **OneDrive synchronisé localement**.
 
@@ -20,6 +20,29 @@ Heures réellement placées par journée
 Planning opérationnel
 Vue Shifts selon l'horaire, les décisions verrouillées et la capacité résiduelle
 ```
+
+## Planification moyen terme enrichie — V1.8
+
+La V1.8 stabilise d'abord le lien entre la planification macro et le détail opérationnel :
+
+- chaque ligne de `Liste_Effort` reçoit un identifiant stable `IDEffort`;
+- `DemandesMO` et `SegmentsMO` reçoivent `SourceEffortID`;
+- les anciens liens `SourceEffortRow` sont migrés automatiquement vers le nouvel identifiant stable;
+- `SourceEffortRow` est conservé temporairement pour compatibilité, mais n'est plus la référence principale;
+- une nouvelle ligne ajoutée directement dans `Liste_Effort` reçoit automatiquement un `IDEffort` lors de sa prochaine lecture par l'application.
+
+La vue **Planification moyen terme** affiche maintenant un mini-Gantt détaillé sur 16 semaines :
+
+- l'enveloppe macro de `Liste_Effort` reste visible en arrière-plan;
+- les segments liés sont superposés dans la même ligne;
+- les segments fixes, flexibles, tentatifs et non assignés sont visuellement distingués;
+- un segment qui dépasse l'enveloppe macro reçoit un avertissement et un contour rouge;
+- les heures macro sont comparées aux heures segmentées afin de voir immédiatement le reste à détailler ou un dépassement;
+- cliquer sur l'enveloppe ouvre l'effort macro; cliquer sur un segment ouvre directement le segment.
+
+Des filtres sont disponibles par projet, chargé de projet, statut, classe de ressource, technicien et compétence. La vue peut être regroupée par **chargé de projet**.
+
+Une heatmap de capacité par classe compare, semaine par semaine, la charge détaillée confirmée + tentative avec la capacité standard des ressources. Cette capacité reste globale même lorsqu'un projet particulier est filtré afin de conserver le contexte réel de disponibilité.
 
 ## Planning opérationnel interactif — V1.7
 
@@ -63,18 +86,6 @@ Les classes disponibles sont : `Programmation`, `Installation`, `Monteur de pann
 Une nouvelle ressource peut être créée directement dans **Ressources & compétences**. Elle reste non planifiable tant qu'un horaire standard actif n'a pas été créé dans **Disponibilités**.
 
 Une ressource sans classe reste dans `Non classé`. Les compétences configurées sont utilisées par **Trouver une ressource** : une correspondance exacte de compétence est priorisée avant la classe et la capacité disponible. La décision finale demeure manuelle.
-
-Le filtre **Projet** du Planning opérationnel affiche le numéro et le nom du projet, tout en conservant le numéro comme valeur de filtrage.
-
-## Planification moyen terme
-
-La page **Planification moyen terme** est une vue Gantt de `Liste_Effort`. Une barre représente une fenêtre de besoin et non un quart continu.
-
-En cliquant sur un effort, l'application permet de **modifier directement la ligne correspondante de `Liste_Effort`** et de créer une nouvelle demande MO à partir de cette planification. Les demandes liées restent affichées comme référence, mais leur modification se fait dans **Demandes / approbations**.
-
-La semaine courante est mise en évidence dans le Gantt.
-
-Une évolution prévue du roadmap ajoutera les segments liés sous forme de mini-Gantt à l'intérieur de chaque ligne de planification moyen terme afin de comparer visuellement l'enveloppe macro et la planification détaillée.
 
 ## Demandes, confirmation et réapprobation
 
