@@ -4,26 +4,26 @@ on:
   pull_request:
     paths:
       - "main.py"
-      - "app/config.py"
-      - "app/v171_local_preferences.py"
-      - "app/v172_nicegui_compat.py"
+      - "app/**"
       - "requirements.txt"
-      - "RELEASE_NOTES_V1.7.2.md"
       - ".github/workflows/windows-release.yml"
-      - "release/v1.7.2.json"
   push:
-    branches:
-      - main
-    paths:
-      - "release/v1.7.2.json"
-
-permissions:
-  contents: write
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version à construire sans le préfixe v (ex. 1.8.0-signing-test)"
+        required: true
+        default: "1.8.0-signing-test"
 
 jobs:
-  build-windows:
+  build-ci:
+    if: github.event_name == 'pull_request'
     runs-on: windows-latest
     timeout-minutes: 30
+    permissions:
+      contents: read
 
     steps:
       - name: Checkout
@@ -55,39 +55,174 @@ jobs:
           }
           Stop-Process -Id $process.Id -Force
 
-      - name: Build one-file Windows desktop application
+      - name: Build unsigned CI executable
         shell: pwsh
         run: |
-          nicegui-pack --onefile --windowed --name "RessourcePlanner-V1.7.2-Windows-x64" main.py
-          if (-not (Test-Path "dist/RessourcePlanner-V1.7.2-Windows-x64.exe")) {
+          $name = "RessourcePlanner-CI-Windows-x64"
+          nicegui-pack --onefile --windowed --name $name main.py
+          if (-not (Test-Path "dist/$name.exe")) {
             throw "Expected executable was not produced."
           }
 
-      - name: Generate SHA256 checksum
-        shell: pwsh
-        run: |
-          $exe = "dist/RessourcePlanner-V1.7.2-Windows-x64.exe"
-          $hash = (Get-FileHash $exe -Algorithm SHA256).Hash.ToLowerInvariant()
-          "$hash  RessourcePlanner-V1.7.2-Windows-x64.exe" | Set-Content -Encoding ascii "dist/RessourcePlanner-V1.7.2-Windows-x64.exe.sha256"
-
-      - name: Upload CI artifact
+      - name: Upload unsigned CI artifact
         uses: actions/upload-artifact@v4
         with:
-          name: RessourcePlanner-V1.7.2-Windows-x64
-          path: |
-            dist/RessourcePlanner-V1.7.2-Windows-x64.exe
-            dist/RessourcePlanner-V1.7.2-Windows-x64.exe.sha256
+          name: RessourcePlanner-CI-Windows-x64
+          path: dist/RessourcePlanner-CI-Windows-x64.exe
           if-no-files-found: error
 
-      - name: Publish official V1.7.2 release
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+  build-sign-release:
+    if: github.event_name != 'pull_request'
+    runs-on: windows-latest
+    timeout-minutes: 35
+    environment: release-signing
+    permissions:
+      contents: write
+      id-token: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve version
+        shell: pwsh
+        run: |
+          if ("${{ github.event_name }}" -eq "push") {
+            $tag = "${{ github.ref_name }}"
+            if (-not $tag.StartsWith("v")) {
+              throw "Release tags must start with v."
+            }
+            $version = $tag.Substring(1)
+          }
+          else {
+            $version = "${{ inputs.version }}".Trim()
+          }
+          if ([string]::IsNullOrWhiteSpace($version)) {
+            throw "Version is required."
+          }
+          if ($version -notmatch '^[0-9A-Za-z][0-9A-Za-z._-]*$') {
+            throw "Version contains unsupported characters: $version"
+          }
+          "APP_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "APP_NAME=RessourcePlanner-V$version-Windows-x64" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Validate release-signing configuration
+        shell: pwsh
+        env:
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          SIGNING_ENDPOINT: ${{ vars.AZURE_ARTIFACT_SIGNING_ENDPOINT }}
+          SIGNING_ACCOUNT: ${{ vars.AZURE_ARTIFACT_SIGNING_ACCOUNT }}
+          SIGNING_PROFILE: ${{ vars.AZURE_ARTIFACT_SIGNING_PROFILE }}
+        run: |
+          $required = @{
+            AZURE_CLIENT_ID = $env:AZURE_CLIENT_ID
+            AZURE_TENANT_ID = $env:AZURE_TENANT_ID
+            AZURE_SUBSCRIPTION_ID = $env:AZURE_SUBSCRIPTION_ID
+            AZURE_ARTIFACT_SIGNING_ENDPOINT = $env:SIGNING_ENDPOINT
+            AZURE_ARTIFACT_SIGNING_ACCOUNT = $env:SIGNING_ACCOUNT
+            AZURE_ARTIFACT_SIGNING_PROFILE = $env:SIGNING_PROFILE
+          }
+          $missing = @($required.GetEnumerator() | Where-Object { [string]::IsNullOrWhiteSpace($_.Value) } | ForEach-Object { $_.Key })
+          if ($missing.Count -gt 0) {
+            throw "Missing release-signing configuration: $($missing -join ', ')"
+          }
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install application and packaging dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt "nicegui[native]>=2.20,<4" "pyinstaller==6.21.0"
+
+      - name: Smoke-test NiceGUI source startup
+        shell: pwsh
+        run: |
+          $stdout = Join-Path $env:RUNNER_TEMP "ressourceplanner-startup.out"
+          $stderr = Join-Path $env:RUNNER_TEMP "ressourceplanner-startup.err"
+          $process = Start-Process python -ArgumentList "main.py" -PassThru -RedirectStandardOutput $stdout -RedirectStandardError $stderr
+          Start-Sleep -Seconds 7
+          if ($process.HasExited) {
+            if (Test-Path $stdout) { Get-Content $stdout }
+            if (Test-Path $stderr) { Get-Content $stderr }
+            throw "RessourcePlanner exited during startup with code $($process.ExitCode)."
+          }
+          Stop-Process -Id $process.Id -Force
+
+      - name: Build one-file Windows desktop application
+        shell: pwsh
+        run: |
+          nicegui-pack --onefile --windowed --name $env:APP_NAME main.py
+          $exe = "dist/$($env:APP_NAME).exe"
+          if (-not (Test-Path $exe)) {
+            throw "Expected executable was not produced: $exe"
+          }
+
+      - name: Azure login with GitHub OIDC
+        uses: azure/login@v3
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Sign executable with Azure Artifact Signing
+        uses: azure/artifact-signing-action@v2
+        with:
+          endpoint: ${{ vars.AZURE_ARTIFACT_SIGNING_ENDPOINT }}
+          signing-account-name: ${{ vars.AZURE_ARTIFACT_SIGNING_ACCOUNT }}
+          certificate-profile-name: ${{ vars.AZURE_ARTIFACT_SIGNING_PROFILE }}
+          files: ${{ github.workspace }}\dist\${{ env.APP_NAME }}.exe
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
+          description: RessourcePlanner
+          description-url: https://github.com/tchi99/RessourcePlanner
+
+      - name: Verify Authenticode signature
+        shell: pwsh
+        run: |
+          $exe = "dist/$($env:APP_NAME).exe"
+          $signature = Get-AuthenticodeSignature $exe
+          $signature | Format-List Status,StatusMessage,SignerCertificate,TimeStamperCertificate
+          if ($signature.Status -ne [System.Management.Automation.SignatureStatus]::Valid) {
+            throw "Authenticode verification failed with status $($signature.Status)."
+          }
+          if ($null -eq $signature.SignerCertificate) {
+            throw "No signer certificate was found after signing."
+          }
+
+      - name: Generate SHA256 checksum after signing
+        shell: pwsh
+        run: |
+          $exe = "dist/$($env:APP_NAME).exe"
+          $sha = "$exe.sha256"
+          $hash = (Get-FileHash $exe -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  $($env:APP_NAME).exe" | Set-Content -Encoding ascii $sha
+
+      - name: Upload signed artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.APP_NAME }}
+          path: |
+            dist/${{ env.APP_NAME }}.exe
+            dist/${{ env.APP_NAME }}.exe.sha256
+          if-no-files-found: error
+
+      - name: Publish signed GitHub release
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $tag = "v1.7.2"
-          $exe = "dist/RessourcePlanner-V1.7.2-Windows-x64.exe"
-          $sha = "dist/RessourcePlanner-V1.7.2-Windows-x64.exe.sha256"
+          $tag = "${{ github.ref_name }}"
+          $exe = "dist/$($env:APP_NAME).exe"
+          $sha = "$exe.sha256"
           gh release view $tag *> $null
           if ($LASTEXITCODE -eq 0) {
             gh release upload $tag $exe $sha --clobber
@@ -95,7 +230,7 @@ jobs:
           else {
             gh release create $tag $exe $sha `
               --target "${{ github.sha }}" `
-              --title "RessourcePlanner V1.7.2" `
-              --notes-file "RELEASE_NOTES_V1.7.2.md" `
+              --title "RessourcePlanner V$($env:APP_VERSION)" `
+              --generate-notes `
               --latest
           }
