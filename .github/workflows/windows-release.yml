@@ -221,7 +221,7 @@ jobs:
             $candidates = @()
             foreach ($root in $roots) {
               $candidates += Get-ChildItem -Path $root -Filter signtool.exe -Recurse -ErrorAction SilentlyContinue |
-                Where-Object { $_.FullName -match '\\x64\\signtool\.exe$' }
+                Where-Object { $_.Directory.Name -eq "x64" }
             }
             $signtool = $candidates | Sort-Object FullName -Descending | Select-Object -First 1 -ExpandProperty FullName
           }
