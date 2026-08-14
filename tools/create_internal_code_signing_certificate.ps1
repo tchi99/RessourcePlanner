@@ -45,12 +45,12 @@ if ($null -eq $cert) {
 }
 
 try {
-    $password = Read-Host "Choose a strong password for the PFX (this will become the GitHub CODE_SIGNING_PFX_PASSWORD secret)" -AsSecureString
-    if ($null -eq $password) {
+    $pfxProtection = Read-Host "Choose a strong password for the PFX (this will become the GitHub CODE_SIGNING_PFX_PASSWORD secret)" -AsSecureString
+    if ($null -eq $pfxProtection) {
         throw "A PFX password is required."
     }
 
-    Export-PfxCertificate -Cert $cert -FilePath $pfxPath -Password $password | Out-Null
+    Export-PfxCertificate -Cert $cert -FilePath $pfxPath -Password $pfxProtection | Out-Null
     Export-Certificate -Cert $cert -FilePath $cerPath | Out-Null
 
     if ($CopyPfxBase64ToClipboard) {
