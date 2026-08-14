@@ -1,68 +1,63 @@
 # Signature des releases Windows
 
-Les releases Windows de RessourcePlanner doivent être signées en **Authenticode** avant le calcul du SHA-256 et avant leur publication sur GitHub.
+Les releases Windows de RessourcePlanner utilisent un **certificat Authenticode auto-signé interne**. Cette solution ne coûte rien, mais le certificat doit être explicitement approuvé sur chaque poste qui exécute l'application (ou déployé par GPO/Intune dans un environnement géré).
 
-Le workflow `.github/workflows/windows-release.yml` est préparé pour **Azure Artifact Signing** (anciennement Trusted Signing). Les builds de pull request restent volontairement non signés; les builds déclenchés manuellement et les tags de release utilisent l'environnement GitHub `release-signing` et échouent si la configuration de signature n'est pas présente.
+Le workflow `.github/workflows/windows-release.yml` fonctionne ainsi :
 
-## Pourquoi Artifact Signing
+- les builds de pull request restent non signés et n'accèdent à aucun secret;
+- les builds manuels et les tags `v*` utilisent l'environnement GitHub `release-signing`;
+- le PFX est reconstruit uniquement dans le runner Windows éphémère à partir de secrets GitHub;
+- l'EXE est signé en SHA-256 avec SignTool et horodaté RFC3161;
+- la signature est vérifiée avant calcul du checksum;
+- le certificat public `.cer` est publié avec chaque artifact/release afin de pouvoir installer la confiance sur les postes internes.
 
-- certificat Public Trust géré par Microsoft;
-- aucune clé privée ou fichier PFX à stocker dans GitHub;
-- authentification GitHub → Azure avec OIDC, sans secret client longue durée;
-- signature RFC3161 horodatée afin que la signature demeure valide après l'expiration du certificat court terme;
-- intégration officielle GitHub Actions avec `azure/artifact-signing-action`.
+## Limite importante
 
-Une signature valide affiche l'identité de l'éditeur et permet à la réputation de l'éditeur de s'accumuler entre les versions. Elle ne garantit toutefois pas qu'un nouveau binaire ne déclenchera jamais SmartScreen. Pour une absence garantie d'avertissement SmartScreen au téléchargement, Microsoft recommande la distribution MSIX via le Microsoft Store.
+Un certificat auto-signé n'est pas reconnu publiquement par Windows. Sur un poste qui **n'a pas installé notre certificat public comme approuvé**, l'EXE ne bénéficiera pas d'une chaîne de confiance publique et SmartScreen peut continuer à avertir l'utilisateur.
 
-## 1. Créer les ressources Azure Artifact Signing
+Sur les postes internes où le certificat est installé dans les magasins appropriés, Windows peut vérifier l'identité du signataire et l'intégrité du fichier avec Authenticode.
 
-Dans le portail Azure :
+## 1. Créer le certificat une seule fois
 
-1. enregistrer le fournisseur de ressources Artifact Signing si nécessaire;
-2. créer un compte Artifact Signing;
-3. effectuer la validation d'identité;
-4. créer un profil de certificat **Public Trust**;
-5. conserver les trois informations suivantes :
-   - endpoint régional, par exemple `https://eus.codesigning.azure.net/`;
-   - nom du compte Artifact Signing;
-   - nom du profil de certificat.
+Sur un poste Windows de confiance, ouvrir PowerShell et exécuter depuis le dépôt :
 
-La validation d'identité doit être terminée dans le portail Azure avant de pouvoir signer.
+```powershell
+.\tools\create_internal_code_signing_certificate.ps1 -CopyPfxBase64ToClipboard
+```
 
-## 2. Créer l'identité GitHub Actions dans Microsoft Entra ID
+Par défaut, le script crée un certificat :
 
-Créer une application Microsoft Entra (ou une identité managée appropriée), puis ajouter une **Federated credential** :
+- sujet : `CN=RessourcePlanner Internal Code Signing`;
+- EKU : Code Signing;
+- RSA 3072 bits;
+- SHA-256;
+- durée : 5 ans;
+- clé exportable pour pouvoir signer dans GitHub Actions.
 
-- scénario : `GitHub actions deploying Azure resources`;
-- dépôt : `tchi99/RessourcePlanner`;
-- type d'entité : **Environment**;
-- environnement : `release-signing`.
+Le script demande un mot de passe fort pour protéger le PFX et génère :
 
-L'utilisation d'un environnement GitHub limite le jeton OIDC au job de release et permet d'ajouter des règles de protection. Utiliser l'assistant Azure/GitHub plutôt que de saisir manuellement la revendication `sub`, afin de rester compatible avec les formats de revendication OIDC immuables récents de GitHub.
+- `RessourcePlanner-Internal-CodeSigning.pfx` : **clé privée — secret critique**;
+- `RessourcePlanner-Internal-CodeSigning.cer` : certificat public, distribuable sans risque.
 
-Attribuer ensuite à cette identité le rôle **Artifact Signing Certificate Profile Signer** sur le profil ou sur la portée minimale permettant de signer.
+Avec `-CopyPfxBase64ToClipboard`, le contenu Base64 du PFX est copié au presse-papiers pour être collé directement dans GitHub Secrets.
 
-## 3. Configurer l'environnement GitHub `release-signing`
+Le dossier `signing-output` est uniquement un espace de travail local. Ne jamais ajouter le PFX au dépôt, à OneDrive/SharePoint ou à un courriel.
 
-Dans **Settings → Environments**, créer `release-signing`.
+## 2. Configurer GitHub
 
-Ajouter les secrets :
+Dans le dépôt GitHub :
 
-- `AZURE_CLIENT_ID`
-- `AZURE_TENANT_ID`
-- `AZURE_SUBSCRIPTION_ID`
+1. ouvrir **Settings → Environments**;
+2. créer ou ouvrir l'environnement `release-signing`;
+3. ajouter les secrets suivants :
+   - `CODE_SIGNING_PFX_BASE64` : contenu Base64 du PFX;
+   - `CODE_SIGNING_PFX_PASSWORD` : mot de passe choisi lors de l'export du PFX.
 
-Ajouter les variables :
+Aucune clé privée n'est enregistrée dans le code ou dans le dépôt. GitHub documente l'utilisation de Base64 pour stocker un petit blob binaire dans un secret Actions; Base64 n'est pas un chiffrement, la confidentialité est assurée par le secret GitHub lui-même.
 
-- `AZURE_ARTIFACT_SIGNING_ENDPOINT`
-- `AZURE_ARTIFACT_SIGNING_ACCOUNT`
-- `AZURE_ARTIFACT_SIGNING_PROFILE`
+Après avoir configuré les secrets, conserver le PFX dans un emplacement hors ligne sécurisé ou supprimer la copie de travail locale.
 
-Aucune clé privée de certificat ne doit être ajoutée au dépôt ou aux secrets GitHub.
-
-Il est recommandé de restreindre l'environnement `release-signing` aux tags de release et, si souhaité, d'exiger une approbation manuelle avant l'accès aux informations de signature.
-
-## 4. Tester la signature sans publier de release
+## 3. Tester la signature sans publier de release
 
 Dans **Actions → Windows desktop package → Run workflow**, entrer une version de test, par exemple :
 
@@ -71,38 +66,71 @@ Dans **Actions → Windows desktop package → Run workflow**, entrer une versio
 Le job doit :
 
 1. construire l'EXE;
-2. se connecter à Azure par OIDC;
-3. signer l'EXE avec Artifact Signing;
-4. valider `Get-AuthenticodeSignature` avec le statut `Valid`;
-5. calculer le SHA-256 **après** signature;
-6. déposer l'EXE signé comme artifact CI.
+2. reconstruire/importer temporairement le PFX dans le runner;
+3. installer le certificat public uniquement dans les magasins de confiance du runner éphémère;
+4. signer l'EXE avec SignTool (`/fd SHA256`);
+5. appliquer un horodatage RFC3161 SHA-256;
+6. vérifier `Get-AuthenticodeSignature == Valid` et `signtool verify /pa`;
+7. calculer le SHA-256 après signature;
+8. publier comme artifact l'EXE, le checksum et le `.cer` public;
+9. supprimer le matériel de signature temporaire du runner.
 
-Cette exécution manuelle ne crée pas de GitHub Release.
+L'exécution manuelle ne crée pas de GitHub Release.
+
+## 4. Installer la confiance sur un poste interne
+
+Télécharger `RessourcePlanner-Internal-CodeSigning.cer` depuis une release officielle, puis l'installer dans :
+
+- **Trusted Root Certification Authorities**;
+- **Trusted Publishers**.
+
+Pour tous les utilisateurs d'un PC, utiliser les magasins **Local Computer** (droits administrateur requis). Pour un seul utilisateur, les magasins Current User peuvent suffire selon la politique Windows locale.
+
+En entreprise, le meilleur déploiement est généralement GPO ou Intune afin que tous les postes reçoivent exactement le même certificat public.
+
+Ne jamais installer le fichier `.pfx` sur les postes utilisateurs : seul le `.cer` public doit être distribué.
 
 ## 5. Publier une release officielle
 
-Une fois le test de signature concluant, créer/pousser un tag au format :
+Créer/pousser un tag :
 
 `vX.Y.Z`
 
-Exemple : `v1.8.0`.
+Le workflow refuse de publier la release si la configuration de signature manque ou si la vérification Authenticode échoue.
 
-Le workflow construit et signe le binaire, vérifie la signature, calcule son checksum puis crée la GitHub Release. Une release officielle ne doit plus être publiée si la signature échoue.
+Chaque release contient :
+
+- `RessourcePlanner-VX.Y.Z-Windows-x64.exe`;
+- `RessourcePlanner-VX.Y.Z-Windows-x64.exe.sha256`;
+- `RessourcePlanner-Internal-CodeSigning.cer`.
 
 ## Vérification locale
 
-Après téléchargement d'une release :
+Après installation du certificat public :
 
 ```powershell
-Get-AuthenticodeSignature .\RessourcePlanner-VX.Y.Z-Windows-x64.exe | Format-List Status,StatusMessage,SignerCertificate,TimeStamperCertificate
+Get-AuthenticodeSignature .\RessourcePlanner-VX.Y.Z-Windows-x64.exe |
+    Format-List Status,StatusMessage,SignerCertificate,TimeStamperCertificate
 ```
 
-Le champ `Status` doit être `Valid`.
+Le statut attendu est `Valid`.
+
+## Rotation / expiration
+
+Le certificat doit rester le même entre les releases afin de conserver une identité interne stable. Grâce à l'horodatage, une release signée pendant la période de validité conserve la preuve de sa date de signature.
+
+Avant l'expiration du certificat :
+
+1. créer un nouveau certificat;
+2. déployer son `.cer` sur les postes **avant** de commencer à signer avec lui;
+3. remplacer les deux secrets GitHub;
+4. conserver l'ancien certificat public sur les postes tant que d'anciennes releases doivent rester vérifiables.
 
 ## Règles de sécurité
 
-- ne jamais committer un `.pfx`, une clé privée ou un mot de passe de certificat;
-- produire le checksum seulement après la signature, car la signature modifie le fichier;
-- conserver la même identité d'éditeur entre les releases afin de permettre l'accumulation de réputation;
-- ne jamais republier silencieusement un binaire différent sous le même tag sans raison explicite;
-- conserver le workflow de pull request non signé : les secrets et permissions de signature ne sont nécessaires que pour les releases.
+- ne jamais committer un `.pfx`, une clé privée, un export Base64 du PFX ou un mot de passe;
+- ne jamais distribuer le PFX aux utilisateurs;
+- ne jamais stocker le PFX dans le classeur Excel ou dans son dossier partagé;
+- limiter l'accès à l'environnement GitHub `release-signing`;
+- produire le checksum uniquement après la signature;
+- si la clé privée est soupçonnée compromise, cesser immédiatement de l'utiliser et effectuer une rotation du certificat.
