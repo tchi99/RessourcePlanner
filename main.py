@@ -37,6 +37,7 @@ from app.v18_fixes import install_v18_fixes
 from app.v18_refinements import install_v18_refinements
 from app.v18_single_scroll import install_v18_single_scroll
 from app.v18_calendar_sizing import install_v18_calendar_sizing
+from app.v18_workflow_fixes import install_v18_workflow_fixes
 
 
 apply_runtime_optimizations()
@@ -61,6 +62,7 @@ install_v18_fixes()
 install_v18_refinements()
 install_v18_single_scroll()
 install_v18_calendar_sizing()
+install_v18_workflow_fixes()
 
 
 def main() -> None:
