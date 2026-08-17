@@ -79,10 +79,14 @@ L'exécution manuelle ne crée pas de GitHub Release.
 
 ## 4. Installer la confiance sur un poste interne
 
-Télécharger `RessourcePlanner-Internal-CodeSigning.cer` depuis une release officielle, puis l'installer dans :
+Télécharger `RessourcePlanner-Internal-CodeSigning.cer` depuis une release officielle, puis l'installer comme certificat de confiance d'éditeur interne.
 
-- **Trusted Root Certification Authorities**;
+Pour ce certificat auto-signé **d'entité finale** (ce n'est pas une autorité de certification), utiliser :
+
+- **Trusted People**;
 - **Trusted Publishers**.
+
+Éviter **Trusted Root Certification Authorities** pour ce certificat : ce magasin est destiné aux certificats d'autorité racine. Un certificat de signature de code auto-signé d'entité finale doit plutôt être approuvé directement dans Trusted People, puis autorisé comme éditeur dans Trusted Publishers.
 
 Pour tous les utilisateurs d'un PC, utiliser les magasins **Local Computer** (droits administrateur requis). Pour un seul utilisateur, les magasins Current User peuvent suffire selon la politique Windows locale.
 
