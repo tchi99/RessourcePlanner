@@ -269,6 +269,7 @@ jobs:
           # Hosted runners do not trust our private self-signed publisher by design.
           # Get-AuthenticodeSignature therefore reports UnknownError solely because the
           # chain ends at an untrusted self-signed root. Accept only that precise case.
+          $expectedPrivateRoot = $false
           if ($signature.Status -eq [System.Management.Automation.SignatureStatus]::Valid) {
             Write-Host "Authenticode signature is trusted by the runner."
           }
@@ -276,6 +277,7 @@ jobs:
             $signature.Status -eq [System.Management.Automation.SignatureStatus]::UnknownError -and
             $signature.StatusMessage -match '(?i)root certificate.*not trusted'
           ) {
+            $expectedPrivateRoot = $true
             Write-Host "Expected self-signed trust result detected; validating a custom chain for the exact signer..."
 
             $chain = [System.Security.Cryptography.X509Certificates.X509Chain]::new()
@@ -310,15 +312,17 @@ jobs:
             throw "Authenticode verification failed with status $($signature.Status): $($signature.StatusMessage)"
           }
 
-          # Keep SignTool output as a diagnostic. On a hosted runner its process exit code can
-          # remain non-zero solely because the private self-signed root is intentionally absent.
+          # Keep SignTool output as a diagnostic. A private self-signed root is expected to
+          # make /pa return non-zero on a hosted runner even after the exact signer and the
+          # public timestamp chain were validated above.
           & $env:SIGNTOOL_PATH verify /pa /v $exe
           $signToolVerifyExit = $LASTEXITCODE
-          if ($signature.Status -eq [System.Management.Automation.SignatureStatus]::Valid -and $signToolVerifyExit -ne 0) {
+          if ($signToolVerifyExit -ne 0 -and -not $expectedPrivateRoot) {
             throw "SignTool verification failed with exit code $signToolVerifyExit."
           }
-          if ($signToolVerifyExit -ne 0) {
+          if ($signToolVerifyExit -ne 0 -and $expectedPrivateRoot) {
             Write-Warning "SignTool reported the expected untrusted private root on the hosted runner; custom-chain verification already succeeded."
+            $global:LASTEXITCODE = 0
           }
 
       - name: Publish public trust certificate with artifact
