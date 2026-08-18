@@ -43,22 +43,27 @@ def _weekday_matches(record: dict[str, Any], day: date) -> bool:
     return WEEKDAY_LABELS[day.weekday()].lower() in tokens
 
 
+def _fraction_to_hours(value: float) -> float:
+    minutes = int(round((float(value) % 1.0) * 24 * 60)) % (24 * 60)
+    return minutes / 60.0
+
+
 def _time_hours(value: Any) -> float | None:
     if value in (None, ""):
         return None
     if isinstance(value, datetime):
-        return value.hour + value.minute / 60.0 + value.second / 3600.0
+        return value.hour + value.minute / 60.0
     if isinstance(value, dt_time):
-        return value.hour + value.minute / 60.0 + value.second / 3600.0
+        return value.hour + value.minute / 60.0
     if isinstance(value, (int, float)):
-        return (float(value) % 1.0) * 24.0
+        return _fraction_to_hours(float(value))
     text = str(value).strip()
     try:
         numeric = float(text.replace(",", "."))
     except ValueError:
         numeric = None
     if numeric is not None and 0 <= numeric < 1:
-        return numeric * 24.0
+        return _fraction_to_hours(numeric)
     if ":" not in text:
         return None
     try:
