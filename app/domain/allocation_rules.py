@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 from datetime import date
-from typing import Iterable
+from typing import Iterable, Mapping
 
 
 CapacityWindow = Iterable[tuple[date, float]]
+HoursByDay = Mapping[date, float]
 
 
 def remaining_segment_hours(planned_hours: float, locked_hours: float = 0.0) -> float:
@@ -74,6 +75,87 @@ def spread_hours(hours: float, capacities: CapacityWindow) -> dict[date, float]:
                 break
 
     return result
+
+
+def fixed_segment_spread(
+    planned_hours: float,
+    capacities: CapacityWindow,
+    *,
+    locked_hours: float = 0.0,
+    locked_by_day: HoursByDay | None = None,
+) -> dict[date, float]:
+    """Plan automatic hours for a historical V1.5 fixed segment.
+
+    Locked/manual hours are subtracted from the segment total and consume standard
+    capacity first. If the remaining standard capacity is insufficient, a fixed
+    segment still places the missing hours across days that have a standard
+    schedule. That overflow is intentional and is surfaced by the UI as overload.
+    """
+    remaining = remaining_segment_hours(planned_hours, locked_hours)
+    if remaining <= 0:
+        return {}
+
+    locked_by_day = locked_by_day or {}
+    raw_days = [
+        (day, max(float(raw), 0.0))
+        for day, raw in capacities
+        if float(raw) > 0
+    ]
+    residual_days = [
+        (
+            day,
+            residual_capacity(
+                raw,
+                locked_hours=float(locked_by_day.get(day, 0.0)),
+            ),
+        )
+        for day, raw in raw_days
+    ]
+    residual_days = [(day, room) for day, room in residual_days if room > 0]
+
+    result = spread_hours(remaining, residual_days)
+    missing = max(remaining - sum(result.values()), 0.0)
+    if missing > 0.001 and raw_days:
+        overflow = spread_hours(missing, raw_days)
+        for day, amount in overflow.items():
+            result[day] = result.get(day, 0.0) + amount
+    return result
+
+
+def flexible_segment_spread(
+    planned_hours: float,
+    capacities: CapacityWindow,
+    *,
+    locked_hours: float = 0.0,
+    locked_by_day: HoursByDay | None = None,
+    fixed_by_day: HoursByDay | None = None,
+    flexible_by_day: HoursByDay | None = None,
+) -> dict[date, float]:
+    """Plan automatic hours for a historical V1.5 flexible segment.
+
+    Flexible work uses only residual standard capacity after locked/manual, fixed,
+    and already placed flexible work. Unlike fixed work it never creates automatic
+    overload; any shortage remains unallocated.
+    """
+    remaining = remaining_segment_hours(planned_hours, locked_hours)
+    if remaining <= 0:
+        return {}
+
+    locked_by_day = locked_by_day or {}
+    fixed_by_day = fixed_by_day or {}
+    flexible_by_day = flexible_by_day or {}
+    residual_days: list[tuple[date, float]] = []
+    for day, raw in capacities:
+        room = residual_capacity(
+            raw,
+            locked_hours=float(locked_by_day.get(day, 0.0)),
+            fixed_hours=float(fixed_by_day.get(day, 0.0)),
+            flexible_hours=float(flexible_by_day.get(day, 0.0)),
+        )
+        if room > 0:
+            residual_days.append((day, room))
+
+    return spread_hours(remaining, residual_days)
 
 
 def total_allocated(spread: dict[date, float]) -> float:
