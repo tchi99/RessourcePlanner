@@ -1,2 +1,2 @@
-nicegui>=2.20,<4
-xlwings>=0.33,<1
+nicegui==3.16.0
+xlwings==0.36.14

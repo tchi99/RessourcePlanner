@@ -33,8 +33,8 @@ echo Mise a jour de pip...
 python -m pip install --upgrade pip
 if errorlevel 1 goto :error
 
-echo Installation des dependances...
-pip install -r requirements.txt
+echo Installation des dependances validees...
+pip install -r requirements.txt -c constraints-release.txt
 if errorlevel 1 goto :error
 
 echo.
