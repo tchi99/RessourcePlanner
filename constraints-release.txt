@@ -1,0 +1,5 @@
+# Versions validated by the Windows signed release pipeline.
+# Dependency upgrades must be made in dedicated PRs with CI and packaging validation.
+nicegui==3.16.0
+xlwings==0.36.14
+pyinstaller==6.21.0
