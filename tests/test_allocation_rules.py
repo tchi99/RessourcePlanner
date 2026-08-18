@@ -4,6 +4,8 @@ import unittest
 from datetime import date
 
 from app.domain.allocation_rules import (
+    fixed_segment_spread,
+    flexible_segment_spread,
     remaining_segment_hours,
     residual_capacity,
     spread_hours,
@@ -63,6 +65,49 @@ class AllocationRulesTests(unittest.TestCase):
         self.assertAlmostEqual(total_allocated(result), 7.0, places=4)
         for amount in result.values():
             self.assertGreater(amount, 0)
+
+    def test_fixed_segment_subtracts_locked_hours_from_segment_total(self) -> None:
+        result = fixed_segment_spread(
+            12,
+            [(D1, 8)],
+            locked_hours=4,
+            locked_by_day={D1: 4},
+        )
+        self.assertEqual(total_allocated(result), 8)
+
+    def test_fixed_segment_can_create_overload_when_capacity_is_short(self) -> None:
+        result = fixed_segment_spread(12, [(D1, 8)])
+        self.assertEqual(result, {D1: 12.0})
+
+    def test_fixed_segment_returns_empty_when_locked_hours_cover_requirement(self) -> None:
+        self.assertEqual(
+            fixed_segment_spread(8, [(D1, 8)], locked_hours=8, locked_by_day={D1: 8}),
+            {},
+        )
+
+    def test_flexible_segment_never_auto_overloads(self) -> None:
+        result = flexible_segment_spread(12, [(D1, 8)])
+        self.assertEqual(result, {D1: 8.0})
+        self.assertEqual(total_allocated(result), 8)
+
+    def test_flexible_segment_consumes_only_true_residual_capacity(self) -> None:
+        result = flexible_segment_spread(
+            8,
+            [(D1, 8)],
+            locked_by_day={D1: 1},
+            fixed_by_day={D1: 3},
+            flexible_by_day={D1: 2},
+        )
+        self.assertEqual(result, {D1: 2.0})
+
+    def test_flexible_segment_respects_locked_total_and_daily_capacity(self) -> None:
+        result = flexible_segment_spread(
+            8,
+            [(D1, 8)],
+            locked_hours=4,
+            locked_by_day={D1: 4},
+        )
+        self.assertEqual(result, {D1: 4.0})
 
 
 if __name__ == "__main__":
