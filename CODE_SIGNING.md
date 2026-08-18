@@ -66,23 +66,31 @@ Dans **Actions → Windows desktop package → Run workflow**, entrer une versio
 Le job doit :
 
 1. construire l'EXE;
-2. reconstruire/importer temporairement le PFX dans le runner;
-3. installer le certificat public uniquement dans les magasins de confiance du runner éphémère;
-4. signer l'EXE avec SignTool (`/fd SHA256`);
-5. appliquer un horodatage RFC3161 SHA-256;
-6. vérifier `Get-AuthenticodeSignature == Valid` et `signtool verify /pa`;
-7. calculer le SHA-256 après signature;
-8. publier comme artifact l'EXE, le checksum et le `.cer` public;
-9. supprimer le matériel de signature temporaire du runner.
+2. reconstruire/importer temporairement le PFX dans `CurrentUser\My` sur le runner;
+3. signer l'EXE avec SignTool (`/fd SHA256`);
+4. appliquer un horodatage RFC3161 SHA-256;
+5. vérifier que le certificat signataire correspond exactement au certificat attendu;
+6. vérifier qu'un certificat d'horodatage est présent et que sa chaîne publique est valide;
+7. valider la chaîne du certificat auto-signé avec une chaîne de confiance personnalisée en mémoire, sans modifier le magasin Root du runner;
+8. rejeter tout statut Authenticode autre que `Valid` ou le cas précis `UnknownError` causé uniquement par la racine privée non approuvée du runner;
+9. calculer le SHA-256 après signature;
+10. publier comme artifact l'EXE, le checksum et le `.cer` public;
+11. supprimer le matériel de signature temporaire du runner.
+
+Le runner GitHub n'est volontairement pas configuré pour approuver publiquement notre certificat auto-signé. Il peut donc afficher un diagnostic de racine non approuvée même lorsque la signature, l'identité du signataire, l'horodatage et la chaîne personnalisée sont correctement validés.
 
 L'exécution manuelle ne crée pas de GitHub Release.
 
 ## 4. Installer la confiance sur un poste interne
 
-Télécharger `RessourcePlanner-Internal-CodeSigning.cer` depuis une release officielle, puis l'installer dans :
+Télécharger `RessourcePlanner-Internal-CodeSigning.cer` depuis une release officielle.
+
+Pour qu'un poste Windows interne traite ce certificat auto-signé comme une ancre de confiance, installer le certificat public dans :
 
 - **Trusted Root Certification Authorities**;
 - **Trusted Publishers**.
+
+Avec un certificat auto-signé, la confiance ne provient d'aucune autorité de certification publique : le poste doit donc explicitement approuver ce certificat comme racine de confiance interne. `Trusted Publishers` établit en plus la confiance envers cet éditeur Authenticode pour les systèmes internes.
 
 Pour tous les utilisateurs d'un PC, utiliser les magasins **Local Computer** (droits administrateur requis). Pour un seul utilisateur, les magasins Current User peuvent suffire selon la politique Windows locale.
 
@@ -96,7 +104,7 @@ Créer/pousser un tag :
 
 `vX.Y.Z`
 
-Le workflow refuse de publier la release si la configuration de signature manque ou si la vérification Authenticode échoue.
+Le workflow refuse de publier la release si la configuration de signature manque ou si les contrôles Authenticode échouent.
 
 Chaque release contient :
 
@@ -106,14 +114,14 @@ Chaque release contient :
 
 ## Vérification locale
 
-Après installation du certificat public :
+Après installation du certificat public dans les magasins de confiance du poste :
 
 ```powershell
 Get-AuthenticodeSignature .\RessourcePlanner-VX.Y.Z-Windows-x64.exe |
     Format-List Status,StatusMessage,SignerCertificate,TimeStamperCertificate
 ```
 
-Le statut attendu est `Valid`.
+Le statut attendu sur un poste correctement configuré est `Valid`.
 
 ## Rotation / expiration
 
