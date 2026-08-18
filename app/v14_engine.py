@@ -5,6 +5,7 @@ from typing import Any
 
 from . import v13
 from .bugfixes import schedulable_technicians
+from .domain.allocation_rules import residual_capacity, spread_hours as domain_spread_hours
 from .excel_repository import ExcelRepository, MASTER_SHEETS, _date_from_any
 
 
@@ -113,38 +114,12 @@ def _available_days(
 
 
 def _spread_hours(hours: float, capacities: list[tuple[date, float]]) -> dict[date, float]:
-    """Étale les heures proportionnellement sur toute la capacité disponible."""
-    if hours <= 0 or not capacities:
-        return {}
-    total_capacity = sum(max(capacity, 0.0) for _, capacity in capacities)
-    if total_capacity <= 0:
-        return {}
-    target = min(hours, total_capacity)
-    result: dict[date, float] = {}
-    remaining = target
+    """Compatibility wrapper around the tested pure allocation rule.
 
-    for index, (day, capacity) in enumerate(capacities):
-        if index == len(capacities) - 1:
-            amount = min(max(remaining, 0.0), capacity)
-        else:
-            amount = min(target * capacity / total_capacity, capacity)
-        amount = round(max(amount, 0.0), 4)
-        if amount > 0:
-            result[day] = amount
-            remaining -= amount
-
-    # Corrige les écarts d'arrondi sans dépasser la capacité d'une journée.
-    if remaining > 0.001:
-        for day, capacity in capacities:
-            room = capacity - result.get(day, 0.0)
-            if room <= 0:
-                continue
-            extra = min(room, remaining)
-            result[day] = round(result.get(day, 0.0) + extra, 4)
-            remaining -= extra
-            if remaining <= 0.001:
-                break
-    return result
+    Keeping this historical helper name avoids changing callers in V1.4/V1.5 while
+    the calculation itself now lives in ``app.domain.allocation_rules``.
+    """
+    return domain_spread_hours(hours, capacities)
 
 
 def _payload(
@@ -272,11 +247,10 @@ def rebuild_allocations(repo: ExcelRepository) -> dict[str, Any]:
             residual: list[tuple[date, float]] = []
             cursor = start
             while cursor <= end:
-                available = max(
-                    capacity(tech, cursor)
-                    - fixed_used.get((tech, cursor), 0.0)
-                    - flexible_used.get((tech, cursor), 0.0),
-                    0.0,
+                available = residual_capacity(
+                    capacity(tech, cursor),
+                    fixed_hours=fixed_used.get((tech, cursor), 0.0),
+                    flexible_hours=flexible_used.get((tech, cursor), 0.0),
                 )
                 if available > 0:
                     residual.append((cursor, available))
