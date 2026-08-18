@@ -35,6 +35,10 @@ class AvailabilityRulesTests(unittest.TestCase):
         rows = [standard(start=8 / 24, end=16 / 24)]
         self.assertAlmostEqual(availability_hours_for_day(rows, "R1", MONDAY), 8, places=6)
 
+    def test_excel_fraction_times_match_historical_minute_rounding(self) -> None:
+        rows = [standard(start=0.333333, end=0.666667)]
+        self.assertEqual(availability_hours_for_day(rows, "R1", MONDAY), 8)
+
     def test_overnight_schedule_wraps_to_next_day(self) -> None:
         rows = [standard(start="22:00", end="06:00")]
         self.assertEqual(availability_hours_for_day(rows, "R1", MONDAY), 8)
