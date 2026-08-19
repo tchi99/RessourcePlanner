@@ -3,7 +3,11 @@ from __future__ import annotations
 import unittest
 from datetime import date
 
-from app.domain.availability_rules import availability_hours_for_day, has_standard_schedule
+from app.domain.availability_rules import (
+    availability_hours_for_day,
+    has_standard_schedule,
+    outside_schedule_eligible_for_day,
+)
 
 
 MONDAY = date(2026, 8, 17)
@@ -26,6 +30,7 @@ class AvailabilityRulesTests(unittest.TestCase):
     def test_resource_requires_explicit_standard_schedule(self) -> None:
         self.assertFalse(has_standard_schedule([], "R1"))
         self.assertEqual(availability_hours_for_day([], "R1", MONDAY), 0)
+        self.assertFalse(outside_schedule_eligible_for_day([], "R1", MONDAY))
 
     def test_standard_schedule_returns_daily_hours(self) -> None:
         self.assertEqual(availability_hours_for_day([standard()], "R1", MONDAY), 8)
@@ -43,7 +48,7 @@ class AvailabilityRulesTests(unittest.TestCase):
         rows = [standard(start="22:00", end="06:00")]
         self.assertEqual(availability_hours_for_day(rows, "R1", MONDAY), 8)
 
-    def test_global_holiday_blocks_resource(self) -> None:
+    def test_global_holiday_blocks_standard_capacity_but_allows_overtime_slot(self) -> None:
         rows = [
             standard(),
             {
@@ -54,6 +59,12 @@ class AvailabilityRulesTests(unittest.TestCase):
             },
         ]
         self.assertEqual(availability_hours_for_day(rows, "R1", TUESDAY), 0)
+        self.assertTrue(outside_schedule_eligible_for_day(rows, "R1", TUESDAY))
+
+    def test_weekend_without_standard_capacity_allows_overtime_slot(self) -> None:
+        rows = [standard()]
+        self.assertEqual(availability_hours_for_day(rows, "R1", SATURDAY), 0)
+        self.assertTrue(outside_schedule_eligible_for_day(rows, "R1", SATURDAY))
 
     def test_resource_specific_holiday_does_not_block_other_resource(self) -> None:
         rows = [
@@ -70,7 +81,7 @@ class AvailabilityRulesTests(unittest.TestCase):
         self.assertEqual(availability_hours_for_day(rows, "R1", MONDAY), 0)
         self.assertEqual(availability_hours_for_day(rows, "R2", MONDAY), 8)
 
-    def test_vacation_blocks_only_matching_resource(self) -> None:
+    def test_vacation_blocks_only_matching_resource_and_excludes_overtime_slot(self) -> None:
         rows = [
             standard("R1"),
             standard("R2"),
@@ -84,6 +95,8 @@ class AvailabilityRulesTests(unittest.TestCase):
         ]
         self.assertEqual(availability_hours_for_day(rows, "R1", MONDAY), 0)
         self.assertEqual(availability_hours_for_day(rows, "R2", MONDAY), 8)
+        self.assertFalse(outside_schedule_eligible_for_day(rows, "R1", MONDAY))
+        self.assertTrue(outside_schedule_eligible_for_day(rows, "R2", MONDAY))
 
     def test_inactive_exception_is_ignored(self) -> None:
         rows = [
@@ -96,6 +109,7 @@ class AvailabilityRulesTests(unittest.TestCase):
             },
         ]
         self.assertEqual(availability_hours_for_day(rows, "R1", MONDAY), 8)
+        self.assertTrue(outside_schedule_eligible_for_day(rows, "R1", MONDAY))
 
 
 if __name__ == "__main__":
