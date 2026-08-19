@@ -1,9 +1,13 @@
 from __future__ import annotations
 
 import unittest
-from datetime import date
+from datetime import date, timedelta
 
-from app.domain.plan_comparison import AllocationProjection, compare_allocation_plans
+from app.domain.plan_comparison import (
+    AllocationProjection,
+    compare_allocation_plans,
+    summarize_differences,
+)
 
 
 DAY = date(2026, 8, 18)
@@ -19,11 +23,12 @@ class PlanComparisonTests(unittest.TestCase):
         allocation_type: str = "Flexible",
         locked: bool = False,
         outside_schedule: bool = False,
+        day: date = DAY,
     ) -> AllocationProjection:
         return AllocationProjection(
             segment_id=segment,
             resource_id=resource,
-            day=DAY,
+            day=day,
             hours=hours,
             allocation_type=allocation_type,
             locked=locked,
@@ -81,6 +86,36 @@ class PlanComparisonTests(unittest.TestCase):
         )
         self.assertFalse(resource_diff.matches)
         self.assertFalse(outside_diff.matches)
+
+    def test_summary_detects_pure_redistribution_without_net_hour_change(self) -> None:
+        tomorrow = DAY + timedelta(days=1)
+        comparison = compare_allocation_plans(
+            [self.allocation(hours=4, day=DAY)],
+            [self.allocation(hours=4, day=tomorrow)],
+        )
+        summary = summarize_differences(comparison)
+        self.assertEqual(summary.difference_count, 2)
+        self.assertEqual(summary.affected_segment_count, 1)
+        self.assertEqual(summary.redistributed_segment_count, 1)
+        self.assertEqual(summary.segment_total_delta_count, 0)
+        self.assertEqual(summary.legacy_only_key_count, 1)
+        self.assertEqual(summary.shadow_only_key_count, 1)
+        self.assertEqual(summary.net_shadow_minus_legacy_hours, 0)
+        self.assertEqual(summary.absolute_difference_hours, 8)
+
+    def test_summary_detects_real_total_hour_delta_and_type(self) -> None:
+        comparison = compare_allocation_plans(
+            [self.allocation(hours=8, allocation_type="Flexible")],
+            [self.allocation(hours=5, allocation_type="Flexible")],
+        )
+        summary = summarize_differences(comparison)
+        self.assertEqual(summary.affected_segment_count, 1)
+        self.assertEqual(summary.redistributed_segment_count, 0)
+        self.assertEqual(summary.segment_total_delta_count, 1)
+        self.assertEqual(summary.changed_key_count, 1)
+        self.assertEqual(summary.net_shadow_minus_legacy_hours, -3)
+        self.assertEqual(summary.difference_count_by_type, (("Flexible", 1),))
+        self.assertEqual(summary.net_hours_by_type, (("Flexible", -3.0),))
 
 
 if __name__ == "__main__":
