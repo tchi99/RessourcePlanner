@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections import defaultdict
+from collections import Counter, defaultdict
 from dataclasses import dataclass
 from datetime import date
 from typing import Iterable
@@ -34,6 +34,25 @@ class PlanComparison:
     matches: bool
     compared_keys: int
     differences: tuple[AllocationDifference, ...]
+
+
+@dataclass(frozen=True)
+class DifferenceSummary:
+    """Aggregate mismatch diagnostics that intentionally omit business identifiers."""
+
+    difference_count: int
+    affected_segment_count: int
+    legacy_only_key_count: int
+    shadow_only_key_count: int
+    changed_key_count: int
+    redistributed_segment_count: int
+    segment_total_delta_count: int
+    legacy_difference_hours: float
+    shadow_difference_hours: float
+    net_shadow_minus_legacy_hours: float
+    absolute_difference_hours: float
+    difference_count_by_type: tuple[tuple[str, int], ...]
+    net_hours_by_type: tuple[tuple[str, float], ...]
 
 
 def _key(item: AllocationProjection) -> tuple[object, ...]:
@@ -92,4 +111,62 @@ def compare_allocation_plans(
         matches=not differences,
         compared_keys=len(keys),
         differences=tuple(differences),
+    )
+
+
+def summarize_differences(comparison: PlanComparison) -> DifferenceSummary:
+    """Summarize mismatches without exposing resource, segment, project, or date values.
+
+    A segment whose mismatch deltas sum to zero has the same total hours in both
+    plans but a different distribution (for example, hours moved between days).
+    This distinction is especially useful while validating a shadow planning engine.
+    """
+    differences = comparison.differences
+    segment_net: dict[str, float] = defaultdict(float)
+    count_by_type: Counter[str] = Counter()
+    net_by_type: dict[str, float] = defaultdict(float)
+
+    legacy_only = 0
+    shadow_only = 0
+    changed = 0
+    legacy_difference_hours = 0.0
+    shadow_difference_hours = 0.0
+    absolute_difference_hours = 0.0
+
+    for item in differences:
+        legacy = float(item.legacy_hours)
+        shadow = float(item.shadow_hours)
+        delta = shadow - legacy
+        segment_net[item.segment_id] += delta
+        count_by_type[item.allocation_type] += 1
+        net_by_type[item.allocation_type] += delta
+        legacy_difference_hours += legacy
+        shadow_difference_hours += shadow
+        absolute_difference_hours += abs(delta)
+        if legacy > 0 and shadow <= 0:
+            legacy_only += 1
+        elif shadow > 0 and legacy <= 0:
+            shadow_only += 1
+        else:
+            changed += 1
+
+    redistributed = sum(1 for delta in segment_net.values() if abs(delta) <= 0.01)
+    total_delta_segments = sum(1 for delta in segment_net.values() if abs(delta) > 0.01)
+
+    return DifferenceSummary(
+        difference_count=len(differences),
+        affected_segment_count=len(segment_net),
+        legacy_only_key_count=legacy_only,
+        shadow_only_key_count=shadow_only,
+        changed_key_count=changed,
+        redistributed_segment_count=redistributed,
+        segment_total_delta_count=total_delta_segments,
+        legacy_difference_hours=round(legacy_difference_hours, 2),
+        shadow_difference_hours=round(shadow_difference_hours, 2),
+        net_shadow_minus_legacy_hours=round(shadow_difference_hours - legacy_difference_hours, 2),
+        absolute_difference_hours=round(absolute_difference_hours, 2),
+        difference_count_by_type=tuple(sorted(count_by_type.items())),
+        net_hours_by_type=tuple(
+            sorted((name, round(value, 2)) for name, value in net_by_type.items())
+        ),
     )
