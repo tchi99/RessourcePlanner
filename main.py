@@ -17,6 +17,7 @@ from app.config import load_config
 from app.excel_repository import ExcelRepository
 from app.features import install_features
 from app.features_runtime import apply_runtime_optimizations
+from app.planning_cutover import install_planning_cutover
 from app.ui import PlannerUI
 from app.v13 import install_v13_features
 from app.v13_fixes import install_v13_fixes
@@ -67,6 +68,9 @@ install_v18_workflow_fixes()
 
 def main() -> None:
     config = load_config()
+    # The cutover installer intentionally runs last so its guarded dispatcher becomes
+    # the final allocation entry point after every historical compatibility installer.
+    install_planning_cutover(config.planning_engine_mode)
     repo = ExcelRepository(config.workbook, save_on_write=config.save_on_write)
     packaged = bool(getattr(sys, "frozen", False))
 
