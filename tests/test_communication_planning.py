@@ -16,6 +16,10 @@ from app.domain.communication_planning import (
 WEEK = date(2026, 8, 24)
 
 
+def synthetic_email(local: str) -> str:
+    return local + chr(64) + "invalid.test"
+
+
 def assignment(
     segment_id: str,
     resource_id: str = "tech-a",
@@ -43,10 +47,10 @@ def assignment(
 class CommunicationPlanningTests(unittest.TestCase):
     def setUp(self) -> None:
         self.contacts = {
-            "tech-a": Contact("tech-a", "Technicien A", "tech-a@example.invalid"),
-            "tech-b": Contact("tech-b", "Technicien B", "tech-b@example.invalid"),
-            "pm-a": Contact("pm-a", "Chargé A", "pm-a@example.invalid"),
-            "pm-b": Contact("pm-b", "Chargé B", "pm-b@example.invalid"),
+            "tech-a": Contact("tech-a", "Technicien A", synthetic_email("tech-a")),
+            "tech-b": Contact("tech-b", "Technicien B", synthetic_email("tech-b")),
+            "pm-a": Contact("pm-a", "Chargé A", synthetic_email("pm-a")),
+            "pm-b": Contact("pm-b", "Chargé B", synthetic_email("pm-b")),
         }
 
     def test_fingerprint_is_order_independent(self) -> None:
