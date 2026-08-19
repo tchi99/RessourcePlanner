@@ -14,6 +14,10 @@ from .domain.plan_comparison import (
     PlanComparison,
     compare_allocation_plans,
 )
+from .domain.plan_diagnostics import (
+    SegmentAllocationBoundsSummary,
+    summarize_segment_allocation_bounds,
+)
 from .domain.planning_engine import (
     LockedAllocationInput,
     PlanResult,
@@ -35,6 +39,7 @@ class ShadowPlanReport:
 
     comparison: PlanComparison
     shadow_result: PlanResult
+    allocation_bounds: SegmentAllocationBoundsSummary
     unsupported_segment_ids: tuple[str, ...]
 
 
@@ -277,8 +282,13 @@ def build_shadow_report(repo: ExcelRepository) -> ShadowPlanReport:
         _legacy_projection(allocation_rows, included_ids),
         _shadow_projection(shadow_result),
     )
+    allocation_bounds = summarize_segment_allocation_bounds(
+        segments,
+        shadow_result.allocations,
+    )
     return ShadowPlanReport(
         comparison=comparison,
         shadow_result=shadow_result,
+        allocation_bounds=allocation_bounds,
         unsupported_segment_ids=unsupported,
     )
