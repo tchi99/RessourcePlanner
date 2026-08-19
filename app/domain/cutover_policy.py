@@ -3,10 +3,20 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 
+LEGACY_MODE = "legacy"
+GUARDED_PURE_MODE = "guarded_pure"
+SUPPORTED_MODES = {LEGACY_MODE, GUARDED_PURE_MODE}
+
+
 @dataclass(frozen=True)
 class CutoverGateDecision:
     use_pure_engine: bool
     reason: str
+
+
+def normalize_planning_engine_mode(value: object) -> str:
+    mode = str(value or LEGACY_MODE).strip().lower()
+    return mode if mode in SUPPORTED_MODES else LEGACY_MODE
 
 
 def evaluate_cutover_gate(*, shadow_matches: bool, unsupported_segment_count: int) -> CutoverGateDecision:
