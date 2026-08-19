@@ -20,6 +20,7 @@ class WeeklyAssignment:
 
     segment_id: str
     resource_id: str
+    resource_name: str
     project_manager_id: str
     project_number: str
     project_name: str
@@ -66,6 +67,7 @@ def _assignment_payload(row: WeeklyAssignment) -> tuple[object, ...]:
     return (
         row.segment_id,
         row.resource_id,
+        row.resource_name,
         row.project_manager_id,
         row.project_number,
         row.project_name,
@@ -90,7 +92,8 @@ def _line(row: WeeklyAssignment, *, include_resource: bool) -> str:
         extras.append(row.confirmation)
     if row.outside_schedule:
         extras.append("hors horaire")
-    resource = f" · {row.resource_id}" if include_resource else ""
+    resource_label = row.resource_name or row.resource_id
+    resource = f" · {resource_label}" if include_resource else ""
     return f"- {row.day.isoformat()} · {row.hours:g} h{resource} · {project} · {' · '.join(extras)}"
 
 
