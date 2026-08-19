@@ -80,6 +80,20 @@ class CommunicationPlanningTests(unittest.TestCase):
         self.assertTrue(all(draft.requires_manual_approval for draft in batch.drafts))
         self.assertTrue(all(draft.message_kind == "weekly_plan" for draft in batch.drafts))
 
+    def test_explicit_technician_audience_includes_unassigned_technician(self) -> None:
+        batch = build_weekly_plan_batch(
+            [assignment("S-1", "tech-a", "pm-a")],
+            self.contacts,
+            WEEK,
+            technician_ids=["tech-a", "tech-b"],
+        )
+        tech_b = next(
+            draft
+            for draft in batch.drafts
+            if draft.audience == "technician" and draft.recipient_id == "tech-b"
+        )
+        self.assertIn("Aucune attribution planifiée", tech_b.body)
+
     def test_weekly_batch_never_infers_missing_email(self) -> None:
         contacts = {"pm-a": self.contacts["pm-a"]}
         batch = build_weekly_plan_batch([assignment("S-1")], contacts, WEEK)
