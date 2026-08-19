@@ -114,27 +114,41 @@ def build_weekly_plan_batch(
     assignments: Sequence[WeeklyAssignment],
     contacts: Mapping[str, Contact],
     week_start: date,
+    *,
+    technician_ids: Sequence[str] | None = None,
+    project_manager_ids: Sequence[str] | None = None,
 ) -> CommunicationBatch:
     """Prepare weekly emails only; this function can never send them.
 
-    One personalized draft is created per technician and per project manager. Contacts
-    must be explicit; addresses are never inferred from names.
+    One personalized draft is created per technician and per project manager. The
+    caller may pass an explicit audience so a technician with no assignment still
+    receives a weekly planning message. Contacts must be explicit; addresses are never
+    inferred from names.
     """
     rows = sorted(assignments, key=lambda row: (row.day, row.project_number, row.segment_id))
     fingerprint = snapshot_fingerprint(rows)
     missing: set[str] = set()
     drafts: list[CommunicationDraft] = []
 
-    resource_ids = sorted({row.resource_id for row in rows if row.resource_id})
+    resource_ids = sorted(
+        set(technician_ids)
+        if technician_ids is not None
+        else {row.resource_id for row in rows if row.resource_id}
+    )
     for resource_id in resource_ids:
         contact = _contact(contacts, resource_id, missing)
         if not contact:
             continue
         own = [row for row in rows if row.resource_id == resource_id]
+        assignment_lines = (
+            "\n".join(_line(row, include_resource=False) for row in own)
+            if own
+            else "- Aucune attribution planifiée pour le moment."
+        )
         body = (
             f"Bonjour {contact.display_name},\n\n"
             f"Voici tes attributions prévues pour la semaine du {week_start.isoformat()} :\n\n"
-            + "\n".join(_line(row, include_resource=False) for row in own)
+            + assignment_lines
             + "\n\nMerci de communiquer avec le coordonnateur si un élément doit être clarifié."
         )
         drafts.append(
@@ -150,16 +164,25 @@ def build_weekly_plan_batch(
             )
         )
 
-    manager_ids = sorted({row.project_manager_id for row in rows if row.project_manager_id})
+    manager_ids = sorted(
+        set(project_manager_ids)
+        if project_manager_ids is not None
+        else {row.project_manager_id for row in rows if row.project_manager_id}
+    )
     for manager_id in manager_ids:
         contact = _contact(contacts, manager_id, missing)
         if not contact:
             continue
         own = [row for row in rows if row.project_manager_id == manager_id]
+        assignment_lines = (
+            "\n".join(_line(row, include_resource=True) for row in own)
+            if own
+            else "- Aucune main-d'œuvre planifiée sous ta responsabilité pour le moment."
+        )
         body = (
             f"Bonjour {contact.display_name},\n\n"
             f"Voici la main-d'œuvre planifiée sous ta responsabilité pour la semaine du {week_start.isoformat()} :\n\n"
-            + "\n".join(_line(row, include_resource=True) for row in own)
+            + assignment_lines
             + "\n\nMerci de communiquer avec le coordonnateur si un élément doit être clarifié."
         )
         drafts.append(
