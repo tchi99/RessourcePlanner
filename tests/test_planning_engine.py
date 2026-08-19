@@ -4,6 +4,7 @@ import unittest
 from datetime import date
 
 from app.domain.planning_engine import (
+    MISSING_ALLOCATION_TYPE,
     LockedAllocationInput,
     SegmentInput,
     build_allocation_plan,
@@ -12,6 +13,7 @@ from app.domain.planning_engine import (
 
 D1 = date(2026, 8, 17)
 D2 = date(2026, 8, 18)
+D3 = date(2026, 8, 22)
 
 
 class PlanningEngineTests(unittest.TestCase):
@@ -28,17 +30,36 @@ class PlanningEngineTests(unittest.TestCase):
         self.assertEqual(locked[0].hours, 3)
         self.assertEqual(automatic[0].hours, 5)
 
-    def test_fixed_segment_can_overload_standard_capacity(self) -> None:
+    def test_fixed_shortage_becomes_non_counting_outside_schedule_proposal(self) -> None:
         result = build_allocation_plan(
             [SegmentInput("S1", "R1", D1, D1, 12, "Fixe")],
             [],
             {("R1", D1): 8},
         )
+        actual = [row for row in result.allocations if row.counts_as_allocated]
+        missing = [row for row in result.allocations if not row.counts_as_allocated]
+        self.assertEqual(result.allocated_hours, 8)
+        self.assertEqual(result.unallocated_hours, 4)
+        self.assertEqual(actual[0].hours, 8)
+        self.assertEqual(missing[0].hours, 4)
+        self.assertEqual(missing[0].allocation_type, MISSING_ALLOCATION_TYPE)
+        self.assertEqual(result.missing_allocation_count, 1)
+
+    def test_fixed_shortage_is_real_overtime_when_segment_allows_it(self) -> None:
+        result = build_allocation_plan(
+            [SegmentInput("S1", "R1", D1, D1, 12, "Fixe", overtime_allowed=True)],
+            [],
+            {("R1", D1): 8},
+        )
         self.assertEqual(result.allocated_hours, 12)
         self.assertEqual(result.unallocated_hours, 0)
-        self.assertEqual(result.allocations[0].hours, 12)
+        overtime = [row for row in result.allocations if row.outside_schedule]
+        self.assertEqual(len(overtime), 1)
+        self.assertEqual(overtime[0].hours, 4)
+        self.assertEqual(overtime[0].allocation_type, "Fixe")
+        self.assertEqual(result.overtime_hours, 4)
 
-    def test_flexible_segment_leaves_shortage_unallocated(self) -> None:
+    def test_flexible_segment_leaves_shortage_unallocated_without_overtime_permission(self) -> None:
         result = build_allocation_plan(
             [SegmentInput("S1", "R1", D1, D1, 12, "Flexible")],
             [],
@@ -46,6 +67,18 @@ class PlanningEngineTests(unittest.TestCase):
         )
         self.assertEqual(result.allocated_hours, 8)
         self.assertEqual(result.unallocated_hours, 4)
+        self.assertEqual(result.missing_allocation_count, 1)
+
+    def test_flexible_shortage_uses_authorized_outside_schedule_slot(self) -> None:
+        result = build_allocation_plan(
+            [SegmentInput("S1", "R1", D1, D1, 12, "Flexible", overtime_allowed=True)],
+            [],
+            {("R1", D1): 8},
+        )
+        self.assertEqual(result.allocated_hours, 12)
+        self.assertEqual(result.unallocated_hours, 0)
+        overtime = [row for row in result.allocations if row.outside_schedule]
+        self.assertEqual([(row.day, row.hours, row.allocation_type) for row in overtime], [(D1, 4, "Flexible")])
 
     def test_fixed_work_consumes_capacity_before_flexible_work(self) -> None:
         result = build_allocation_plan(
@@ -56,9 +89,13 @@ class PlanningEngineTests(unittest.TestCase):
             [],
             {("R1", D1): 8},
         )
-        hours = {row.segment_id: row.hours for row in result.allocations}
-        self.assertEqual(hours["FIX"], 6)
-        self.assertEqual(hours["FLEX"], 2)
+        actual_hours = {
+            row.segment_id: row.hours
+            for row in result.allocations
+            if row.counts_as_allocated
+        }
+        self.assertEqual(actual_hours["FIX"], 6)
+        self.assertEqual(actual_hours["FLEX"], 2)
         self.assertEqual(result.unallocated_hours, 4)
 
     def test_priority_orders_competing_flexible_segments(self) -> None:
@@ -70,9 +107,13 @@ class PlanningEngineTests(unittest.TestCase):
             [],
             {("R1", D1): 8},
         )
-        hours = {row.segment_id: row.hours for row in result.allocations}
-        self.assertEqual(hours["URGENT"], 6)
-        self.assertEqual(hours["NORMAL"], 2)
+        actual_hours = {
+            row.segment_id: row.hours
+            for row in result.allocations
+            if row.counts_as_allocated
+        }
+        self.assertEqual(actual_hours["URGENT"], 6)
+        self.assertEqual(actual_hours["NORMAL"], 2)
 
     def test_resources_have_independent_capacity(self) -> None:
         result = build_allocation_plan(
@@ -101,8 +142,39 @@ class PlanningEngineTests(unittest.TestCase):
             [],
             {("R1", D1): 8, ("R1", D2): 8},
         )
-        by_day = {row.day: row.hours for row in result.allocations}
+        by_day = {
+            row.day: row.hours
+            for row in result.allocations
+            if row.counts_as_allocated
+        }
         self.assertEqual(by_day, {D1: 4, D2: 4})
+
+    def test_outside_schedule_prefers_zero_standard_capacity_day(self) -> None:
+        result = build_allocation_plan(
+            [SegmentInput("S1", "R1", D1, D3, 12, "Flexible", overtime_allowed=True)],
+            [],
+            {("R1", D1): 8, ("R1", D2): 0, ("R1", D3): 0},
+            outside_schedule_eligible_by_resource_day={
+                ("R1", D1): True,
+                ("R1", D2): False,
+                ("R1", D3): True,
+            },
+        )
+        overtime = [row for row in result.allocations if row.outside_schedule]
+        self.assertEqual(len(overtime), 1)
+        self.assertEqual(overtime[0].day, D3)
+        self.assertEqual(overtime[0].hours, 4)
+
+    def test_outside_schedule_daily_limit_matches_refined_engine(self) -> None:
+        result = build_allocation_plan(
+            [SegmentInput("S1", "R1", D1, D2, 20, "Flexible", overtime_allowed=True)],
+            [],
+            {("R1", D1): 0, ("R1", D2): 0},
+        )
+        overtime = [row.hours for row in result.allocations if row.outside_schedule]
+        self.assertEqual(overtime, [8, 8])
+        self.assertEqual(result.allocated_hours, 16)
+        self.assertEqual(result.unallocated_hours, 4)
 
     def test_invalid_window_remains_unallocated(self) -> None:
         result = build_allocation_plan(

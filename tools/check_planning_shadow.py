@@ -34,6 +34,8 @@ def main() -> int:
     print(f"shadow_requested_hours={report.shadow_result.requested_hours:.2f}")
     print(f"shadow_allocated_hours={report.shadow_result.allocated_hours:.2f}")
     print(f"shadow_unallocated_hours={report.shadow_result.unallocated_hours:.2f}")
+    print(f"shadow_overtime_hours={report.shadow_result.overtime_hours:.2f}")
+    print(f"shadow_missing_allocation_count={report.shadow_result.missing_allocation_count}")
 
     if comparison.differences:
         summary = summarize_differences(comparison)

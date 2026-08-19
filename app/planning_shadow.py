@@ -4,7 +4,11 @@ from dataclasses import dataclass
 from datetime import date, timedelta
 from typing import Any
 
-from .domain.availability_rules import availability_hours_for_day, has_standard_schedule
+from .domain.availability_rules import (
+    availability_hours_for_day,
+    has_standard_schedule,
+    outside_schedule_eligible_for_day,
+)
 from .domain.plan_comparison import (
     AllocationProjection,
     PlanComparison,
@@ -22,6 +26,7 @@ from .excel_repository import ExcelRepository, _date_from_any
 PRIORITY_ORDER = {"Urgent": 0, "Élevée": 1, "Normale": 2, "Basse": 3}
 PLAN_TYPES = {"Flexible", "Fixe"}
 TRUE_VALUES = {"oui", "yes", "true", "1", "x", "verrouille", "verrouillée"}
+SEGMENT_OVERTIME_FIELD = "HorsHoraireAutorise"
 
 
 @dataclass(frozen=True)
@@ -124,6 +129,7 @@ def _segment_inputs(
                 plan_type=_plan_type(row),
                 priority_rank=_priority_rank(row, demands),
                 created_order=str(row.get("DateCreation") or ""),
+                overtime_allowed=_truthy(row.get(SEGMENT_OVERTIME_FIELD)),
             )
         )
 
@@ -173,6 +179,25 @@ def _capacity_snapshot(
     return result
 
 
+def _outside_schedule_eligibility_snapshot(
+    availability_rows: list[dict[str, Any]],
+    segments: list[SegmentInput],
+) -> dict[tuple[str, date], bool]:
+    result: dict[tuple[str, date], bool] = {}
+    for segment in segments:
+        cursor = segment.start
+        while cursor <= segment.end:
+            key = (segment.resource_id, cursor)
+            if key not in result:
+                result[key] = outside_schedule_eligible_for_day(
+                    availability_rows,
+                    segment.resource_id,
+                    cursor,
+                )
+            cursor += timedelta(days=1)
+    return result
+
+
 def _legacy_projection(
     allocation_rows: list[dict[str, Any]],
     included_segment_ids: set[str],
@@ -196,6 +221,9 @@ def _legacy_projection(
                 hours=hours,
                 allocation_type="Locked" if locked else str(row.get("TypeAllocation") or ""),
                 locked=locked,
+                # The refined engine persists missing placeholders with HorsHoraire="Requis".
+                # That value is intentionally not truthy; the allocation type carries the
+                # semantic distinction in the comparison key.
                 outside_schedule=_truthy(row.get("HorsHoraire")),
             )
         )
@@ -218,12 +246,11 @@ def _shadow_projection(result: PlanResult) -> list[AllocationProjection]:
 
 
 def build_shadow_report(repo: ExcelRepository) -> ShadowPlanReport:
-    """Compare persisted V1.5 allocations to the pure engine without rebuilding them.
+    """Compare persisted refined allocations to the pure engine without rebuilding them.
 
-    The adapter takes one snapshot of each relevant worksheet, computes availability
-    in memory, and never calls a repository write/save or the historical rebuild.
-    If the repository is not connected yet, its normal connection routine may still
-    perform the application's existing schema initialization before these reads.
+    The adapter takes one snapshot of each relevant worksheet, computes standard
+    capacity and outside-schedule eligibility in memory, and never calls a planning
+    write/save or the historical rebuild.
     """
     with repo._lock:
         segment_rows = _records(repo, "SegmentsMO", "IDSegment")
@@ -235,7 +262,16 @@ def build_shadow_report(repo: ExcelRepository) -> ShadowPlanReport:
     segments, unsupported = _segment_inputs(segment_rows, demand_rows, schedulable)
     locked = _locked_inputs(allocation_rows)
     capacities = _capacity_snapshot(availability_rows, segments)
-    shadow_result = build_allocation_plan(segments, locked, capacities)
+    outside_schedule_eligible = _outside_schedule_eligibility_snapshot(
+        availability_rows,
+        segments,
+    )
+    shadow_result = build_allocation_plan(
+        segments,
+        locked,
+        capacities,
+        outside_schedule_eligible_by_resource_day=outside_schedule_eligible,
+    )
     included_ids = {segment.segment_id for segment in segments}
     comparison = compare_allocation_plans(
         _legacy_projection(allocation_rows, included_ids),

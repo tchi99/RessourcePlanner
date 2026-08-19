@@ -127,3 +127,28 @@ def availability_hours_for_day(
     if end < start:
         end += 24.0
     return max(end - start, 0.0)
+
+
+def outside_schedule_eligible_for_day(
+    records: Iterable[dict[str, Any]],
+    resource_id: str,
+    day: date,
+) -> bool:
+    """Return whether refined V1.5 may suggest outside-schedule work that day.
+
+    The production fallback excludes vacation, but allows weekends, holidays and
+    evenings on normal workdays. Resources still require an explicit active standard
+    schedule before they are schedulable at all.
+    """
+    rows = [row for row in records if is_active(row.get("Actif"))]
+    resource_id = str(resource_id or "").strip()
+    if not has_standard_schedule(rows, resource_id):
+        return False
+    for row in rows:
+        if str(row.get("Type") or "").strip() != "Vacances":
+            continue
+        if str(row.get("Technicien") or "").strip() != resource_id:
+            continue
+        if _record_applies(row, day):
+            return False
+    return True
