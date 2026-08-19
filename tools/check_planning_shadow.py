@@ -24,6 +24,7 @@ def main() -> int:
     report = build_shadow_report(repo)
 
     comparison = report.comparison
+    bounds = report.allocation_bounds
     print("Planning shadow diagnostic")
     print(f"match={comparison.matches}")
     print(f"compared_keys={comparison.compared_keys}")
@@ -36,6 +37,11 @@ def main() -> int:
     print(f"shadow_unallocated_hours={report.shadow_result.unallocated_hours:.2f}")
     print(f"shadow_overtime_hours={report.shadow_result.overtime_hours:.2f}")
     print(f"shadow_missing_allocation_count={report.shadow_result.missing_allocation_count}")
+    print(f"overallocated_segment_count={bounds.overallocated_segment_count}")
+    print(f"overallocated_hours={bounds.overallocated_hours:.2f}")
+    print(f"locked_overallocated_segment_count={bounds.locked_overallocated_segment_count}")
+    print(f"locked_excess_hours={bounds.locked_excess_hours:.2f}")
+    print(f"max_segment_excess_hours={bounds.max_segment_excess_hours:.2f}")
 
     if comparison.differences:
         summary = summarize_differences(comparison)
