@@ -29,10 +29,12 @@ def assignment(
     *,
     outside: bool = False,
     confirmation: str = "Confirmée",
+    resource_name: str | None = None,
 ) -> WeeklyAssignment:
     return WeeklyAssignment(
         segment_id=segment_id,
         resource_id=resource_id,
+        resource_name=resource_name or {"tech-a": "Technicien A", "tech-b": "Technicien B"}.get(resource_id, resource_id),
         project_manager_id=manager_id,
         project_number="P-100",
         project_name="Projet démo",
@@ -151,6 +153,17 @@ class CommunicationPlanningTests(unittest.TestCase):
         technician = next(draft for draft in batch.drafts if draft.audience == "technician")
         self.assertIn("Tentative", technician.body)
         self.assertIn("hors horaire", technician.body)
+
+    def test_manager_body_uses_display_name_not_internal_resource_id(self) -> None:
+        row = assignment("S-1", resource_id="resource-opaque-001", resource_name="Technicien Démo")
+        contacts = dict(self.contacts)
+        contacts["resource-opaque-001"] = Contact(
+            "resource-opaque-001", "Technicien Démo", synthetic_email("resource-demo")
+        )
+        batch = build_weekly_plan_batch([row], contacts, WEEK)
+        manager = next(draft for draft in batch.drafts if draft.audience == "project_manager")
+        self.assertIn("Technicien Démo", manager.body)
+        self.assertNotIn("resource-opaque-001", manager.body)
 
 
 if __name__ == "__main__":
