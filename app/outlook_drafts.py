@@ -63,33 +63,53 @@ foreach ($message in @($data.messages)) {
 }
 
 $existingMap = @{}
+
+function Add-ExistingIdsFromFolder {
+    param(
+        $Folder,
+        [string]$SortProperty,
+        [int]$Limit = 1000
+    )
+
+    $items = $Folder.Items
+    if (-not [string]::IsNullOrWhiteSpace($SortProperty)) {
+        try {
+            $items.Sort($SortProperty, $true)
+        }
+        catch {
+            # Sorting is only an optimization. Continue with the folder's current order.
+        }
+    }
+
+    $count = [Math]::Min([int]$items.Count, $Limit)
+    for ($i = 1; $i -le $count; $i++) {
+        if ($existingMap.Count -ge $requested.Count) {
+            break
+        }
+        try {
+            $item = $items.Item($i)
+            $property = $item.UserProperties.Find("RessourcePlannerMessageID")
+            if ($null -ne $property) {
+                $value = [string]$property.Value
+                if ($requested.ContainsKey($value)) {
+                    $existingMap[$value] = $true
+                }
+            }
+        }
+        catch {
+            # Ignore unrelated Outlook items that do not expose custom properties cleanly.
+        }
+    }
+}
+
 try {
     $outlook = New-Object -ComObject Outlook.Application
     $namespace = $outlook.GetNamespace("MAPI")
-    # 16 = Drafts, 5 = Sent Items. Scanning both makes a retry safe even if the
-    # coordinator manually sent a draft before RessourcePlanner persisted its state.
-    $folders = @(
-        $namespace.GetDefaultFolder(16),
-        $namespace.GetDefaultFolder(5)
-    )
-
-    foreach ($folder in $folders) {
-        $items = $folder.Items
-        for ($i = 1; $i -le $items.Count; $i++) {
-            try {
-                $item = $items.Item($i)
-                $property = $item.UserProperties.Find("RessourcePlannerMessageID")
-                if ($null -ne $property) {
-                    $value = [string]$property.Value
-                    if ($requested.ContainsKey($value)) {
-                        $existingMap[$value] = $true
-                    }
-                }
-            }
-            catch {
-                # Ignore unrelated Outlook items that do not expose custom properties cleanly.
-            }
-        }
+    # 16 = Drafts, 5 = Sent Items. Searching a bounded set of recent items avoids a
+    # potentially expensive COM walk through a large corporate mailbox.
+    Add-ExistingIdsFromFolder -Folder $namespace.GetDefaultFolder(16) -SortProperty "[CreationTime]"
+    if ($existingMap.Count -lt $requested.Count) {
+        Add-ExistingIdsFromFolder -Folder $namespace.GetDefaultFolder(5) -SortProperty "[SentOn]"
     }
 }
 catch {
@@ -193,8 +213,9 @@ def create_outlook_drafts(
     """Create Outlook drafts only; this function never sends mail.
 
     A stable custom Outlook property is attached to every generated message. Retrying
-    after an interrupted application run reuses matching items found in Drafts or Sent
-    Items instead of creating a duplicate whenever Outlook still contains the message.
+    after an interrupted application run reuses matching recent items found in Drafts
+    or Sent Items instead of creating a duplicate whenever Outlook still contains the
+    message.
     """
     rows = tuple(requests)
     if not rows:
