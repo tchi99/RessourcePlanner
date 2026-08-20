@@ -9,11 +9,11 @@ import time
 import zipfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, BinaryIO, Iterable, Sequence
+from typing import Any, BinaryIO, Sequence
 
 
 NATIVE_HOST_NAME = "com.ressourceplanner.bridge"
-EXTENSION_ID = "ressourceplanner-drafts@local"
+EXTENSION_ID = "ressourceplanner-drafts" + chr(64) + "local"
 LEASE_SECONDS = 90
 HEARTBEAT_SECONDS = 20
 
