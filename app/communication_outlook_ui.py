@@ -6,6 +6,7 @@ from nicegui import ui
 
 from . import communication_ui
 from .communication_excel import (
+    approve_persisted_batch,
     mark_persisted_batch_communicated,
     mark_stale_open_batches_obsolete,
 )
@@ -18,7 +19,12 @@ from .communication_transport_excel import (
     mark_persisted_draft_batch_obsolete,
     mark_persisted_message_drafts_created,
 )
-from .domain.communication_audit import STATUS_APPROVED, STATUS_DRAFTS_CREATED
+from .domain.communication_audit import (
+    STATUS_APPROVED,
+    STATUS_DRAFTS_CREATED,
+    STATUS_OBSOLETE,
+    STATUS_PREPARED,
+)
 from .domain.communication_planning import snapshot_fingerprint
 from .domain.communication_transport import (
     all_message_drafts_created,
@@ -45,6 +51,43 @@ def _batch_for_week(self, batch_id: str, selected_week: date):
 
 def _current_fingerprint(self, selected_week: date) -> str:
     return snapshot_fingerprint(current_weekly_assignments(self.repo, selected_week))
+
+
+def _approve_batch_with_outlook(self, batch_id: str, selected_week: date) -> None:
+    """Approve only the current planning; approval still performs no email action."""
+    try:
+        current_fingerprint = _current_fingerprint(self, selected_week)
+        mark_stale_open_batches_obsolete(
+            self.repo,
+            selected_week,
+            current_fingerprint,
+        )
+        batch = _batch_for_week(self, batch_id, selected_week)
+        if not batch:
+            raise KeyError("Lot de communication introuvable.")
+        if str(batch.get("Statut") or "") != STATUS_PREPARED:
+            ui.notify(
+                "Ce lot ne peut plus être approuvé pour le planning courant.",
+                type="warning",
+                timeout=7000,
+            )
+            self.render_content.refresh()
+            return
+
+        approve_persisted_batch(
+            self.repo,
+            batch_id,
+            approved_by=self.repo.current_user,
+        )
+        ui.notify(
+            "Lot approuvé. Aucun courriel n'a été envoyé. Utilise ensuite « Créer les brouillons Outlook » lorsque tu es prêt.",
+            type="positive",
+            timeout=7000,
+        )
+        self._signature = self._signature_for_current_page()
+        self.render_content.refresh()
+    except Exception as exc:
+        ui.notify(str(exc), type="negative", timeout=9000)
 
 
 def _create_batch_drafts(self, batch_id: str, selected_week: date) -> None:
@@ -110,7 +153,7 @@ def _create_batch_drafts(self, batch_id: str, selected_week: date) -> None:
             )
         elif completed:
             ui.notify(
-                f"Brouillons Outlook : {created_count} créé(s), {reused_count} déjà existant(s), {failure_count} échec(s). "
+                f"Brouillons Outlook : {created_count} créé(s), {reused_count} déjà retrouvé(s), {failure_count} échec(s). "
                 "Aucun courriel n'a été envoyé.",
                 type="warning" if failure_count else "positive",
                 timeout=8000,
@@ -212,6 +255,61 @@ def _obsolete_drafts_dialog(self, batch_id: str) -> None:
                 on_click=lambda: _obsolete_unsent_drafts(self, dialog, batch_id),
             ).props("unelevated no-caps color=negative")
     dialog.open()
+
+
+def _render_existing_batches_with_outlook(
+    self,
+    selected_week: date,
+    current_fingerprint: str,
+) -> None:
+    rows = communication_batches_for_week(self.repo, selected_week)
+    with ui.card().classes("section-card w-full"):
+        ui.label("File d'approbation").classes("text-lg font-semibold")
+        ui.label(
+            "L'approbation ne transmet rien. Un lot approuvé peut ensuite créer des brouillons Outlook, qui restent à envoyer manuellement."
+        ).classes("text-xs muted")
+        if not rows:
+            ui.label("Aucun lot préparé pour cette semaine.").classes("muted")
+            return
+
+        for row in rows[:12]:
+            batch_id = str(row.get("IDLot") or "")
+            status = str(row.get("Statut") or "")
+            kind = str(row.get("TypeCommunication") or "")
+            messages = communication_messages_for_batch(self.repo, batch_id)
+            stale = (
+                status in {STATUS_PREPARED, STATUS_APPROVED}
+                and str(row.get("EmpreintePlanning") or "") != current_fingerprint
+            )
+            with ui.card().classes("w-full border"):
+                with ui.row().classes("w-full items-center gap-3"):
+                    ui.icon("campaign" if kind == "planning_change" else "event_note")
+                    with ui.column().classes("gap-0"):
+                        ui.label(
+                            "Avis de modification" if kind == "planning_change" else "Planning hebdomadaire"
+                        ).classes("font-medium")
+                        subtitle = f"{len(messages)} message(s) · {status}"
+                        if stale:
+                            subtitle += " · OBSOLÈTE"
+                        ui.label(subtitle).classes(
+                            "text-xs text-red-700" if stale else "text-xs muted"
+                        )
+                    ui.space()
+                    if status == STATUS_PREPARED and not stale:
+                        ui.button(
+                            "Approuver ce lot",
+                            icon="verified",
+                            on_click=lambda _, value=batch_id, week=selected_week: _approve_batch_with_outlook(
+                                self, value, week
+                            ),
+                        ).props("outline no-caps color=primary")
+                    elif stale or status == STATUS_OBSOLETE:
+                        ui.label("Planning modifié — lot obsolète").classes(
+                            "status-pill bg-red-50 text-red-700"
+                        )
+                    else:
+                        ui.label(status).classes("status-pill bg-gray-100")
+                communication_ui._render_existing_message_preview(messages)
 
 
 def _render_outlook_actions(self, selected_week: date, current_fingerprint: str) -> None:
@@ -327,5 +425,9 @@ def install_communication_outlook_ui() -> None:
                 ui.label("Outlook — envoi manuel").classes("text-lg font-semibold")
                 ui.label(str(exc)).classes("text-red-700")
 
+    # The base communication page resolves these globals at render/click time. Replacing
+    # them here keeps the transport messaging aligned without changing the larger legacy UI.
+    communication_ui._render_existing_batches = _render_existing_batches_with_outlook
+    communication_ui._approve_batch = _approve_batch_with_outlook
     communication_ui._render_communications = render_communications
     communication_ui._communication_outlook_ui_installed = True
