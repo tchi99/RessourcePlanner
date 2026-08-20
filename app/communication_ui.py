@@ -25,8 +25,16 @@ from .communication_queries import (
 )
 from .domain.communication_planning import (
     CommunicationBatch,
+    CommunicationDraft,
     build_change_notification_batch,
     build_weekly_plan_batch,
+    snapshot_fingerprint,
+)
+from .domain.communication_review import (
+    DraftReview,
+    apply_manual_review,
+    draft_key,
+    stale_prepared_batch,
 )
 from .domain.communication_source import technician_ids_for_weekly_communication
 from .services import week_start
@@ -55,11 +63,15 @@ def _week_label(value: date) -> str:
 def _shift_week(self: ui_module.PlannerUI, delta: int) -> None:
     current = getattr(self, "_communication_week", _next_week())
     self._communication_week = current + timedelta(days=7 * delta)
+    self._communication_review_fingerprint = ""
+    self._communication_review_values = {}
     self.render_content.refresh()
 
 
 def _reset_next_week(self: ui_module.PlannerUI) -> None:
     self._communication_week = _next_week()
+    self._communication_review_fingerprint = ""
+    self._communication_review_values = {}
     self.render_content.refresh()
 
 
@@ -69,6 +81,42 @@ def _open_contacts(self: ui_module.PlannerUI) -> None:
     self.navigate("data")
 
 
+def _review_state(self: ui_module.PlannerUI, batch: CommunicationBatch) -> dict[tuple[str, str], dict[str, Any]]:
+    fingerprint = batch.snapshot_fingerprint
+    if getattr(self, "_communication_review_fingerprint", "") != fingerprint:
+        self._communication_review_fingerprint = fingerprint
+        self._communication_review_values = {}
+    return getattr(self, "_communication_review_values", {})
+
+
+def _update_review_value(
+    self: ui_module.PlannerUI,
+    batch: CommunicationBatch,
+    draft: CommunicationDraft,
+    field: str,
+    value: Any,
+) -> None:
+    state = _review_state(self, batch)
+    key = draft_key(draft)
+    current = dict(state.get(key, {}))
+    current[field] = value
+    state[key] = current
+    self._communication_review_values = state
+
+
+def _reviewed_batch(self: ui_module.PlannerUI, batch: CommunicationBatch) -> CommunicationBatch:
+    state = _review_state(self, batch)
+    reviews: dict[tuple[str, str], DraftReview] = {}
+    for draft in batch.drafts:
+        values = state.get(draft_key(draft), {})
+        reviews[draft_key(draft)] = DraftReview(
+            include=bool(values.get("include", True)),
+            subject=values.get("subject"),
+            body=values.get("body"),
+        )
+    return apply_manual_review(batch, reviews)
+
+
 def _persist_preview(
     self: ui_module.PlannerUI,
     batch: CommunicationBatch,
@@ -76,10 +124,15 @@ def _persist_preview(
     selected_week: date,
     message_kind: str,
 ) -> None:
-    if not batch.drafts:
-        ui.notify("Aucun message à préparer pour ce planning.", type="info")
+    try:
+        reviewed = _reviewed_batch(self, batch)
+    except ValueError as exc:
+        ui.notify(str(exc), type="warning")
         return
-    if batch.missing_contact_ids:
+    if not reviewed.drafts:
+        ui.notify("Aucun message inclus dans le lot après révision.", type="warning")
+        return
+    if reviewed.missing_contact_ids:
         ui.notify(
             "Complète les contacts manquants avant d'enregistrer le lot.",
             type="warning",
@@ -89,13 +142,13 @@ def _persist_preview(
         self.repo,
         week_start=selected_week,
         message_kind=message_kind,
-        fingerprint=batch.snapshot_fingerprint,
+        fingerprint=reviewed.snapshot_fingerprint,
     ):
         ui.notify("Un lot identique est déjà en attente de traitement.", type="warning")
         return
     batch_id = persist_prepared_batch(
         self.repo,
-        batch,
+        reviewed,
         assignments,
         week_start=selected_week,
         message_kind=message_kind,
@@ -106,12 +159,35 @@ def _persist_preview(
         type="positive",
         timeout=6000,
     )
+    self._communication_review_fingerprint = ""
+    self._communication_review_values = {}
     self._signature = self._signature_for_current_page()
     self.render_content.refresh()
 
 
-def _approve_batch(self: ui_module.PlannerUI, batch_id: str) -> None:
+def _approve_batch(self: ui_module.PlannerUI, batch_id: str, selected_week: date) -> None:
     try:
+        rows = communication_batches_for_week(self.repo, selected_week)
+        target = next(
+            (row for row in rows if str(row.get("IDLot") or "") == str(batch_id)),
+            None,
+        )
+        if not target:
+            raise KeyError("Lot de communication introuvable.")
+        current_fingerprint = snapshot_fingerprint(
+            current_weekly_assignments(self.repo, selected_week)
+        )
+        if stale_prepared_batch(
+            str(target.get("EmpreintePlanning") or ""),
+            current_fingerprint,
+        ):
+            ui.notify(
+                "Le planning a changé depuis la préparation de ce lot. Prépare un nouveau lot avant de l'approuver.",
+                type="warning",
+                timeout=7000,
+            )
+            self.render_content.refresh()
+            return
         approve_persisted_batch(
             self.repo,
             batch_id,
@@ -128,16 +204,60 @@ def _approve_batch(self: ui_module.PlannerUI, batch_id: str) -> None:
         ui.notify(str(exc), type="negative")
 
 
-def _render_message_preview(draft: Any) -> None:
+def _render_message_preview(
+    self: ui_module.PlannerUI,
+    batch: CommunicationBatch,
+    draft: CommunicationDraft,
+) -> None:
+    state = _review_state(self, batch)
+    values = state.get(draft_key(draft), {})
+    include = bool(values.get("include", True))
+    subject = str(values.get("subject", draft.subject))
+    body = str(values.get("body", draft.body))
     audience = "Technicien" if draft.audience == "technician" else "Chargé de projet"
     with ui.expansion(f"{audience} · {draft.recipient_email}", icon="mail_outline").classes(
         "w-full border rounded"
     ):
-        ui.label(draft.subject).classes("font-semibold")
-        ui.textarea("Aperçu", value=draft.body).props("readonly autogrow").classes("w-full")
+        ui.checkbox(
+            "Inclure ce destinataire dans le lot",
+            value=include,
+            on_change=lambda event, b=batch, d=draft: _update_review_value(
+                self, b, d, "include", bool(event.value)
+            ),
+        )
+        ui.input(
+            "Objet",
+            value=subject,
+            on_change=lambda event, b=batch, d=draft: _update_review_value(
+                self, b, d, "subject", event.value
+            ),
+        ).classes("w-full")
+        ui.textarea(
+            "Corps du message",
+            value=body,
+            on_change=lambda event, b=batch, d=draft: _update_review_value(
+                self, b, d, "body", event.value
+            ),
+        ).props("autogrow").classes("w-full")
 
 
-def _render_existing_batches(self: ui_module.PlannerUI, selected_week: date) -> None:
+def _render_existing_message_preview(messages: list[dict[str, Any]]) -> None:
+    with ui.expansion("Voir les messages préparés", icon="preview").classes("w-full"):
+        for message in messages:
+            with ui.card().classes("w-full border"):
+                ui.label(str(message.get("Courriel") or "")).classes("text-sm font-medium")
+                ui.label(str(message.get("Objet") or "")).classes("font-semibold")
+                ui.textarea(
+                    "Message approuvé/préparé",
+                    value=str(message.get("Corps") or ""),
+                ).props("readonly autogrow").classes("w-full")
+
+
+def _render_existing_batches(
+    self: ui_module.PlannerUI,
+    selected_week: date,
+    current_fingerprint: str,
+) -> None:
     rows = communication_batches_for_week(self.repo, selected_week)
     with ui.card().classes("section-card w-full"):
         ui.label("File d'approbation").classes("text-lg font-semibold")
@@ -152,22 +272,39 @@ def _render_existing_batches(self: ui_module.PlannerUI, selected_week: date) -> 
             status = str(row.get("Statut") or "")
             kind = str(row.get("TypeCommunication") or "")
             messages = communication_messages_for_batch(self.repo, batch_id)
-            with ui.row().classes("w-full items-center border-b py-2 gap-3"):
-                ui.icon("campaign" if kind == "planning_change" else "event_note")
-                with ui.column().classes("gap-0"):
-                    ui.label(
-                        "Avis de modification" if kind == "planning_change" else "Planning hebdomadaire"
-                    ).classes("font-medium")
-                    ui.label(f"{len(messages)} message(s) · {status}").classes("text-xs muted")
-                ui.space()
-                if status == "Préparé":
-                    ui.button(
-                        "Approuver ce lot",
-                        icon="verified",
-                        on_click=lambda _, value=batch_id: _approve_batch(self, value),
-                    ).props("outline no-caps color=primary")
-                else:
-                    ui.label(status).classes("status-pill bg-gray-100")
+            stale = status == "Préparé" and stale_prepared_batch(
+                str(row.get("EmpreintePlanning") or ""),
+                current_fingerprint,
+            )
+            with ui.card().classes("w-full border"):
+                with ui.row().classes("w-full items-center gap-3"):
+                    ui.icon("campaign" if kind == "planning_change" else "event_note")
+                    with ui.column().classes("gap-0"):
+                        ui.label(
+                            "Avis de modification" if kind == "planning_change" else "Planning hebdomadaire"
+                        ).classes("font-medium")
+                        subtitle = f"{len(messages)} message(s) · {status}"
+                        if stale:
+                            subtitle += " · OBSOLÈTE"
+                        ui.label(subtitle).classes(
+                            "text-xs text-red-700" if stale else "text-xs muted"
+                        )
+                    ui.space()
+                    if status == "Préparé" and not stale:
+                        ui.button(
+                            "Approuver ce lot",
+                            icon="verified",
+                            on_click=lambda _, value=batch_id, week=selected_week: _approve_batch(
+                                self, value, week
+                            ),
+                        ).props("outline no-caps color=primary")
+                    elif stale:
+                        ui.label("Planning modifié — nouveau lot requis").classes(
+                            "status-pill bg-red-50 text-red-700"
+                        )
+                    else:
+                        ui.label(status).classes("status-pill bg-gray-100")
+                _render_existing_message_preview(messages)
 
 
 def _render_communications(self: ui_module.PlannerUI) -> None:
@@ -176,6 +313,7 @@ def _render_communications(self: ui_module.PlannerUI) -> None:
         selected_week = getattr(self, "_communication_week", _next_week())
         self._communication_week = selected_week
         assignments = current_weekly_assignments(self.repo, selected_week)
+        current_fingerprint = snapshot_fingerprint(assignments)
         contacts = contacts_by_id_without_reensure(self.repo)
         previous_fingerprint, previous = latest_communicated_snapshot_without_reensure(
             self.repo, selected_week
@@ -223,7 +361,7 @@ def _render_communications(self: ui_module.PlannerUI) -> None:
         ui.label("Contrôle manuel obligatoire").classes("font-semibold text-amber-900")
         ui.label(
             "Cet écran ne peut ni envoyer un courriel ni créer un envoi automatique. "
-            "Le bouton d'approbation change uniquement le statut d'audit du lot."
+            "Le coordonnateur peut modifier ou exclure chaque message avant d'enregistrer le lot."
         ).classes("text-sm text-amber-900")
 
     with ui.grid(columns=4).classes("w-full gap-4"):
@@ -257,16 +395,19 @@ def _render_communications(self: ui_module.PlannerUI) -> None:
             else "Communication initiale de la semaine"
         )
         ui.label(title).classes("text-lg font-semibold")
+        ui.label(
+            "Chaque message ci-dessous est modifiable. Décoche un destinataire pour l'exclure du lot."
+        ).classes("text-xs muted")
         if previous_fingerprint and not batch.drafts:
             ui.label("Aucun changement à communiquer depuis le dernier envoi.").classes("text-green-700")
         elif not batch.drafts:
             ui.label("Aucun message généré pour cette semaine.").classes("muted")
         else:
             for draft in batch.drafts:
-                _render_message_preview(draft)
+                _render_message_preview(self, batch, draft)
             with ui.row().classes("w-full justify-end mt-3"):
                 button = ui.button(
-                    "Enregistrer le lot pour approbation",
+                    "Enregistrer le lot révisé pour approbation",
                     icon="playlist_add_check",
                     on_click=lambda _, b=batch, a=tuple(assignments), w=selected_week, k=message_kind: _persist_preview(
                         self, b, a, w, k
@@ -275,7 +416,7 @@ def _render_communications(self: ui_module.PlannerUI) -> None:
                 if batch.missing_contact_ids:
                     button.disable()
 
-    _render_existing_batches(self, selected_week)
+    _render_existing_batches(self, selected_week, current_fingerprint)
 
 
 def install_communication_ui() -> None:
