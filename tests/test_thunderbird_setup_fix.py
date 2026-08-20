@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from app.communication_thunderbird_setup_fix import (
+from app.thunderbird_install import (
     EXTENSION_FILENAME,
     preferred_visible_install_directory,
     publish_thunderbird_extension,
