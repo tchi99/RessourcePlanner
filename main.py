@@ -16,6 +16,7 @@ from app.bugfixes import install_bugfixes
 from app.communication_mail_clients_ui import install_communication_mail_clients_ui
 from app.communication_obsolescence_ui import install_communication_obsolescence_guard
 from app.communication_outlook_ui import install_communication_outlook_ui
+from app.communication_thunderbird_setup_fix import install_thunderbird_setup_fix
 from app.communication_ui import install_communication_ui
 from app.config import load_config
 from app.excel_repository import ExcelRepository
@@ -74,6 +75,7 @@ install_communication_ui()
 install_communication_obsolescence_guard()
 install_communication_outlook_ui()
 install_communication_mail_clients_ui()
+install_thunderbird_setup_fix()
 
 
 def main() -> None:
