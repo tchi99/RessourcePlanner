@@ -13,6 +13,7 @@ from app.v172_nicegui_compat import install_v172_nicegui_compat
 install_v172_nicegui_compat()
 
 from app.bugfixes import install_bugfixes
+from app.communication_ui import install_communication_ui
 from app.config import load_config
 from app.excel_repository import ExcelRepository
 from app.features import install_features
@@ -64,6 +65,9 @@ install_v18_refinements()
 install_v18_single_scroll()
 install_v18_calendar_sizing()
 install_v18_workflow_fixes()
+# Transitional feature installer: isolated behind one final composition point until the
+# broader UI refactor in issue #15 removes historical monkey-patches.
+install_communication_ui()
 
 
 def main() -> None:
