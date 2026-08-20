@@ -8,6 +8,7 @@ on:
       - "requirements.txt"
       - "constraints-release.txt"
       - ".github/workflows/windows-release.yml"
+      - "tools/thunderbird_native_host.py"
       - "tools/create_internal_code_signing_certificate.ps1"
       - "CODE_SIGNING.md"
   push:
@@ -58,20 +59,26 @@ jobs:
           }
           Stop-Process -Id $process.Id -Force
 
-      - name: Build unsigned CI executable
+      - name: Build unsigned CI executable and Thunderbird host
         shell: pwsh
         run: |
           $name = "RessourcePlanner-CI-Windows-x64"
           nicegui-pack --onefile --windowed --name $name main.py
+          python -m PyInstaller --noconfirm --clean --onefile --console --name RessourcePlanner-ThunderbirdHost tools/thunderbird_native_host.py
           if (-not (Test-Path "dist/$name.exe")) {
             throw "Expected executable was not produced."
+          }
+          if (-not (Test-Path "dist/RessourcePlanner-ThunderbirdHost.exe")) {
+            throw "Expected Thunderbird native messaging host was not produced."
           }
 
       - name: Upload unsigned CI artifact
         uses: actions/upload-artifact@v4
         with:
           name: RessourcePlanner-CI-Windows-x64
-          path: dist/RessourcePlanner-CI-Windows-x64.exe
+          path: |
+            dist/RessourcePlanner-CI-Windows-x64.exe
+            dist/RessourcePlanner-ThunderbirdHost.exe
           if-no-files-found: error
 
   build-sign-release:
@@ -147,13 +154,18 @@ jobs:
           }
           Stop-Process -Id $process.Id -Force
 
-      - name: Build one-file Windows desktop application
+      - name: Build one-file Windows desktop application and Thunderbird host
         shell: pwsh
         run: |
           nicegui-pack --onefile --windowed --name $env:APP_NAME main.py
+          python -m PyInstaller --noconfirm --clean --onefile --console --name RessourcePlanner-ThunderbirdHost tools/thunderbird_native_host.py
           $exe = "dist/$($env:APP_NAME).exe"
+          $host = "dist/RessourcePlanner-ThunderbirdHost.exe"
           if (-not (Test-Path $exe)) {
             throw "Expected executable was not produced: $exe"
+          }
+          if (-not (Test-Path $host)) {
+            throw "Expected Thunderbird native messaging host was not produced: $host"
           }
 
       - name: Restore signing certificate into ephemeral runner
@@ -235,95 +247,99 @@ jobs:
           "SIGNTOOL_PATH=$signtool" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           Write-Host "Using SignTool: $signtool"
 
-      - name: Sign executable with internal Authenticode certificate
+      - name: Sign executables with internal Authenticode certificate
         shell: pwsh
         run: |
-          $exe = "dist/$($env:APP_NAME).exe"
-          & $env:SIGNTOOL_PATH sign `
-            /sha1 $env:SIGNING_CERT_THUMBPRINT `
-            /fd SHA256 `
-            /tr http://timestamp.digicert.com `
-            /td SHA256 `
-            /d "RessourcePlanner" `
-            $exe
-          if ($LASTEXITCODE -ne 0) {
-            throw "SignTool failed with exit code $LASTEXITCODE."
+          $files = @(
+            "dist/$($env:APP_NAME).exe",
+            "dist/RessourcePlanner-ThunderbirdHost.exe"
+          )
+          foreach ($file in $files) {
+            & $env:SIGNTOOL_PATH sign `
+              /sha1 $env:SIGNING_CERT_THUMBPRINT `
+              /fd SHA256 `
+              /tr http://timestamp.digicert.com `
+              /td SHA256 `
+              /d "RessourcePlanner" `
+              $file
+            if ($LASTEXITCODE -ne 0) {
+              throw "SignTool failed with exit code $LASTEXITCODE for $file."
+            }
           }
 
-      - name: Verify Authenticode signature
+      - name: Verify Authenticode signatures
         shell: pwsh
         run: |
-          $exe = "dist/$($env:APP_NAME).exe"
-          $signature = Get-AuthenticodeSignature $exe
-          $signature | Format-List Status,StatusMessage,SignerCertificate,TimeStamperCertificate
+          $files = @(
+            "dist/$($env:APP_NAME).exe",
+            "dist/RessourcePlanner-ThunderbirdHost.exe"
+          )
+          foreach ($exe in $files) {
+            $signature = Get-AuthenticodeSignature $exe
+            $signature | Format-List Status,StatusMessage,SignerCertificate,TimeStamperCertificate
 
-          if ($null -eq $signature.SignerCertificate) {
-            throw "No signer certificate was found after signing."
-          }
-          if ($signature.SignerCertificate.Thumbprint -ne $env:SIGNING_CERT_THUMBPRINT) {
-            throw "The executable was signed by an unexpected certificate."
-          }
-          if ($null -eq $signature.TimeStamperCertificate) {
-            throw "The executable does not contain the expected RFC3161 timestamp."
-          }
+            if ($null -eq $signature.SignerCertificate) {
+              throw "No signer certificate was found after signing $exe."
+            }
+            if ($signature.SignerCertificate.Thumbprint -ne $env:SIGNING_CERT_THUMBPRINT) {
+              throw "The executable was signed by an unexpected certificate: $exe"
+            }
+            if ($null -eq $signature.TimeStamperCertificate) {
+              throw "The executable does not contain the expected RFC3161 timestamp: $exe"
+            }
 
-          # Hosted runners do not trust our private self-signed publisher by design.
-          # Get-AuthenticodeSignature therefore reports UnknownError solely because the
-          # chain ends at an untrusted self-signed root. Accept only that precise case.
-          $expectedPrivateRoot = $false
-          if ($signature.Status -eq [System.Management.Automation.SignatureStatus]::Valid) {
-            Write-Host "Authenticode signature is trusted by the runner."
-          }
-          elseif (
-            $signature.Status -eq [System.Management.Automation.SignatureStatus]::UnknownError -and
-            $signature.StatusMessage -match '(?i)root certificate.*not trusted'
-          ) {
-            $expectedPrivateRoot = $true
-            Write-Host "Expected self-signed trust result detected; validating a custom chain for the exact signer..."
+            $expectedPrivateRoot = $false
+            if ($signature.Status -eq [System.Management.Automation.SignatureStatus]::Valid) {
+              Write-Host "Authenticode signature is trusted by the runner: $exe"
+            }
+            elseif (
+              $signature.Status -eq [System.Management.Automation.SignatureStatus]::UnknownError -and
+              $signature.StatusMessage -match '(?i)root certificate.*not trusted'
+            ) {
+              $expectedPrivateRoot = $true
+              Write-Host "Expected self-signed trust result detected; validating a custom chain for the exact signer..."
 
-            $chain = [System.Security.Cryptography.X509Certificates.X509Chain]::new()
-            try {
-              $chain.ChainPolicy.TrustMode = [System.Security.Cryptography.X509Certificates.X509ChainTrustMode]::CustomRootTrust
-              $chain.ChainPolicy.CustomTrustStore.Add($signature.SignerCertificate)
-              $chain.ChainPolicy.RevocationMode = [System.Security.Cryptography.X509Certificates.X509RevocationMode]::NoCheck
-              if (-not $chain.Build($signature.SignerCertificate)) {
-                $chainStatus = ($chain.ChainStatus | ForEach-Object { $_.Status.ToString() }) -join ', '
-                throw "Custom signer chain validation failed: $chainStatus"
+              $chain = [System.Security.Cryptography.X509Certificates.X509Chain]::new()
+              try {
+                $chain.ChainPolicy.TrustMode = [System.Security.Cryptography.X509Certificates.X509ChainTrustMode]::CustomRootTrust
+                $chain.ChainPolicy.CustomTrustStore.Add($signature.SignerCertificate)
+                $chain.ChainPolicy.RevocationMode = [System.Security.Cryptography.X509Certificates.X509RevocationMode]::NoCheck
+                if (-not $chain.Build($signature.SignerCertificate)) {
+                  $chainStatus = ($chain.ChainStatus | ForEach-Object { $_.Status.ToString() }) -join ', '
+                  throw "Custom signer chain validation failed: $chainStatus"
+                }
               }
-            }
-            finally {
-              $chain.Dispose()
-            }
-
-            $timestampChain = [System.Security.Cryptography.X509Certificates.X509Chain]::new()
-            try {
-              $timestampChain.ChainPolicy.RevocationMode = [System.Security.Cryptography.X509Certificates.X509RevocationMode]::NoCheck
-              if (-not $timestampChain.Build($signature.TimeStamperCertificate)) {
-                $timestampStatus = ($timestampChain.ChainStatus | ForEach-Object { $_.Status.ToString() }) -join ', '
-                throw "Timestamp certificate chain validation failed: $timestampStatus"
+              finally {
+                $chain.Dispose()
               }
+
+              $timestampChain = [System.Security.Cryptography.X509Certificates.X509Chain]::new()
+              try {
+                $timestampChain.ChainPolicy.RevocationMode = [System.Security.Cryptography.X509Certificates.X509RevocationMode]::NoCheck
+                if (-not $timestampChain.Build($signature.TimeStamperCertificate)) {
+                  $timestampStatus = ($timestampChain.ChainStatus | ForEach-Object { $_.Status.ToString() }) -join ', '
+                  throw "Timestamp certificate chain validation failed: $timestampStatus"
+                }
+              }
+              finally {
+                $timestampChain.Dispose()
+              }
+
+              Write-Host "Self-signed Authenticode signer and public timestamp chain validated."
             }
-            finally {
-              $timestampChain.Dispose()
+            else {
+              throw "Authenticode verification failed with status $($signature.Status): $($signature.StatusMessage)"
             }
 
-            Write-Host "Self-signed Authenticode signer and public timestamp chain validated."
-          }
-          else {
-            throw "Authenticode verification failed with status $($signature.Status): $($signature.StatusMessage)"
-          }
-
-          # Keep SignTool output as a diagnostic. A private self-signed root is expected to
-          # make /pa return non-zero on a hosted runner even after the exact signer and the
-          # public timestamp chain were validated above.
-          & $env:SIGNTOOL_PATH verify /pa /v $exe
-          $signToolVerifyExit = $LASTEXITCODE
-          if ($signToolVerifyExit -ne 0 -and -not $expectedPrivateRoot) {
-            throw "SignTool verification failed with exit code $signToolVerifyExit."
-          }
-          if ($signToolVerifyExit -ne 0 -and $expectedPrivateRoot) {
-            Write-Warning "SignTool reported the expected untrusted private root on the hosted runner; custom-chain verification already succeeded."
-            $global:LASTEXITCODE = 0
+            & $env:SIGNTOOL_PATH verify /pa /v $exe
+            $signToolVerifyExit = $LASTEXITCODE
+            if ($signToolVerifyExit -ne 0 -and -not $expectedPrivateRoot) {
+              throw "SignTool verification failed with exit code $signToolVerifyExit."
+            }
+            if ($signToolVerifyExit -ne 0 -and $expectedPrivateRoot) {
+              Write-Warning "SignTool reported the expected untrusted private root on the hosted runner; custom-chain verification already succeeded."
+              $global:LASTEXITCODE = 0
+            }
           }
 
       - name: Publish public trust certificate with artifact
@@ -331,13 +347,18 @@ jobs:
         run: |
           Copy-Item $env:SIGNING_CER_PATH "dist/RessourcePlanner-Internal-CodeSigning.cer" -Force
 
-      - name: Generate SHA256 checksum after signing
+      - name: Generate SHA256 checksums after signing
         shell: pwsh
         run: |
-          $exe = "dist/$($env:APP_NAME).exe"
-          $sha = "$exe.sha256"
-          $hash = (Get-FileHash $exe -Algorithm SHA256).Hash.ToLowerInvariant()
-          "$hash  $($env:APP_NAME).exe" | Set-Content -Encoding ascii $sha
+          $files = @(
+            "dist/$($env:APP_NAME).exe",
+            "dist/RessourcePlanner-ThunderbirdHost.exe"
+          )
+          foreach ($exe in $files) {
+            $sha = "$exe.sha256"
+            $hash = (Get-FileHash $exe -Algorithm SHA256).Hash.ToLowerInvariant()
+            "$hash  $([IO.Path]::GetFileName($exe))" | Set-Content -Encoding ascii $sha
+          }
 
       - name: Upload signed artifact
         uses: actions/upload-artifact@v4
@@ -346,6 +367,8 @@ jobs:
           path: |
             dist/${{ env.APP_NAME }}.exe
             dist/${{ env.APP_NAME }}.exe.sha256
+            dist/RessourcePlanner-ThunderbirdHost.exe
+            dist/RessourcePlanner-ThunderbirdHost.exe.sha256
             dist/RessourcePlanner-Internal-CodeSigning.cer
           if-no-files-found: error
 
@@ -358,13 +381,15 @@ jobs:
           $tag = "${{ github.ref_name }}"
           $exe = "dist/$($env:APP_NAME).exe"
           $sha = "$exe.sha256"
+          $host = "dist/RessourcePlanner-ThunderbirdHost.exe"
+          $hostSha = "$host.sha256"
           $cer = "dist/RessourcePlanner-Internal-CodeSigning.cer"
           gh release view $tag *> $null
           if ($LASTEXITCODE -eq 0) {
-            gh release upload $tag $exe $sha $cer --clobber
+            gh release upload $tag $exe $sha $host $hostSha $cer --clobber
           }
           else {
-            gh release create $tag $exe $sha $cer `
+            gh release create $tag $exe $sha $host $hostSha $cer `
               --target "${{ github.sha }}" `
               --title "RessourcePlanner V$($env:APP_VERSION)" `
               --generate-notes `
