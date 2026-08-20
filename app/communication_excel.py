@@ -8,9 +8,12 @@ from .domain.communication_audit import (
     CommunicationAuditState,
     STATUS_APPROVED,
     STATUS_COMMUNICATED,
+    STATUS_OBSOLETE,
     STATUS_PREPARED,
     approve_batch,
+    is_stale_open_batch,
     mark_communicated,
+    mark_obsolete,
 )
 from .domain.communication_planning import CommunicationBatch, Contact, WeeklyAssignment
 from .excel_repository import ExcelRepository, MASTER_SHEETS, _as_matrix, _date_from_any
@@ -231,6 +234,39 @@ def _set_message_status(repo: ExcelRepository, batch_id: str, status: str) -> No
         value = row[lot_col - 1] if lot_col - 1 < len(row) else None
         if str(value or "") == str(batch_id):
             sheet.range((row_number, status_col)).value = status
+
+
+def mark_stale_open_batches_obsolete(
+    repo: ExcelRepository,
+    week_start: date,
+    current_fingerprint: str,
+) -> int:
+    """Persist stale prepared/approved lots as obsolete; communicated lots are immutable."""
+    ensure_communication_sheets(repo)
+    rows = [
+        row
+        for row in repo._sheet_as_records(BATCH_SHEET, "IDLot")
+        if _date_from_any(row.get("SemaineDebut")) == week_start
+        and is_stale_open_batch(
+            str(row.get("Statut") or ""),
+            str(row.get("EmpreintePlanning") or ""),
+            current_fingerprint,
+        )
+    ]
+    if not rows:
+        return 0
+
+    with repo._lock:
+        sheet = repo._book().sheets[BATCH_SHEET]
+        status_col = BATCH_HEADERS.index("Statut") + 1
+        for record in rows:
+            state = mark_obsolete(_batch_state_from_row(record))
+            batch_id = state.batch_id
+            row_number = _locate_batch_row(repo, batch_id)
+            sheet.range((row_number, status_col)).value = STATUS_OBSOLETE
+            _set_message_status(repo, batch_id, STATUS_OBSOLETE)
+        repo.save()
+    return len(rows)
 
 
 def approve_persisted_batch(

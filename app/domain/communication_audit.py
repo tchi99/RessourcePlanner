@@ -9,7 +9,14 @@ STATUS_PREPARED = "Préparé"
 STATUS_APPROVED = "Approuvé"
 STATUS_COMMUNICATED = "Communiqué"
 STATUS_CANCELLED = "Annulé"
-VALID_STATUSES = {STATUS_PREPARED, STATUS_APPROVED, STATUS_COMMUNICATED, STATUS_CANCELLED}
+STATUS_OBSOLETE = "Obsolète"
+VALID_STATUSES = {
+    STATUS_PREPARED,
+    STATUS_APPROVED,
+    STATUS_COMMUNICATED,
+    STATUS_CANCELLED,
+    STATUS_OBSOLETE,
+}
 
 
 @dataclass(frozen=True)
@@ -68,6 +75,39 @@ def mark_communicated(
         approved_by=state.approved_by,
         approved_at=state.approved_at,
         communicated_at=communicated_at,
+    )
+
+
+def mark_obsolete(state: CommunicationAuditState) -> CommunicationAuditState:
+    """Invalidate a prepared/approved batch after the planning snapshot changed."""
+    if state.status == STATUS_OBSOLETE:
+        return state
+    if state.status not in {STATUS_PREPARED, STATUS_APPROVED}:
+        raise ValueError("Seul un lot préparé ou approuvé peut devenir obsolète.")
+    return CommunicationAuditState(
+        batch_id=state.batch_id,
+        week_start=state.week_start,
+        message_kind=state.message_kind,
+        snapshot_fingerprint=state.snapshot_fingerprint,
+        status=STATUS_OBSOLETE,
+        prepared_by=state.prepared_by,
+        prepared_at=state.prepared_at,
+        approved_by=state.approved_by,
+        approved_at=state.approved_at,
+        communicated_at=state.communicated_at,
+    )
+
+
+def is_stale_open_batch(
+    status: str,
+    stored_fingerprint: str,
+    current_fingerprint: str,
+) -> bool:
+    """Return True when an unsent batch no longer describes the current planning."""
+    return (
+        str(status or "") in {STATUS_PREPARED, STATUS_APPROVED}
+        and bool(str(stored_fingerprint or "").strip())
+        and str(stored_fingerprint or "") != str(current_fingerprint or "")
     )
 
 
