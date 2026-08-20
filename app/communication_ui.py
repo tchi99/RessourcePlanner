@@ -6,6 +6,11 @@ from typing import Any
 from nicegui import ui
 
 from . import ui as ui_module
+from .communication_contacts import (
+    contact_directory_records,
+    synchronize_known_contacts,
+    update_contact,
+)
 from .communication_excel import (
     BATCH_SHEET,
     CONTACT_SHEET,
@@ -75,10 +80,112 @@ def _reset_next_week(self: ui_module.PlannerUI) -> None:
     self.render_content.refresh()
 
 
+def _contact_is_active(value: Any) -> bool:
+    if value in (None, ""):
+        return True
+    return str(value).strip().lower() in {"oui", "true", "1", "x", "yes", "actif", "active"}
+
+
+def _save_contact_from_dialog(
+    self: ui_module.PlannerUI,
+    person_id: str,
+    display_input: Any,
+    email_input: Any,
+    active_input: Any,
+) -> None:
+    try:
+        update_contact(
+            self.repo,
+            person_id,
+            display_name=str(display_input.value or ""),
+            email=str(email_input.value or ""),
+            active=bool(active_input.value),
+        )
+        self._signature = self._signature_for_current_page()
+        ui.notify("Contact enregistré.", type="positive")
+    except Exception as exc:
+        ui.notify(str(exc), type="negative")
+
+
+def _close_contacts_dialog(self: ui_module.PlannerUI, dialog: Any) -> None:
+    dialog.close()
+    self._signature = self._signature_for_current_page()
+    self.render_content.refresh()
+
+
 def _open_contacts(self: ui_module.PlannerUI) -> None:
-    ensure_communication_registry_once(self.repo)
-    self.selected_sheet = CONTACT_SHEET
-    self.navigate("data")
+    try:
+        ensure_communication_registry_once(self.repo)
+        synchronize_known_contacts(self.repo)
+        rows = contact_directory_records(self.repo)
+    except Exception as exc:
+        ui.notify(str(exc), type="negative")
+        return
+
+    with ui.dialog() as dialog, ui.card().classes("w-[1050px] max-w-[95vw]"):
+        with ui.row().classes("w-full items-center"):
+            with ui.column().classes("gap-0"):
+                ui.label("Répertoire de contacts").classes("text-xl font-bold")
+                ui.label(
+                    "Les personnes sont ajoutées automatiquement depuis les techniciens et les chargés de projet connus. "
+                    "Complète seulement l'adresse courriel et ajuste le nom d'affichage au besoin."
+                ).classes("text-sm muted")
+            ui.space()
+            ui.button(
+                icon="close",
+                on_click=lambda: _close_contacts_dialog(self, dialog),
+            ).props("flat round")
+
+        with ui.card().classes("w-full border border-blue-100 bg-blue-50"):
+            ui.label("Clé de correspondance").classes("font-semibold text-blue-900")
+            ui.label(
+                "PersonneCle est synchronisée depuis le planning et demeure en lecture seule ici. "
+                "L'application ne tente pas de deviner une adresse courriel à partir du nom."
+            ).classes("text-sm text-blue-900")
+
+        if not rows:
+            ui.label("Aucun technicien ou chargé de projet connu.").classes("muted")
+        else:
+            with ui.scroll_area().classes("w-full h-[620px]"):
+                with ui.column().classes("w-full gap-3 pr-2"):
+                    for row in rows:
+                        person_id = str(row.get("PersonneCle") or "").strip()
+                        person_type = str(row.get("TypePersonne") or "").strip()
+                        with ui.card().classes("w-full border"):
+                            with ui.row().classes("w-full items-start gap-4"):
+                                with ui.column().classes("gap-0 min-w-[220px]"):
+                                    ui.label(person_id).classes("font-semibold")
+                                    ui.label(person_type or "Type non précisé").classes("text-xs muted")
+                                display_input = ui.input(
+                                    "Nom d'affichage",
+                                    value=str(row.get("NomAffiche") or person_id),
+                                ).classes("min-w-[180px] flex-1")
+                                email_input = ui.input(
+                                    "Courriel",
+                                    value=str(row.get("Courriel") or ""),
+                                ).props("type=email").classes("min-w-[280px] flex-1")
+                                active_input = ui.checkbox(
+                                    "Actif",
+                                    value=_contact_is_active(row.get("Actif")),
+                                )
+                                ui.button(
+                                    "Enregistrer",
+                                    icon="save",
+                                    on_click=lambda _, key=person_id, display=display_input, email=email_input, active=active_input: _save_contact_from_dialog(
+                                        self, key, display, email, active
+                                    ),
+                                ).props("outline no-caps")
+
+        with ui.row().classes("w-full justify-between items-center mt-2"):
+            ui.label(
+                "Aucune communication n'est envoyée depuis cet écran."
+            ).classes("text-xs muted")
+            ui.button(
+                "Fermer et actualiser",
+                on_click=lambda: _close_contacts_dialog(self, dialog),
+            ).props("unelevated no-caps color=primary")
+
+    dialog.open()
 
 
 def _review_state(self: ui_module.PlannerUI, batch: CommunicationBatch) -> dict[tuple[str, str], dict[str, Any]]:
@@ -310,6 +417,7 @@ def _render_existing_batches(
 def _render_communications(self: ui_module.PlannerUI) -> None:
     try:
         ensure_communication_registry_once(self.repo)
+        synchronize_known_contacts(self.repo)
         selected_week = getattr(self, "_communication_week", _next_week())
         self._communication_week = selected_week
         assignments = current_weekly_assignments(self.repo, selected_week)
@@ -352,6 +460,11 @@ def _render_communications(self: ui_module.PlannerUI) -> None:
                 "Préparer, relire et approuver les messages du planning avant toute communication."
             ).classes("muted")
         ui.space()
+        ui.button(
+            "Contacts",
+            icon="contacts",
+            on_click=lambda: _open_contacts(self),
+        ).props("outline no-caps")
         ui.button(icon="chevron_left", on_click=lambda: _shift_week(self, -1)).props("flat round")
         ui.label(f"Semaine du {_week_label(selected_week)}").classes("font-semibold")
         ui.button(icon="chevron_right", on_click=lambda: _shift_week(self, 1)).props("flat round")
@@ -382,8 +495,11 @@ def _render_communications(self: ui_module.PlannerUI) -> None:
             ui.label(
                 ", ".join(batch.missing_contact_ids)
             ).classes("text-sm")
+            ui.label(
+                "Les personnes sont déjà préremplies dans le répertoire; ajoute simplement leurs adresses courriel."
+            ).classes("text-xs muted")
             ui.button(
-                "Gérer ContactsMO",
+                "Gérer les contacts",
                 icon="contacts",
                 on_click=lambda: _open_contacts(self),
             ).props("outline no-caps")
