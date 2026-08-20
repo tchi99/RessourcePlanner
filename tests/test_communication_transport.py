@@ -6,10 +6,12 @@ from datetime import date, datetime
 from app.domain.communication_audit import (
     CommunicationAuditState,
     STATUS_APPROVED,
+    STATUS_COMMUNICATED,
     STATUS_DRAFTS_CREATED,
     STATUS_OBSOLETE,
     approve_batch,
     is_stale_open_batch,
+    mark_communicated,
     mark_drafts_created,
     mark_obsolete,
 )
@@ -42,6 +44,12 @@ class CommunicationTransportTests(unittest.TestCase):
         state = mark_drafts_created(approved_state())
         self.assertEqual(state.status, STATUS_DRAFTS_CREATED)
         self.assertEqual(state.approved_by, "coord")
+
+    def test_drafts_created_batch_can_be_confirmed_communicated(self) -> None:
+        state = mark_drafts_created(approved_state())
+        communicated = mark_communicated(state, communicated_at=NOW)
+        self.assertEqual(communicated.status, STATUS_COMMUNICATED)
+        self.assertEqual(communicated.snapshot_fingerprint, "fp-1")
 
     def test_unapproved_batch_cannot_create_drafts_state(self) -> None:
         state = CommunicationAuditState(
