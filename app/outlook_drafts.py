@@ -54,9 +54,15 @@ def _powershell_script() -> str:
 )
 
 $ErrorActionPreference = "Stop"
-[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
 
-$data = Get-Content -Raw -Encoding UTF8 -LiteralPath $InputPath | ConvertFrom-Json
+try {
+    $data = Get-Content -Raw -Encoding UTF8 -LiteralPath $InputPath | ConvertFrom-Json
+}
+catch {
+    [Console]::Error.WriteLine("RP_OUTLOOK_ERROR|stage=payload")
+    exit 11
+}
+
 $requested = @{}
 foreach ($message in @($data.messages)) {
     $requested[[string]$message.message_id] = $true
@@ -105,15 +111,20 @@ function Add-ExistingIdsFromFolder {
 try {
     $outlook = New-Object -ComObject Outlook.Application
     $namespace = $outlook.GetNamespace("MAPI")
-    # 16 = Drafts, 5 = Sent Items. Searching a bounded set of recent items avoids a
-    # potentially expensive COM walk through a large corporate mailbox.
-    Add-ExistingIdsFromFolder -Folder $namespace.GetDefaultFolder(16) -SortProperty "[CreationTime]"
+
+    # Resolve COM method calls before passing the folder to another command. Windows
+    # PowerShell's argument parser does not reliably accept method invocations such as
+    # `-Folder $namespace.GetDefaultFolder(16)` directly in command argument mode.
+    $draftFolder = $namespace.GetDefaultFolder(16)
+    Add-ExistingIdsFromFolder -Folder $draftFolder -SortProperty "[CreationTime]"
+
     if ($existingMap.Count -lt $requested.Count) {
-        Add-ExistingIdsFromFolder -Folder $namespace.GetDefaultFolder(5) -SortProperty "[SentOn]"
+        $sentFolder = $namespace.GetDefaultFolder(5)
+        Add-ExistingIdsFromFolder -Folder $sentFolder -SortProperty "[SentOn]"
     }
 }
 catch {
-    [Console]::Error.WriteLine("OUTLOOK_COM_UNAVAILABLE")
+    [Console]::Error.WriteLine("RP_OUTLOOK_ERROR|stage=com")
     exit 20
 }
 
@@ -204,6 +215,24 @@ def _parse_result(stdout: str) -> OutlookDraftResult:
     )
 
 
+def _transport_error_message(returncode: int, stderr: str) -> str:
+    marker = str(stderr or "")
+    if "RP_OUTLOOK_ERROR|stage=payload" in marker:
+        return "Le fichier temporaire de préparation des brouillons Outlook n'a pas pu être lu."
+    if "RP_OUTLOOK_ERROR|stage=com" in marker or "OUTLOOK_COM_UNAVAILABLE" in marker:
+        return (
+            "Impossible d'ouvrir une session Outlook compatible avec l'automatisation. "
+            "Cette fonction nécessite Outlook classique pour Windows ou une installation Outlook offrant l'interface COM."
+        )
+    if returncode == 1:
+        return (
+            "Le script PowerShell de création des brouillons Outlook n'a pas pu démarrer correctement. "
+            "Le correctif de compatibilité Windows PowerShell est installé; si cette erreur persiste après mise à jour, "
+            "copie le nouveau message d'erreur affiché par l'application."
+        )
+    return f"La création des brouillons Outlook a échoué (code {returncode})."
+
+
 def create_outlook_drafts(
     requests: Sequence[OutlookDraftRequest],
     *,
@@ -282,13 +311,8 @@ def create_outlook_drafts(
         )
 
     if completed.returncode != 0:
-        if "OUTLOOK_COM_UNAVAILABLE" in str(completed.stderr or ""):
-            raise OutlookDraftTransportError(
-                "Impossible d'ouvrir une session Outlook compatible avec l'automatisation. "
-                "Cette fonction nécessite Outlook classique pour Windows ou une installation Outlook offrant l'interface COM."
-            )
         raise OutlookDraftTransportError(
-            f"La création des brouillons Outlook a échoué (code {completed.returncode})."
+            _transport_error_message(completed.returncode, completed.stderr)
         )
 
     return _parse_result(completed.stdout)
