@@ -46,12 +46,17 @@ class OutlookDraftTransportTests(unittest.TestCase):
             any("-Folder $namespace.GetDefaultFolder(" in line for line in executable_lines)
         )
 
-    def test_runner_receives_json_payload_and_parses_created_and_existing(self) -> None:
+    def test_runner_receives_bom_script_sta_and_json_payload(self) -> None:
         captured: dict[str, object] = {}
 
         def fake_runner(command, **kwargs):
-            input_path = Path(command[-1])
+            script_index = command.index("-File") + 1
+            input_index = command.index("-InputPath") + 1
+            script_path = Path(command[script_index])
+            input_path = Path(command[input_index])
+            captured["script_bom"] = script_path.read_bytes().startswith(b"\xef\xbb\xbf")
             captured["payload"] = json.loads(input_path.read_text(encoding="utf-8"))
+            captured["command"] = command
             captured["kwargs"] = kwargs
             return subprocess.CompletedProcess(
                 command,
@@ -68,6 +73,8 @@ class OutlookDraftTransportTests(unittest.TestCase):
         self.assertEqual(result.created_message_ids, ("M1",))
         self.assertEqual(result.existing_message_ids, ("M2",))
         self.assertEqual(result.completed_message_ids, ("M1", "M2"))
+        self.assertTrue(captured["script_bom"])
+        self.assertIn("-Sta", captured["command"])
         payload = captured["payload"]
         self.assertEqual([row["message_id"] for row in payload["messages"]], ["M1", "M2"])
 
@@ -121,16 +128,29 @@ class OutlookDraftTransportTests(unittest.TestCase):
                 platform_name="nt",
             )
 
-    def test_code_one_returns_compatibility_diagnostic(self) -> None:
+    def test_code_one_returns_sanitized_powershell_detail(self) -> None:
         def fake_runner(command, **kwargs):
-            return subprocess.CompletedProcess(command, 1, stdout="", stderr="ParserError")
+            script_path = command[command.index("-File") + 1]
+            input_path = command[command.index("-InputPath") + 1]
+            stderr = (
+                f"At {script_path}:42 char:7 ParserError for {synthetic_email('recipient')} "
+                f"using {input_path}"
+            )
+            return subprocess.CompletedProcess(command, 1, stdout="", stderr=stderr)
 
-        with self.assertRaisesRegex(OutlookDraftTransportError, "PowerShell"):
+        with self.assertRaises(OutlookDraftTransportError) as context:
             create_outlook_drafts(
                 [self.request()],
                 runner=fake_runner,
                 platform_name="nt",
             )
+        message = str(context.exception)
+        self.assertIn("PowerShell", message)
+        self.assertIn("ParserError", message)
+        self.assertIn("<script temporaire>", message)
+        self.assertIn("<fichier temporaire>", message)
+        self.assertIn("<courriel masqué>", message)
+        self.assertNotIn("invalid.test", message)
 
     def test_blank_recipient_is_rejected_before_transport(self) -> None:
         request = OutlookDraftRequest(
