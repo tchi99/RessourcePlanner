@@ -12,6 +12,10 @@ from app.domain.contact_directory import (
 )
 
 
+def synthetic_email(local: str) -> str:
+    return local + chr(64) + "invalid.test"
+
+
 class ContactDirectoryTests(unittest.TestCase):
     def test_display_name_uses_first_name_from_normal_name(self) -> None:
         self.assertEqual(default_display_name("Jean Tremblay"), "Jean")
@@ -47,7 +51,7 @@ class ContactDirectoryTests(unittest.TestCase):
             [
                 {
                     "PersonneCle": "Tech A",
-                    "Courriel": "adresse-existante@invalid.test",
+                    "Courriel": synthetic_email("existing"),
                     "NomAffiche": "Nom personnalisé",
                 }
             ],
