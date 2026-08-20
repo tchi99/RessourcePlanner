@@ -66,22 +66,29 @@ $existingMap = @{}
 try {
     $outlook = New-Object -ComObject Outlook.Application
     $namespace = $outlook.GetNamespace("MAPI")
-    $draftFolder = $namespace.GetDefaultFolder(16)
-    $items = $draftFolder.Items
+    # 16 = Drafts, 5 = Sent Items. Scanning both makes a retry safe even if the
+    # coordinator manually sent a draft before RessourcePlanner persisted its state.
+    $folders = @(
+        $namespace.GetDefaultFolder(16),
+        $namespace.GetDefaultFolder(5)
+    )
 
-    for ($i = 1; $i -le $items.Count; $i++) {
-        try {
-            $item = $items.Item($i)
-            $property = $item.UserProperties.Find("RessourcePlannerMessageID")
-            if ($null -ne $property) {
-                $value = [string]$property.Value
-                if ($requested.ContainsKey($value)) {
-                    $existingMap[$value] = $true
+    foreach ($folder in $folders) {
+        $items = $folder.Items
+        for ($i = 1; $i -le $items.Count; $i++) {
+            try {
+                $item = $items.Item($i)
+                $property = $item.UserProperties.Find("RessourcePlannerMessageID")
+                if ($null -ne $property) {
+                    $value = [string]$property.Value
+                    if ($requested.ContainsKey($value)) {
+                        $existingMap[$value] = $true
+                    }
                 }
             }
-        }
-        catch {
-            # Ignore unrelated Drafts items that do not expose custom properties cleanly.
+            catch {
+                # Ignore unrelated Outlook items that do not expose custom properties cleanly.
+            }
         }
     }
 }
@@ -183,11 +190,11 @@ def create_outlook_drafts(
     runner: Runner | None = None,
     platform_name: str | None = None,
 ) -> OutlookDraftResult:
-    """Create classic Outlook drafts only; this function never sends mail.
+    """Create Outlook drafts only; this function never sends mail.
 
-    A stable custom Outlook property is attached to every draft. Retrying after an
-    interrupted application run therefore reuses an already-created draft instead of
-    creating a duplicate whenever Outlook still contains that draft.
+    A stable custom Outlook property is attached to every generated message. Retrying
+    after an interrupted application run reuses matching items found in Drafts or Sent
+    Items instead of creating a duplicate whenever Outlook still contains the message.
     """
     rows = tuple(requests)
     if not rows:
