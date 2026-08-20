@@ -33,6 +33,12 @@ class OutlookDraftTransportTests(unittest.TestCase):
         self.assertNotIn("$mail.Send()", script)
         self.assertNotIn(".Send(", script)
 
+    def test_powershell_resolves_outlook_folders_before_command_arguments(self) -> None:
+        script = _powershell_script()
+        self.assertIn("$draftFolder = $namespace.GetDefaultFolder(16)", script)
+        self.assertIn("$sentFolder = $namespace.GetDefaultFolder(5)", script)
+        self.assertNotIn("-Folder $namespace.GetDefaultFolder(", script)
+
     def test_runner_receives_json_payload_and_parses_created_and_existing(self) -> None:
         captured: dict[str, object] = {}
 
@@ -82,10 +88,37 @@ class OutlookDraftTransportTests(unittest.TestCase):
                 command,
                 20,
                 stdout="",
-                stderr="OUTLOOK_COM_UNAVAILABLE",
+                stderr="RP_OUTLOOK_ERROR|stage=com",
             )
 
         with self.assertRaisesRegex(OutlookDraftTransportError, "Outlook"):
+            create_outlook_drafts(
+                [self.request()],
+                runner=fake_runner,
+                platform_name="nt",
+            )
+
+    def test_payload_failure_returns_specific_error(self) -> None:
+        def fake_runner(command, **kwargs):
+            return subprocess.CompletedProcess(
+                command,
+                11,
+                stdout="",
+                stderr="RP_OUTLOOK_ERROR|stage=payload",
+            )
+
+        with self.assertRaisesRegex(OutlookDraftTransportError, "temporaire"):
+            create_outlook_drafts(
+                [self.request()],
+                runner=fake_runner,
+                platform_name="nt",
+            )
+
+    def test_code_one_returns_compatibility_diagnostic(self) -> None:
+        def fake_runner(command, **kwargs):
+            return subprocess.CompletedProcess(command, 1, stdout="", stderr="ParserError")
+
+        with self.assertRaisesRegex(OutlookDraftTransportError, "PowerShell"):
             create_outlook_drafts(
                 [self.request()],
                 runner=fake_runner,
