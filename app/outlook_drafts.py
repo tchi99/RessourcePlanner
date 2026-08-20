@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import tempfile
@@ -113,8 +114,8 @@ try {
     $namespace = $outlook.GetNamespace("MAPI")
 
     # Resolve COM method calls before passing the folder to another command. Windows
-    # PowerShell's argument parser does not reliably accept method invocations such as
-    # `-Folder $namespace.GetDefaultFolder(16)` directly in command argument mode.
+    # PowerShell's argument parser does not reliably accept method invocations directly
+    # in another command's argument list.
     $draftFolder = $namespace.GetDefaultFolder(16)
     Add-ExistingIdsFromFolder -Folder $draftFolder -SortProperty "[CreationTime]"
 
@@ -170,6 +171,14 @@ foreach ($message in @($data.messages)) {
 
 
 def _powershell_executable() -> str:
+    # Prefer the native Windows PowerShell host when available. It is the most predictable
+    # host for classic Outlook COM automation and avoids PATH shims or third-party wrappers.
+    system_root = str(os.environ.get("SystemRoot") or "").strip()
+    if system_root:
+        native = Path(system_root) / "System32" / "WindowsPowerShell" / "v1.0" / "powershell.exe"
+        if native.is_file():
+            return str(native)
+
     for candidate in ("powershell.exe", "pwsh.exe"):
         resolved = shutil.which(candidate)
         if resolved:
@@ -215,7 +224,38 @@ def _parse_result(stdout: str) -> OutlookDraftResult:
     )
 
 
-def _transport_error_message(returncode: int, stderr: str) -> str:
+def _diagnostic_excerpt(
+    stderr: str,
+    *,
+    script_path: str = "",
+    payload_path: str = "",
+) -> str:
+    text = str(stderr or "").replace("\x00", " ")
+    for value, replacement in (
+        (script_path, "<script temporaire>"),
+        (payload_path, "<fichier temporaire>"),
+    ):
+        if value:
+            text = text.replace(value, replacement)
+            text = text.replace(value.replace("\\", "/"), replacement)
+    text = re.sub(
+        r"(?i)\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b",
+        "<courriel masqué>",
+        text,
+    )
+    text = " ".join(text.split())
+    if len(text) > 600:
+        text = text[:597] + "..."
+    return text
+
+
+def _transport_error_message(
+    returncode: int,
+    stderr: str,
+    *,
+    script_path: str = "",
+    payload_path: str = "",
+) -> str:
     marker = str(stderr or "")
     if "RP_OUTLOOK_ERROR|stage=payload" in marker:
         return "Le fichier temporaire de préparation des brouillons Outlook n'a pas pu être lu."
@@ -224,13 +264,25 @@ def _transport_error_message(returncode: int, stderr: str) -> str:
             "Impossible d'ouvrir une session Outlook compatible avec l'automatisation. "
             "Cette fonction nécessite Outlook classique pour Windows ou une installation Outlook offrant l'interface COM."
         )
+
+    detail = _diagnostic_excerpt(
+        marker,
+        script_path=script_path,
+        payload_path=payload_path,
+    )
     if returncode == 1:
-        return (
-            "Le script PowerShell de création des brouillons Outlook n'a pas pu démarrer correctement. "
-            "Le correctif de compatibilité Windows PowerShell est installé; si cette erreur persiste après mise à jour, "
-            "copie le nouveau message d'erreur affiché par l'application."
+        message = (
+            "Windows PowerShell a refusé de démarrer le script de création des brouillons Outlook. "
+            "Le transport utilise maintenant le PowerShell Windows natif, le mode STA et un script UTF-8 avec BOM."
         )
-    return f"La création des brouillons Outlook a échoué (code {returncode})."
+        if detail:
+            message += f" Détail PowerShell : {detail}"
+        return message
+
+    message = f"La création des brouillons Outlook a échoué (code {returncode})."
+    if detail:
+        message += f" Détail PowerShell : {detail}"
+    return message
 
 
 def create_outlook_drafts(
@@ -285,7 +337,9 @@ def create_outlook_drafts(
             ),
             encoding="utf-8",
         )
-        script_path.write_text(_powershell_script(), encoding="utf-8")
+        # Windows PowerShell 5.1 does not reliably interpret UTF-8 script files without a
+        # BOM. utf-8-sig keeps the generated script unambiguous on older Windows hosts.
+        script_path.write_text(_powershell_script(), encoding="utf-8-sig")
 
         executable = _powershell_executable() if runner is None else "powershell.exe"
         command = [
@@ -293,6 +347,7 @@ def create_outlook_drafts(
             "-NoLogo",
             "-NoProfile",
             "-NonInteractive",
+            "-Sta",
             "-ExecutionPolicy",
             "Bypass",
             "-File",
@@ -310,9 +365,14 @@ def create_outlook_drafts(
             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
 
-    if completed.returncode != 0:
-        raise OutlookDraftTransportError(
-            _transport_error_message(completed.returncode, completed.stderr)
-        )
+        if completed.returncode != 0:
+            raise OutlookDraftTransportError(
+                _transport_error_message(
+                    completed.returncode,
+                    completed.stderr,
+                    script_path=str(script_path),
+                    payload_path=str(payload_path),
+                )
+            )
 
     return _parse_result(completed.stdout)
