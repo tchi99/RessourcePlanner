@@ -14,6 +14,7 @@ install_v172_nicegui_compat()
 
 from app.bugfixes import install_bugfixes
 from app.communication_obsolescence_ui import install_communication_obsolescence_guard
+from app.communication_outlook_ui import install_communication_outlook_ui
 from app.communication_ui import install_communication_ui
 from app.config import load_config
 from app.excel_repository import ExcelRepository
@@ -66,10 +67,11 @@ install_v18_refinements()
 install_v18_single_scroll()
 install_v18_calendar_sizing()
 install_v18_workflow_fixes()
-# Transitional feature installer: isolated behind one final composition point until the
-# broader UI refactor in issue #15 removes historical monkey-patches.
+# Transitional communication installers stay isolated until issue #15 replaces the
+# historical monkey-patch composition with explicit feature composition.
 install_communication_ui()
 install_communication_obsolescence_guard()
+install_communication_outlook_ui()
 
 
 def main() -> None:
