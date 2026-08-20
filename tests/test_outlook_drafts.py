@@ -33,6 +33,16 @@ class OutlookDraftTransportTests(unittest.TestCase):
         self.assertNotIn("$mail.Send()", script)
         self.assertNotIn(".Send(", script)
 
+    def test_powershell_uses_native_arrays_not_generic_lists(self) -> None:
+        script = _powershell_script()
+        self.assertNotIn("System.Collections.Generic.List", script)
+        self.assertIn("$created = @()", script)
+        self.assertIn("$existing = @()", script)
+        self.assertIn("$failed = @()", script)
+        self.assertIn("created = $created", script)
+        self.assertIn("existing = $existing", script)
+        self.assertIn("failed = $failed", script)
+
     def test_powershell_resolves_outlook_folders_before_command_arguments(self) -> None:
         script = _powershell_script()
         self.assertIn("$draftFolder = $namespace.GetDefaultFolder(16)", script)
@@ -122,6 +132,22 @@ class OutlookDraftTransportTests(unittest.TestCase):
             )
 
         with self.assertRaisesRegex(OutlookDraftTransportError, "temporaire"):
+            create_outlook_drafts(
+                [self.request()],
+                runner=fake_runner,
+                platform_name="nt",
+            )
+
+    def test_serialization_failure_explains_existing_drafts_are_reused(self) -> None:
+        def fake_runner(command, **kwargs):
+            return subprocess.CompletedProcess(
+                command,
+                31,
+                stdout="",
+                stderr="RP_OUTLOOK_ERROR|stage=serialize",
+            )
+
+        with self.assertRaisesRegex(OutlookDraftTransportError, "réutilisés"):
             create_outlook_drafts(
                 [self.request()],
                 runner=fake_runner,

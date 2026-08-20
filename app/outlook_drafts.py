@@ -129,14 +129,18 @@ catch {
     exit 20
 }
 
-$created = New-Object System.Collections.Generic.List[string]
-$existing = New-Object System.Collections.Generic.List[string]
-$failed = New-Object System.Collections.Generic.List[object]
+# Windows PowerShell 5.1 has a known binder edge case when a generic List[T] is wrapped
+# in the array sub-expression operator @(...). That can raise ArgumentException with the
+# message "Argument types do not match" during the final ConvertTo-Json step. Native
+# PowerShell arrays avoid that failure and are sufficient for these small batches.
+$created = @()
+$existing = @()
+$failed = @()
 
 foreach ($message in @($data.messages)) {
     $messageId = [string]$message.message_id
     if ($existingMap.ContainsKey($messageId)) {
-        $existing.Add($messageId)
+        $existing += $messageId
         continue
     }
 
@@ -151,22 +155,28 @@ foreach ($message in @($data.messages)) {
         }
         $property.Value = $messageId
         $mail.Save()
-        $created.Add($messageId)
+        $created += $messageId
         $existingMap[$messageId] = $true
     }
     catch {
-        $failed.Add([pscustomobject]@{
+        $failed += [pscustomobject]@{
             message_id = $messageId
             error = $_.Exception.GetType().Name
-        })
+        }
     }
 }
 
-[pscustomobject]@{
-    created = @($created)
-    existing = @($existing)
-    failed = @($failed)
-} | ConvertTo-Json -Depth 5 -Compress
+try {
+    [pscustomobject]@{
+        created = $created
+        existing = $existing
+        failed = $failed
+    } | ConvertTo-Json -Depth 5 -Compress
+}
+catch {
+    [Console]::Error.WriteLine("RP_OUTLOOK_ERROR|stage=serialize")
+    exit 31
+}
 '''
 
 
@@ -263,6 +273,11 @@ def _transport_error_message(
         return (
             "Impossible d'ouvrir une session Outlook compatible avec l'automatisation. "
             "Cette fonction nécessite Outlook classique pour Windows ou une installation Outlook offrant l'interface COM."
+        )
+    if "RP_OUTLOOK_ERROR|stage=serialize" in marker:
+        return (
+            "Outlook a créé ou retrouvé les brouillons, mais PowerShell n'a pas pu sérialiser le résultat. "
+            "Relance l'action après mise à jour; les brouillons déjà marqués seront réutilisés plutôt que dupliqués."
         )
 
     detail = _diagnostic_excerpt(
