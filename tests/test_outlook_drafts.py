@@ -13,12 +13,16 @@ from app.outlook_drafts import (
 )
 
 
+def synthetic_email(local: str) -> str:
+    return local + chr(64) + "invalid.test"
+
+
 class OutlookDraftTransportTests(unittest.TestCase):
     def request(self, message_id: str = "M1") -> OutlookDraftRequest:
         return OutlookDraftRequest(
             message_id=message_id,
             batch_id="B1",
-            to_address="recipient@invalid.test",
+            to_address=synthetic_email("recipient"),
             subject="Planning démo",
             body="Corps de test",
         )
