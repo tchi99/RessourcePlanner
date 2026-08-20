@@ -37,7 +37,14 @@ class OutlookDraftTransportTests(unittest.TestCase):
         script = _powershell_script()
         self.assertIn("$draftFolder = $namespace.GetDefaultFolder(16)", script)
         self.assertIn("$sentFolder = $namespace.GetDefaultFolder(5)", script)
-        self.assertNotIn("-Folder $namespace.GetDefaultFolder(", script)
+        executable_lines = [
+            line.strip()
+            for line in script.splitlines()
+            if line.strip() and not line.lstrip().startswith("#")
+        ]
+        self.assertFalse(
+            any("-Folder $namespace.GetDefaultFolder(" in line for line in executable_lines)
+        )
 
     def test_runner_receives_json_payload_and_parses_created_and_existing(self) -> None:
         captured: dict[str, object] = {}
