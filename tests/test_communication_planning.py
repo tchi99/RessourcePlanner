@@ -4,6 +4,7 @@ import unittest
 from datetime import date
 
 from app.domain.communication_planning import (
+    PROJECT_MANAGER_RESPONSIBILITY_NOTE,
     Contact,
     WeeklyAssignment,
     build_change_notification_batch,
@@ -178,6 +179,22 @@ class CommunicationPlanningTests(unittest.TestCase):
         manager = next(draft for draft in batch.drafts if draft.audience == "project_manager")
         self.assertIn("Technicien Démo", manager.body)
         self.assertNotIn("resource-opaque-001", manager.body)
+
+    def test_weekly_manager_message_contains_responsibility_note(self) -> None:
+        batch = build_weekly_plan_batch([assignment("S-1")], self.contacts, WEEK)
+        manager = next(draft for draft in batch.drafts if draft.audience == "project_manager")
+        technician = next(draft for draft in batch.drafts if draft.audience == "technician")
+        self.assertIn(PROJECT_MANAGER_RESPONSIBILITY_NOTE, manager.body)
+        self.assertNotIn(PROJECT_MANAGER_RESPONSIBILITY_NOTE, technician.body)
+
+    def test_change_manager_message_contains_responsibility_note(self) -> None:
+        previous = [assignment("S-1")]
+        current = [assignment("S-1", day=date(2026, 8, 25))]
+        batch = build_change_notification_batch(previous, current, self.contacts, WEEK)
+        manager = next(draft for draft in batch.drafts if draft.audience == "project_manager")
+        technician = next(draft for draft in batch.drafts if draft.audience == "technician")
+        self.assertIn(PROJECT_MANAGER_RESPONSIBILITY_NOTE, manager.body)
+        self.assertNotIn(PROJECT_MANAGER_RESPONSIBILITY_NOTE, technician.body)
 
 
 if __name__ == "__main__":
