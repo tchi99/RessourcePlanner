@@ -10,6 +10,12 @@ from .communication_excel import (
     SNAPSHOT_SHEET,
     ensure_communication_sheets,
 )
+from .domain.communication_audit import (
+    STATUS_APPROVED,
+    STATUS_COMMUNICATED,
+    STATUS_DRAFTS_CREATED,
+    STATUS_PREPARED,
+)
 from .domain.communication_planning import Contact, WeeklyAssignment
 from .domain.communication_source import weekly_assignments_from_records
 from .excel_repository import ExcelRepository, _date_from_any
@@ -60,7 +66,7 @@ def latest_communicated_snapshot_without_reensure(
         row
         for row in repo._sheet_as_records(BATCH_SHEET, "IDLot")
         if _date_from_any(row.get("SemaineDebut")) == week_start
-        and str(row.get("Statut") or "") == "Communiqué"
+        and str(row.get("Statut") or "") == STATUS_COMMUNICATED
     ]
     if not batches:
         return "", []
@@ -127,6 +133,7 @@ def has_open_identical_batch(
     return any(
         str(row.get("TypeCommunication") or "") == message_kind
         and str(row.get("EmpreintePlanning") or "") == fingerprint
-        and str(row.get("Statut") or "") in {"Préparé", "Approuvé"}
+        and str(row.get("Statut") or "")
+        in {STATUS_PREPARED, STATUS_APPROVED, STATUS_DRAFTS_CREATED}
         for row in communication_batches_for_week(repo, week_start)
     )
