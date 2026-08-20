@@ -7,6 +7,11 @@ from datetime import date
 from typing import Mapping, Sequence
 
 
+PROJECT_MANAGER_RESPONSIBILITY_NOTE = (
+    "À noter qu’il est de votre responsabilité de transmettre les informations aux personnes concernées."
+)
+
+
 @dataclass(frozen=True)
 class Contact:
     person_id: str
@@ -183,6 +188,7 @@ def build_weekly_plan_batch(
             f"Bonjour {contact.display_name},\n\n"
             f"Voici la main-d'œuvre planifiée sous ta responsabilité pour la semaine du {week_start.isoformat()} :\n\n"
             + assignment_lines
+            + f"\n\n{PROJECT_MANAGER_RESPONSIBILITY_NOTE}"
             + "\n\nMerci de communiquer avec le coordonnateur si un élément doit être clarifié."
         )
         drafts.append(
@@ -284,11 +290,17 @@ def build_change_notification_batch(
             contact = _contact(contacts, recipient_id, missing)
             if not contact:
                 continue
+            responsibility_note = (
+                f"\n\n{PROJECT_MANAGER_RESPONSIBILITY_NOTE}"
+                if audience == "project_manager"
+                else ""
+            )
             body = (
                 f"Bonjour {contact.display_name},\n\n"
                 f"Le planning déjà communiqué pour la semaine du {week_start.isoformat()} a été modifié. "
                 "Voici les changements qui te concernent :\n\n"
                 + "\n".join(lines)
+                + responsibility_note
                 + "\n\nCette communication a été préparée à la suite d'une modification du planning."
             )
             drafts.append(
