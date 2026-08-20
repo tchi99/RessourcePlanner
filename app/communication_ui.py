@@ -28,6 +28,7 @@ from .communication_queries import (
     has_open_identical_batch,
     latest_communicated_snapshot_without_reensure,
 )
+from .domain.communication_contact_policy import partition_unavailable_recipients
 from .domain.communication_planning import (
     CommunicationBatch,
     CommunicationDraft,
@@ -423,6 +424,13 @@ def _render_communications(self: ui_module.PlannerUI) -> None:
         assignments = current_weekly_assignments(self.repo, selected_week)
         current_fingerprint = snapshot_fingerprint(assignments)
         contacts = contacts_by_id_without_reensure(self.repo)
+        contact_rows = contact_directory_records(self.repo)
+        inactive_contact_ids = {
+            str(row.get("PersonneCle") or "").strip()
+            for row in contact_rows
+            if str(row.get("PersonneCle") or "").strip()
+            and not _contact_is_active(row.get("Actif"))
+        }
         previous_fingerprint, previous = latest_communicated_snapshot_without_reensure(
             self.repo, selected_week
         )
@@ -448,6 +456,16 @@ def _render_communications(self: ui_module.PlannerUI) -> None:
                 technician_ids=technician_ids,
                 project_manager_ids=manager_ids,
             )
+
+        blocking_missing, inactive_suppressed = partition_unavailable_recipients(
+            batch.missing_contact_ids,
+            inactive_contact_ids,
+        )
+        batch = CommunicationBatch(
+            drafts=batch.drafts,
+            missing_contact_ids=blocking_missing,
+            snapshot_fingerprint=batch.snapshot_fingerprint,
+        )
     except Exception as exc:
         ui.label("Communications").classes("text-2xl font-bold")
         ui.label(str(exc)).classes("text-red-700")
@@ -488,6 +506,17 @@ def _render_communications(self: ui_module.PlannerUI) -> None:
                 ui.icon(icon).classes("text-blue-700")
                 ui.label(str(value)).classes("text-2xl font-bold")
                 ui.label(label).classes("text-sm muted")
+
+    if inactive_suppressed:
+        with ui.card().classes("w-full border border-amber-300 bg-amber-50"):
+            ui.label("Destinataires inactifs exclus du lot").classes(
+                "font-semibold text-amber-900"
+            )
+            ui.label(", ".join(inactive_suppressed)).classes("text-sm text-amber-900")
+            ui.label(
+                "Ces personnes auraient normalement reçu une communication, mais leur contact est marqué inactif. "
+                "Aucun courriel ne sera préparé pour elles et cet avertissement ne bloque pas le lot."
+            ).classes("text-xs text-amber-900")
 
     if batch.missing_contact_ids:
         with ui.card().classes("w-full border border-red-200"):
