@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 from pathlib import Path
+import sys
+from types import ModuleType
 import unittest
+from unittest.mock import patch
 
 from app.application.planning_service import PlanningService
 from app.application.runtime_services import planning_service
-from app import v15_engine
 
 
 class PlanningServiceTests(unittest.TestCase):
@@ -36,20 +38,18 @@ class PlanningServiceTests(unittest.TestCase):
 
     def test_runtime_adapter_resolves_selected_engine_at_execution_time(self) -> None:
         repository = object()
-        original = v15_engine.rebuild_allocations
         service = planning_service(repository)
         calls: list[str] = []
+        fake_engine = ModuleType("app.v15_engine")
 
         def selected_engine(repo: object):
             self.assertIs(repo, repository)
             calls.append("selected")
             return {"allocated_hours": 12.0, "engine": "selected"}
 
-        try:
-            v15_engine.rebuild_allocations = selected_engine
+        fake_engine.rebuild_allocations = selected_engine  # type: ignore[attr-defined]
+        with patch.dict(sys.modules, {"app.v15_engine": fake_engine}):
             result = service.rebuild()
-        finally:
-            v15_engine.rebuild_allocations = original
 
         self.assertEqual(calls, ["selected"])
         self.assertEqual(result["engine"], "selected")
@@ -72,6 +72,18 @@ class PlanningServiceTests(unittest.TestCase):
             "v13",
         ):
             self.assertNotIn(forbidden, source)
+
+    def test_runtime_adapter_does_not_import_legacy_engine_eagerly(self) -> None:
+        path = (
+            Path(__file__).resolve().parents[1]
+            / "app"
+            / "application"
+            / "runtime_services.py"
+        )
+        source = path.read_text(encoding="utf-8")
+
+        self.assertNotIn("from .. import v15_engine", source)
+        self.assertIn('import_module("app.v15_engine")', source)
 
 
 if __name__ == "__main__":
