@@ -87,7 +87,7 @@ class PureValidationTests(unittest.TestCase):
             self.assertNotIn("technician", raw)
             self.assertNotIn("location", raw)
 
-    def test_engine_mode_setter_preserves_existing_local_configuration(self) -> None:
+    def test_old_engine_mode_key_is_ignored_and_removed_on_next_config_save(self) -> None:
         with TemporaryDirectory() as folder:
             path = Path(folder) / "app_config.json"
             path.write_text(
@@ -95,18 +95,19 @@ class PureValidationTests(unittest.TestCase):
                     {
                         "workbook": r"C:\Planning\Production.xlsx",
                         "refresh_seconds": 5,
-                        "planning_engine_mode": "guarded_pure",
+                        "planning_engine_mode": "legacy",
                     }
                 ),
                 encoding="utf-8",
             )
 
             with patch.object(config, "CONFIG_PATH", path):
-                saved = config.save_planning_engine_mode("pure")
+                loaded = config.load_config()
+                config.save_workbook_path(loaded.workbook)
 
             raw = json.loads(path.read_text(encoding="utf-8"))
-            self.assertEqual(saved, "pure")
-            self.assertEqual(raw["planning_engine_mode"], "pure")
+            self.assertFalse(hasattr(loaded, "planning_engine_mode"))
+            self.assertNotIn("planning_engine_mode", raw)
             self.assertEqual(raw["workbook"], r"C:\Planning\Production.xlsx")
             self.assertEqual(raw["refresh_seconds"], 5)
             self.assertEqual(raw["host"], "127.0.0.1")
