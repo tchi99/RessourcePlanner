@@ -11,34 +11,36 @@ from .domain.cutover_policy import (
     normalize_planning_engine_mode,
 )
 from .domain.planning_engine import PlanResult
+from .domain.planning_snapshot import PlanningSnapshot
 from .excel_repository import ExcelRepository, _date_from_any
-from .planning_shadow import ShadowPlanReport, build_shadow_report
+from .planning_shadow import (
+    ShadowPlanReport,
+    build_planning_snapshot,
+    build_shadow_report_from_snapshot,
+)
 
 
 LegacyRebuild = Callable[[ExcelRepository], dict[str, Any]]
 
 
-def _pure_persistence_rows(repo: ExcelRepository, report: ShadowPlanReport) -> list[dict[str, Any]]:
+def _pure_persistence_rows(
+    snapshot: PlanningSnapshot,
+    report: ShadowPlanReport,
+) -> list[dict[str, Any]]:
     """Translate the pure result back to the current AllocationsMO persistence shape.
 
-    This transitional adapter intentionally reuses the current V1.5 payload format so
-    the cutover changes the calculation source without changing the workbook schema.
-    Locked/manual rows are preserved byte-for-business-field as much as possible;
-    only automatic rows are regenerated from the pure result.
+    Calculation and persistence deliberately reuse the same PlanningSnapshot.  This
+    transitional adapter therefore does not re-read SegmentsMO, DemandesMO or
+    AllocationsMO after the pure engine has calculated its result.
     """
-    with repo._lock:
-        segment_rows = repo._sheet_as_records("SegmentsMO", "IDSegment")
-        demand_rows = repo._sheet_as_records("DemandesMO", "NoDemande")
-        allocation_rows = repo._sheet_as_records("AllocationsMO", "IDAllocation")
-
     segment_map = {
         str(row.get("IDSegment") or ""): row
-        for row in segment_rows
+        for row in snapshot.segments
         if row.get("IDSegment")
     }
     demands = {
         str(row.get("NoDemande") or ""): row
-        for row in demand_rows
+        for row in snapshot.demands
         if row.get("NoDemande")
     }
     included_ids = {
@@ -47,7 +49,7 @@ def _pure_persistence_rows(repo: ExcelRepository, report: ShadowPlanReport) -> l
     }
 
     rows: list[dict[str, Any]] = []
-    for row in allocation_rows:
+    for row in snapshot.allocations:
         if not v15_engine._truthy(row.get("Verrouillee")):
             continue
         segment_id = str(row.get("IDSegment") or "")
@@ -138,24 +140,24 @@ def _pure_result_summary(result: PlanResult) -> dict[str, Any]:
 
 
 def rebuild_allocations_pure(repo: ExcelRepository) -> dict[str, Any]:
-    """Rebuild AllocationsMO directly from the pure planning engine.
+    """Rebuild AllocationsMO directly from one snapshot and the pure planning engine.
 
-    Unlike ``guarded_pure``, this path never runs the historical planning rebuild.
-    The currently persisted allocation rows are kept only as a write-recovery snapshot;
-    they are not used as a legacy calculation checkpoint. Locked/manual allocations
-    remain inputs to the pure engine through ``build_shadow_report``'s snapshot adapter.
+    The workbook-backed planning inputs are captured once.  Calculation, diagnostics,
+    locked-allocation preservation, result conversion and write recovery all reuse that
+    same snapshot.  The historical engine is never executed in this path.
     """
-    previous_rows = v15_engine.allocation_records(repo)
+    snapshot = build_planning_snapshot(repo)
+    previous_rows = [dict(row) for row in snapshot.allocations]
     write_started = False
 
     try:
-        report = build_shadow_report(repo)
+        report = build_shadow_report_from_snapshot(snapshot)
         if report.unsupported_segment_ids:
             raise RuntimeError(
                 "Pure planning cannot rebuild while active segments are unsupported by the pure adapter."
             )
 
-        pure_rows = _pure_persistence_rows(repo, report)
+        pure_rows = _pure_persistence_rows(snapshot, report)
         write_started = True
         v15_engine._write_allocations(repo, pure_rows)
     except Exception as exc:
@@ -187,21 +189,16 @@ def rebuild_allocations_guarded(
 ) -> dict[str, Any]:
     """Perform a reversible guarded cutover from the legacy refined engine.
 
-    Safety sequence:
-    1. run and persist the known-good legacy plan;
-    2. compare it to the pure engine without writes;
-    3. only when the comparison is complete and exact, persist the pure equivalent;
-    4. validate the persisted pure plan again;
-    5. restore the legacy rows if pure persistence or validation fails.
-
     ``guarded_pure`` is retained temporarily as a rollback/diagnostic mode while the
-    direct ``pure`` mode accumulates production confidence.
+    direct ``pure`` mode accumulates production confidence.  Even in this transitional
+    mode, each comparison/persistence phase now reuses its own captured snapshot.
     """
     legacy_summary = legacy_rebuild(repo)
-    legacy_rows = v15_engine.allocation_records(repo)
 
     try:
-        report = build_shadow_report(repo)
+        snapshot = build_planning_snapshot(repo)
+        legacy_rows = [dict(row) for row in snapshot.allocations]
+        report = build_shadow_report_from_snapshot(snapshot)
     except Exception as exc:
         print(f"[planning-cutover] action=fallback reason=shadow_error error_type={type(exc).__name__}")
         return _with_cutover_metadata(
@@ -227,9 +224,10 @@ def rebuild_allocations_guarded(
         )
 
     try:
-        pure_rows = _pure_persistence_rows(repo, report)
+        pure_rows = _pure_persistence_rows(snapshot, report)
         v15_engine._write_allocations(repo, pure_rows)
-        persisted_report = build_shadow_report(repo)
+        persisted_snapshot = build_planning_snapshot(repo)
+        persisted_report = build_shadow_report_from_snapshot(persisted_snapshot)
         persisted_decision = evaluate_cutover_gate(
             shadow_matches=persisted_report.comparison.matches,
             unsupported_segment_count=len(persisted_report.unsupported_segment_ids),
