@@ -16,10 +16,14 @@ class RuntimeCompositionTests(unittest.TestCase):
         self.assertEqual(names[0], "nicegui_compat")
         self.assertEqual(names[-1], "thunderbird_setup")
         self.assertLess(names.index("runtime_optimizations"), names.index("features"))
-        self.assertLess(names.index("v18_workflow_fixes"), names.index("communication_ui"))
+        self.assertLess(names.index("v18_workflow_fixes"), names.index("planning_service_ui"))
+        self.assertLess(names.index("planning_service_ui"), names.index("communication_ui"))
 
     def test_manifest_makes_transitional_legacy_steps_visible(self) -> None:
         legacy = [step.name for step in composition_manifest() if step.category == "legacy"]
+        application = [
+            step.name for step in composition_manifest() if step.category == "application"
+        ]
         communications = [
             step.name for step in composition_manifest() if step.category == "communications"
         ]
@@ -28,6 +32,7 @@ class RuntimeCompositionTests(unittest.TestCase):
         # should make this list smaller as explicit services/pages replace installers.
         self.assertIn("v13_features", legacy)
         self.assertIn("v18_workflow_fixes", legacy)
+        self.assertEqual(application, ["planning_service_ui"])
         self.assertEqual(
             communications,
             [
@@ -53,6 +58,15 @@ class RuntimeCompositionTests(unittest.TestCase):
             "install_v18_",
         ):
             self.assertNotIn(historical_prefix, source)
+
+    def test_planning_service_ui_binding_routes_recalculate_through_service(self) -> None:
+        source = (
+            Path(__file__).resolve().parents[1] / "app" / "planning_service_ui.py"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("planning_service(self.repo).rebuild()", source)
+        self.assertIn("v15_refinements._recalculate = _recalculate_via_service", source)
+        self.assertNotIn("rebuild_allocations_refined(self.repo)", source)
 
 
 if __name__ == "__main__":
