@@ -1,12 +1,11 @@
 from __future__ import annotations
 
 from datetime import datetime
-
-from .excel_repository import ExcelRepository
+from typing import Any
 
 
 def _approve_demand_record_only(
-    self: ExcelRepository,
+    self: Any,
     number: str,
     comment: str = "",
 ) -> None:
@@ -39,9 +38,11 @@ def install_demand_legacy_cleanup() -> None:
     record-only compatibility method prevents a remaining caller from accidentally
     executing the old stacked workflow twice.
 
-    The old wrapper source blocks can then disappear naturally as the corresponding
-    versioned modules are extracted in tranche 4.
+    The repository import is deliberately lazy so lightweight architecture/unit tests
+    can import this module without xlwings.
     """
+    from .excel_repository import ExcelRepository
+
     if getattr(ExcelRepository, "_demand_legacy_cleanup_installed", False):
         return
 
