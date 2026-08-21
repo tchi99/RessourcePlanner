@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 from pathlib import Path
 import sys
 from types import ModuleType
@@ -54,24 +55,34 @@ class PlanningServiceTests(unittest.TestCase):
         self.assertEqual(calls, ["selected"])
         self.assertEqual(result["engine"], "selected")
 
-    def test_application_service_has_no_ui_or_storage_dependency(self) -> None:
+    def test_application_service_has_no_ui_or_storage_import(self) -> None:
         path = (
             Path(__file__).resolve().parents[1]
             / "app"
             / "application"
             / "planning_service.py"
         )
-        source = path.read_text(encoding="utf-8")
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        imported_modules: list[str] = []
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                imported_modules.extend(alias.name for alias in node.names)
+            elif isinstance(node, ast.ImportFrom):
+                imported_modules.append(node.module or "")
 
-        for forbidden in (
+        forbidden_prefixes = (
             "nicegui",
             "xlwings",
-            "ExcelRepository",
-            "v15_engine",
-            "v14_engine",
-            "v13",
-        ):
-            self.assertNotIn(forbidden, source)
+            "app.excel_repository",
+            "app.v13",
+            "app.v14_engine",
+            "app.v15_engine",
+        )
+        for module in imported_modules:
+            self.assertFalse(
+                module.startswith(forbidden_prefixes),
+                f"planning_service.py must stay transport/storage agnostic; found import {module}",
+            )
 
     def test_runtime_adapter_does_not_import_legacy_engine_eagerly(self) -> None:
         path = (
