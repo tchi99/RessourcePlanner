@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+from contextlib import nullcontext
+from datetime import datetime
 from importlib import import_module
 from typing import Any
 
+from .demand_service import DemandService
 from .planning_service import PlanningService
 
 
@@ -10,6 +13,49 @@ def _runtime_rebuild(repository: Any):
     """Resolve the currently installed compatibility alias only when executed."""
     v15_engine = import_module("app.v15_engine")
     return v15_engine.rebuild_allocations(repository)
+
+
+def _approve_demand_record(repository: Any, number: str, comment: str) -> None:
+    """Persist only the approval decision, without legacy approval side effects.
+
+    ``ExcelRepository.approve_demand`` is still wrapped by historical V1.x installers.
+    The application service deliberately uses the lower-level record update so it can
+    own synchronization and planning rebuild itself and execute them exactly once.
+    """
+    repository.update_demand(
+        number,
+        {
+            "Statut": "En planification",
+            "ApprouvePar": repository.current_user,
+            "DateApprobation": datetime.now(),
+            "CommentaireApprobation": comment,
+        },
+        action="Approbation",
+        comment=comment or "Demande approuvée",
+    )
+
+
+def _sync_approved_demand(repository: Any, number: str) -> None:
+    """Synchronize operational requirements with the newly approved version."""
+    refinements = import_module("app.v15_refinements")
+    demand = next(
+        (
+            row
+            for row in repository.demands()
+            if str(row.get("NoDemande") or "") == str(number)
+        ),
+        None,
+    )
+    if demand is None:
+        raise KeyError(f"Demande {number} introuvable après approbation")
+    refinements._sync_segments_to_approved_demand(repository, demand)
+
+
+def _runtime_batch(repository: Any, label: str):
+    factory = getattr(repository, "batch_update", None)
+    if callable(factory):
+        return factory(label)
+    return nullcontext()
 
 
 def planning_service(repository: Any) -> PlanningService[Any]:
@@ -23,4 +69,20 @@ def planning_service(repository: Any) -> PlanningService[Any]:
     return PlanningService(
         repository,
         rebuild_planning=_runtime_rebuild,
+    )
+
+
+def demand_service(repository: Any) -> DemandService[Any]:
+    """Build the runtime approval service with legacy adapters resolved lazily.
+
+    This is the migration seam between the current Excel/V1.x implementation and the
+    future repository/API architecture. The service owns workflow ordering while the
+    adapters translate that workflow to today's storage and synchronization helpers.
+    """
+    return DemandService(
+        repository,
+        approve_record=_approve_demand_record,
+        sync_approved_demand=_sync_approved_demand,
+        rebuild_planning=_runtime_rebuild,
+        batch=_runtime_batch,
     )
