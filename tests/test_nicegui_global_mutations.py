@@ -33,7 +33,6 @@ class NiceGUIGlobalMutationTests(unittest.TestCase):
             [
                 "v16_refinements.py",
                 "v17_refinements.py",
-                "v18_workflow_fixes.py",
             ],
             "Keep the known select-wrapper debt explicit. Future #15 tranches should "
             "shrink this list; adding another global select mutation must fail CI.",
@@ -47,6 +46,15 @@ class NiceGUIGlobalMutationTests(unittest.TestCase):
         self.assertIn("v17.ui = _OperationalPlanningUI(current_ui)", source)
         self.assertNotIn("original_scroll_area", source)
         self.assertNotIn("PlannerUI.render_planning =", source)
+
+    def test_segment_parent_navigation_uses_context_local_select_override(self) -> None:
+        path = Path(__file__).resolve().parents[1] / "app" / "v18_workflow_fixes.py"
+        source = path.read_text(encoding="utf-8")
+
+        self.assertIn("class _ContextualSelectUI", source)
+        self.assertIn("ContextVar", source)
+        self.assertIn("with current_ui.override_select(select_with_parent_link):", source)
+        self.assertNotIn("ui.select =", source)
 
 
 if __name__ == "__main__":
