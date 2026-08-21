@@ -13,7 +13,7 @@ def repair_source_host_launcher(
     python_executable: Path | None = None,
     source_root: Path | None = None,
 ) -> bool:
-    """Rewrite the development-mode .bat host so cmd.exe handles Unicode paths reliably.
+    """Rewrite the development-mode .bat host with explicit working directory and guards.
 
     Packaged releases use RessourcePlanner-ThunderbirdHost.exe and are left untouched.
     """
@@ -41,12 +41,19 @@ def repair_source_host_launcher(
     if not tool_path.is_file():
         raise RuntimeError(f"Le script du pont Thunderbird est introuvable : {tool_path}")
 
-    # cmd.exe normally uses an OEM code page. Switching before the path-bearing lines
-    # prevents accented/Unicode source paths from being corrupted. The explicit guards
-    # also turn a vague Windows 'path not found' into a stable diagnostic code.
+    # Keep the launcher itself simple and deterministic. Mozilla supports a .bat native
+    # host on Windows. We force its working directory to the bridge folder and validate
+    # both absolute paths before starting Python, so an inherited invalid CWD cannot make
+    # cmd.exe fail before the native host starts.
     content = (
         "@echo off\r\n"
-        "chcp 65001 >nul\r\n"
+        "setlocal\r\n"
+        "chcp 65001 >nul 2>nul\r\n"
+        "cd /d \"%~dp0\"\r\n"
+        "if errorlevel 1 (\r\n"
+        "  >&2 echo RP_HOST_WORKDIR_NOT_FOUND\r\n"
+        "  exit /b 20\r\n"
+        ")\r\n"
         f'if not exist "{python_path}" (\r\n'
         "  >&2 echo RP_HOST_PYTHON_NOT_FOUND\r\n"
         "  exit /b 21\r\n"
