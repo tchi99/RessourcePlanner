@@ -47,11 +47,17 @@ class NiceGUIGlobalMutationTests(unittest.TestCase):
         self.assertNotIn("PlannerUI.render_planning =", source)
 
     def test_segment_parent_navigation_reuses_scoped_facade(self) -> None:
-        source = self._source("v18_workflow_fixes.py")
+        source = self._source("segment_navigation_compat.py")
         self.assertIn("ensure_scoped_ui(", source)
         self.assertIn('with scoped_ui.override_factory("select", select_with_parent_link):', source)
         self.assertNotIn("ContextVar", source)
         self.assertNotIn("ui.select =", source)
+
+    def test_resource_class_precedence_is_an_explicit_compatibility_rule(self) -> None:
+        source = self._source("resource_class_compat.py")
+        self.assertIn('if "installation" in text or "installateur" in text:', source)
+        self.assertIn('return "Installation"', source)
+        self.assertIn("original_normalize(value)", source)
 
 
 if __name__ == "__main__":
