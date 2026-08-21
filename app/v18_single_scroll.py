@@ -4,47 +4,43 @@ from typing import Any
 
 from nicegui import ui as nicegui_ui
 
-from . import v17
+from . import v16, v17
+from .ui_context import ensure_scoped_ui
 
 
-class _OperationalPlanningUI:
-    """Module-local NiceGUI facade for the V1.7 operational renderer.
-
-    The historical renderer calls ``v17.ui.scroll_area()`` for its outer calendar
-    container.  V1.8 needs a normal overflow-x div instead, but mutating
-    ``nicegui.ui.scroll_area`` while a page is rendering is unsafe once multiple
-    clients can render concurrently.  This facade changes only the dependency seen by
-    ``app.v17`` and delegates every other UI factory to the real NiceGUI module.
-    """
-
-    _v18_operational_facade = True
-
-    def __init__(self, delegate: Any) -> None:
-        self._delegate = delegate
-
-    def __getattr__(self, name: str) -> Any:
-        return getattr(self._delegate, name)
-
-    def scroll_area(self, *args: Any, **kwargs: Any) -> Any:
-        del args, kwargs
-        return self._delegate.element("div").classes("v18-operational-scroll")
+def _horizontal_container(*args: Any, **kwargs: Any) -> Any:
+    del args, kwargs
+    return nicegui_ui.element("div").classes("v18-operational-scroll")
 
 
 def install_v18_single_scroll() -> None:
-    """Use one horizontal scrollbar without mutating global NiceGUI factories.
+    """Make legacy operational UI overrides module-local and concurrency-safe.
 
-    ``app.v17`` remains a historical renderer for now, so this tranche keeps its
-    public behavior while replacing the previous render-time save/replace/restore of
-    ``nicegui.ui.scroll_area`` with an immutable module-local adapter.  A later #15
-    tranche can move the renderer itself into ``ui/pages`` and use the explicit div
-    directly; no global UI mutation will be required in the meantime.
+    V1.8 needs a normal horizontal overflow container instead of the old Quasar
+    ``scroll_area``.  In addition, the V1.6/V1.7 refinement renderers still perform
+    temporary assignments to their module's ``ui.select`` factory.  Both modules now
+    receive a :class:`ScopedNiceGUI` facade before any page render occurs, so those
+    historical assignments are stored in a task/client-local ``ContextVar`` rather
+    than mutating process-wide ``nicegui.ui``.
+
+    The historical renderer code can therefore remain behavior-compatible until it is
+    moved into explicit pages later in #15, without exposing concurrent clients to one
+    another's temporary UI factory overrides.
     """
     if getattr(v17, "_v18_single_scroll_installed", False):
         return
 
-    current_ui = v17.ui
-    if not getattr(current_ui, "_v18_operational_facade", False):
-        v17.ui = _OperationalPlanningUI(current_ui)
+    ensure_scoped_ui(
+        v16,
+        scope_name="v16_planning",
+        scoped_factories=("select",),
+    )
+    ensure_scoped_ui(
+        v17,
+        scope_name="v17_planning",
+        scoped_factories=("select",),
+        static_overrides={"scroll_area": _horizontal_container},
+    )
 
     nicegui_ui.add_css(
         """
