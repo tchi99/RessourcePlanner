@@ -48,7 +48,16 @@ def _thunderbird_setup_dialog(self) -> None:
                 timeout=14000,
             )
             return
-        registry_fix_path = publish_registry_fix(setup) if packaged_python_environment() else None
+
+        # Always prepare the external registry import. The local Python process can prove
+        # that its own registry writes succeeded, but that does not prove Thunderbird sees
+        # the same HKCU view (notably with Microsoft Store / packaged Python). The .reg is
+        # an explicit, idempotent repair path executed by Windows Registry Editor itself.
+        registry_fix_path = publish_registry_fix(setup)
+        packaged_hint = packaged_python_environment() or (
+            "pythonsoftwarefoundation.python"
+            in str(setup.integration_directory).casefold()
+        )
     except Exception as exc:
         ui.notify(str(exc), type="negative", timeout=9000)
         return
@@ -69,37 +78,39 @@ def _thunderbird_setup_dialog(self) -> None:
                 f"Le manifeste, le programme du pont et son démarrage local ont été validés. Écriture registre demandée : {registry_label}."
             ).classes("text-sm text-green-900")
 
-        if registry_fix_path is not None:
-            with ui.card().classes("w-full border border-amber-300 bg-amber-50"):
-                ui.label("Python Microsoft Store détecté — une étape registre est requise").classes(
-                    "font-semibold text-amber-900"
-                )
-                ui.label(
-                    "Cette version de Python s'exécute dans un package Windows. Ses écritures HKCU peuvent être virtualisées : "
-                    "RessourcePlanner les voit, mais Thunderbird peut répondre « No such native application ». "
-                    "Un fichier .reg a donc été préparé dans Téléchargements pour écrire la clé dans le registre Windows réellement visible par Thunderbird."
-                ).classes("text-sm text-amber-900")
+        with ui.card().classes("w-full border border-amber-300 bg-amber-50"):
+            title = (
+                "Python Microsoft Store détecté — confirmer la clé registre Thunderbird"
+                if packaged_hint
+                else "Réparer / confirmer la clé registre Thunderbird"
+            )
+            ui.label(title).classes("font-semibold text-amber-900")
+            ui.label(
+                "L'auto-test vert confirme que RessourcePlanner voit son hôte local, mais il ne garantit pas que Thunderbird voit la même clé HKCU. "
+                "Si le diagnostic Thunderbird indique « No such native application com.ressourceplanner.bridge », importe le fichier .reg préparé dans Téléchargements. "
+                "L'import réécrit explicitement les clés Mozilla dans le registre Windows visible par Thunderbird."
+            ).classes("text-sm text-amber-900")
 
-                def install_registry_fix() -> None:
-                    try:
-                        os.startfile(str(registry_fix_path))
-                        ui.notify(
-                            "Accepte l'importation dans l'Éditeur du Registre, puis ferme complètement et redémarre Thunderbird.",
-                            type="info",
-                            timeout=9000,
-                        )
-                    except OSError as exc:
-                        ui.notify(
-                            f"Impossible d'ouvrir le correctif registre ({type(exc).__name__}). Le fichier est dans Téléchargements.",
-                            type="negative",
-                            timeout=9000,
-                        )
+            def install_registry_fix() -> None:
+                try:
+                    os.startfile(str(registry_fix_path))
+                    ui.notify(
+                        "Accepte l'importation dans l'Éditeur du Registre, ferme complètement Thunderbird, puis redémarre-le et reteste RessourcePlanner Bridge.",
+                        type="info",
+                        timeout=10000,
+                    )
+                except OSError as exc:
+                    ui.notify(
+                        f"Impossible d'ouvrir le correctif registre ({type(exc).__name__}). Le fichier est dans Téléchargements.",
+                        type="negative",
+                        timeout=9000,
+                    )
 
-                ui.button(
-                    "Installer la clé registre Thunderbird",
-                    icon="settings",
-                    on_click=install_registry_fix,
-                ).props("unelevated no-caps color=warning")
+            ui.button(
+                "Installer / réparer la clé registre Thunderbird",
+                icon="settings",
+                on_click=install_registry_fix,
+            ).props("unelevated no-caps color=warning")
 
         with ui.card().classes("w-full border border-blue-200 bg-blue-50"):
             ui.label("Installer / mettre à jour l'extension Thunderbird").classes("font-semibold text-blue-900")
