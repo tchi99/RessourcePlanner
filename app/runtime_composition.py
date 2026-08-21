@@ -12,7 +12,7 @@ class CompositionStep:
     """One explicit application-composition step.
 
     The current V1.x application still contains historical installers which mutate
-    classes/modules at runtime.  Keeping their order in one manifest makes that
+    classes/modules at runtime. Keeping their order in one manifest makes that
     transitional dependency visible and testable while each feature is progressively
     moved to explicit services/pages.
     """
@@ -26,8 +26,6 @@ class RuntimeCompositionReport:
     installed_steps: tuple[str, ...]
 
 
-# This manifest is intentionally data-only: importing this module does not import the
-# historical feature modules and therefore cannot mutate NiceGUI/PlannerUI by itself.
 RUNTIME_COMPOSITION_MANIFEST: tuple[CompositionStep, ...] = (
     CompositionStep("nicegui_compat", "compatibility"),
     CompositionStep("runtime_optimizations", "core"),
@@ -68,14 +66,10 @@ RUNTIME_COMPOSITION_MANIFEST: tuple[CompositionStep, ...] = (
 
 
 def composition_manifest() -> tuple[CompositionStep, ...]:
-    """Return the declared startup composition without triggering installers."""
-
     return RUNTIME_COMPOSITION_MANIFEST
 
 
 def _runtime_installers() -> tuple[tuple[str, Installer], ...]:
-    """Resolve installers lazily after the NiceGUI compatibility shim is active."""
-
     from .allocation_service_ui import install_allocation_service_ui
     from .bugfixes import install_bugfixes
     from .communication_mail_clients_ui import install_communication_mail_clients_ui
@@ -160,16 +154,7 @@ def _validate_installer_order(installers: Iterable[tuple[str, Installer]]) -> No
 
 
 def install_runtime_features() -> RuntimeCompositionReport:
-    """Install the transitional V1 runtime in one explicit, audited order.
-
-    This function does not pretend the historical monkey-patches are already gone.
-    Instead it creates one composition root so future refactors can replace individual
-    legacy steps with explicit services/pages without modifying ``main.py`` or relying
-    on scattered import side effects.
-    """
-
-    # Must run before importing historical modules which may call global NiceGUI head/
-    # body helpers during their own installation.
+    """Install the transitional V1 runtime in one explicit, audited order."""
     from .v172_nicegui_compat import install_v172_nicegui_compat
 
     install_v172_nicegui_compat()
@@ -183,9 +168,8 @@ def install_runtime_features() -> RuntimeCompositionReport:
     return RuntimeCompositionReport(installed_steps=tuple(installed))
 
 
-def install_planning_engine(mode: object) -> str:
-    """Install the selected planning engine after all transitional feature installers."""
+def install_planning_engine() -> str:
+    """Install the sole authoritative pure engine after transitional installers."""
+    from .planning_cutover import install_planning_engine as install_authoritative_engine
 
-    from .planning_cutover import install_planning_cutover
-
-    return install_planning_cutover(mode)
+    return install_authoritative_engine()
