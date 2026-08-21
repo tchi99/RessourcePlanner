@@ -104,13 +104,14 @@ def _probe_command(host_path: Path) -> list[str]:
     """Return a deterministic command for the host self-test.
 
     For batch hosts, keep `call` and the batch path as separate argv entries. Passing a
-    single argument such as `call \"C:\\...\\host.bat\"` makes Python's Windows command
-    line encoder escape the inner quotes as backslash-quote. cmd.exe does not use
-    backslashes to escape quotes, so it tries to execute a command literally beginning
-    with `\"C:\\...` and reports that it is not recognized.
+    pre-quoted batch path makes Python's Windows command-line encoder add escaping that
+    cmd.exe interprets literally, which can turn the quote into part of the command name.
     """
     if os.name == "nt" and host_path.suffix.casefold() in {".bat", ".cmd"}:
-        comspec = str(os.environ.get("COMSPEC") or r"C:\Windows\System32\cmd.exe")
+        comspec = str(os.environ.get("COMSPEC") or "").strip()
+        if not comspec:
+            system_root = str(os.environ.get("SystemRoot") or "").strip()
+            comspec = str(Path(system_root) / "System32" / "cmd.exe") if system_root else "cmd.exe"
         return [comspec, "/d", "/c", "call", str(host_path)]
     return [str(host_path)]
 
