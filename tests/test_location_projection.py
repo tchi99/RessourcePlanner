@@ -4,6 +4,7 @@ import unittest
 
 from app.location_projection import (
     APPROVED_DEMAND_STATUS,
+    approved_backfill_updates,
     location_for_new_segment,
     location_label,
     project_allocation_locations,
@@ -62,6 +63,37 @@ class LocationProjectionTests(unittest.TestCase):
             result,
             {"SiteClient": "Usine approuvée", "Lieu": "Salle électrique"},
         )
+
+    def test_backfill_only_uses_currently_approved_demand(self) -> None:
+        segment = {"IDSegment": "SEG-1", "SiteClient": "", "Lieu": ""}
+        approved = {
+            "Statut": APPROVED_DEMAND_STATUS,
+            "SiteClient": "Usine A",
+            "Lieu": "Local 5",
+        }
+        pending = {
+            "Statut": "Soumise",
+            "SiteClient": "Usine B",
+            "Lieu": "Local 9",
+        }
+
+        self.assertEqual(
+            approved_backfill_updates(segment, approved),
+            {"SiteClient": "Usine A", "Lieu": "Local 5"},
+        )
+        self.assertEqual(approved_backfill_updates(segment, pending), {})
+
+    def test_backfill_does_not_replace_existing_segment_snapshot(self) -> None:
+        result = approved_backfill_updates(
+            {"SiteClient": "Site déjà projeté", "Lieu": ""},
+            {
+                "Statut": APPROVED_DEMAND_STATUS,
+                "SiteClient": "Autre site",
+                "Lieu": "Local 7",
+            },
+        )
+
+        self.assertEqual(result, {"Lieu": "Local 7"})
 
     def test_allocation_location_is_projected_only_from_segment_snapshot(self) -> None:
         rows = project_allocation_locations(
