@@ -5,6 +5,11 @@ import unittest
 
 
 class NiceGUIGlobalMutationTests(unittest.TestCase):
+    def _source(self, name: str) -> str:
+        return (Path(__file__).resolve().parents[1] / "app" / name).read_text(
+            encoding="utf-8"
+        )
+
     def _offenders(self, token: str) -> list[str]:
         app_dir = Path(__file__).resolve().parents[1] / "app"
         return [
@@ -17,43 +22,33 @@ class NiceGUIGlobalMutationTests(unittest.TestCase):
         offenders = sorted(
             set(self._offenders("ui.scroll_area =") + self._offenders("nicegui_ui.scroll_area ="))
         )
-        self.assertEqual(
-            offenders,
-            [],
-            "The operational renderer must use its module-local adapter instead of "
-            "replacing NiceGUI's global scroll_area factory.",
-        )
+        self.assertEqual(offenders, [])
 
-    def test_remaining_select_factory_mutations_are_explicit_debt(self) -> None:
+    def test_legacy_select_assignments_are_limited_and_scoped_before_render(self) -> None:
+        # The two historical renderers still use save/assign/restore syntax. They no
+        # longer point at process-wide nicegui.ui: v18_single_scroll installs a
+        # ContextVar-backed facade for both modules before any page is rendered.
         offenders = sorted(
             set(self._offenders("ui.select =") + self._offenders("nicegui_ui.select ="))
         )
-        self.assertEqual(
-            offenders,
-            [
-                "v16_refinements.py",
-                "v17_refinements.py",
-            ],
-            "Keep the known select-wrapper debt explicit. Future #15 tranches should "
-            "shrink this list; adding another global select mutation must fail CI.",
-        )
+        self.assertEqual(offenders, ["v16_refinements.py", "v17_refinements.py"])
 
-    def test_single_scroll_adapter_no_longer_wraps_planner_render(self) -> None:
-        path = Path(__file__).resolve().parents[1] / "app" / "v18_single_scroll.py"
-        source = path.read_text(encoding="utf-8")
+        setup = self._source("v18_single_scroll.py")
+        self.assertIn("ensure_scoped_ui(\n        v16,", setup)
+        self.assertIn("ensure_scoped_ui(\n        v17,", setup)
+        self.assertIn('scoped_factories=("select",)', setup)
 
-        self.assertIn("class _OperationalPlanningUI", source)
-        self.assertIn("v17.ui = _OperationalPlanningUI(current_ui)", source)
+    def test_single_scroll_uses_static_module_local_override(self) -> None:
+        source = self._source("v18_single_scroll.py")
+        self.assertIn('static_overrides={"scroll_area": _horizontal_container}', source)
         self.assertNotIn("original_scroll_area", source)
         self.assertNotIn("PlannerUI.render_planning =", source)
 
-    def test_segment_parent_navigation_uses_context_local_select_override(self) -> None:
-        path = Path(__file__).resolve().parents[1] / "app" / "v18_workflow_fixes.py"
-        source = path.read_text(encoding="utf-8")
-
-        self.assertIn("class _ContextualSelectUI", source)
-        self.assertIn("ContextVar", source)
-        self.assertIn("with current_ui.override_select(select_with_parent_link):", source)
+    def test_segment_parent_navigation_reuses_scoped_facade(self) -> None:
+        source = self._source("v18_workflow_fixes.py")
+        self.assertIn("ensure_scoped_ui(", source)
+        self.assertIn('with scoped_ui.override_factory("select", select_with_parent_link):', source)
+        self.assertNotIn("ContextVar", source)
         self.assertNotIn("ui.select =", source)
 
 
