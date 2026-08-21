@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+
 from nicegui import ui
 
 from . import communication_mail_clients_ui
@@ -15,6 +17,7 @@ from .thunderbird_install import (
     visible_folder_label,
 )
 from .thunderbird_native_diagnostics import repair_and_diagnose_native_host
+from .thunderbird_registry_install import packaged_python_environment, publish_registry_fix
 from .thunderbird_source_host import repair_source_host_launcher
 
 
@@ -45,6 +48,7 @@ def _thunderbird_setup_dialog(self) -> None:
                 timeout=14000,
             )
             return
+        registry_fix_path = publish_registry_fix(setup) if packaged_python_environment() else None
     except Exception as exc:
         ui.notify(str(exc), type="negative", timeout=9000)
         return
@@ -55,15 +59,47 @@ def _thunderbird_setup_dialog(self) -> None:
     with ui.dialog() as dialog, ui.card().classes("w-[720px] max-w-[95vw]"):
         ui.label("Configurer Thunderbird").classes("text-xl font-bold")
         ui.label(
-            "Le pont natif RessourcePlanner est enregistré pour ton compte Windows et une copie du fichier XPI a été préparée pour l'installation manuelle."
+            "Le programme local RessourcePlanner est prêt et une copie du fichier XPI a été préparée pour l'installation manuelle."
         ).classes("text-sm")
 
         with ui.card().classes("w-full border border-green-200 bg-green-50"):
-            ui.label("Pont natif Windows validé").classes("font-semibold text-green-900")
+            ui.label("Hôte natif local validé").classes("font-semibold text-green-900")
             registry_label = ", ".join(diagnostic.registry_views) or "registre utilisateur"
             ui.label(
-                f"Le manifeste, le programme du pont et son démarrage local ont été validés. Enregistrement : {registry_label}."
+                f"Le manifeste, le programme du pont et son démarrage local ont été validés. Écriture registre demandée : {registry_label}."
             ).classes("text-sm text-green-900")
+
+        if registry_fix_path is not None:
+            with ui.card().classes("w-full border border-amber-300 bg-amber-50"):
+                ui.label("Python Microsoft Store détecté — une étape registre est requise").classes(
+                    "font-semibold text-amber-900"
+                )
+                ui.label(
+                    "Cette version de Python s'exécute dans un package Windows. Ses écritures HKCU peuvent être virtualisées : "
+                    "RessourcePlanner les voit, mais Thunderbird peut répondre « No such native application ». "
+                    "Un fichier .reg a donc été préparé dans Téléchargements pour écrire la clé dans le registre Windows réellement visible par Thunderbird."
+                ).classes("text-sm text-amber-900")
+
+                def install_registry_fix() -> None:
+                    try:
+                        os.startfile(str(registry_fix_path))
+                        ui.notify(
+                            "Accepte l'importation dans l'Éditeur du Registre, puis ferme complètement et redémarre Thunderbird.",
+                            type="info",
+                            timeout=9000,
+                        )
+                    except OSError as exc:
+                        ui.notify(
+                            f"Impossible d'ouvrir le correctif registre ({type(exc).__name__}). Le fichier est dans Téléchargements.",
+                            type="negative",
+                            timeout=9000,
+                        )
+
+                ui.button(
+                    "Installer la clé registre Thunderbird",
+                    icon="settings",
+                    on_click=install_registry_fix,
+                ).props("unelevated no-caps color=warning")
 
         with ui.card().classes("w-full border border-blue-200 bg-blue-50"):
             ui.label("Installer / mettre à jour l'extension Thunderbird").classes("font-semibold text-blue-900")
