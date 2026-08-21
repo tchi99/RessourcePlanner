@@ -56,6 +56,7 @@ RUNTIME_COMPOSITION_MANIFEST: tuple[CompositionStep, ...] = (
     CompositionStep("demand_legacy_cleanup", "compatibility"),
     CompositionStep("planning_service_ui", "application"),
     CompositionStep("demand_service_ui", "application"),
+    CompositionStep("allocation_service_ui", "application"),
     CompositionStep("communication_ui", "communications"),
     CompositionStep("communication_obsolescence", "communications"),
     CompositionStep("communication_outlook", "communications"),
@@ -73,6 +74,7 @@ def composition_manifest() -> tuple[CompositionStep, ...]:
 def _runtime_installers() -> tuple[tuple[str, Installer], ...]:
     """Resolve installers lazily after the NiceGUI compatibility shim is active."""
 
+    from .allocation_service_ui import install_allocation_service_ui
     from .bugfixes import install_bugfixes
     from .communication_mail_clients_ui import install_communication_mail_clients_ui
     from .communication_obsolescence_ui import install_communication_obsolescence_guard
@@ -132,6 +134,7 @@ def _runtime_installers() -> tuple[tuple[str, Installer], ...]:
         ("demand_legacy_cleanup", install_demand_legacy_cleanup),
         ("planning_service_ui", install_planning_service_ui),
         ("demand_service_ui", install_demand_service_ui),
+        ("allocation_service_ui", install_allocation_service_ui),
         ("communication_ui", install_communication_ui),
         ("communication_obsolescence", install_communication_obsolescence_guard),
         ("communication_outlook", install_communication_outlook_ui),

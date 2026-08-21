@@ -5,6 +5,7 @@ FastAPI/Teams adapters later. Business rules remain in the domain/planning engin
 transport/UI concerns must not leak into this package.
 """
 
+from .allocation_service import AllocationService
 from .planning_service import PlanningService
 
-__all__ = ["PlanningService"]
+__all__ = ["AllocationService", "PlanningService"]
