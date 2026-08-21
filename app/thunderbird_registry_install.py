@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 
 from .thunderbird_bridge import NATIVE_HOST_NAME, ThunderbirdSetupResult
+from .thunderbird_shared_state import shared_bridge_directory
 
 
 REGISTRY_FIX_FILENAME = "RessourcePlanner-Thunderbird-Bridge-Registry.reg"
@@ -58,10 +59,9 @@ def prepare_registry_visible_bundle(
     process and may therefore be unable to resolve a manifest stored below the packaged
     LocalCache path even when RessourcePlanner itself can launch the host successfully.
 
-    The user's profile root is not the packaged LOCALAPPDATA location, so keep a small,
-    persistent native-messaging bundle under ``~/.ressourceplanner/ThunderbirdBridge``.
-    For source-mode .bat/.cmd hosts, copy the launcher there as well and point the staged
-    manifest at that copy. Packaged .exe hosts remain referenced in place.
+    Keep the manifest, source launcher and runtime queue in the same stable bridge
+    directory under the user's profile so RessourcePlanner and Thunderbird cannot split
+    across different LOCALAPPDATA views.
     """
     source_manifest = _source_manifest_path(setup)
     payload = json.loads(source_manifest.read_text(encoding="utf-8"))
@@ -71,7 +71,7 @@ def prepare_registry_visible_bundle(
     destination = (
         Path(bundle_directory)
         if bundle_directory is not None
-        else Path.home() / ".ressourceplanner" / "ThunderbirdBridge"
+        else shared_bridge_directory()
     )
     destination.mkdir(parents=True, exist_ok=True)
 
@@ -84,7 +84,8 @@ def prepare_registry_visible_bundle(
     staged_host = source_host
     if source_host.suffix.casefold() in {".bat", ".cmd"}:
         staged_host = destination / source_host.name
-        shutil.copy2(source_host, staged_host)
+        if source_host.resolve() != staged_host.resolve():
+            shutil.copy2(source_host, staged_host)
 
     payload["path"] = str(staged_host)
     staged_manifest = destination / f"{NATIVE_HOST_NAME}.json"
