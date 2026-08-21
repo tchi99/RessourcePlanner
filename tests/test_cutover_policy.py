@@ -70,7 +70,9 @@ class CutoverPolicyTests(unittest.TestCase):
 
         self.assertNotIn("legacy_rebuild", referenced_names)
         self.assertNotIn("rebuild_allocations_guarded", referenced_names)
-        self.assertIn("build_shadow_report", called_names)
+        self.assertIn("build_planning_snapshot", called_names)
+        self.assertIn("build_shadow_report_from_snapshot", called_names)
+        self.assertNotIn("build_shadow_report", called_names)
         self.assertIn("_write_allocations", called_attributes)
 
 
