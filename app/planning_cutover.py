@@ -4,7 +4,13 @@ from datetime import date, datetime
 from typing import Any, Callable
 
 from . import v13, v14, v14_engine, v14_fixes, v15, v15_engine, v15_refinements
-from .domain.cutover_policy import GUARDED_PURE_MODE, evaluate_cutover_gate, normalize_planning_engine_mode
+from .domain.cutover_policy import (
+    GUARDED_PURE_MODE,
+    PURE_MODE,
+    evaluate_cutover_gate,
+    normalize_planning_engine_mode,
+)
+from .domain.planning_engine import PlanResult
 from .excel_repository import ExcelRepository, _date_from_any
 from .planning_shadow import ShadowPlanReport, build_shadow_report
 
@@ -119,6 +125,62 @@ def _with_cutover_metadata(
     return result
 
 
+def _pure_result_summary(result: PlanResult) -> dict[str, Any]:
+    return {
+        "segments": result.segment_count,
+        "allocations": len([row for row in result.allocations if row.counts_as_allocated]),
+        "locked_allocations": result.locked_allocation_count,
+        "requested_hours": round(result.requested_hours, 2),
+        "allocated_hours": round(result.allocated_hours, 2),
+        "overtime_hours": round(result.overtime_hours, 2),
+        "unallocated_hours": round(result.unallocated_hours, 2),
+    }
+
+
+def rebuild_allocations_pure(repo: ExcelRepository) -> dict[str, Any]:
+    """Rebuild AllocationsMO directly from the pure planning engine.
+
+    Unlike ``guarded_pure``, this path never runs the historical planning rebuild.
+    The currently persisted allocation rows are kept only as a write-recovery snapshot;
+    they are not used as a legacy calculation checkpoint. Locked/manual allocations
+    remain inputs to the pure engine through ``build_shadow_report``'s snapshot adapter.
+    """
+    previous_rows = v15_engine.allocation_records(repo)
+    write_started = False
+
+    try:
+        report = build_shadow_report(repo)
+        if report.unsupported_segment_ids:
+            raise RuntimeError(
+                "Pure planning cannot rebuild while active segments are unsupported by the pure adapter."
+            )
+
+        pure_rows = _pure_persistence_rows(repo, report)
+        write_started = True
+        v15_engine._write_allocations(repo, pure_rows)
+    except Exception as exc:
+        if write_started:
+            try:
+                v15_engine._write_allocations(repo, previous_rows)
+            except Exception as restore_exc:
+                raise RuntimeError(
+                    "Pure planning rebuild failed and the previous allocation snapshot could not be restored."
+                ) from restore_exc
+        print(
+            "[planning-cutover] action=pure_error "
+            f"error_type={type(exc).__name__} restored={str(write_started).lower()}"
+        )
+        raise
+
+    result = report.shadow_result
+    print(
+        "[planning-cutover] action=pure_committed_direct "
+        f"segments={result.segment_count} "
+        f"allocations={len([row for row in result.allocations if row.counts_as_allocated])}"
+    )
+    return _with_cutover_metadata(_pure_result_summary(result), engine="pure")
+
+
 def rebuild_allocations_guarded(
     repo: ExcelRepository,
     legacy_rebuild: LegacyRebuild,
@@ -132,9 +194,8 @@ def rebuild_allocations_guarded(
     4. validate the persisted pure plan again;
     5. restore the legacy rows if pure persistence or validation fails.
 
-    During this transition the extra legacy write is intentional. It provides a
-    recoverable checkpoint until the pure engine has accumulated enough production
-    confidence to become authoritative directly.
+    ``guarded_pure`` is retained temporarily as a rollback/diagnostic mode while the
+    direct ``pure`` mode accumulates production confidence.
     """
     legacy_summary = legacy_rebuild(repo)
     legacy_rows = v15_engine.allocation_records(repo)
@@ -197,9 +258,32 @@ def rebuild_allocations_guarded(
     return _with_cutover_metadata(legacy_summary, engine="pure_guarded")
 
 
+def _install_rebuild_aliases(rebuild: Callable[[ExcelRepository], dict[str, Any]]) -> None:
+    """Keep historical compatibility entry points pointed at one authoritative rebuild."""
+    v15_refinements.rebuild_allocations_refined = rebuild
+    v15_engine.rebuild_allocations = rebuild
+    v14_engine.rebuild_allocations = rebuild
+    v14.rebuild_allocations = rebuild
+    v14_fixes.rebuild_allocations = rebuild
+    v15.rebuild_allocations = rebuild
+
+
 def install_planning_cutover(mode: object) -> str:
-    """Install the guarded runtime dispatcher after the historical installers."""
+    """Install the selected runtime dispatcher after the historical installers."""
     normalized = normalize_planning_engine_mode(mode)
+
+    if normalized == PURE_MODE:
+        if getattr(v15_refinements, "_pure_engine_direct_installed", False):
+            return normalized
+
+        def pure(repo: ExcelRepository) -> dict[str, Any]:
+            return rebuild_allocations_pure(repo)
+
+        _install_rebuild_aliases(pure)
+        v15_refinements._pure_engine_direct_installed = True
+        print("[planning-cutover] mode=pure installed")
+        return normalized
+
     if normalized != GUARDED_PURE_MODE:
         return normalized
     if getattr(v15_refinements, "_guarded_pure_cutover_installed", False):
@@ -210,18 +294,7 @@ def install_planning_cutover(mode: object) -> str:
     def guarded(repo: ExcelRepository) -> dict[str, Any]:
         return rebuild_allocations_guarded(repo, legacy_rebuild)
 
-    # v15_refinements functions resolve this module global at call time, including the
-    # approval and UI recalculate wrappers created during install_v15_refinements().
-    v15_refinements.rebuild_allocations_refined = guarded
-
-    # Keep the historical module aliases coherent for callers that use V1.4/V1.5
-    # compatibility entry points.
-    v15_engine.rebuild_allocations = guarded
-    v14_engine.rebuild_allocations = guarded
-    v14.rebuild_allocations = guarded
-    v14_fixes.rebuild_allocations = guarded
-    v15.rebuild_allocations = guarded
-
+    _install_rebuild_aliases(guarded)
     v15_refinements._guarded_pure_cutover_installed = True
     print("[planning-cutover] mode=guarded_pure installed")
     return normalized
