@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from datetime import date, datetime
 from typing import Any, Callable
 
@@ -13,6 +14,7 @@ from .domain.cutover_policy import (
 from .domain.planning_engine import PlanResult
 from .domain.planning_snapshot import PlanningSnapshot
 from .excel_repository import ExcelRepository, _date_from_any
+from .performance_diagnostics import PerformanceSample, append_performance_sample
 from .planning_shadow import (
     ShadowPlanReport,
     build_planning_snapshot,
@@ -139,35 +141,118 @@ def _pure_result_summary(result: PlanResult) -> dict[str, Any]:
     }
 
 
+def _repo_performance_snapshot(repo: ExcelRepository) -> dict[str, Any]:
+    method = getattr(repo, "performance_snapshot", None)
+    if not callable(method):
+        return {}
+    try:
+        value = method()
+    except Exception:
+        return {}
+    return dict(value) if isinstance(value, dict) else {}
+
+
+def _save_metrics_delta(
+    before: dict[str, Any],
+    after: dict[str, Any],
+) -> tuple[int, float]:
+    before_count = int(before.get("actual_save_count") or 0)
+    after_count = int(after.get("actual_save_count") or 0)
+    saves = max(after_count - before_count, 0)
+    if saves <= 0:
+        return 0, 0.0
+    return saves, max(float(after.get("last_save_seconds") or 0.0), 0.0)
+
+
+def _publish_planning_performance(repo: ExcelRepository, sample: PerformanceSample) -> dict[str, Any]:
+    data = sample.to_dict()
+    repo._last_planning_performance = dict(data)
+    append_performance_sample(sample)
+    print(
+        "[performance] operation=planning_rebuild "
+        f"status={data['status']} total={data['total_seconds']:.3f}s "
+        f"read={data['read_seconds']:.3f}s compute={data['compute_seconds']:.3f}s "
+        f"convert={data['convert_seconds']:.3f}s write={data['write_seconds']:.3f}s "
+        f"save={data['save_seconds']:.3f}s"
+    )
+    return data
+
+
 def rebuild_allocations_pure(repo: ExcelRepository) -> dict[str, Any]:
     """Rebuild AllocationsMO directly from one snapshot and the pure planning engine.
 
-    The workbook-backed planning inputs are captured once.  Calculation, diagnostics,
+    The workbook-backed planning inputs are captured once. Calculation, diagnostics,
     locked-allocation preservation, result conversion and write recovery all reuse that
-    same snapshot.  The historical engine is never executed in this path.
+    same snapshot. The historical engine is never executed in this path.
+
+    Performance timings are technical-only and split into read / compute / convert /
+    write / save phases so Excel/COM cost can be distinguished from pure Python cost.
     """
-    snapshot = build_planning_snapshot(repo)
-    previous_rows = [dict(row) for row in snapshot.allocations]
+    operation_started = time.perf_counter()
+    read_seconds = 0.0
+    compute_seconds = 0.0
+    convert_seconds = 0.0
+    write_total_seconds = 0.0
+    save_seconds = 0.0
+    save_count = 0
+    snapshot: PlanningSnapshot | None = None
+    pure_rows: list[dict[str, Any]] = []
     write_started = False
+    save_before = _repo_performance_snapshot(repo)
 
     try:
+        phase_started = time.perf_counter()
+        snapshot = build_planning_snapshot(repo)
+        read_seconds = time.perf_counter() - phase_started
+        previous_rows = [dict(row) for row in snapshot.allocations]
+
+        phase_started = time.perf_counter()
         report = build_shadow_report_from_snapshot(snapshot)
+        compute_seconds = time.perf_counter() - phase_started
         if report.unsupported_segment_ids:
             raise RuntimeError(
                 "Pure planning cannot rebuild while active segments are unsupported by the pure adapter."
             )
 
+        phase_started = time.perf_counter()
         pure_rows = _pure_persistence_rows(snapshot, report)
+        convert_seconds = time.perf_counter() - phase_started
+
+        phase_started = time.perf_counter()
         write_started = True
         v15_engine._write_allocations(repo, pure_rows)
+        write_total_seconds = time.perf_counter() - phase_started
+        save_after = _repo_performance_snapshot(repo)
+        save_count, save_seconds = _save_metrics_delta(save_before, save_after)
     except Exception as exc:
-        if write_started:
+        if write_started and snapshot is not None:
             try:
-                v15_engine._write_allocations(repo, previous_rows)
+                v15_engine._write_allocations(repo, [dict(row) for row in snapshot.allocations])
             except Exception as restore_exc:
                 raise RuntimeError(
                     "Pure planning rebuild failed and the previous allocation snapshot could not be restored."
                 ) from restore_exc
+
+        sample = PerformanceSample(
+            operation="planning_rebuild",
+            status="error",
+            total_seconds=time.perf_counter() - operation_started,
+            read_seconds=read_seconds,
+            compute_seconds=compute_seconds,
+            convert_seconds=convert_seconds,
+            write_seconds=max(write_total_seconds - save_seconds, 0.0),
+            save_seconds=save_seconds,
+            sheet_reads=5 if snapshot is not None else 0,
+            range_reads=5 if snapshot is not None else 0,
+            range_writes=(2 if pure_rows else 1) if write_started else 0,
+            saves=save_count,
+            segment_count=len(snapshot.segments) if snapshot is not None else 0,
+            allocation_input_count=len(snapshot.allocations) if snapshot is not None else 0,
+            allocation_output_count=len(pure_rows),
+            engine="pure",
+            error_type=type(exc).__name__,
+        )
+        _publish_planning_performance(repo, sample)
         print(
             "[planning-cutover] action=pure_error "
             f"error_type={type(exc).__name__} restored={str(write_started).lower()}"
@@ -175,12 +260,34 @@ def rebuild_allocations_pure(repo: ExcelRepository) -> dict[str, Any]:
         raise
 
     result = report.shadow_result
+    sample = PerformanceSample(
+        operation="planning_rebuild",
+        status="success",
+        total_seconds=time.perf_counter() - operation_started,
+        read_seconds=read_seconds,
+        compute_seconds=compute_seconds,
+        convert_seconds=convert_seconds,
+        write_seconds=max(write_total_seconds - save_seconds, 0.0),
+        save_seconds=save_seconds,
+        sheet_reads=5,
+        range_reads=5,
+        range_writes=2 if pure_rows else 1,
+        saves=save_count,
+        segment_count=result.segment_count,
+        allocation_input_count=len(snapshot.allocations),
+        allocation_output_count=len(pure_rows),
+        engine="pure",
+    )
+    performance = _publish_planning_performance(repo, sample)
+
     print(
         "[planning-cutover] action=pure_committed_direct "
         f"segments={result.segment_count} "
         f"allocations={len([row for row in result.allocations if row.counts_as_allocated])}"
     )
-    return _with_cutover_metadata(_pure_result_summary(result), engine="pure")
+    summary = _with_cutover_metadata(_pure_result_summary(result), engine="pure")
+    summary["performance"] = performance
+    return summary
 
 
 def rebuild_allocations_guarded(
@@ -190,7 +297,7 @@ def rebuild_allocations_guarded(
     """Perform a reversible guarded cutover from the legacy refined engine.
 
     ``guarded_pure`` is retained temporarily as a rollback/diagnostic mode while the
-    direct ``pure`` mode accumulates production confidence.  Even in this transitional
+    direct ``pure`` mode accumulates production confidence. Even in this transitional
     mode, each comparison/persistence phase now reuses its own captured snapshot.
     """
     legacy_summary = legacy_rebuild(repo)
