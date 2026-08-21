@@ -16,6 +16,10 @@ class RuntimeCompositionTests(unittest.TestCase):
         self.assertEqual(names[0], "nicegui_compat")
         self.assertEqual(names[-1], "thunderbird_setup")
         self.assertLess(names.index("runtime_optimizations"), names.index("features"))
+        self.assertLess(names.index("v18_features"), names.index("effort_identity_guard"))
+        self.assertLess(names.index("effort_identity_guard"), names.index("v18_refinements"))
+        self.assertLess(names.index("v18_refinements"), names.index("operational_planning_compat"))
+        self.assertLess(names.index("operational_planning_compat"), names.index("v18_workflow_fixes"))
         self.assertLess(names.index("v18_workflow_fixes"), names.index("location_projection"))
         self.assertLess(names.index("location_projection"), names.index("demand_legacy_cleanup"))
         self.assertLess(names.index("v18_workflow_fixes"), names.index("planning_service_ui"))
@@ -32,6 +36,11 @@ class RuntimeCompositionTests(unittest.TestCase):
 
         self.assertIn("v13_features", legacy)
         self.assertIn("v18_workflow_fixes", legacy)
+        self.assertNotIn("v18_fixes", legacy)
+        self.assertNotIn("v18_single_scroll", legacy)
+        self.assertNotIn("v18_calendar_sizing", legacy)
+        self.assertIn("effort_identity_guard", compatibility)
+        self.assertIn("operational_planning_compat", compatibility)
         self.assertIn("location_projection", compatibility)
         self.assertEqual(
             application,
@@ -52,6 +61,11 @@ class RuntimeCompositionTests(unittest.TestCase):
                 "thunderbird_setup",
             ],
         )
+
+    def test_retired_versioned_compatibility_modules_are_physically_removed(self) -> None:
+        app_dir = Path(__file__).resolve().parents[1] / "app"
+        for name in ("v18_fixes.py", "v18_single_scroll.py", "v18_calendar_sizing.py"):
+            self.assertFalse((app_dir / name).exists(), name)
 
     def test_main_is_only_a_composition_root_consumer(self) -> None:
         source = (Path(__file__).resolve().parents[1] / "main.py").read_text(encoding="utf-8")
