@@ -5,7 +5,9 @@ from dataclasses import dataclass
 
 LEGACY_MODE = "legacy"
 GUARDED_PURE_MODE = "guarded_pure"
-SUPPORTED_MODES = {LEGACY_MODE, GUARDED_PURE_MODE}
+PURE_MODE = "pure"
+DEFAULT_MODE = PURE_MODE
+SUPPORTED_MODES = {LEGACY_MODE, GUARDED_PURE_MODE, PURE_MODE}
 
 
 @dataclass(frozen=True)
@@ -15,7 +17,15 @@ class CutoverGateDecision:
 
 
 def normalize_planning_engine_mode(value: object) -> str:
-    mode = str(value or LEGACY_MODE).strip().lower()
+    """Normalize the local planning-engine mode.
+
+    New installations now default to the authoritative pure engine. An explicitly
+    unknown value still falls back to legacy so a typo cannot silently select a new
+    runtime path on an existing workstation.
+    """
+    if value is None or not str(value).strip():
+        return DEFAULT_MODE
+    mode = str(value).strip().lower()
     return mode if mode in SUPPORTED_MODES else LEGACY_MODE
 
 
