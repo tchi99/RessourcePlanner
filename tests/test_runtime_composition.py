@@ -26,18 +26,10 @@ class RuntimeCompositionTests(unittest.TestCase):
 
     def test_manifest_makes_transitional_legacy_steps_visible(self) -> None:
         legacy = [step.name for step in composition_manifest() if step.category == "legacy"]
-        application = [
-            step.name for step in composition_manifest() if step.category == "application"
-        ]
-        compatibility = [
-            step.name for step in composition_manifest() if step.category == "compatibility"
-        ]
-        communications = [
-            step.name for step in composition_manifest() if step.category == "communications"
-        ]
+        application = [step.name for step in composition_manifest() if step.category == "application"]
+        compatibility = [step.name for step in composition_manifest() if step.category == "compatibility"]
+        communications = [step.name for step in composition_manifest() if step.category == "communications"]
 
-        # These assertions intentionally inventory technical debt. Future #15 tranches
-        # should make this list smaller as explicit services/pages replace installers.
         self.assertIn("v13_features", legacy)
         self.assertIn("v18_workflow_fixes", legacy)
         self.assertIn("location_projection", compatibility)
@@ -65,7 +57,8 @@ class RuntimeCompositionTests(unittest.TestCase):
         source = (Path(__file__).resolve().parents[1] / "main.py").read_text(encoding="utf-8")
 
         self.assertIn("install_runtime_features()", source)
-        self.assertIn("install_planning_engine(config.planning_engine_mode)", source)
+        self.assertIn("install_planning_engine()", source)
+        self.assertNotIn("planning_engine_mode", source)
         for historical_prefix in (
             "install_v13_",
             "install_v14_",
@@ -77,18 +70,18 @@ class RuntimeCompositionTests(unittest.TestCase):
             self.assertNotIn(historical_prefix, source)
 
     def test_planning_service_ui_binding_routes_recalculate_through_service(self) -> None:
-        source = (
-            Path(__file__).resolve().parents[1] / "app" / "planning_service_ui.py"
-        ).read_text(encoding="utf-8")
+        source = (Path(__file__).resolve().parents[1] / "app" / "planning_service_ui.py").read_text(
+            encoding="utf-8"
+        )
 
         self.assertIn("planning_service(self.repo).rebuild()", source)
         self.assertIn("v15_refinements._recalculate = _recalculate_via_service", source)
         self.assertNotIn("rebuild_allocations_refined(self.repo)", source)
 
     def test_allocation_service_binding_owns_operational_mutation_entry_points(self) -> None:
-        source = (
-            Path(__file__).resolve().parents[1] / "app" / "allocation_service_ui.py"
-        ).read_text(encoding="utf-8")
+        source = (Path(__file__).resolve().parents[1] / "app" / "allocation_service_ui.py").read_text(
+            encoding="utf-8"
+        )
 
         self.assertIn("AllocationService(", source)
         self.assertIn("v15_engine.create_manual_allocation = _create_manual_via_service", source)
@@ -98,17 +91,18 @@ class RuntimeCompositionTests(unittest.TestCase):
         self.assertIn("v16._assign_segment = _assign_segment_via_service", source)
 
     def test_pure_validation_binding_records_authoritative_engine_cycles(self) -> None:
-        source = (
-            Path(__file__).resolve().parents[1] / "app" / "pure_validation_ui.py"
-        ).read_text(encoding="utf-8")
+        source = (Path(__file__).resolve().parents[1] / "app" / "pure_validation_ui.py").read_text(
+            encoding="utf-8"
+        )
 
         self.assertIn("record_pure_cycle(data)", source)
         self.assertIn(
             "planning_cutover._publish_planning_performance = publish_with_validation",
             source,
         )
-        self.assertIn("save_planning_engine_mode(mode)", source)
-        self.assertIn("Activer le moteur pur au prochain redémarrage", source)
+        self.assertIn("moteur autoritaire unique", source)
+        self.assertNotIn("guarded_pure", source)
+        self.assertNotIn("save_planning_engine_mode", source)
 
 
 if __name__ == "__main__":

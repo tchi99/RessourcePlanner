@@ -5,8 +5,6 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-from .domain.cutover_policy import PURE_MODE, normalize_planning_engine_mode
-
 
 def _runtime_base_dir() -> Path:
     """Directory used for local per-installation files.
@@ -32,7 +30,6 @@ class AppConfig:
     save_on_write: bool = True
     host: str = "127.0.0.1"
     port: int = 8080
-    planning_engine_mode: str = PURE_MODE
 
 
 def _resolve_workbook(value: str | None) -> Path | None:
@@ -63,11 +60,14 @@ def _write_raw_config(raw: dict[str, object]) -> None:
 
 def _with_config_defaults(raw: dict[str, object]) -> dict[str, object]:
     result = dict(raw)
+    # V1.8B completed the pure-engine cutover. Old local files can still contain this
+    # key; remove it the next time configuration is saved because it no longer selects
+    # any runtime path.
+    result.pop("planning_engine_mode", None)
     result.setdefault("refresh_seconds", 3)
     result.setdefault("save_on_write", True)
     result.setdefault("host", "127.0.0.1")
     result.setdefault("port", 8080)
-    result.setdefault("planning_engine_mode", PURE_MODE)
     return result
 
 
@@ -79,7 +79,6 @@ def load_config() -> AppConfig:
         save_on_write=bool(raw.get("save_on_write", True)),
         host=str(raw.get("host", "127.0.0.1")),
         port=int(raw.get("port", 8080)),
-        planning_engine_mode=normalize_planning_engine_mode(raw.get("planning_engine_mode")),
     )
 
 
@@ -87,17 +86,3 @@ def save_workbook_path(path: str | Path | None) -> None:
     raw = _with_config_defaults(_load_raw_config())
     raw["workbook"] = "" if path is None else str(Path(path))
     _write_raw_config(raw)
-
-
-def save_planning_engine_mode(mode: object) -> str:
-    """Persist an explicit engine choice for the next application start.
-
-    Existing installations are intentionally never migrated silently from
-    ``guarded_pure``/``legacy`` to ``pure``. The V1.8B production cutover remains an
-    explicit operator decision while rollback modes still exist.
-    """
-    normalized = normalize_planning_engine_mode(mode)
-    raw = _with_config_defaults(_load_raw_config())
-    raw["planning_engine_mode"] = normalized
-    _write_raw_config(raw)
-    return normalized

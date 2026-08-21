@@ -7,10 +7,9 @@ from nicegui import native, ui
 
 from app.runtime_composition import install_planning_engine, install_runtime_features
 
-# V1 still contains historical compatibility installers. They are now composed from
-# one explicit application root instead of being scattered through this entry point.
-# The composition root activates the NiceGUI compatibility shim before importing the
-# historical feature modules and preserves the validated V1.8 installer order.
+# V1 still contains historical compatibility installers. They are composed from one
+# explicit application root so their order remains visible while the architecture is
+# progressively consolidated.
 install_runtime_features()
 
 from app.config import load_config
@@ -20,10 +19,9 @@ from app.ui import PlannerUI
 
 def main() -> None:
     config = load_config()
-    # Planning-engine selection intentionally remains the final runtime composition
-    # step so the authoritative pure dispatcher cannot be overwritten by a legacy
-    # compatibility installer.
-    install_planning_engine(config.planning_engine_mode)
+    # V1.8B is complete: the pure planning engine is the sole authoritative runtime.
+    # It is installed last so no historical compatibility installer can overwrite it.
+    install_planning_engine()
     repo = ExcelRepository(config.workbook, save_on_write=config.save_on_write)
     packaged = bool(getattr(sys, "frozen", False))
 
@@ -44,7 +42,5 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    # Required by NiceGUI/PyInstaller native mode so spawned native-window processes
-    # do not restart the complete application recursively.
     freeze_support()
     main()
