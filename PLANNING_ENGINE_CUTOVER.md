@@ -14,6 +14,12 @@ Valeurs supportées :
 
 Une valeur explicitement inconnue retombe sur `legacy` par sécurité. Une configuration absente ou vide utilise `pure`.
 
+## Activation explicite sur une installation existante
+
+La page **Paramètres** affiche maintenant le mode moteur actif et le mode configuré. Une installation existante en `guarded_pure` ou `legacy` n'est jamais migrée silencieusement : utiliser **Activer le moteur pur au prochain redémarrage**, puis redémarrer RessourcePlanner.
+
+La même carte conserve temporairement `guarded_pure` et `legacy` dans une section **Rollback diagnostic temporaire**. Ces choix prennent eux aussi effet au redémarrage suivant.
+
 ## Séquence du mode `pure`
 
 1. Lecture des segments, demandes, disponibilités et allocations verrouillées nécessaires au snapshot.
@@ -26,6 +32,21 @@ Une valeur explicitement inconnue retombe sur `legacy` par sécurité. Une confi
 Le snapshot précédent sert uniquement à récupérer d'une erreur d'écriture. **Le moteur historique n'est pas exécuté dans le chemin `pure`.**
 
 Les allocations manuelles/verrouillées restent des entrées prioritaires du moteur pur, conformément aux règles déjà validées en shadow testing.
+
+## Journal technique de validation terrain
+
+Chaque rebuild direct réellement exécuté en mode `pure` alimente localement `planning_pure_validation.json`. Ce fichier est ignoré par Git et ne contient que des données techniques :
+
+- nombre de cycles `pure` réussis et en erreur;
+- nombre de succès consécutifs;
+- horodatage du premier/dernier succès et de la dernière erreur;
+- durée du dernier cycle;
+- nombre de segments et de lignes d'allocation produites;
+- type technique de la dernière erreur, le cas échéant.
+
+Aucun nom de projet, technicien, demande, localisation, chemin de classeur ou contenu métier n'est enregistré. La carte **Paramètres** affiche ces compteurs.
+
+Ce journal prouve uniquement que le chemin `pure` autoritaire a réellement tourné. Il ne remplace pas la validation fonctionnelle demandée dans #56 : approbation, réapprobation, annulation, déplacement/verrouillage manuel, fixe/flexible, tentative/confirmé, hors horaire et manque de capacité.
 
 ## Mode `guarded_pure` conservé temporairement
 
@@ -43,13 +64,15 @@ Ce mode reste disponible pendant la courte période de validation réelle du mot
 
 ## Retour arrière temporaire
 
-Pour revenir au moteur historique :
+Le moyen recommandé pendant la validation est la section **Rollback diagnostic temporaire** dans Paramètres.
+
+Il reste aussi possible de modifier manuellement `app_config.json` :
 
 ```json
 "planning_engine_mode": "legacy"
 ```
 
-ou, pour réactiver la comparaison double pendant un diagnostic :
+ou :
 
 ```json
 "planning_engine_mode": "guarded_pure"
@@ -59,7 +82,7 @@ Redémarrer ensuite l'application. Aucun changement de schéma Excel n'est intro
 
 ## Étape suivante
 
-Après plusieurs cycles réels en `pure` sans retour arrière :
+Après plusieurs cycles réels en `pure` sans retour arrière et après validation des scénarios métier de #56 :
 
 - supprimer le moteur historique de production;
 - supprimer `guarded_pure` et la logique de double calcul/checkpoint;
