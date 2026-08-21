@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date, timedelta
-from typing import Any
+from typing import Any, Sequence
 
 from .domain.availability_rules import (
     availability_hours_for_day,
@@ -24,6 +24,7 @@ from .domain.planning_engine import (
     SegmentInput,
     build_allocation_plan,
 )
+from .domain.planning_snapshot import PlanningSnapshot
 from .excel_repository import ExcelRepository, _date_from_any
 
 
@@ -35,7 +36,7 @@ SEGMENT_OVERTIME_FIELD = "HorsHoraireAutorise"
 
 @dataclass(frozen=True)
 class ShadowPlanReport:
-    """Comparison between persisted legacy allocations and the pure engine."""
+    """Comparison between persisted allocations and the pure engine."""
 
     comparison: PlanComparison
     shadow_result: PlanResult
@@ -67,7 +68,30 @@ def _records(repo: ExcelRepository, sheet: str, expected_header: str) -> list[di
         return []
 
 
-def _demand_lookup(rows: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+def build_planning_snapshot(repo: ExcelRepository) -> PlanningSnapshot:
+    """Capture all planning inputs once for one logical calculation.
+
+    Every workbook-backed source needed by the current pure adapter is read under one
+    repository lock.  The resulting snapshot is then reused by calculation,
+    diagnostics and persistence so those phases do not re-read Excel.
+    """
+    with repo._lock:
+        segment_rows = _records(repo, "SegmentsMO", "IDSegment")
+        demand_rows = _records(repo, "DemandesMO", "NoDemande")
+        allocation_rows = _records(repo, "AllocationsMO", "IDAllocation")
+        availability_rows = _records(repo, "Disponibilites", "ID")
+        technician_rows = repo.technicians()
+
+    return PlanningSnapshot.capture(
+        segments=segment_rows,
+        demands=demand_rows,
+        allocations=allocation_rows,
+        availability=availability_rows,
+        technicians=technician_rows,
+    )
+
+
+def _demand_lookup(rows: Sequence[dict[str, Any]]) -> dict[str, dict[str, Any]]:
     return {
         str(row.get("NoDemande") or ""): row
         for row in rows
@@ -89,10 +113,10 @@ def _plan_type(row: dict[str, Any]) -> str:
 
 
 def _schedulable_resource_ids(
-    repo: ExcelRepository,
-    availability_rows: list[dict[str, Any]],
+    technician_rows: Sequence[dict[str, Any]],
+    availability_rows: Sequence[dict[str, Any]],
 ) -> set[str]:
-    configured = {str(row.get("name") or "").strip() for row in repo.technicians()}
+    configured = {str(row.get("name") or "").strip() for row in technician_rows}
     return {
         resource_id
         for resource_id in configured
@@ -101,8 +125,8 @@ def _schedulable_resource_ids(
 
 
 def _segment_inputs(
-    segment_rows: list[dict[str, Any]],
-    demand_rows: list[dict[str, Any]],
+    segment_rows: Sequence[dict[str, Any]],
+    demand_rows: Sequence[dict[str, Any]],
     schedulable: set[str],
 ) -> tuple[list[SegmentInput], tuple[str, ...]]:
     demands = _demand_lookup(demand_rows)
@@ -141,7 +165,7 @@ def _segment_inputs(
     return inputs, tuple(sorted(set(unsupported)))
 
 
-def _locked_inputs(allocation_rows: list[dict[str, Any]]) -> list[LockedAllocationInput]:
+def _locked_inputs(allocation_rows: Sequence[dict[str, Any]]) -> list[LockedAllocationInput]:
     result: list[LockedAllocationInput] = []
     for row in allocation_rows:
         if not _truthy(row.get("Verrouillee")):
@@ -165,8 +189,8 @@ def _locked_inputs(allocation_rows: list[dict[str, Any]]) -> list[LockedAllocati
 
 
 def _capacity_snapshot(
-    availability_rows: list[dict[str, Any]],
-    segments: list[SegmentInput],
+    availability_rows: Sequence[dict[str, Any]],
+    segments: Sequence[SegmentInput],
 ) -> dict[tuple[str, date], float]:
     """Evaluate each resource/day once from one in-memory availability snapshot."""
     result: dict[tuple[str, date], float] = {}
@@ -185,8 +209,8 @@ def _capacity_snapshot(
 
 
 def _outside_schedule_eligibility_snapshot(
-    availability_rows: list[dict[str, Any]],
-    segments: list[SegmentInput],
+    availability_rows: Sequence[dict[str, Any]],
+    segments: Sequence[SegmentInput],
 ) -> dict[tuple[str, date], bool]:
     result: dict[tuple[str, date], bool] = {}
     for segment in segments:
@@ -204,7 +228,7 @@ def _outside_schedule_eligibility_snapshot(
 
 
 def _legacy_projection(
-    allocation_rows: list[dict[str, Any]],
+    allocation_rows: Sequence[dict[str, Any]],
     included_segment_ids: set[str],
 ) -> list[AllocationProjection]:
     result: list[AllocationProjection] = []
@@ -250,25 +274,14 @@ def _shadow_projection(result: PlanResult) -> list[AllocationProjection]:
     ]
 
 
-def build_shadow_report(repo: ExcelRepository) -> ShadowPlanReport:
-    """Compare persisted refined allocations to the pure engine without rebuilding them.
-
-    The adapter takes one snapshot of each relevant worksheet, computes standard
-    capacity and outside-schedule eligibility in memory, and never calls a planning
-    write/save or the historical rebuild.
-    """
-    with repo._lock:
-        segment_rows = _records(repo, "SegmentsMO", "IDSegment")
-        allocation_rows = _records(repo, "AllocationsMO", "IDAllocation")
-        demand_rows = _records(repo, "DemandesMO", "NoDemande")
-        availability_rows = _records(repo, "Disponibilites", "ID")
-        schedulable = _schedulable_resource_ids(repo, availability_rows)
-
-    segments, unsupported = _segment_inputs(segment_rows, demand_rows, schedulable)
-    locked = _locked_inputs(allocation_rows)
-    capacities = _capacity_snapshot(availability_rows, segments)
+def build_shadow_report_from_snapshot(snapshot: PlanningSnapshot) -> ShadowPlanReport:
+    """Calculate the pure plan and comparison entirely from one captured snapshot."""
+    schedulable = _schedulable_resource_ids(snapshot.technicians, snapshot.availability)
+    segments, unsupported = _segment_inputs(snapshot.segments, snapshot.demands, schedulable)
+    locked = _locked_inputs(snapshot.allocations)
+    capacities = _capacity_snapshot(snapshot.availability, segments)
     outside_schedule_eligible = _outside_schedule_eligibility_snapshot(
-        availability_rows,
+        snapshot.availability,
         segments,
     )
     shadow_result = build_allocation_plan(
@@ -279,7 +292,7 @@ def build_shadow_report(repo: ExcelRepository) -> ShadowPlanReport:
     )
     included_ids = {segment.segment_id for segment in segments}
     comparison = compare_allocation_plans(
-        _legacy_projection(allocation_rows, included_ids),
+        _legacy_projection(snapshot.allocations, included_ids),
         _shadow_projection(shadow_result),
     )
     allocation_bounds = summarize_segment_allocation_bounds(
@@ -292,3 +305,8 @@ def build_shadow_report(repo: ExcelRepository) -> ShadowPlanReport:
         allocation_bounds=allocation_bounds,
         unsupported_segment_ids=unsupported,
     )
+
+
+def build_shadow_report(repo: ExcelRepository) -> ShadowPlanReport:
+    """Backward-compatible repository adapter for diagnostics and guarded cutover."""
+    return build_shadow_report_from_snapshot(build_planning_snapshot(repo))
