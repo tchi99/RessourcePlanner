@@ -322,7 +322,6 @@ class DemandServiceTests(unittest.TestCase):
         legacy_paths = [
             root / "app" / "v15.py",
             root / "app" / "v15_refinements.py",
-            root / "app" / "v18_workflow_fixes.py",
         ]
         legacy_hits = {
             path.name: "ExcelRepository.approve_demand" in path.read_text(encoding="utf-8")
@@ -333,9 +332,11 @@ class DemandServiceTests(unittest.TestCase):
             {
                 "v15.py": True,
                 "v15_refinements.py": True,
-                "v18_workflow_fixes.py": False,
             },
         )
+        for filename in ("resource_class_compat.py", "segment_navigation_compat.py"):
+            source = (root / "app" / filename).read_text(encoding="utf-8")
+            self.assertNotIn("ExcelRepository.approve_demand", source)
         service_ui = (root / "app" / "demand_service_ui.py").read_text(encoding="utf-8")
         self.assertNotIn("approve_demand", service_ui)
 

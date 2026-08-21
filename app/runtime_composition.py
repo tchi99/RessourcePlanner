@@ -46,11 +46,11 @@ RUNTIME_COMPOSITION_MANIFEST: tuple[CompositionStep, ...] = (
     CompositionStep("v171_performance", "legacy"),
     CompositionStep("v171_local_preferences", "legacy"),
     CompositionStep("v18_features", "legacy"),
-    CompositionStep("v18_fixes", "legacy"),
+    CompositionStep("effort_identity_guard", "compatibility"),
     CompositionStep("v18_refinements", "legacy"),
-    CompositionStep("v18_single_scroll", "legacy"),
-    CompositionStep("v18_calendar_sizing", "legacy"),
-    CompositionStep("v18_workflow_fixes", "legacy"),
+    CompositionStep("operational_planning_compat", "compatibility"),
+    CompositionStep("resource_class_compat", "compatibility"),
+    CompositionStep("segment_navigation_compat", "compatibility"),
     CompositionStep("location_projection", "compatibility"),
     CompositionStep("demand_legacy_cleanup", "compatibility"),
     CompositionStep("planning_service_ui", "application"),
@@ -79,11 +79,15 @@ def _runtime_installers() -> tuple[tuple[str, Installer], ...]:
     from .communication_ui import install_communication_ui
     from .demand_legacy_cleanup import install_demand_legacy_cleanup
     from .demand_service_ui import install_demand_service_ui
+    from .effort_identity_guard import install_effort_identity_guard
     from .features import install_features
     from .features_runtime import apply_runtime_optimizations
     from .location_projection import install_location_projection
+    from .operational_planning_compat import install_operational_planning_compat
     from .planning_service_ui import install_planning_service_ui
     from .pure_validation_ui import install_pure_validation_ui
+    from .resource_class_compat import install_resource_class_compat
+    from .segment_navigation_compat import install_segment_navigation_compat
     from .v13 import install_v13_features
     from .v13_fixes import install_v13_fixes
     from .v14 import install_v14_features
@@ -99,11 +103,7 @@ def _runtime_installers() -> tuple[tuple[str, Installer], ...]:
     from .v171_local_preferences import install_v171_local_preferences
     from .v171_performance import install_v171_performance
     from .v18 import install_v18_features
-    from .v18_calendar_sizing import install_v18_calendar_sizing
-    from .v18_fixes import install_v18_fixes
     from .v18_refinements import install_v18_refinements
-    from .v18_single_scroll import install_v18_single_scroll
-    from .v18_workflow_fixes import install_v18_workflow_fixes
 
     return (
         ("runtime_optimizations", apply_runtime_optimizations),
@@ -124,11 +124,11 @@ def _runtime_installers() -> tuple[tuple[str, Installer], ...]:
         ("v171_performance", install_v171_performance),
         ("v171_local_preferences", install_v171_local_preferences),
         ("v18_features", install_v18_features),
-        ("v18_fixes", install_v18_fixes),
+        ("effort_identity_guard", install_effort_identity_guard),
         ("v18_refinements", install_v18_refinements),
-        ("v18_single_scroll", install_v18_single_scroll),
-        ("v18_calendar_sizing", install_v18_calendar_sizing),
-        ("v18_workflow_fixes", install_v18_workflow_fixes),
+        ("operational_planning_compat", install_operational_planning_compat),
+        ("resource_class_compat", install_resource_class_compat),
+        ("segment_navigation_compat", install_segment_navigation_compat),
         ("location_projection", install_location_projection),
         ("demand_legacy_cleanup", install_demand_legacy_cleanup),
         ("planning_service_ui", install_planning_service_ui),

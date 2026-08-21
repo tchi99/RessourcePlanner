@@ -4,31 +4,8 @@ from typing import Any
 
 from nicegui import ui
 
-from . import v13, v14, v15_refinements, v16
+from . import v13, v14, v15_refinements
 from .ui_context import ensure_scoped_ui
-
-
-def _install_skill_class_precedence() -> None:
-    """Prefer an explicit installation label over the generic automation keyword.
-
-    Configuration values such as ``Installation automatisation`` contain both
-    ``installation`` and ``automatis...``. The original classifier checked the
-    automation keyword first and therefore mapped those skills to Programmation.
-    An explicit installation wording is more specific and must win.
-    """
-    if getattr(v16, "_v18_skill_class_precedence_installed", False):
-        return
-
-    original_normalize = v16._normalize_resource_class
-
-    def normalize_resource_class(value: Any) -> str | None:
-        text = v16._normalized_text(value)
-        if "installation" in text or "installateur" in text:
-            return "Installation"
-        return original_normalize(value)
-
-    v16._normalize_resource_class = normalize_resource_class
-    v16._v18_skill_class_precedence_installed = True
 
 
 def _open_parent_demand(self: Any, number: str) -> None:
@@ -46,9 +23,14 @@ def _open_parent_demand(self: Any, number: str) -> None:
     self.open_edit_request_dialog(demand)
 
 
-def _install_segment_parent_navigation() -> None:
-    """Add an open-parent icon to the Demand field of an existing segment dialog."""
-    if getattr(v15_refinements, "_v18_parent_navigation_installed", False):
+def install_segment_navigation_compat() -> None:
+    """Add the parent-demand action to the historical segment dialog safely.
+
+    The segment renderer still lives in ``v15_refinements``. Until that dialog is
+    extracted into an explicit page, a scoped ``select`` factory decorates only the
+    Demand field with the open-parent icon without mutating process-wide NiceGUI state.
+    """
+    if getattr(v15_refinements, "_parent_navigation_installed", False):
         return
 
     original_segment_dialog = v15_refinements._segment_dialog
@@ -90,9 +72,4 @@ def _install_segment_parent_navigation() -> None:
     v15_refinements._segment_dialog = segment_dialog
     v13._open_segment_dialog = segment_dialog
     v14._open_segment_dialog_v14 = segment_dialog
-    v15_refinements._v18_parent_navigation_installed = True
-
-
-def install_v18_workflow_fixes() -> None:
-    _install_skill_class_precedence()
-    _install_segment_parent_navigation()
+    v15_refinements._parent_navigation_installed = True

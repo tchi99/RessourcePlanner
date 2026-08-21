@@ -59,10 +59,10 @@ class DemandLegacyCleanupTests(unittest.TestCase):
         self.assertIs(second, _approve_demand_record_only)
         self.assertTrue(FakeExcelRepository._demand_legacy_cleanup_installed)
 
-    def test_cleanup_runs_after_legacy_wrappers_before_application_ui(self) -> None:
+    def test_cleanup_runs_after_extracted_workflow_compat_before_application_ui(self) -> None:
         names = [step.name for step in composition_manifest()]
         self.assertLess(
-            names.index("v18_workflow_fixes"),
+            names.index("segment_navigation_compat"),
             names.index("demand_legacy_cleanup"),
         )
         self.assertLess(
@@ -70,14 +70,13 @@ class DemandLegacyCleanupTests(unittest.TestCase):
             names.index("planning_service_ui"),
         )
 
-    def test_v18_no_longer_installs_approval_batching_wrapper(self) -> None:
-        source = (
-            Path(__file__).resolve().parents[1] / "app" / "v18_workflow_fixes.py"
-        ).read_text(encoding="utf-8")
-
-        self.assertNotIn("_install_approval_batching", source)
-        self.assertNotIn("ExcelRepository.approve_demand", source)
-        self.assertNotIn("nullcontext", source)
+    def test_extracted_workflow_compat_does_not_install_approval_wrapper(self) -> None:
+        root = Path(__file__).resolve().parents[1] / "app"
+        for filename in ("resource_class_compat.py", "segment_navigation_compat.py"):
+            source = (root / filename).read_text(encoding="utf-8")
+            self.assertNotIn("ExcelRepository.approve_demand", source)
+            self.assertNotIn("_install_approval_batching", source)
+            self.assertNotIn("nullcontext", source)
 
 
 if __name__ == "__main__":
