@@ -100,6 +100,32 @@ def _register_native_manifest_windows(manifest_path: Path) -> tuple[str, ...]:
     return tuple(registered)
 
 
+def _probe_command(host_path: Path) -> list[str]:
+    """Return a deterministic command for the host self-test.
+
+    Mozilla supports .bat native hosts on Windows, but Python's subprocess handling of
+    batch files can vary with the inherited shell/current directory. Invoke cmd.exe
+    explicitly for the diagnostic so the probe matches the intended Windows behavior.
+    """
+    if os.name == "nt" and host_path.suffix.casefold() in {".bat", ".cmd"}:
+        comspec = str(os.environ.get("COMSPEC") or r"C:\Windows\System32\cmd.exe")
+        return [comspec, "/d", "/s", "/c", f'call "{host_path}"']
+    return [str(host_path)]
+
+
+def _decode_process_output(value: object) -> str:
+    if not value:
+        return ""
+    if not isinstance(value, bytes):
+        return str(value).strip()
+    for encoding in ("utf-8", "cp1252", "cp850"):
+        try:
+            return value.decode(encoding).strip()
+        except UnicodeDecodeError:
+            continue
+    return value.decode("utf-8", errors="replace").strip()
+
+
 def probe_native_host_launch(
     host_path: Path,
     *,
@@ -107,18 +133,20 @@ def probe_native_host_launch(
 ) -> tuple[bool, str]:
     """Launch the host with EOF only, so the probe cannot create a fake heartbeat."""
     run = runner or subprocess.run
+    host_path = Path(host_path).resolve()
     kwargs = {
         "input": b"",
         "stdout": subprocess.PIPE,
         "stderr": subprocess.PIPE,
         "timeout": 6,
         "check": False,
+        "cwd": str(host_path.parent),
     }
     creation_flag = int(getattr(subprocess, "CREATE_NO_WINDOW", 0) or 0)
     if creation_flag:
         kwargs["creationflags"] = creation_flag
     try:
-        completed = run([str(host_path)], **kwargs)
+        completed = run(_probe_command(host_path), **kwargs)
     except subprocess.TimeoutExpired:
         return False, "Le programme du pont natif ne termine pas son auto-test."
     except OSError as exc:
@@ -127,11 +155,7 @@ def probe_native_host_launch(
     code = int(getattr(completed, "returncode", 1))
     if code == 0:
         return True, ""
-    stderr = getattr(completed, "stderr", b"") or b""
-    if isinstance(stderr, bytes):
-        detail = stderr.decode("utf-8", errors="replace").strip()
-    else:
-        detail = str(stderr).strip()
+    detail = _decode_process_output(getattr(completed, "stderr", b"") or b"")
     if detail:
         detail = " ".join(detail.split())[:240]
         return False, f"Le pont natif quitte avec le code {code}: {detail}"
