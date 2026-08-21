@@ -44,10 +44,37 @@ def _resolve_workbook(value: str | None) -> Path | None:
     return workbook
 
 
+def _load_raw_config() -> dict[str, object]:
+    if not CONFIG_PATH.exists():
+        return {}
+    try:
+        value = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+    return dict(value) if isinstance(value, dict) else {}
+
+
+def _write_raw_config(raw: dict[str, object]) -> None:
+    CONFIG_PATH.write_text(
+        json.dumps(raw, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+
+
+def _with_config_defaults(raw: dict[str, object]) -> dict[str, object]:
+    result = dict(raw)
+    result.setdefault("refresh_seconds", 3)
+    result.setdefault("save_on_write", True)
+    result.setdefault("host", "127.0.0.1")
+    result.setdefault("port", 8080)
+    result.setdefault("planning_engine_mode", PURE_MODE)
+    return result
+
+
 def load_config() -> AppConfig:
-    raw = json.loads(CONFIG_PATH.read_text(encoding="utf-8")) if CONFIG_PATH.exists() else {}
+    raw = _load_raw_config()
     return AppConfig(
-        workbook=_resolve_workbook(raw.get("workbook")),
+        workbook=_resolve_workbook(raw.get("workbook") if isinstance(raw.get("workbook"), str) else None),
         refresh_seconds=float(raw.get("refresh_seconds", 3.0)),
         save_on_write=bool(raw.get("save_on_write", True)),
         host=str(raw.get("host", "127.0.0.1")),
@@ -57,16 +84,20 @@ def load_config() -> AppConfig:
 
 
 def save_workbook_path(path: str | Path | None) -> None:
-    raw = {}
-    if CONFIG_PATH.exists():
-        try:
-            raw = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
-        except Exception:
-            raw = {}
-    raw.setdefault("refresh_seconds", 3)
-    raw.setdefault("save_on_write", True)
-    raw.setdefault("host", "127.0.0.1")
-    raw.setdefault("port", 8080)
-    raw.setdefault("planning_engine_mode", PURE_MODE)
+    raw = _with_config_defaults(_load_raw_config())
     raw["workbook"] = "" if path is None else str(Path(path))
-    CONFIG_PATH.write_text(json.dumps(raw, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    _write_raw_config(raw)
+
+
+def save_planning_engine_mode(mode: object) -> str:
+    """Persist an explicit engine choice for the next application start.
+
+    Existing installations are intentionally never migrated silently from
+    ``guarded_pure``/``legacy`` to ``pure``. The V1.8B production cutover remains an
+    explicit operator decision while rollback modes still exist.
+    """
+    normalized = normalize_planning_engine_mode(mode)
+    raw = _with_config_defaults(_load_raw_config())
+    raw["planning_engine_mode"] = normalized
+    _write_raw_config(raw)
+    return normalized
