@@ -26,21 +26,23 @@ class NiceGUIGlobalMutationTests(unittest.TestCase):
 
     def test_legacy_select_assignments_are_limited_and_scoped_before_render(self) -> None:
         # The two historical renderers still use save/assign/restore syntax. They no
-        # longer point at process-wide nicegui.ui: v18_single_scroll installs a
-        # ContextVar-backed facade for both modules before any page is rendered.
+        # longer point at process-wide nicegui.ui: operational_planning_compat installs
+        # a ContextVar-backed facade for both modules before any page is rendered.
         offenders = sorted(
             set(self._offenders("ui.select =") + self._offenders("nicegui_ui.select ="))
         )
         self.assertEqual(offenders, ["v16_refinements.py", "v17_refinements.py"])
 
-        setup = self._source("v18_single_scroll.py")
+        setup = self._source("operational_planning_compat.py")
         self.assertIn("ensure_scoped_ui(\n        v16,", setup)
         self.assertIn("ensure_scoped_ui(\n        v17,", setup)
         self.assertIn('scoped_factories=("select",)', setup)
 
-    def test_single_scroll_uses_static_module_local_override(self) -> None:
-        source = self._source("v18_single_scroll.py")
+    def test_operational_scroll_uses_static_module_local_override(self) -> None:
+        source = self._source("operational_planning_compat.py")
         self.assertIn('static_overrides={"scroll_area": _horizontal_container}', source)
+        self.assertIn(".operational-planning-scroll", source)
+        self.assertIn(".schedule-grid", source)
         self.assertNotIn("original_scroll_area", source)
         self.assertNotIn("PlannerUI.render_planning =", source)
 
