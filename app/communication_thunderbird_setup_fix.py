@@ -18,6 +18,7 @@ from .thunderbird_install import (
 )
 from .thunderbird_native_diagnostics import repair_and_diagnose_native_host
 from .thunderbird_registry_install import packaged_python_environment, publish_registry_fix
+from .thunderbird_shared_state import install_shared_bridge_directory
 from .thunderbird_source_host import repair_source_host_launcher
 
 
@@ -162,6 +163,7 @@ def _thunderbird_setup_dialog(self) -> None:
 
 def install_thunderbird_setup_fix() -> None:
     """Improve the one-time Thunderbird XPI installation UX without changing transport rules."""
+    install_shared_bridge_directory()
     if getattr(communication_mail_clients_ui, "_thunderbird_setup_fix_installed", False):
         return
     communication_mail_clients_ui._thunderbird_setup_dialog = _thunderbird_setup_dialog
