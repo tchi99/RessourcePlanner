@@ -89,11 +89,13 @@ class PureValidationTests(unittest.TestCase):
 
     def test_old_engine_mode_key_is_ignored_and_removed_on_next_config_save(self) -> None:
         with TemporaryDirectory() as folder:
-            path = Path(folder) / "app_config.json"
+            root = Path(folder)
+            path = root / "app_config.json"
+            workbook = root / "Production.xlsx"
             path.write_text(
                 json.dumps(
                     {
-                        "workbook": r"C:\Planning\Production.xlsx",
+                        "workbook": str(workbook),
                         "refresh_seconds": 5,
                         "planning_engine_mode": "legacy",
                     }
@@ -108,7 +110,7 @@ class PureValidationTests(unittest.TestCase):
             raw = json.loads(path.read_text(encoding="utf-8"))
             self.assertFalse(hasattr(loaded, "planning_engine_mode"))
             self.assertNotIn("planning_engine_mode", raw)
-            self.assertEqual(raw["workbook"], r"C:\Planning\Production.xlsx")
+            self.assertEqual(raw["workbook"], str(workbook))
             self.assertEqual(raw["refresh_seconds"], 5)
             self.assertEqual(raw["host"], "127.0.0.1")
 
