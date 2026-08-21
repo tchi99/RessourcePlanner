@@ -21,7 +21,8 @@ class RuntimeCompositionTests(unittest.TestCase):
         self.assertLess(names.index("v18_workflow_fixes"), names.index("planning_service_ui"))
         self.assertLess(names.index("planning_service_ui"), names.index("demand_service_ui"))
         self.assertLess(names.index("demand_service_ui"), names.index("allocation_service_ui"))
-        self.assertLess(names.index("allocation_service_ui"), names.index("communication_ui"))
+        self.assertLess(names.index("allocation_service_ui"), names.index("pure_validation_ui"))
+        self.assertLess(names.index("pure_validation_ui"), names.index("communication_ui"))
 
     def test_manifest_makes_transitional_legacy_steps_visible(self) -> None:
         legacy = [step.name for step in composition_manifest() if step.category == "legacy"]
@@ -42,7 +43,12 @@ class RuntimeCompositionTests(unittest.TestCase):
         self.assertIn("location_projection", compatibility)
         self.assertEqual(
             application,
-            ["planning_service_ui", "demand_service_ui", "allocation_service_ui"],
+            [
+                "planning_service_ui",
+                "demand_service_ui",
+                "allocation_service_ui",
+                "pure_validation_ui",
+            ],
         )
         self.assertEqual(
             communications,
@@ -90,6 +96,19 @@ class RuntimeCompositionTests(unittest.TestCase):
         self.assertIn("v15_engine.release_manual_allocation = _release_manual_via_service", source)
         self.assertIn("v15_engine.delete_manual_allocation = _delete_manual_via_service", source)
         self.assertIn("v16._assign_segment = _assign_segment_via_service", source)
+
+    def test_pure_validation_binding_records_authoritative_engine_cycles(self) -> None:
+        source = (
+            Path(__file__).resolve().parents[1] / "app" / "pure_validation_ui.py"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("record_pure_cycle(data)", source)
+        self.assertIn(
+            "planning_cutover._publish_planning_performance = publish_with_validation",
+            source,
+        )
+        self.assertIn("save_planning_engine_mode(mode)", source)
+        self.assertIn("Activer le moteur pur au prochain redémarrage", source)
 
 
 if __name__ == "__main__":
