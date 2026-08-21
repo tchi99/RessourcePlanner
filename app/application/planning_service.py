@@ -5,7 +5,6 @@ from typing import Any, Generic, TypeVar
 
 
 RepositoryT = TypeVar("RepositoryT")
-RebuildPlanning = Callable[[RepositoryT], Mapping[str, Any]]
 
 
 class PlanningService(Generic[RepositoryT]):
@@ -21,7 +20,7 @@ class PlanningService(Generic[RepositoryT]):
         self,
         repository: RepositoryT,
         *,
-        rebuild_planning: RebuildPlanning[RepositoryT],
+        rebuild_planning: Callable[[RepositoryT], Mapping[str, Any]],
     ) -> None:
         self._repository = repository
         self._rebuild_planning = rebuild_planning
