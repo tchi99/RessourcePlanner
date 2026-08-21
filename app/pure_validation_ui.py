@@ -27,8 +27,8 @@ def _render_validation_card(self: ui_module.PlannerUI) -> None:
             )
 
         ui.label(
-            "La période de validation terrain est terminée. Les anciens modes legacy et "
-            "guarded_pure ne font plus partie du runtime de production."
+            "La période de validation terrain est terminée. Les anciens modes de rollback "
+            "ne font plus partie du runtime de production."
         ).classes("text-sm muted")
 
         successes = int(validation.get("pure_success_count") or 0)
