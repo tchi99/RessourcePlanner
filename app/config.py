@@ -5,7 +5,7 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-from .domain.cutover_policy import normalize_planning_engine_mode
+from .domain.cutover_policy import PURE_MODE, normalize_planning_engine_mode
 
 
 def _runtime_base_dir() -> Path:
@@ -32,7 +32,7 @@ class AppConfig:
     save_on_write: bool = True
     host: str = "127.0.0.1"
     port: int = 8080
-    planning_engine_mode: str = "legacy"
+    planning_engine_mode: str = PURE_MODE
 
 
 def _resolve_workbook(value: str | None) -> Path | None:
@@ -67,6 +67,6 @@ def save_workbook_path(path: str | Path | None) -> None:
     raw.setdefault("save_on_write", True)
     raw.setdefault("host", "127.0.0.1")
     raw.setdefault("port", 8080)
-    raw.setdefault("planning_engine_mode", "legacy")
+    raw.setdefault("planning_engine_mode", PURE_MODE)
     raw["workbook"] = "" if path is None else str(Path(path))
     CONFIG_PATH.write_text(json.dumps(raw, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
