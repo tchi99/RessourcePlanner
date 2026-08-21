@@ -1,43 +1,11 @@
 from __future__ import annotations
 
-from contextlib import nullcontext
 from typing import Any
 
 from nicegui import ui
 
 from . import v13, v14, v15_refinements, v16
-from .excel_repository import ExcelRepository
 from .ui_context import ensure_scoped_ui
-
-
-def _install_approval_batching() -> None:
-    """Coalesce the complete approval workflow behind one physical Excel save.
-
-    The V1.5 approval workflow can update the demand, synchronize one or more
-    segments and rebuild AllocationsMO. Each of those historical helpers requests a
-    save. V1.7.1 already knows how to defer saves; this wrapper simply makes the
-    complete approval one logical write batch so nested save requests collapse to a
-    single workbook save.
-    """
-    if getattr(ExcelRepository, "_v18_approval_batching_installed", False):
-        return
-
-    original_approve = ExcelRepository.approve_demand
-
-    def approve_demand(
-        self: ExcelRepository, number: str, comment: str = ""
-    ) -> None:
-        batch_factory = getattr(self, "batch_update", None)
-        context = (
-            batch_factory("approve demand")
-            if callable(batch_factory)
-            else nullcontext(self)
-        )
-        with context:
-            original_approve(self, number, comment)
-
-    ExcelRepository.approve_demand = approve_demand
-    ExcelRepository._v18_approval_batching_installed = True
 
 
 def _install_skill_class_precedence() -> None:
@@ -126,6 +94,5 @@ def _install_segment_parent_navigation() -> None:
 
 
 def install_v18_workflow_fixes() -> None:
-    _install_approval_batching()
     _install_skill_class_precedence()
     _install_segment_parent_navigation()
