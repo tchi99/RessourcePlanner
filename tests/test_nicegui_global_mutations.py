@@ -41,7 +41,7 @@ class NiceGUIGlobalMutationTests(unittest.TestCase):
     def test_operational_scroll_uses_static_module_local_override(self) -> None:
         source = self._source("operational_planning_compat.py")
         self.assertIn('static_overrides={"scroll_area": _horizontal_container}', source)
-        self.assertIn(".operational-planning-scroll", source)
+        self.assertIn('OPERATIONAL_SCROLL_CLASS = "v18-operational-scroll"', source)
         self.assertIn(".schedule-grid", source)
         self.assertNotIn("original_scroll_area", source)
         self.assertNotIn("PlannerUI.render_planning =", source)
