@@ -10,6 +10,7 @@ from .thunderbird_install import (
     reveal_thunderbird_extension,
     visible_folder_label,
 )
+from .thunderbird_native_diagnostics import repair_and_diagnose_native_host
 
 
 def _try_reveal_extension(path) -> bool:
@@ -24,6 +25,14 @@ def _try_reveal_extension(path) -> bool:
 def _thunderbird_setup_dialog(self) -> None:
     try:
         setup = prepare_thunderbird_integration()
+        diagnostic = repair_and_diagnose_native_host(setup)
+        if not diagnostic.ok:
+            ui.notify(
+                f"Le XPI peut être valide, mais le pont natif Windows ne passe pas son auto-test : {diagnostic.detail}",
+                type="negative",
+                timeout=12000,
+            )
+            return
         install_path = publish_thunderbird_extension(setup.extension_package)
     except Exception as exc:
         ui.notify(str(exc), type="negative", timeout=9000)
@@ -37,6 +46,13 @@ def _thunderbird_setup_dialog(self) -> None:
         ui.label(
             "Le pont natif RessourcePlanner est enregistré pour ton compte Windows et une copie du fichier XPI a été préparée pour l'installation manuelle."
         ).classes("text-sm")
+
+        with ui.card().classes("w-full border border-green-200 bg-green-50"):
+            ui.label("Pont natif Windows validé").classes("font-semibold text-green-900")
+            registry_label = ", ".join(diagnostic.registry_views) or "registre utilisateur"
+            ui.label(
+                f"Le manifeste, le programme du pont et son démarrage local ont été validés. Enregistrement : {registry_label}."
+            ).classes("text-sm text-green-900")
 
         with ui.card().classes("w-full border border-blue-200 bg-blue-50"):
             ui.label("Installation unique dans Thunderbird").classes("font-semibold text-blue-900")
@@ -52,6 +68,10 @@ def _thunderbird_setup_dialog(self) -> None:
             ).classes("text-sm text-blue-900")
 
         ui.label(
+            "Si l'extension RessourcePlanner Draft Bridge est déjà installée et activée, il n'est pas nécessaire de la réinstaller uniquement pour réparer l'enregistrement du pont : redémarre Thunderbird après cette configuration."
+        ).classes("text-xs muted")
+
+        ui.label(
             "Le sélecteur de fichiers de Thunderbird peut s'ouvrir dans Documents même si Explorer affiche un autre dossier. "
             "C'est normal : navigue simplement vers le dossier indiqué ci-dessus."
         ).classes("text-xs muted")
@@ -60,6 +80,10 @@ def _thunderbird_setup_dialog(self) -> None:
             "L'extension demande seulement les permissions nécessaires pour créer et enregistrer des brouillons et communiquer avec le pont local. "
             "Elle ne possède aucune permission d'envoi automatique."
         ).classes("text-xs muted")
+
+        ui.label(
+            "Si RessourcePlanner indique encore « Pont Thunderbird non détecté récemment » après le redémarrage, le programme natif est alors validé et le problème se situe probablement côté extension Thunderbird (extension désactivée/non chargée ou accès nativeMessaging)."
+        ).classes("text-xs text-amber-800")
 
         def reveal_again() -> None:
             if not _try_reveal_extension(install_path):
