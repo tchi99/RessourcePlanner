@@ -18,7 +18,8 @@ class RuntimeCompositionTests(unittest.TestCase):
         self.assertLess(names.index("runtime_optimizations"), names.index("features"))
         self.assertLess(names.index("v18_workflow_fixes"), names.index("planning_service_ui"))
         self.assertLess(names.index("planning_service_ui"), names.index("demand_service_ui"))
-        self.assertLess(names.index("demand_service_ui"), names.index("communication_ui"))
+        self.assertLess(names.index("demand_service_ui"), names.index("allocation_service_ui"))
+        self.assertLess(names.index("allocation_service_ui"), names.index("communication_ui"))
 
     def test_manifest_makes_transitional_legacy_steps_visible(self) -> None:
         legacy = [step.name for step in composition_manifest() if step.category == "legacy"]
@@ -33,7 +34,10 @@ class RuntimeCompositionTests(unittest.TestCase):
         # should make this list smaller as explicit services/pages replace installers.
         self.assertIn("v13_features", legacy)
         self.assertIn("v18_workflow_fixes", legacy)
-        self.assertEqual(application, ["planning_service_ui", "demand_service_ui"])
+        self.assertEqual(
+            application,
+            ["planning_service_ui", "demand_service_ui", "allocation_service_ui"],
+        )
         self.assertEqual(
             communications,
             [
@@ -68,6 +72,18 @@ class RuntimeCompositionTests(unittest.TestCase):
         self.assertIn("planning_service(self.repo).rebuild()", source)
         self.assertIn("v15_refinements._recalculate = _recalculate_via_service", source)
         self.assertNotIn("rebuild_allocations_refined(self.repo)", source)
+
+    def test_allocation_service_binding_owns_operational_mutation_entry_points(self) -> None:
+        source = (
+            Path(__file__).resolve().parents[1] / "app" / "allocation_service_ui.py"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("AllocationService(", source)
+        self.assertIn("v15_engine.create_manual_allocation = _create_manual_via_service", source)
+        self.assertIn("v15_engine.update_manual_allocation = _update_manual_via_service", source)
+        self.assertIn("v15_engine.release_manual_allocation = _release_manual_via_service", source)
+        self.assertIn("v15_engine.delete_manual_allocation = _delete_manual_via_service", source)
+        self.assertIn("v16._assign_segment = _assign_segment_via_service", source)
 
 
 if __name__ == "__main__":
