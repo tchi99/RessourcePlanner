@@ -21,6 +21,14 @@ Planning opérationnel
 Vue Shifts selon l'horaire, les décisions verrouillées et la capacité résiduelle
 ```
 
+## Moteur de planification — V1.8B
+
+Le moteur `pure` est maintenant le **seul moteur de planification de production**. Les anciens modes `legacy` et `guarded_pure` ont été retirés du runtime après une période prolongée de validation terrain.
+
+Le moteur construit un `PlanningSnapshot` unique, calcule le plan en Python pur puis persiste le résultat dans `AllocationsMO`. En cas d'échec d'écriture, le snapshot précédent des allocations est restauré sans recalcul historique.
+
+La clé locale `planning_engine_mode` n'est plus utilisée. Si elle existe encore dans un ancien `app_config.json`, elle est ignorée et retirée lors de la prochaine sauvegarde de la configuration.
+
 ## Planification moyen terme enrichie — V1.8
 
 La V1.8 stabilise d'abord le lien entre la planification macro et le détail opérationnel :
@@ -97,7 +105,7 @@ Si une demande déjà approuvée est modifiée :
 
 1. elle retourne automatiquement au statut **Soumise**;
 2. ses segments et allocations existants restent inchangés pendant l'attente de la nouvelle approbation;
-3. une fois la nouvelle version approuvée, les segments sont synchronisés avec les nouvelles dates, heures, compétence, priorité, description et nombre de ressources;
+3. une fois la nouvelle version approuvée, les segments sont synchronisés avec les nouvelles dates, heures, compétence, priorité, description, localisation et nombre de ressources;
 4. les affectations de techniciens déjà faites sont conservées autant que possible.
 
 Les demandes `Soumise` visibles dans le Planning opérationnel comptent 0 h de charge tant qu'elles ne sont pas approuvées.
@@ -110,7 +118,7 @@ Exemple : une demande de 80 h pour 2 ressources génère deux segments de 40 h. 
 
 ## Segments
 
-`SegmentsMO` représente le besoin opérationnel par ressource. Un segment contient notamment la demande, le projet, la fenêtre de dates, les heures prévues, la compétence requise, la priorité, le type `Flexible` ou `Fixe`, un technicien facultatif, un statut et `HorsHoraireAutorise`.
+`SegmentsMO` représente le besoin opérationnel par ressource. Un segment contient notamment la demande, le projet, la fenêtre de dates, les heures prévues, la compétence requise, la priorité, le type `Flexible` ou `Fixe`, un technicien facultatif, un statut, `HorsHoraireAutorise`, `SiteClient` et `Lieu`.
 
 Un segment sans technicien apparaît dans **Travaux à planifier** uniquement lorsque sa fenêtre chevauche la semaine présentement affichée.
 
@@ -127,7 +135,7 @@ L'application suggère une ressource, mais ne fait aucune affectation automatiqu
 
 ## Allocations et hors horaire
 
-`AllocationsMO` représente les heures réellement placées par journée.
+`AllocationsMO` représente les heures réellement placées par journée. Chaque allocation porte aussi la localisation approuvée (`SiteClient` et `Lieu`) projetée depuis son segment.
 
 Une allocation manuelle ou déplacée devient verrouillée et consomme la capacité avant les allocations flexibles. Les allocations non verrouillées sont recalculées autour des décisions manuelles.
 
@@ -143,5 +151,7 @@ Les vacances restent exclues des propositions automatiques de hors horaire.
 Le chemin du classeur est configuré localement dans `app_config.json`, fichier ignoré par Git. Les fichiers `.xlsx` et `.xlsm` sont également ignorés par le dépôt.
 
 `user_preferences.json` est lui aussi local et ignoré par Git. Il contient les préférences propres au poste, notamment l'ordre manuel des ressources. Il peut contenir des noms de ressources et ne doit donc pas être partagé ou versionné.
+
+`planning_pure_validation.json` est un journal technique local ignoré par Git. Il contient uniquement des compteurs et métriques du moteur pur, sans données métier.
 
 Le classeur peut être stocké dans un dossier OneDrive synchronisé localement. L'application utilise le chemin Windows local et communique avec Excel via `xlwings`.
