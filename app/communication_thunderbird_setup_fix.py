@@ -4,6 +4,10 @@ from nicegui import ui
 
 from . import communication_mail_clients_ui
 from .thunderbird_bridge import prepare_thunderbird_integration
+from .thunderbird_extension_diagnostics import (
+    DIAGNOSTIC_EXTENSION_VERSION,
+    enhance_thunderbird_extension,
+)
 from .thunderbird_install import (
     EXTENSION_FILENAME,
     publish_thunderbird_extension,
@@ -26,6 +30,7 @@ def _try_reveal_extension(path) -> bool:
 def _thunderbird_setup_dialog(self) -> None:
     try:
         setup = prepare_thunderbird_integration()
+        enhance_thunderbird_extension(setup.extension_package)
         install_path = publish_thunderbird_extension(setup.extension_package)
         repair_source_host_launcher(setup)
         diagnostic = repair_and_diagnose_native_host(setup)
@@ -61,35 +66,34 @@ def _thunderbird_setup_dialog(self) -> None:
             ).classes("text-sm text-green-900")
 
         with ui.card().classes("w-full border border-blue-200 bg-blue-50"):
-            ui.label("Installation unique dans Thunderbird").classes("font-semibold text-blue-900")
+            ui.label("Installer / mettre à jour l'extension Thunderbird").classes("font-semibold text-blue-900")
             explorer_text = (
                 "Explorer l'a sélectionné. "
                 if revealed
                 else "Explorer n'a pas pu le sélectionner automatiquement, mais le fichier a bien été créé. "
             )
             ui.label(
-                f"Le fichier {EXTENSION_FILENAME} a été placé dans {folder_label}. {explorer_text}"
+                f"Le fichier {EXTENSION_FILENAME} version {DIAGNOSTIC_EXTENSION_VERSION} a été placé dans {folder_label}. {explorer_text}"
                 "Dans Thunderbird : Modules complémentaires et thèmes → bouton engrenage → Installer un module depuis un fichier. "
                 f"Dans la fenêtre de sélection, ouvre {folder_label}, choisis ce fichier, puis redémarre Thunderbird."
             ).classes("text-sm text-blue-900")
 
+        with ui.card().classes("w-full border border-amber-300 bg-amber-50"):
+            ui.label("Diagnostic côté Thunderbird").classes("font-semibold text-amber-900")
+            ui.label(
+                "Cette version ajoute un bouton « RessourcePlanner Bridge » dans Thunderbird. Après l'installation, ouvre ce bouton : "
+                "il indiquera directement si l'extension est chargée et affichera l'erreur exacte retournée par nativeMessaging. "
+                "Le test n'envoie aucun courriel."
+            ).classes("text-sm text-amber-900")
+
         ui.label(
-            "Si l'extension RessourcePlanner Draft Bridge est déjà installée et activée, il n'est pas nécessaire de la réinstaller uniquement pour réparer l'enregistrement du pont : redémarre Thunderbird après cette configuration."
+            "Comme la version du XPI a été augmentée, installe ce nouveau fichier même si RessourcePlanner Draft Bridge est déjà présent. Thunderbird doit remplacer l'ancienne version."
         ).classes("text-xs muted")
 
         ui.label(
-            "Le sélecteur de fichiers de Thunderbird peut s'ouvrir dans Documents même si Explorer affiche un autre dossier. "
-            "C'est normal : navigue simplement vers le dossier indiqué ci-dessus."
-        ).classes("text-xs muted")
-
-        ui.label(
-            "L'extension demande seulement les permissions nécessaires pour créer et enregistrer des brouillons et communiquer avec le pont local. "
+            "L'extension demande seulement les permissions nécessaires pour créer et enregistrer des brouillons, stocker son diagnostic local et communiquer avec le pont. "
             "Elle ne possède aucune permission d'envoi automatique."
         ).classes("text-xs muted")
-
-        ui.label(
-            "Si RessourcePlanner indique encore « Pont Thunderbird non détecté récemment » après le redémarrage, le programme natif est alors validé et le problème se situe probablement côté extension Thunderbird (extension désactivée/non chargée ou accès nativeMessaging)."
-        ).classes("text-xs text-amber-800")
 
         def reveal_again() -> None:
             if not _try_reveal_extension(install_path):
