@@ -58,6 +58,7 @@ RUNTIME_COMPOSITION_MANIFEST: tuple[CompositionStep, ...] = (
     CompositionStep("planning_service_ui", "application"),
     CompositionStep("demand_service_ui", "application"),
     CompositionStep("allocation_service_ui", "application"),
+    CompositionStep("pure_validation_ui", "application"),
     CompositionStep("communication_ui", "communications"),
     CompositionStep("communication_obsolescence", "communications"),
     CompositionStep("communication_outlook", "communications"),
@@ -88,6 +89,7 @@ def _runtime_installers() -> tuple[tuple[str, Installer], ...]:
     from .features_runtime import apply_runtime_optimizations
     from .location_projection import install_location_projection
     from .planning_service_ui import install_planning_service_ui
+    from .pure_validation_ui import install_pure_validation_ui
     from .v13 import install_v13_features
     from .v13_fixes import install_v13_fixes
     from .v14 import install_v14_features
@@ -138,6 +140,7 @@ def _runtime_installers() -> tuple[tuple[str, Installer], ...]:
         ("planning_service_ui", install_planning_service_ui),
         ("demand_service_ui", install_demand_service_ui),
         ("allocation_service_ui", install_allocation_service_ui),
+        ("pure_validation_ui", install_pure_validation_ui),
         ("communication_ui", install_communication_ui),
         ("communication_obsolescence", install_communication_obsolescence_guard),
         ("communication_outlook", install_communication_outlook_ui),
