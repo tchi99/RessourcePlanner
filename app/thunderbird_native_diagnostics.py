@@ -103,13 +103,15 @@ def _register_native_manifest_windows(manifest_path: Path) -> tuple[str, ...]:
 def _probe_command(host_path: Path) -> list[str]:
     """Return a deterministic command for the host self-test.
 
-    Mozilla supports .bat native hosts on Windows, but Python's subprocess handling of
-    batch files can vary with the inherited shell/current directory. Invoke cmd.exe
-    explicitly for the diagnostic so the probe matches the intended Windows behavior.
+    For batch hosts, keep `call` and the batch path as separate argv entries. Passing a
+    single argument such as `call \"C:\\...\\host.bat\"` makes Python's Windows command
+    line encoder escape the inner quotes as backslash-quote. cmd.exe does not use
+    backslashes to escape quotes, so it tries to execute a command literally beginning
+    with `\"C:\\...` and reports that it is not recognized.
     """
     if os.name == "nt" and host_path.suffix.casefold() in {".bat", ".cmd"}:
         comspec = str(os.environ.get("COMSPEC") or r"C:\Windows\System32\cmd.exe")
-        return [comspec, "/d", "/s", "/c", f'call "{host_path}"']
+        return [comspec, "/d", "/c", "call", str(host_path)]
     return [str(host_path)]
 
 
