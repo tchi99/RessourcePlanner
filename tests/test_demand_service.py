@@ -333,7 +333,7 @@ class DemandServiceTests(unittest.TestCase):
             {
                 "v15.py": True,
                 "v15_refinements.py": True,
-                "v18_workflow_fixes.py": True,
+                "v18_workflow_fixes.py": False,
             },
         )
         service_ui = (root / "app" / "demand_service_ui.py").read_text(encoding="utf-8")
