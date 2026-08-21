@@ -11,6 +11,7 @@ from .thunderbird_install import (
     visible_folder_label,
 )
 from .thunderbird_native_diagnostics import repair_and_diagnose_native_host
+from .thunderbird_source_host import repair_source_host_launcher
 
 
 def _try_reveal_extension(path) -> bool:
@@ -25,15 +26,20 @@ def _try_reveal_extension(path) -> bool:
 def _thunderbird_setup_dialog(self) -> None:
     try:
         setup = prepare_thunderbird_integration()
+        install_path = publish_thunderbird_extension(setup.extension_package)
+        repair_source_host_launcher(setup)
         diagnostic = repair_and_diagnose_native_host(setup)
         if not diagnostic.ok:
+            _try_reveal_extension(install_path)
+            folder_label = visible_folder_label(install_path)
             ui.notify(
-                f"Le XPI peut être valide, mais le pont natif Windows ne passe pas son auto-test : {diagnostic.detail}",
+                "Le XPI a bien été préparé dans "
+                f"{folder_label}, mais le pont natif Windows ne passe pas son auto-test : "
+                f"{diagnostic.detail}",
                 type="negative",
-                timeout=12000,
+                timeout=14000,
             )
             return
-        install_path = publish_thunderbird_extension(setup.extension_package)
     except Exception as exc:
         ui.notify(str(exc), type="negative", timeout=9000)
         return
