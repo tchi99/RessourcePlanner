@@ -28,15 +28,11 @@ class ThunderbirdRegistryInstallTests(unittest.TestCase):
         )
 
     def test_detects_store_python_from_virtualized_localappdata(self) -> None:
-        with patch.dict(
-            os.environ,
-            {
-                "LOCALAPPDATA": (
-                    r"C:\Users\example\AppData\Local\Packages\"
-                    r"PythonSoftwareFoundation.Python.3.11_test\LocalCache\Local"
-                )
-            },
-        ):
+        virtualized_local = (
+            "C:\\Users\\example\\AppData\\Local\\Packages\\"
+            "PythonSoftwareFoundation.Python.3.11_test\\LocalCache\\Local"
+        )
+        with patch.dict(os.environ, {"LOCALAPPDATA": virtualized_local}):
             self.assertTrue(packaged_python_environment())
 
     def test_registry_fix_contains_native_and_32_bit_keys(self) -> None:
