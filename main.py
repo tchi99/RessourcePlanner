@@ -5,84 +5,25 @@ from multiprocessing import freeze_support
 
 from nicegui import native, ui
 
-from app.v172_nicegui_compat import install_v172_nicegui_compat
+from app.runtime_composition import install_planning_engine, install_runtime_features
 
-# Install the compatibility shim before any historical feature installer runs. This
-# ensures every application-wide ui.add_head_html/ui.add_body_html/ui.add_css call is
-# explicitly shared when the app uses ui.page on recent NiceGUI versions.
-install_v172_nicegui_compat()
+# V1 still contains historical compatibility installers. They are now composed from
+# one explicit application root instead of being scattered through this entry point.
+# The composition root activates the NiceGUI compatibility shim before importing the
+# historical feature modules and preserves the validated V1.8 installer order.
+install_runtime_features()
 
-from app.bugfixes import install_bugfixes
-from app.communication_mail_clients_ui import install_communication_mail_clients_ui
-from app.communication_obsolescence_ui import install_communication_obsolescence_guard
-from app.communication_outlook_ui import install_communication_outlook_ui
-from app.communication_thunderbird_setup_fix import install_thunderbird_setup_fix
-from app.communication_ui import install_communication_ui
 from app.config import load_config
 from app.excel_repository import ExcelRepository
-from app.features import install_features
-from app.features_runtime import apply_runtime_optimizations
-from app.planning_cutover import install_planning_cutover
 from app.ui import PlannerUI
-from app.v13 import install_v13_features
-from app.v13_fixes import install_v13_fixes
-from app.v14 import install_v14_features
-from app.v14_fixes import install_v14_fixes
-from app.v14_runtime import install_v14_runtime
-from app.v15 import install_v15_features
-from app.v15_refinements import install_v15_refinements
-from app.v16 import install_v16_features
-from app.v16_refinements import install_v16_refinements
-from app.v17 import install_v17_features
-from app.v17_refinements import install_v17_refinements
-from app.v17_sort_fix import install_v17_sort_fix
-from app.v171_performance import install_v171_performance
-from app.v171_local_preferences import install_v171_local_preferences
-from app.v18 import install_v18_features
-from app.v18_fixes import install_v18_fixes
-from app.v18_refinements import install_v18_refinements
-from app.v18_single_scroll import install_v18_single_scroll
-from app.v18_calendar_sizing import install_v18_calendar_sizing
-from app.v18_workflow_fixes import install_v18_workflow_fixes
-
-
-apply_runtime_optimizations()
-install_features()
-install_bugfixes()
-install_v13_features()
-install_v13_fixes()
-install_v14_features()
-install_v14_fixes()
-install_v14_runtime()
-install_v15_features()
-install_v15_refinements()
-install_v16_features()
-install_v16_refinements()
-install_v17_features()
-install_v17_refinements()
-install_v17_sort_fix()
-install_v171_performance()
-install_v171_local_preferences()
-install_v18_features()
-install_v18_fixes()
-install_v18_refinements()
-install_v18_single_scroll()
-install_v18_calendar_sizing()
-install_v18_workflow_fixes()
-# Transitional communication installers stay isolated until issue #15 replaces the
-# historical monkey-patch composition with explicit feature composition.
-install_communication_ui()
-install_communication_obsolescence_guard()
-install_communication_outlook_ui()
-install_communication_mail_clients_ui()
-install_thunderbird_setup_fix()
 
 
 def main() -> None:
     config = load_config()
-    # The cutover installer intentionally runs last so its guarded dispatcher becomes
-    # the final allocation entry point after every historical compatibility installer.
-    install_planning_cutover(config.planning_engine_mode)
+    # Planning-engine selection intentionally remains the final runtime composition
+    # step so the authoritative pure dispatcher cannot be overwritten by a legacy
+    # compatibility installer.
+    install_planning_engine(config.planning_engine_mode)
     repo = ExcelRepository(config.workbook, save_on_write=config.save_on_write)
     packaged = bool(getattr(sys, "frozen", False))
 
