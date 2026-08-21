@@ -53,6 +53,7 @@ RUNTIME_COMPOSITION_MANIFEST: tuple[CompositionStep, ...] = (
     CompositionStep("v18_single_scroll", "legacy"),
     CompositionStep("v18_calendar_sizing", "legacy"),
     CompositionStep("v18_workflow_fixes", "legacy"),
+    CompositionStep("location_projection", "compatibility"),
     CompositionStep("demand_legacy_cleanup", "compatibility"),
     CompositionStep("planning_service_ui", "application"),
     CompositionStep("demand_service_ui", "application"),
@@ -85,6 +86,7 @@ def _runtime_installers() -> tuple[tuple[str, Installer], ...]:
     from .demand_service_ui import install_demand_service_ui
     from .features import install_features
     from .features_runtime import apply_runtime_optimizations
+    from .location_projection import install_location_projection
     from .planning_service_ui import install_planning_service_ui
     from .v13 import install_v13_features
     from .v13_fixes import install_v13_fixes
@@ -131,6 +133,7 @@ def _runtime_installers() -> tuple[tuple[str, Installer], ...]:
         ("v18_single_scroll", install_v18_single_scroll),
         ("v18_calendar_sizing", install_v18_calendar_sizing),
         ("v18_workflow_fixes", install_v18_workflow_fixes),
+        ("location_projection", install_location_projection),
         ("demand_legacy_cleanup", install_demand_legacy_cleanup),
         ("planning_service_ui", install_planning_service_ui),
         ("demand_service_ui", install_demand_service_ui),

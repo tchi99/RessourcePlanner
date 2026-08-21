@@ -16,6 +16,8 @@ class RuntimeCompositionTests(unittest.TestCase):
         self.assertEqual(names[0], "nicegui_compat")
         self.assertEqual(names[-1], "thunderbird_setup")
         self.assertLess(names.index("runtime_optimizations"), names.index("features"))
+        self.assertLess(names.index("v18_workflow_fixes"), names.index("location_projection"))
+        self.assertLess(names.index("location_projection"), names.index("demand_legacy_cleanup"))
         self.assertLess(names.index("v18_workflow_fixes"), names.index("planning_service_ui"))
         self.assertLess(names.index("planning_service_ui"), names.index("demand_service_ui"))
         self.assertLess(names.index("demand_service_ui"), names.index("allocation_service_ui"))
@@ -26,6 +28,9 @@ class RuntimeCompositionTests(unittest.TestCase):
         application = [
             step.name for step in composition_manifest() if step.category == "application"
         ]
+        compatibility = [
+            step.name for step in composition_manifest() if step.category == "compatibility"
+        ]
         communications = [
             step.name for step in composition_manifest() if step.category == "communications"
         ]
@@ -34,6 +39,7 @@ class RuntimeCompositionTests(unittest.TestCase):
         # should make this list smaller as explicit services/pages replace installers.
         self.assertIn("v13_features", legacy)
         self.assertIn("v18_workflow_fixes", legacy)
+        self.assertIn("location_projection", compatibility)
         self.assertEqual(
             application,
             ["planning_service_ui", "demand_service_ui", "allocation_service_ui"],
