@@ -67,8 +67,39 @@ class ThunderbirdSetupFixTests(unittest.TestCase):
             self.assertEqual(revealed, xpi)
             self.assertEqual(
                 calls,
-                [["explorer.exe", "/select,", str(xpi)]],
+                [["explorer.exe", f"/select,{xpi}"]],
             )
+
+    def test_reveal_normalizes_accidental_trailing_whitespace(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            xpi = Path(temp_dir) / EXTENSION_FILENAME
+            xpi.write_bytes(b"demo-xpi")
+            calls: list[list[str]] = []
+
+            def fake_launcher(command):
+                calls.append(list(command))
+                return object()
+
+            revealed = reveal_thunderbird_extension(
+                f"  {xpi}   \r\n",
+                platform_name="nt",
+                launcher=fake_launcher,
+            )
+
+            self.assertEqual(revealed, xpi)
+            self.assertEqual(calls, [["explorer.exe", f"/select,{xpi}"]])
+
+    def test_reveal_normalizes_quoted_path(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            xpi = Path(temp_dir) / EXTENSION_FILENAME
+            xpi.write_bytes(b"demo-xpi")
+
+            revealed = reveal_thunderbird_extension(
+                f'"{xpi}"',
+                platform_name="posix",
+            )
+
+            self.assertEqual(revealed, xpi)
 
 
 if __name__ == "__main__":

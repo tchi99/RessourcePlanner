@@ -12,15 +12,24 @@ from .thunderbird_install import (
 )
 
 
+def _try_reveal_extension(path) -> bool:
+    """Reveal the XPI when possible without making Explorer a setup dependency."""
+    try:
+        reveal_thunderbird_extension(path)
+        return True
+    except (OSError, ValueError):
+        return False
+
+
 def _thunderbird_setup_dialog(self) -> None:
     try:
         setup = prepare_thunderbird_integration()
         install_path = publish_thunderbird_extension(setup.extension_package)
-        reveal_thunderbird_extension(install_path)
     except Exception as exc:
         ui.notify(str(exc), type="negative", timeout=9000)
         return
 
+    revealed = _try_reveal_extension(install_path)
     folder_label = visible_folder_label(install_path)
 
     with ui.dialog() as dialog, ui.card().classes("w-[720px] max-w-[95vw]"):
@@ -31,8 +40,13 @@ def _thunderbird_setup_dialog(self) -> None:
 
         with ui.card().classes("w-full border border-blue-200 bg-blue-50"):
             ui.label("Installation unique dans Thunderbird").classes("font-semibold text-blue-900")
+            explorer_text = (
+                "Explorer l'a sélectionné. "
+                if revealed
+                else "Explorer n'a pas pu le sélectionner automatiquement, mais le fichier a bien été créé. "
+            )
             ui.label(
-                f"Le fichier {EXTENSION_FILENAME} a été placé dans {folder_label} et Explorer l'a sélectionné. "
+                f"Le fichier {EXTENSION_FILENAME} a été placé dans {folder_label}. {explorer_text}"
                 "Dans Thunderbird : Modules complémentaires et thèmes → bouton engrenage → Installer un module depuis un fichier. "
                 f"Dans la fenêtre de sélection, ouvre {folder_label}, choisis ce fichier, puis redémarre Thunderbird."
             ).classes("text-sm text-blue-900")
@@ -47,11 +61,19 @@ def _thunderbird_setup_dialog(self) -> None:
             "Elle ne possède aucune permission d'envoi automatique."
         ).classes("text-xs muted")
 
+        def reveal_again() -> None:
+            if not _try_reveal_extension(install_path):
+                ui.notify(
+                    f"Le fichier XPI est disponible dans {folder_label}; ouvre ce dossier manuellement.",
+                    type="warning",
+                    timeout=7000,
+                )
+
         with ui.row().classes("w-full justify-between items-center"):
             ui.button(
                 "Afficher le fichier XPI",
                 icon="folder_open",
-                on_click=lambda: reveal_thunderbird_extension(install_path),
+                on_click=reveal_again,
             ).props("outline no-caps")
             ui.button("Fermer", on_click=dialog.close).props("unelevated no-caps color=primary")
     dialog.open()
