@@ -54,6 +54,7 @@ RUNTIME_COMPOSITION_MANIFEST: tuple[CompositionStep, ...] = (
     CompositionStep("v18_calendar_sizing", "legacy"),
     CompositionStep("v18_workflow_fixes", "legacy"),
     CompositionStep("planning_service_ui", "application"),
+    CompositionStep("demand_service_ui", "application"),
     CompositionStep("communication_ui", "communications"),
     CompositionStep("communication_obsolescence", "communications"),
     CompositionStep("communication_outlook", "communications"),
@@ -77,6 +78,7 @@ def _runtime_installers() -> tuple[tuple[str, Installer], ...]:
     from .communication_outlook_ui import install_communication_outlook_ui
     from .communication_thunderbird_setup_fix import install_thunderbird_setup_fix
     from .communication_ui import install_communication_ui
+    from .demand_service_ui import install_demand_service_ui
     from .features import install_features
     from .features_runtime import apply_runtime_optimizations
     from .planning_service_ui import install_planning_service_ui
@@ -126,6 +128,7 @@ def _runtime_installers() -> tuple[tuple[str, Installer], ...]:
         ("v18_calendar_sizing", install_v18_calendar_sizing),
         ("v18_workflow_fixes", install_v18_workflow_fixes),
         ("planning_service_ui", install_planning_service_ui),
+        ("demand_service_ui", install_demand_service_ui),
         ("communication_ui", install_communication_ui),
         ("communication_obsolescence", install_communication_obsolescence_guard),
         ("communication_outlook", install_communication_outlook_ui),

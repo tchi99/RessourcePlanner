@@ -17,7 +17,8 @@ class RuntimeCompositionTests(unittest.TestCase):
         self.assertEqual(names[-1], "thunderbird_setup")
         self.assertLess(names.index("runtime_optimizations"), names.index("features"))
         self.assertLess(names.index("v18_workflow_fixes"), names.index("planning_service_ui"))
-        self.assertLess(names.index("planning_service_ui"), names.index("communication_ui"))
+        self.assertLess(names.index("planning_service_ui"), names.index("demand_service_ui"))
+        self.assertLess(names.index("demand_service_ui"), names.index("communication_ui"))
 
     def test_manifest_makes_transitional_legacy_steps_visible(self) -> None:
         legacy = [step.name for step in composition_manifest() if step.category == "legacy"]
@@ -32,7 +33,7 @@ class RuntimeCompositionTests(unittest.TestCase):
         # should make this list smaller as explicit services/pages replace installers.
         self.assertIn("v13_features", legacy)
         self.assertIn("v18_workflow_fixes", legacy)
-        self.assertEqual(application, ["planning_service_ui"])
+        self.assertEqual(application, ["planning_service_ui", "demand_service_ui"])
         self.assertEqual(
             communications,
             [
