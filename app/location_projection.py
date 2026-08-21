@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from contextlib import nullcontext
 from typing import Any
 
 
@@ -59,6 +60,22 @@ def location_for_new_segment(
     if demand is not None and _text(demand.get("Statut")) == APPROVED_DEMAND_STATUS:
         return location_values(demand)
     return explicit
+
+
+def approved_backfill_updates(
+    segment: Mapping[str, Any],
+    demand: Mapping[str, Any] | None,
+) -> dict[str, str]:
+    """Return only missing fields that are safe to backfill from an approved demand."""
+    if demand is None or _text(demand.get("Statut")) != APPROVED_DEMAND_STATUS:
+        return {}
+    approved = location_values(demand)
+    current = location_values(segment)
+    return {
+        field: approved[field]
+        for field in LOCATION_FIELDS
+        if not current[field] and approved[field]
+    }
 
 
 def project_allocation_locations(
@@ -139,6 +156,29 @@ def install_location_projection() -> None:
             None,
         )
 
+    def backfill_approved_segments_once(repo: Any) -> None:
+        marker = str(getattr(repo, "path", "") or "")
+        if getattr(repo, "_location_projection_backfill_path", None) == marker:
+            return
+        demands = {
+            _text(row.get("NoDemande")): row
+            for row in repo.demands()
+            if _text(row.get("NoDemande"))
+        }
+        updates: list[tuple[str, dict[str, str]]] = []
+        for segment in v13.segment_records(repo, include_cancelled=False):
+            request_id = _text(segment.get("NoDemande"))
+            values = approved_backfill_updates(segment, demands.get(request_id))
+            if values:
+                updates.append((_text(segment.get("IDSegment")), values))
+
+        batch_factory = getattr(repo, "batch_update", None)
+        context = batch_factory("backfill approved locations") if callable(batch_factory) else nullcontext()
+        with context:
+            for segment_id, values in updates:
+                original_update_segment(repo, segment_id, values)
+        repo._location_projection_backfill_path = marker
+
     def add_segment_with_location(repo: Any, values: dict[str, Any]) -> str:
         ensure_location_schema(repo)
         data = dict(values)
@@ -181,6 +221,7 @@ def install_location_projection() -> None:
 
     def write_allocations_with_location(repo: Any, rows: list[dict[str, Any]]) -> None:
         ensure_location_schema(repo)
+        backfill_approved_segments_once(repo)
         segments = v13.segment_records(repo, include_cancelled=True)
         original_write_allocations(repo, project_allocation_locations(rows, segments))
 
