@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from app.thunderbird_bridge import EXTENSION_ID, NATIVE_HOST_NAME, ThunderbirdSetupResult
 from app.thunderbird_native_diagnostics import (
+    _probe_command,
     inspect_native_manifest,
     probe_native_host_launch,
     repair_and_diagnose_native_host,
@@ -85,6 +88,17 @@ class ThunderbirdNativeDiagnosticsTests(unittest.TestCase):
             self.assertEqual(detail, "")
             self.assertEqual(calls[0][0], [str(host)])
             self.assertEqual(calls[0][1]["input"], b"")
+
+    def test_windows_batch_probe_keeps_call_and_path_as_separate_arguments(self) -> None:
+        host = Path(r"C:\Users\Test User\RessourcePlanner\thunderbird_native_host.bat")
+        comspec = r"C:\Windows\System32\cmd.exe"
+        with patch("app.thunderbird_native_diagnostics.os.name", "nt"), patch.dict(
+            os.environ, {"COMSPEC": comspec}
+        ):
+            command = _probe_command(host)
+
+        self.assertEqual(command, [comspec, "/d", "/c", "call", str(host)])
+        self.assertNotIn('call "', " ".join(command[:4]))
 
     def test_diagnostic_reports_host_launch_failure(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
