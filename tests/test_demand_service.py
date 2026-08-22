@@ -15,6 +15,17 @@ from app.runtime_composition import composition_manifest
 class DemandServiceTests(unittest.TestCase):
     @staticmethod
     def _service(repository: object, **overrides: object) -> DemandService[object]:
+        def load_record(_repo: object, number: str):
+            return {"NoDemande": number, "Statut": "Brouillon"}
+
+        def modify_record(
+            _repo: object,
+            _number: str,
+            _updates: object,
+            _comment: str,
+        ) -> None:
+            return None
+
         def submit_record(_repo: object, _number: str) -> None:
             return None
 
@@ -34,6 +45,8 @@ class DemandServiceTests(unittest.TestCase):
             return {}
 
         kwargs = {
+            "load_record": load_record,
+            "modify_record": modify_record,
             "submit_record": submit_record,
             "approve_record": approve_record,
             "request_correction_record": correction_record,
@@ -43,6 +56,120 @@ class DemandServiceTests(unittest.TestCase):
         }
         kwargs.update(overrides)
         return DemandService(repository, **kwargs)  # type: ignore[arg-type]
+
+    def test_modify_approved_business_demand_requires_reapproval_without_touching_plan(self) -> None:
+        repository = object()
+        events: list[object] = []
+
+        def load_record(repo: object, number: str):
+            self.assertIs(repo, repository)
+            self.assertEqual(number, "DMO-EDIT")
+            return {
+                "NoDemande": number,
+                "Statut": "En planification",
+                "ApprouvePar": "coordinator",
+                "DateApprobation": "2026-08-20",
+            }
+
+        def modify_record(
+            repo: object,
+            number: str,
+            updates: object,
+            comment: str,
+        ) -> None:
+            self.assertIs(repo, repository)
+            events.append(("modify", number, updates, comment))
+
+        @contextmanager
+        def batch(repo: object, label: str):
+            self.assertIs(repo, repository)
+            events.append(("batch-enter", label))
+            try:
+                yield
+            finally:
+                events.append(("batch-exit", label))
+
+        def forbidden_sync(_repo: object, _number: str) -> None:
+            raise AssertionError("editing must not synchronize the approved plan")
+
+        def forbidden_rebuild(_repo: object):
+            raise AssertionError("editing must not rebuild the approved plan")
+
+        reapproval_required = self._service(
+            repository,
+            load_record=load_record,
+            modify_record=modify_record,
+            sync_approved_demand=forbidden_sync,
+            rebuild_planning=forbidden_rebuild,
+            batch=batch,
+        ).modify(
+            "DMO-EDIT",
+            {"Description": "Nouvelle portée", "Confirmation": "Tentative"},
+            "Demande modifiée dans l'application",
+        )
+
+        self.assertTrue(reapproval_required)
+        self.assertEqual(events[0], ("batch-enter", "modify demand"))
+        self.assertEqual(events[-1], ("batch-exit", "modify demand"))
+        modify_event = events[1]
+        self.assertEqual(modify_event[0], "modify")
+        self.assertEqual(modify_event[1], "DMO-EDIT")
+        updates = modify_event[2]
+        self.assertEqual(updates["Description"], "Nouvelle portée")
+        self.assertEqual(updates["Confirmation"], "Tentative")
+        self.assertEqual(updates["Statut"], "Soumise")
+        self.assertIsNone(updates["ApprouvePar"])
+        self.assertIsNone(updates["DateApprobation"])
+        self.assertIn("nouvelle approbation requise", updates["CommentaireApprobation"])
+        self.assertIn("planification existante est conservée", modify_event[3])
+
+    def test_modify_unapproved_demand_does_not_force_reapproval(self) -> None:
+        writes: list[object] = []
+
+        def load_record(_repo: object, number: str):
+            return {"NoDemande": number, "Statut": "Brouillon"}
+
+        def modify_record(
+            _repo: object,
+            number: str,
+            updates: object,
+            comment: str,
+        ) -> None:
+            writes.append((number, updates, comment))
+
+        reapproval_required = self._service(
+            object(),
+            load_record=load_record,
+            modify_record=modify_record,
+        ).modify("DMO-DRAFT", {"Description": "Brouillon modifié"}, "Modification")
+
+        self.assertFalse(reapproval_required)
+        self.assertEqual(writes[0][0], "DMO-DRAFT")
+        self.assertEqual(writes[0][1], {"Description": "Brouillon modifié"})
+        self.assertEqual(writes[0][2], "Modification")
+
+    def test_modify_unknown_demand_fails_before_write(self) -> None:
+        writes: list[str] = []
+
+        def load_record(_repo: object, _number: str):
+            return None
+
+        def modify_record(
+            _repo: object,
+            _number: str,
+            _updates: object,
+            _comment: str,
+        ) -> None:
+            writes.append("write")
+
+        service = self._service(
+            object(),
+            load_record=load_record,
+            modify_record=modify_record,
+        )
+        with self.assertRaisesRegex(KeyError, "DMO-MISSING"):
+            service.modify("DMO-MISSING", {"Description": "x"})
+        self.assertEqual(writes, [])
 
     def test_approve_orders_record_sync_rebuild_inside_one_batch(self) -> None:
         repository = object()
@@ -239,6 +366,56 @@ class DemandServiceTests(unittest.TestCase):
         self.assertEqual(update[2]["ApprouvePar"], "coordinator")
         self.assertEqual(result["allocated_hours"], 32.0)
 
+    def test_runtime_adapter_applies_reapproval_policy_to_edits(self) -> None:
+        events: list[object] = []
+
+        class FakeRepository:
+            current_user = "coordinator"
+
+            @contextmanager
+            def batch_update(self, label: str):
+                events.append(("batch-enter", label))
+                try:
+                    yield self
+                finally:
+                    events.append(("batch-exit", label))
+
+            def demands(self):
+                return [
+                    {
+                        "NoDemande": "DMO-4",
+                        "Statut": "En planification",
+                        "ApprouvePar": "coordinator",
+                    }
+                ]
+
+            def update_demand(
+                self,
+                number: str,
+                updates: dict[str, object],
+                *,
+                action: str,
+                comment: str,
+            ) -> None:
+                events.append(("update", number, updates, action, comment))
+
+        reapproval_required = demand_service(FakeRepository()).modify(
+            "DMO-4",
+            {"DateDebutSouhaitee": "2026-08-24"},
+            "Déplacement demandé",
+        )
+
+        self.assertTrue(reapproval_required)
+        self.assertEqual(events[0], ("batch-enter", "modify demand"))
+        self.assertEqual(events[-1], ("batch-exit", "modify demand"))
+        update = events[1]
+        self.assertEqual(update[0], "update")
+        self.assertEqual(update[1], "DMO-4")
+        self.assertEqual(update[2]["Statut"], "Soumise")
+        self.assertIsNone(update[2]["ApprouvePar"])
+        self.assertEqual(update[3], "Modification")
+        self.assertIn("planification existante est conservée", update[4])
+
     def test_runtime_simple_transitions_preserve_v1_status_and_audit_semantics(self) -> None:
         events: list[object] = []
 
@@ -317,15 +494,27 @@ class DemandServiceTests(unittest.TestCase):
         self.assertLess(names.index("planning_service_ui"), names.index("demand_service_ui"))
         self.assertLess(names.index("demand_service_ui"), names.index("communication_ui"))
 
-    def test_legacy_approval_wrappers_are_physically_removed(self) -> None:
+    def test_request_edit_ui_crosses_demand_service_boundary(self) -> None:
         root = Path(__file__).resolve().parents[1]
-        for filename in ("v15.py", "v15_refinements.py"):
-            source = (root / "app" / filename).read_text(encoding="utf-8")
+        source = (root / "app" / "v15_refinements.py").read_text(encoding="utf-8")
+
+        self.assertIn("demand_service(self.repo).modify", source)
+        self.assertNotIn("self.repo.update_demand(", source)
+
+    def test_legacy_demand_mutation_wrappers_are_physically_removed(self) -> None:
+        root = Path(__file__).resolve().parents[1]
+        v15_source = (root / "app" / "v15.py").read_text(encoding="utf-8")
+        refinements_source = (root / "app" / "v15_refinements.py").read_text(encoding="utf-8")
+
+        for source in (v15_source, refinements_source):
             self.assertNotIn("ExcelRepository.approve_demand", source)
             self.assertNotIn("original_approve", source)
             self.assertNotIn("approve_demand_v15", source)
             self.assertNotIn("approve_demand_refined", source)
 
+        self.assertNotIn("ExcelRepository.update_demand =", v15_source)
+        self.assertNotIn("original_update_demand", v15_source)
+        self.assertNotIn("update_demand_v15", v15_source)
         self.assertFalse((root / "app" / "demand_legacy_cleanup.py").exists())
         service_ui = (root / "app" / "demand_service_ui.py").read_text(encoding="utf-8")
         self.assertNotIn("approve_demand", service_ui)
