@@ -8,6 +8,7 @@ from nicegui import ui
 from . import features
 from . import ui as ui_module
 from . import v13, v14, v14_engine, v14_fixes, v15, v15_engine
+from .application.runtime_services import demand_service
 from .bugfixes import schedulable_technicians
 from .excel_repository import DEMAND_HEADERS, ExcelRepository, _date_from_any
 from .services import week_days
@@ -174,14 +175,16 @@ def _request_dialog(self: ui_module.PlannerUI, demand: dict[str, Any] | None = N
             if not validate():
                 return
             try:
-                self.repo.update_demand(
+                reapproval_required = demand_service(self.repo).modify(
                     str(demand["NoDemande"]),
                     payload(),
-                    action="Modification",
                     comment="Demande modifiée dans l'application",
                 )
                 dialog.close()
-                self._after_write("Demande mise à jour")
+                message = "Demande mise à jour"
+                if reapproval_required:
+                    message += " · nouvelle approbation requise"
+                self._after_write(message)
             except Exception as exc:
                 ui.notify(str(exc), type="negative")
 

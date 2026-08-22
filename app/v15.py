@@ -677,45 +677,6 @@ def install_v15_features() -> None:
     v14_fixes.rebuild_allocations = rebuild_allocations
     v13.weekly_segment_load = weekly_allocation_load
 
-    # Une modification métier d'une demande déjà approuvée exige une nouvelle approbation.
-    # Les segments/allocations existants ne sont pas touchés : ils représentent la dernière
-    # version approuvée du plan opérationnel.
-    original_update_demand = ExcelRepository.update_demand
-
-    def update_demand_v15(
-        self: ExcelRepository,
-        number: str,
-        updates: dict[str, Any],
-        action: str = "Modification",
-        comment: str = "",
-    ) -> None:
-        existing = next(
-            (
-                row
-                for row in self.demands()
-                if str(row.get("NoDemande") or "") == str(number)
-            ),
-            None,
-        )
-        data = dict(updates)
-        if (
-            existing
-            and str(existing.get("Statut") or "") == "En planification"
-            and action == "Modification"
-            and BUSINESS_DEMAND_FIELDS.intersection(data.keys())
-        ):
-            data["Statut"] = "Soumise"
-            data["ApprouvePar"] = None
-            data["DateApprobation"] = None
-            data["CommentaireApprobation"] = (
-                "Demande modifiée après approbation — nouvelle approbation requise"
-            )
-            comment = (
-                (comment + " · ") if comment else ""
-            ) + "Nouvelle approbation requise; la planification existante est conservée"
-        original_update_demand(self, number, data, action=action, comment=comment)
-
-    ExcelRepository.update_demand = update_demand_v15
     original_ensure = ExcelRepository.ensure_app_sheets
 
     def ensure_app_sheets_v15(self: ExcelRepository) -> None:

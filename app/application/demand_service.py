@@ -8,6 +8,29 @@ from typing import Any, ContextManager, Generic, TypeVar
 RepositoryT = TypeVar("RepositoryT")
 
 
+BUSINESS_DEMAND_FIELDS = frozenset(
+    {
+        "NumeroProjet",
+        "NomProjet",
+        "Client",
+        "ChargeProjet",
+        "TypeDemande",
+        "Priorite",
+        "Confirmation",
+        "DateDebutSouhaitee",
+        "DateFinSouhaitee",
+        "Description",
+        "SiteClient",
+        "Lieu",
+        "NombreRessources",
+        "CompetencesRequises",
+        "TempsEstimeHeures",
+        "TempsEstimeJours",
+        "TechnicienPropose",
+    }
+)
+
+
 class DemandService(Generic[RepositoryT]):
     """Application service for workforce-demand lifecycle workflows.
 
@@ -21,6 +44,8 @@ class DemandService(Generic[RepositoryT]):
         self,
         repository: RepositoryT,
         *,
+        load_record: Callable[[RepositoryT, str], Mapping[str, Any] | None],
+        modify_record: Callable[[RepositoryT, str, Mapping[str, Any], str], None],
         submit_record: Callable[[RepositoryT, str], None],
         approve_record: Callable[[RepositoryT, str, str], None],
         request_correction_record: Callable[[RepositoryT, str, str], None],
@@ -30,6 +55,8 @@ class DemandService(Generic[RepositoryT]):
         batch: Callable[[RepositoryT, str], ContextManager[Any]] | None = None,
     ) -> None:
         self._repository = repository
+        self._load_record = load_record
+        self._modify_record = modify_record
         self._submit_record = submit_record
         self._approve_record = approve_record
         self._request_correction_record = request_correction_record
@@ -44,6 +71,45 @@ class DemandService(Generic[RepositoryT]):
             if self._batch is not None
             else nullcontext()
         )
+
+    def modify(
+        self,
+        number: str,
+        updates: Mapping[str, Any],
+        comment: str = "Demande modifiée dans l'application",
+    ) -> bool:
+        """Persist a demand edit and return whether reapproval became required.
+
+        An approved demand remains the source of the active operational plan until a
+        newly edited business version is approved. Therefore editing any business
+        field while the request is ``En planification`` moves only the request back to
+        ``Soumise`` and clears its approval metadata. Existing requirements and shifts
+        are deliberately left untouched here.
+        """
+        existing = self._load_record(self._repository, number)
+        if existing is None:
+            raise KeyError(f"Demande {number} introuvable")
+
+        data = dict(updates)
+        reapproval_required = (
+            str(existing.get("Statut") or "") == "En planification"
+            and bool(BUSINESS_DEMAND_FIELDS.intersection(data))
+        )
+
+        audit_comment = str(comment or "").strip()
+        if reapproval_required:
+            data["Statut"] = "Soumise"
+            data["ApprouvePar"] = None
+            data["DateApprobation"] = None
+            data["CommentaireApprobation"] = (
+                "Demande modifiée après approbation — nouvelle approbation requise"
+            )
+            suffix = "Nouvelle approbation requise; la planification existante est conservée"
+            audit_comment = f"{audit_comment} · {suffix}" if audit_comment else suffix
+
+        with self._context("modify demand"):
+            self._modify_record(self._repository, number, data, audit_comment)
+        return reapproval_required
 
     def submit(self, number: str) -> None:
         """Submit a draft/corrected demand for approval."""
