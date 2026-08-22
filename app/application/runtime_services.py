@@ -3,7 +3,7 @@ from __future__ import annotations
 from contextlib import nullcontext
 from datetime import datetime
 from importlib import import_module
-from typing import Any
+from typing import Any, Mapping
 
 from .demand_service import DemandService
 from .planning_service import PlanningService
@@ -13,6 +13,31 @@ def _runtime_rebuild(repository: Any):
     """Resolve the currently installed planning alias only when executed."""
     v15_engine = import_module("app.v15_engine")
     return v15_engine.rebuild_allocations(repository)
+
+
+def _load_demand_record(repository: Any, number: str) -> Mapping[str, Any] | None:
+    return next(
+        (
+            row
+            for row in repository.demands()
+            if str(row.get("NoDemande") or "") == str(number)
+        ),
+        None,
+    )
+
+
+def _modify_demand_record(
+    repository: Any,
+    number: str,
+    updates: Mapping[str, Any],
+    comment: str,
+) -> None:
+    repository.update_demand(
+        number,
+        dict(updates),
+        action="Modification",
+        comment=comment,
+    )
 
 
 def _submit_demand_record(repository: Any, number: str) -> None:
@@ -68,14 +93,7 @@ def _cancel_demand_record(repository: Any, number: str) -> None:
 def _sync_approved_demand(repository: Any, number: str) -> None:
     """Synchronize operational requirements with the newly approved version."""
     refinements = import_module("app.v15_refinements")
-    demand = next(
-        (
-            row
-            for row in repository.demands()
-            if str(row.get("NoDemande") or "") == str(number)
-        ),
-        None,
-    )
+    demand = _load_demand_record(repository, number)
     if demand is None:
         raise KeyError(f"Demande {number} introuvable après approbation")
     refinements._sync_segments_to_approved_demand(repository, demand)
@@ -105,11 +123,14 @@ def demand_service(repository: Any) -> DemandService[Any]:
     """Build the runtime demand service against today's Excel/V1 adapters.
 
     This is the migration seam between the current Excel/V1.x implementation and the
-    future repository/API architecture. The service owns lifecycle workflow ordering
-    while these adapters translate operations to the current storage model.
+    future repository/API architecture. The service owns demand edit/reapproval policy
+    and lifecycle workflow ordering while these adapters translate operations to the
+    current storage model.
     """
     return DemandService(
         repository,
+        load_record=_load_demand_record,
+        modify_record=_modify_demand_record,
         submit_record=_submit_demand_record,
         approve_record=_approve_demand_record,
         request_correction_record=_request_correction_record,
