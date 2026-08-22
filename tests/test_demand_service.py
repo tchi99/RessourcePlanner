@@ -317,26 +317,16 @@ class DemandServiceTests(unittest.TestCase):
         self.assertLess(names.index("planning_service_ui"), names.index("demand_service_ui"))
         self.assertLess(names.index("demand_service_ui"), names.index("communication_ui"))
 
-    def test_legacy_approval_wrappers_are_inventory_only_not_primary_ui_path(self) -> None:
+    def test_legacy_approval_wrappers_are_physically_removed(self) -> None:
         root = Path(__file__).resolve().parents[1]
-        legacy_paths = [
-            root / "app" / "v15.py",
-            root / "app" / "v15_refinements.py",
-        ]
-        legacy_hits = {
-            path.name: "ExcelRepository.approve_demand" in path.read_text(encoding="utf-8")
-            for path in legacy_paths
-        }
-        self.assertEqual(
-            legacy_hits,
-            {
-                "v15.py": True,
-                "v15_refinements.py": True,
-            },
-        )
-        for filename in ("resource_class_compat.py", "segment_navigation_compat.py"):
+        for filename in ("v15.py", "v15_refinements.py"):
             source = (root / "app" / filename).read_text(encoding="utf-8")
             self.assertNotIn("ExcelRepository.approve_demand", source)
+            self.assertNotIn("original_approve", source)
+            self.assertNotIn("approve_demand_v15", source)
+            self.assertNotIn("approve_demand_refined", source)
+
+        self.assertFalse((root / "app" / "demand_legacy_cleanup.py").exists())
         service_ui = (root / "app" / "demand_service_ui.py").read_text(encoding="utf-8")
         self.assertNotIn("approve_demand", service_ui)
 
