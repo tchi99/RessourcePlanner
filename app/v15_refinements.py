@@ -1094,22 +1094,6 @@ def install_v15_refinements() -> None:
     v15.rebuild_allocations = rebuild_allocations_refined
     v15.weekly_allocation_load = weekly_allocation_load_refined
     v15._open_manual_allocation_dialog = _open_allocation_dialog
-
-    # Après une nouvelle approbation, les segments représentent la nouvelle version approuvée.
-    original_approve = ExcelRepository.approve_demand
-
-    def approve_demand_refined(self: ExcelRepository, number: str, comment: str = "") -> None:
-        original_approve(self, number, comment)
-        demand = next(
-            (row for row in self.demands() if str(row.get("NoDemande") or "") == str(number)),
-            None,
-        )
-        if demand:
-            _sync_segments_to_approved_demand(self, demand)
-        rebuild_allocations_refined(self)
-
-    ExcelRepository.approve_demand = approve_demand_refined
-
     ui_module.PlannerUI.render_planning = _render_planning
     v13._render_operational_planning = _render_planning
     v15._render_operational_planning_v15 = _render_planning

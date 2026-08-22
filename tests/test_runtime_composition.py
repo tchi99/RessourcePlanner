@@ -22,8 +22,7 @@ class RuntimeCompositionTests(unittest.TestCase):
         self.assertLess(names.index("operational_planning_compat"), names.index("resource_class_compat"))
         self.assertLess(names.index("resource_class_compat"), names.index("segment_navigation_compat"))
         self.assertLess(names.index("segment_navigation_compat"), names.index("location_projection"))
-        self.assertLess(names.index("location_projection"), names.index("demand_legacy_cleanup"))
-        self.assertLess(names.index("segment_navigation_compat"), names.index("planning_service_ui"))
+        self.assertLess(names.index("location_projection"), names.index("planning_service_ui"))
         self.assertLess(names.index("planning_service_ui"), names.index("demand_service_ui"))
         self.assertLess(names.index("demand_service_ui"), names.index("allocation_service_ui"))
         self.assertLess(names.index("allocation_service_ui"), names.index("pure_validation_ui"))
@@ -51,6 +50,7 @@ class RuntimeCompositionTests(unittest.TestCase):
             "location_projection",
         ):
             self.assertIn(extracted, compatibility)
+        self.assertNotIn("demand_legacy_cleanup", compatibility)
         self.assertEqual(
             application,
             [
@@ -71,13 +71,14 @@ class RuntimeCompositionTests(unittest.TestCase):
             ],
         )
 
-    def test_retired_versioned_compatibility_modules_are_physically_removed(self) -> None:
+    def test_retired_compatibility_modules_are_physically_removed(self) -> None:
         app_dir = Path(__file__).resolve().parents[1] / "app"
         for name in (
             "v18_fixes.py",
             "v18_single_scroll.py",
             "v18_calendar_sizing.py",
             "v18_workflow_fixes.py",
+            "demand_legacy_cleanup.py",
         ):
             self.assertFalse((app_dir / name).exists(), name)
 

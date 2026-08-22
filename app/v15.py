@@ -663,66 +663,6 @@ def _estimated_hours_per_resource(repo: ExcelRepository, demand: dict[str, Any],
     return round(v13_fixes._estimated_segment_hours(repo, demand, proposed), 2)
 
 
-def _ensure_resource_segments(
-    repo: ExcelRepository,
-    demand: dict[str, Any],
-    segments_before_approval: int,
-) -> None:
-    number = str(demand.get("NoDemande") or "")
-    desired = max(int(v13._number(demand.get("NombreRessources")) or 1), 1)
-    current = [
-        row
-        for row in v13.segment_records(repo, include_cancelled=False)
-        if str(row.get("NoDemande") or "") == number
-        and str(row.get("Statut") or "") != "Annulé"
-    ]
-    if not current:
-        return
-
-    per_resource = _estimated_hours_per_resource(repo, demand, desired)
-    if segments_before_approval == 0 and desired > 1 and per_resource > 0:
-        v13.update_segment(
-            repo,
-            str(current[0].get("IDSegment") or ""),
-            {"HeuresPrevues": per_resource},
-        )
-        current[0]["HeuresPrevues"] = per_resource
-
-    missing = max(desired - len(current), 0)
-    source = demand.get(v13.SOURCE_EFFORT_FIELD)
-    for _ in range(missing):
-        v13.add_segment(
-            repo,
-            {
-                "NoDemande": number,
-                "NumeroProjet": demand.get("NumeroProjet"),
-                "NomProjet": demand.get("NomProjet"),
-                "Technicien": None,
-                "DateDebut": demand.get("DateDebutSouhaitee"),
-                "DateFin": demand.get("DateFinSouhaitee") or demand.get("DateDebutSouhaitee"),
-                "HeuresPrevues": per_resource,
-                "Statut": "À assigner",
-                "Description": demand.get("Description") or "Ressource additionnelle",
-                "SourceEffortRow": source,
-                "CompetenceRequise": demand.get("CompetencesRequises"),
-                "TypePlanification": "Flexible",
-                "Priorite": demand.get("Priorite") or "Normale",
-            },
-        )
-
-    if desired < len(current):
-        repo.log_history(
-            number,
-            "Réapprobation",
-            "En planification",
-            "En planification",
-            (
-                f"La demande requiert maintenant {desired} ressource(s), mais {len(current)} segment(s) existent déjà. "
-                "Aucun segment existant n'a été supprimé automatiquement."
-            ),
-        )
-
-
 def install_v15_features() -> None:
     if getattr(ui_module.PlannerUI, "_v15_features_installed", False):
         return
@@ -776,34 +716,6 @@ def install_v15_features() -> None:
         original_update_demand(self, number, data, action=action, comment=comment)
 
     ExcelRepository.update_demand = update_demand_v15
-
-    # NombreRessources devient réellement un nombre de segments indépendants.
-    original_approve = ExcelRepository.approve_demand
-
-    def approve_demand_v15(
-        self: ExcelRepository, number: str, comment: str = ""
-    ) -> None:
-        before = [
-            row
-            for row in v13.segment_records(self, include_cancelled=False)
-            if str(row.get("NoDemande") or "") == str(number)
-            and str(row.get("Statut") or "") != "Annulé"
-        ]
-        original_approve(self, number, comment)
-        demand = next(
-            (
-                row
-                for row in self.demands()
-                if str(row.get("NoDemande") or "") == str(number)
-            ),
-            None,
-        )
-        if demand:
-            _ensure_resource_segments(self, demand, len(before))
-        rebuild_allocations(self)
-
-    ExcelRepository.approve_demand = approve_demand_v15
-
     original_ensure = ExcelRepository.ensure_app_sheets
 
     def ensure_app_sheets_v15(self: ExcelRepository) -> None:

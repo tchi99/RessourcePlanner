@@ -10,7 +10,7 @@ from .planning_service import PlanningService
 
 
 def _runtime_rebuild(repository: Any):
-    """Resolve the currently installed compatibility alias only when executed."""
+    """Resolve the currently installed planning alias only when executed."""
     v15_engine = import_module("app.v15_engine")
     return v15_engine.rebuild_allocations(repository)
 
@@ -25,11 +25,11 @@ def _submit_demand_record(repository: Any, number: str) -> None:
 
 
 def _approve_demand_record(repository: Any, number: str, comment: str) -> None:
-    """Persist only the approval decision, without legacy approval side effects.
+    """Persist only the approval decision.
 
-    ``ExcelRepository.approve_demand`` is still wrapped by historical V1.x installers.
-    The application service deliberately uses the lower-level record update so it can
-    own synchronization and planning rebuild itself and execute them exactly once.
+    Approval workflow orchestration belongs to ``DemandService``: this adapter writes
+    the decision only, while the service owns requirement synchronization and the
+    single planning rebuild that follows approval.
     """
     repository.update_demand(
         number,
@@ -89,12 +89,11 @@ def _runtime_batch(repository: Any, label: str):
 
 
 def planning_service(repository: Any) -> PlanningService[Any]:
-    """Build the runtime planning service against the currently selected engine.
+    """Build the runtime planning service against the authoritative engine alias.
 
     Engine import and lookup are deliberately lazy. Lightweight CI can import the
-    application layer without NiceGUI, while the running application still resolves
-    the authoritative ``v15_engine.rebuild_allocations`` alias after cutover has
-    selected legacy/guarded/pure behavior.
+    application layer without NiceGUI, while the running application resolves the
+    authoritative ``v15_engine.rebuild_allocations`` alias only when a rebuild runs.
     """
     return PlanningService(
         repository,
