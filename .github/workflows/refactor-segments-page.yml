@@ -1,0 +1,31 @@
+name: One-off Segments page extraction
+
+on:
+  push:
+    branches:
+      - refactor/segments-page-read-model
+    paths:
+      - .github/workflows/refactor-segments-page.yml
+
+permissions:
+  contents: write
+
+jobs:
+  refactor:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: refactor/segments-page-read-model
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Apply extraction
+        run: python tools/refactor_extract_segments_page.py
+      - name: Commit transformed files
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/v13.py app/ui.py app/demand_requests_page.py
+          git commit -m "Extract Segments page and repository wiring"
+          git push
