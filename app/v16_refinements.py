@@ -9,6 +9,7 @@ from . import ui as ui_module
 from . import v13, v15, v15_engine, v15_refinements, v16
 from .bugfixes import schedulable_technicians
 from .excel_repository import ExcelRepository, MASTER_SHEETS, _as_matrix
+from .ui_context import ensure_scoped_ui
 
 
 RESOURCE_PROFILE_SHEET = "RessourcesMO"
@@ -356,7 +357,12 @@ def _project_labels(repo: ExcelRepository) -> dict[str, str]:
 
 def _render_planning(self: ui_module.PlannerUI) -> None:
     """Réutilise la vue V1.6 en remplaçant uniquement les libellés du filtre Projet."""
-    original_select = v16.ui.select
+    scoped_ui = ensure_scoped_ui(
+        v16,
+        scope_name="v16_planning",
+        scoped_factories=("select",),
+    )
+    original_select = scoped_ui.base_factory("select")
     labels = _project_labels(self.repo)
 
     def select_proxy(options: Any, *args: Any, **kwargs: Any) -> Any:
@@ -368,11 +374,8 @@ def _render_planning(self: ui_module.PlannerUI) -> None:
             return original_select(mapped, *args, **kwargs)
         return original_select(options, *args, **kwargs)
 
-    v16.ui.select = select_proxy
-    try:
+    with scoped_ui.override_factory("select", select_proxy):
         v16._render_planning_v16(self)
-    finally:
-        v16.ui.select = original_select
 
 
 def _render_resources(self: ui_module.PlannerUI) -> None:
