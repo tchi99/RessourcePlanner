@@ -519,6 +519,35 @@ class DemandServiceTests(unittest.TestCase):
         service_ui = (root / "app" / "demand_service_ui.py").read_text(encoding="utf-8")
         self.assertNotIn("approve_demand", service_ui)
 
+    def test_base_ui_no_longer_defines_dormant_demand_lifecycle(self) -> None:
+        root = Path(__file__).resolve().parents[1]
+        source = (root / "app" / "ui.py").read_text(encoding="utf-8")
+
+        for definition in (
+            "def submit_request(",
+            "def cancel_request(",
+            "def open_approval_dialog(",
+            "def open_correction_dialog(",
+        ):
+            self.assertNotIn(definition, source)
+
+        for direct_repository_call in (
+            "self.repo.submit_demand(",
+            "self.repo.approve_demand(",
+            "self.repo.request_correction(",
+            "self.repo.update_demand(",
+        ):
+            self.assertNotIn(direct_repository_call, source)
+
+        service_ui = (root / "app" / "demand_service_ui.py").read_text(encoding="utf-8")
+        for binding in (
+            "PlannerUI.submit_request = _submit_request_via_service",
+            "PlannerUI.cancel_request = _cancel_request_via_service",
+            "PlannerUI.open_approval_dialog = _open_approval_dialog_via_service",
+            "PlannerUI.open_correction_dialog = _open_correction_dialog_via_service",
+        ):
+            self.assertIn(binding, service_ui)
+
 
 if __name__ == "__main__":
     unittest.main()
