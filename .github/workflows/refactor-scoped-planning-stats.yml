@@ -1,0 +1,34 @@
+name: One-off scoped planning stats refactor
+
+on:
+  push:
+    branches:
+      - refactor/scoped-planning-stats
+    paths:
+      - tools/refactor_scoped_planning_stats.py
+      - .github/workflows/refactor-scoped-planning-stats.yml
+
+permissions:
+  contents: write
+
+jobs:
+  refactor:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: refactor/scoped-planning-stats
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Apply refactor
+        run: python tools/refactor_scoped_planning_stats.py
+      - name: Compile transformed sources
+        run: python -m compileall -q app tests tools
+      - name: Commit transformed files
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/v17.py app/v17_refinements.py app/v17_sort_fix.py tests/test_operational_renderer_architecture.py
+          git commit -m "Inject planning stats without module mutation"
+          git push
