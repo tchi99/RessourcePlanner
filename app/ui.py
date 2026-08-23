@@ -7,6 +7,8 @@ from nicegui import ui
 
 from .config import save_workbook_path
 from .demand_requests_page import DemandRequestsPage
+from .segment_repository import SEGMENT_SHEET
+from .segments_page import SegmentsPage
 from .excel_repository import EFFORT_STATUSES, ExcelRepository, MASTER_SHEETS
 from .services import (
     active_efforts_for_week,
@@ -20,6 +22,7 @@ from .services import (
 NAV_ITEMS = [
     ("dashboard", "dashboard", "Tableau de bord"),
     ("planning", "calendar_month", "Planification"),
+    ("segments", "view_timeline", "Segments"),
     ("requests", "approval", "Demandes / approbations"),
     ("data", "table_view", "Données Excel"),
     ("settings", "settings", "Paramètres"),
@@ -51,6 +54,7 @@ class PlannerUI:
 
         # La page Demandes possède désormais son propre rendu et ses actions.
         self.demand_requests_page = DemandRequestsPage(self)
+        self.segments_page = SegmentsPage(self)
 
         # Refreshable principal conservé sur le shell historique pendant l'extraction
         # progressive des autres pages. L'alias request_actions protège les adaptateurs
@@ -168,6 +172,8 @@ class PlannerUI:
                 "Historique",
                 "Liste des projets",
             ]
+        if self.current_page == "segments":
+            return [SEGMENT_SHEET, "DemandesMO", "Disponibilites", "Liste_Effort"]
         if self.current_page == "data":
             return [self.selected_sheet]
         return [
@@ -230,6 +236,8 @@ class PlannerUI:
             self.render_planning()
         elif self.current_page == "requests":
             self.demand_requests_page.render()
+        elif self.current_page == "segments":
+            self.segments_page.render()
         elif self.current_page == "data":
             self.render_data()
         else:

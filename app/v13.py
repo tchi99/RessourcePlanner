@@ -16,39 +16,22 @@ from .excel_repository import (
     _date_from_any,
 )
 from .services import week_days, week_start
+from .segment_repository import (
+    SEGMENT_HEADERS,
+    SEGMENT_SHEET,
+    SEGMENT_STATUSES,
+    add_segment,
+    ensure_segment_sheet as _ensure_v13_sheets,
+    number as _number,
+    segment_records,
+    update_segment,
+)
 
 
-SEGMENT_SHEET = "SegmentsMO"
-SEGMENT_TABLE = "SegmentsMOTable"
-SEGMENT_HEADERS = [
-    "IDSegment",
-    "NoDemande",
-    "NumeroProjet",
-    "NomProjet",
-    "Technicien",
-    "DateDebut",
-    "DateFin",
-    "HeuresPrevues",
-    "Statut",
-    "Description",
-    "SourceEffortRow",
-    "DateCreation",
-    "DateModification",
-    "CreePar",
-]
-SEGMENT_STATUSES = ["Planifié", "En cours", "Terminé", "Annulé"]
 SOURCE_EFFORT_FIELD = "SourceEffortRow"
 GANTT_WEEKS = 16
 
 
-def _ensure_v13_sheets(repo: ExcelRepository) -> None:
-    MASTER_SHEETS.add(SEGMENT_SHEET)
-    try:
-        repo._book().sheets[SEGMENT_SHEET]
-        return
-    except Exception:
-        repo._ensure_sheet_table(SEGMENT_SHEET, SEGMENT_HEADERS, SEGMENT_TABLE)
-        repo.save()
 
 
 def _norm_project(value: Any) -> str:
@@ -64,128 +47,16 @@ def _norm_project(value: Any) -> str:
     return text.lower()
 
 
-def _number(value: Any) -> float:
-    if value in (None, ""):
-        return 0.0
-    if isinstance(value, (int, float)):
-        return float(value)
-    try:
-        return float(str(value).replace(",", "."))
-    except (TypeError, ValueError):
-        return 0.0
 
 
-def _excel_datetime(value: Any) -> datetime | None:
-    parsed = _date_from_any(value)
-    return datetime.combine(parsed, datetime.min.time()) if parsed else None
 
 
-def segment_records(repo: ExcelRepository, include_cancelled: bool = True) -> list[dict[str, Any]]:
-    with repo._lock:
-        _ensure_v13_sheets(repo)
-        rows = repo._sheet_as_records(SEGMENT_SHEET, "IDSegment")
-        result: list[dict[str, Any]] = []
-        for row in rows:
-            if not row.get("IDSegment"):
-                continue
-            row["DateDebut"] = _date_from_any(row.get("DateDebut"))
-            row["DateFin"] = _date_from_any(row.get("DateFin"))
-            row["HeuresPrevues"] = _number(row.get("HeuresPrevues"))
-            if not include_cancelled and str(row.get("Statut") or "") == "Annulé":
-                continue
-            result.append(row)
-        return result
 
 
-def _next_segment_id(repo: ExcelRepository) -> str:
-    year = date.today().year
-    max_seq = 0
-    prefix = f"SEG-{year}-"
-    for row in segment_records(repo):
-        ident = str(row.get("IDSegment") or "")
-        if ident.startswith(prefix):
-            try:
-                max_seq = max(max_seq, int(ident[len(prefix):]))
-            except ValueError:
-                continue
-    return f"{prefix}{max_seq + 1:04d}"
 
 
-def add_segment(repo: ExcelRepository, values: dict[str, Any]) -> str:
-    with repo._lock:
-        _ensure_v13_sheets(repo)
-        ident = _next_segment_id(repo)
-        now = datetime.now()
-        payload = {header: None for header in SEGMENT_HEADERS}
-        payload.update(values)
-        payload["IDSegment"] = ident
-        payload["Statut"] = payload.get("Statut") or "Planifié"
-        payload["DateDebut"] = _excel_datetime(payload.get("DateDebut"))
-        payload["DateFin"] = _excel_datetime(payload.get("DateFin") or payload.get("DateDebut"))
-        payload["HeuresPrevues"] = _number(payload.get("HeuresPrevues"))
-        payload["DateCreation"] = now
-        payload["DateModification"] = now
-        payload["CreePar"] = repo.current_user
-        repo._append_dict_row(SEGMENT_SHEET, SEGMENT_HEADERS, payload, SEGMENT_TABLE)
-        no_demande = str(payload.get("NoDemande") or "")
-        if no_demande:
-            demand = next(
-                (d for d in repo.demands() if str(d.get("NoDemande") or "") == no_demande),
-                None,
-            )
-            status = str(demand.get("Statut") or "") if demand else ""
-            repo.log_history(
-                no_demande,
-                "Création segment",
-                status,
-                status,
-                f"{ident} créé pour {payload.get('Technicien') or ''}",
-                details=f"{payload.get('DateDebut')} → {payload.get('DateFin')} · {payload.get('HeuresPrevues')} h",
-            )
-        return ident
 
 
-def update_segment(repo: ExcelRepository, ident: str, updates: dict[str, Any]) -> None:
-    with repo._lock:
-        row = next(
-            (r for r in segment_records(repo) if str(r.get("IDSegment") or "") == ident),
-            None,
-        )
-        if not row:
-            raise KeyError(f"Segment {ident} introuvable")
-        sheet = repo._book().sheets[SEGMENT_SHEET]
-        headers = _as_matrix(sheet.range((1, 1), (1, len(SEGMENT_HEADERS))).value)[0]
-        header_map = {
-            str(value).strip(): idx + 1
-            for idx, value in enumerate(headers)
-            if value not in (None, "")
-        }
-        updates = dict(updates)
-        updates["DateModification"] = datetime.now()
-        for key, value in updates.items():
-            col = header_map.get(key)
-            if not col:
-                continue
-            if key in {"DateDebut", "DateFin"}:
-                value = _excel_datetime(value)
-            elif key == "HeuresPrevues":
-                value = _number(value)
-            sheet.range((int(row["_row"]), col)).value = value
-        repo.save()
-        no_demande = str(row.get("NoDemande") or "")
-        if no_demande:
-            demand = next(
-                (d for d in repo.demands() if str(d.get("NoDemande") or "") == no_demande),
-                None,
-            )
-            status = str(demand.get("Statut") or "") if demand else ""
-            repo.log_history(
-                no_demande,
-                "Modification segment",
-                status,
-                status,
-                f"{ident} modifié",
-            )
 
 
 def _parse_time_hours(text: str) -> float:
@@ -689,98 +560,10 @@ def _create_demand_from_effort(
         ui.notify(str(exc), type="negative")
 
 
-def _render_segments(self: ui_module.PlannerUI) -> None:
-    filter_request = getattr(self, "segment_request_filter", None)
-    rows = segment_records(self.repo)
-    if filter_request:
-        rows = [row for row in rows if str(row.get("NoDemande") or "") == str(filter_request)]
-
-    with ui.row().classes("w-full items-center"):
-        with ui.column().classes("gap-0"):
-            ui.label("Segments de planification").classes("text-2xl font-bold")
-            subtitle = f"Demande {filter_request}" if filter_request else "Découpage opérationnel des demandes MO"
-            ui.label(subtitle).classes("muted")
-        ui.space()
-        if filter_request:
-            ui.button(
-                "Toutes les demandes",
-                icon="clear_all",
-                on_click=lambda: _clear_segment_filter(self),
-            ).props("flat no-caps")
-        ui.button(
-            "Nouveau segment",
-            icon="add",
-            on_click=lambda: _open_segment_dialog(self, demand_number=filter_request),
-        ).props("unelevated no-caps color=primary")
-
-    total_hours = sum(
-        _number(row.get("HeuresPrevues"))
-        for row in rows
-        if str(row.get("Statut") or "") != "Annulé"
-    )
-    with ui.row().classes("w-full gap-3"):
-        ui.label(f"{len(rows)} segment(s)").classes("text-sm muted")
-        ui.label(f"{total_hours:g} h planifiées").classes("text-sm muted")
-        ui.label("Clique une ligne pour la modifier.").classes("text-sm muted")
-
-    grid_rows = [
-        {
-            "IDSegment": row.get("IDSegment"),
-            "NoDemande": row.get("NoDemande"),
-            "Projet": f"{row.get('NumeroProjet') or '—'} · {row.get('NomProjet') or ''}",
-            "Technicien": row.get("Technicien") or "",
-            "Début": self._date_text(row.get("DateDebut")),
-            "Fin": self._date_text(row.get("DateFin")),
-            "Heures": _number(row.get("HeuresPrevues")),
-            "Statut": row.get("Statut") or "",
-            "Description": row.get("Description") or "",
-        }
-        for row in rows
-    ]
-    grid = ui.aggrid(
-        {
-            "columnDefs": [
-                {"headerName": "Segment", "field": "IDSegment", "minWidth": 145, "pinned": "left"},
-                {"headerName": "Demande", "field": "NoDemande", "minWidth": 145},
-                {"headerName": "Projet", "field": "Projet", "minWidth": 230},
-                {"headerName": "Technicien", "field": "Technicien", "minWidth": 160},
-                {"headerName": "Début", "field": "Début", "minWidth": 115},
-                {"headerName": "Fin", "field": "Fin", "minWidth": 115},
-                {"headerName": "Heures", "field": "Heures", "minWidth": 90},
-                {"headerName": "Statut", "field": "Statut", "minWidth": 115},
-                {"headerName": "Description", "field": "Description", "minWidth": 240},
-            ],
-            "rowData": grid_rows,
-            "defaultColDef": {"sortable": True, "filter": True, "resizable": True},
-            "animateRows": True,
-        }
-    ).classes("w-full h-[520px]")
-
-    def row_click(event: Any) -> None:
-        args = event.args if isinstance(event.args, dict) else {}
-        data = args.get("data", {})
-        ident = data.get("IDSegment")
-        segment = next(
-            (row for row in segment_records(self.repo) if row.get("IDSegment") == ident),
-            None,
-        )
-        if segment:
-            _open_segment_dialog(self, segment=segment)
-
-    grid.on("cellClicked", row_click)
 
 
-def _clear_segment_filter(self: ui_module.PlannerUI) -> None:
-    self.segment_request_filter = None
-    self.render_content.refresh()
 
 
-def _go_to_segments(self: ui_module.PlannerUI, demand: dict[str, Any]) -> None:
-    self.segment_request_filter = str(demand.get("NoDemande") or "")
-    self.current_page = "segments"
-    self.selected_request = None
-    self._signature = self._signature_for_current_page()
-    self.render_content.refresh()
 
 
 def _demand_options(repo: ExcelRepository) -> dict[str, str]:
@@ -1014,12 +797,6 @@ def install_v13_features() -> None:
             (index for index, item in enumerate(ui_module.NAV_ITEMS) if item[0] == "planning"), 1
         )
         ui_module.NAV_ITEMS.insert(planning_index, ("medium_term", "timeline", "Planification moyen terme"))
-    if not any(item[0] == "segments" for item in ui_module.NAV_ITEMS):
-        planning_index = next(
-            (index for index, item in enumerate(ui_module.NAV_ITEMS) if item[0] == "planning"), 2
-        )
-        ui_module.NAV_ITEMS.insert(planning_index + 1, ("segments", "view_timeline", "Segments"))
-
     original_render_content = ui_module.PlannerUI._render_content
     original_page_sheets = ui_module.PlannerUI._page_sheets
     original_setup_style = ui_module.PlannerUI._setup_style
@@ -1043,16 +820,11 @@ def install_v13_features() -> None:
         if self.current_page == "medium_term":
             _render_medium_term(self)
             return
-        if self.current_page == "segments":
-            _render_segments(self)
-            return
         original_render_content(self)
 
     def page_sheets(self: ui_module.PlannerUI) -> list[str]:
         if self.current_page == "planning":
             return [SEGMENT_SHEET, features.AVAILABILITY_SHEET, "DemandesMO"]
-        if self.current_page == "segments":
-            return [SEGMENT_SHEET, "DemandesMO", features.AVAILABILITY_SHEET, "Liste_Effort"]
         if self.current_page == "medium_term":
             return ["Liste_Effort", "DemandesMO", SEGMENT_SHEET]
         if self.current_page == "dashboard":
@@ -1064,6 +836,5 @@ def install_v13_features() -> None:
     ui_module.PlannerUI._page_sheets = page_sheets
     ui_module.PlannerUI.render_dashboard = _render_dashboard_v13
     ui_module.PlannerUI.render_planning = _render_operational_planning
-    ui_module.PlannerUI.render_segments = _render_segments
     ui_module.PlannerUI.render_medium_term = _render_medium_term
     ui_module.PlannerUI._v13_features_installed = True

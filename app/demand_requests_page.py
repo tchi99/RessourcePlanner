@@ -5,29 +5,11 @@ from typing import Any
 from nicegui import ui
 
 from .application.runtime_services import demand_service
+from .segment_repository import number, segment_records
 
 
-def _number(value: Any) -> float:
-    if value in (None, ""):
-        return 0.0
-    if isinstance(value, (int, float)):
-        return float(value)
-    try:
-        return float(str(value).replace(",", "."))
-    except (TypeError, ValueError):
-        return 0.0
 
 
-def _segment_records(repo: Any) -> list[dict[str, Any]]:
-    """Resolve the transitional Excel segment read model lazily.
-
-    The request page is now explicit and no longer installed by a V1.x monkey-patch,
-    but SegmentsMO is still backed by the historical repository helper until the
-    repository/read-model tranche is completed.
-    """
-    from .v13 import segment_records
-
-    return segment_records(repo)
 
 
 class DemandRequestsPage:
@@ -121,13 +103,13 @@ class DemandRequestsPage:
         status = str(demand.get("Statut") or "")
         related_segments = [
             segment
-            for segment in _segment_records(self.owner.repo)
+            for segment in segment_records(self.owner.repo)
             if str(segment.get("NoDemande") or "")
             == str(demand.get("NoDemande") or "")
             and str(segment.get("Statut") or "") != "Annulé"
         ]
         planned_hours = sum(
-            _number(segment.get("HeuresPrevues")) for segment in related_segments
+            number(segment.get("HeuresPrevues")) for segment in related_segments
         )
 
         with ui.card().classes("section-card w-full"):
@@ -269,11 +251,7 @@ class DemandRequestsPage:
         dialog.open()
 
     def _go_to_segments(self, demand: dict[str, Any]) -> None:
-        self.owner.segment_request_filter = str(demand.get("NoDemande") or "")
-        self.owner.current_page = "segments"
-        self.owner.selected_request = None
-        self.owner._signature = self.owner._signature_for_current_page()
-        self.owner.render_content.refresh()
+        self.owner.segments_page.open_for_demand(demand)
 
     def _grid_row(self, demand: dict[str, Any]) -> dict[str, Any]:
         return {
