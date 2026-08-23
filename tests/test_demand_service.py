@@ -466,33 +466,26 @@ class DemandServiceTests(unittest.TestCase):
         self.assertIn('import_module("app.v15_engine")', source)
 
     def test_request_lifecycle_ui_crosses_demand_service_boundary(self) -> None:
-        path = Path(__file__).resolve().parents[1] / "app" / "demand_service_ui.py"
+        path = Path(__file__).resolve().parents[1] / "app" / "demand_requests_page.py"
         source = path.read_text(encoding="utf-8")
 
         for call in (
-            "demand_service(self.repo).submit",
-            "demand_service(self.repo).approve",
-            "demand_service(self.repo).request_correction",
-            "demand_service(self.repo).cancel",
+            "demand_service(self.owner.repo).submit",
+            "demand_service(self.owner.repo).approve",
+            "demand_service(self.owner.repo).request_correction",
+            "demand_service(self.owner.repo).cancel",
         ):
             self.assertIn(call, source)
 
         for direct_repository_call in (
-            "self.repo.submit_demand",
-            "self.repo.approve_demand",
-            "self.repo.request_correction",
-            "self.repo.update_demand",
+            "self.owner.repo.submit_demand",
+            "self.owner.repo.approve_demand",
+            "self.owner.repo.request_correction",
+            "self.owner.repo.update_demand",
         ):
             self.assertNotIn(direct_repository_call, source)
 
-        self.assertIn("PlannerUI.submit_request = _submit_request_via_service", source)
-        self.assertIn("PlannerUI.cancel_request = _cancel_request_via_service", source)
-        self.assertIn("PlannerUI.open_approval_dialog = _open_approval_dialog_via_service", source)
-        self.assertIn("PlannerUI.open_correction_dialog = _open_correction_dialog_via_service", source)
-
-        names = [step.name for step in composition_manifest()]
-        self.assertLess(names.index("planning_service_ui"), names.index("demand_service_ui"))
-        self.assertLess(names.index("demand_service_ui"), names.index("communication_ui"))
+        self.assertFalse((Path(__file__).resolve().parents[1] / "app" / "demand_service_ui.py").exists())
 
     def test_request_edit_ui_crosses_demand_service_boundary(self) -> None:
         root = Path(__file__).resolve().parents[1]

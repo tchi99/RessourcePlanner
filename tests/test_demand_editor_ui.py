@@ -56,7 +56,7 @@ class DemandEditorUIArchitectureTests(unittest.TestCase):
         self.assertLess(names.index("v18_refinements"), names.index("demand_editor_ui"))
         self.assertLess(names.index("location_projection"), names.index("demand_editor_ui"))
         self.assertLess(names.index("demand_editor_ui"), names.index("planning_service_ui"))
-        self.assertLess(names.index("demand_editor_ui"), names.index("demand_service_ui"))
+        self.assertLess(names.index("demand_editor_ui"), names.index("allocation_service_ui"))
 
     def test_editor_does_not_depend_on_legacy_features_form_helpers(self) -> None:
         source = self._source("demand_editor_ui.py")
