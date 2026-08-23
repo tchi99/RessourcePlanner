@@ -496,7 +496,7 @@ class DemandServiceTests(unittest.TestCase):
 
     def test_request_edit_ui_crosses_demand_service_boundary(self) -> None:
         root = Path(__file__).resolve().parents[1]
-        source = (root / "app" / "v15_refinements.py").read_text(encoding="utf-8")
+        source = (root / "app" / "demand_editor_ui.py").read_text(encoding="utf-8")
 
         self.assertIn("demand_service(self.repo).modify", source)
         self.assertNotIn("self.repo.update_demand(", source)

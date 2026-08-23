@@ -22,7 +22,8 @@ class RuntimeCompositionTests(unittest.TestCase):
         self.assertLess(names.index("operational_planning_compat"), names.index("resource_class_compat"))
         self.assertLess(names.index("resource_class_compat"), names.index("segment_navigation_compat"))
         self.assertLess(names.index("segment_navigation_compat"), names.index("location_projection"))
-        self.assertLess(names.index("location_projection"), names.index("planning_service_ui"))
+        self.assertLess(names.index("location_projection"), names.index("demand_editor_ui"))
+        self.assertLess(names.index("demand_editor_ui"), names.index("planning_service_ui"))
         self.assertLess(names.index("planning_service_ui"), names.index("demand_service_ui"))
         self.assertLess(names.index("demand_service_ui"), names.index("allocation_service_ui"))
         self.assertLess(names.index("allocation_service_ui"), names.index("pure_validation_ui"))
@@ -54,6 +55,7 @@ class RuntimeCompositionTests(unittest.TestCase):
         self.assertEqual(
             application,
             [
+                "demand_editor_ui",
                 "planning_service_ui",
                 "demand_service_ui",
                 "allocation_service_ui",

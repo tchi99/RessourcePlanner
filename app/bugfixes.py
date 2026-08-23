@@ -66,10 +66,12 @@ def _run_with_schedulable_technicians(
     *args: Any,
     **kwargs: Any,
 ) -> Any:
-    """Temporarily filter repo.technicians while a planning/request dialog is built.
+    """Temporarily filter repo.technicians while a legacy planning dialog is built.
 
     The availability editor deliberately keeps the full technician list, otherwise an
     employee without a schedule could never be assigned their first standard schedule.
+    Newer explicit UI adapters should call ``schedulable_technicians`` directly instead
+    of relying on this compatibility wrapper.
     """
     repo = planner.repo
     original = repo.technicians
@@ -114,24 +116,15 @@ def install_bugfixes() -> None:
 
     features.availability_for_day = availability_for_day
 
-    # install_features() has already attached the V1.2 planning/request methods to PlannerUI.
-    # Wrap only the places where a technician is selectable or shown as a planning resource.
+    # Legacy planning/effort dialogs still read repo.technicians() directly. The explicit
+    # demand editor does not: it calls schedulable_technicians() itself and is installed
+    # later by the composition root, so it must not be wrapped here.
     original_render_planning = ui_module.PlannerUI.render_planning
-    original_new_request = ui_module.PlannerUI.open_new_request_dialog
-    original_edit_request = ui_module.PlannerUI.open_edit_request_dialog
     original_effort_dialog = ui_module.PlannerUI.open_effort_dialog
     original_planning_dialog = ui_module.PlannerUI.open_planning_dialog
 
     def render_planning(self: ui_module.PlannerUI) -> Any:
         return _run_with_schedulable_technicians(self, lambda: original_render_planning(self))
-
-    def open_new_request_dialog(self: ui_module.PlannerUI) -> Any:
-        return _run_with_schedulable_technicians(self, lambda: original_new_request(self))
-
-    def open_edit_request_dialog(self: ui_module.PlannerUI, demand: dict[str, Any]) -> Any:
-        return _run_with_schedulable_technicians(
-            self, lambda: original_edit_request(self, demand)
-        )
 
     def open_effort_dialog(self: ui_module.PlannerUI, effort: dict[str, Any]) -> Any:
         return _run_with_schedulable_technicians(
@@ -144,8 +137,6 @@ def install_bugfixes() -> None:
         )
 
     ui_module.PlannerUI.render_planning = render_planning
-    ui_module.PlannerUI.open_new_request_dialog = open_new_request_dialog
-    ui_module.PlannerUI.open_edit_request_dialog = open_edit_request_dialog
     ui_module.PlannerUI.open_effort_dialog = open_effort_dialog
     ui_module.PlannerUI.open_planning_dialog = open_planning_dialog
 
