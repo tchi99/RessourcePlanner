@@ -275,7 +275,11 @@ def _set_resource_sort(self: ui_module.PlannerUI, value: Any) -> None:
     self.render_content.refresh()
 
 
-def _render_planning(self: ui_module.PlannerUI) -> None:
+def _render_planning(
+    self: ui_module.PlannerUI,
+    *,
+    weekly_stats_provider: Any | None = None,
+) -> None:
     sort_mode = str(getattr(self, "planning_resource_sort", SORT_AVAIL_DESC) or SORT_AVAIL_DESC)
     scoped_ui = ensure_scoped_ui(
         v17,
@@ -295,7 +299,10 @@ def _render_planning(self: ui_module.PlannerUI) -> None:
         return original_select(options, *args, **kwargs)
 
     with scoped_ui.override_factory("select", select_proxy):
-        v17._render_planning(self)
+        v17._render_planning(
+            self,
+            weekly_stats_provider=weekly_stats_provider,
+        )
 
     ui.timer(0.08, lambda: _install_planning_browser_helpers(self), once=True)
 

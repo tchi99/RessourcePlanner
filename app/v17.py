@@ -779,12 +779,17 @@ def _render_resource_row(
                     ui.label("Cliquer pour ouvrir la demande").classes("text-[9px] muted")
 
 
-def _render_planning(self: ui_module.PlannerUI) -> None:
+def _render_planning(
+    self: ui_module.PlannerUI,
+    *,
+    weekly_stats_provider: Any | None = None,
+) -> None:
     _register_drop_handler(self)
     days = week_days(self.current_week)
     techs = schedulable_technicians(self.repo)
     class_map = v16.resource_class_map(self.repo)
-    week_stats = v16._weekly_resource_stats(self.repo, self.current_week)
+    stats_provider = weekly_stats_provider or v16._weekly_resource_stats
+    week_stats = stats_provider(self.repo, self.current_week)
     demands = v16._demand_lookup(self.repo)
     segments = {
         str(row.get("IDSegment") or ""): row
