@@ -1,0 +1,52 @@
+name: Refactor remove dormant V1.1 form
+
+on:
+  push:
+    branches:
+      - refactor/demand-create-service
+    paths:
+      - .github/workflows/refactor-remove-v11-form.yml
+
+permissions:
+  contents: write
+
+jobs:
+  remove-form:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: refactor/demand-create-service
+
+      - name: Remove dormant V1.1 demand form
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('app/ui.py')
+          source = path.read_text(encoding='utf-8')
+          start_marker = '    def open_new_request_dialog(self) -> None:\n'
+          end_marker = '    def open_approval_dialog(\n'
+          start = source.find(start_marker)
+          if start < 0:
+              raise SystemExit('Dormant V1.1 form not found')
+          end = source.find(end_marker, start)
+          if end < 0:
+              raise SystemExit('Approval dialog boundary not found')
+          updated = source[:start] + source[end:]
+          path.write_text(updated, encoding='utf-8')
+
+          workflow = Path('.github/workflows/refactor-remove-v11-form.yml')
+          workflow.unlink()
+          PY
+
+      - name: Commit refactor
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "refactor: supprimer le formulaire V1.1 dormant"
+          git push origin HEAD:refactor/demand-create-service
