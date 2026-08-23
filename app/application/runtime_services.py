@@ -7,6 +7,7 @@ from typing import Any, Mapping
 
 from .demand_service import DemandService
 from .planning_service import PlanningService
+from .segment_service import SegmentService
 
 
 def _runtime_rebuild(repository: Any):
@@ -107,6 +108,25 @@ def _sync_approved_demand(repository: Any, number: str) -> None:
     refinements._sync_segments_to_approved_demand(repository, demand)
 
 
+def _create_segment_record(repository: Any, values: Mapping[str, Any]) -> str:
+    """Resolve the fully composed V1 segment writer at execution time.
+
+    The runtime alias intentionally remains lazy so V1 compatibility wrappers such as
+    approved-location projection keep applying until the Excel repository is replaced.
+    """
+    v13 = import_module("app.v13")
+    return str(v13.add_segment(repository, dict(values)))
+
+
+def _update_segment_record(
+    repository: Any,
+    segment_id: str,
+    updates: Mapping[str, Any],
+) -> None:
+    v13 = import_module("app.v13")
+    v13.update_segment(repository, segment_id, dict(updates))
+
+
 def _runtime_batch(repository: Any, label: str):
     factory = getattr(repository, "batch_update", None)
     if callable(factory):
@@ -147,4 +167,14 @@ def demand_service(repository: Any) -> DemandService[Any]:
         sync_approved_demand=_sync_approved_demand,
         rebuild_planning=_runtime_rebuild,
         batch=_runtime_batch,
+    )
+
+
+def segment_service(repository: Any) -> SegmentService[Any]:
+    """Build the segment workflow boundary against the composed V1 adapters."""
+    return SegmentService(
+        repository,
+        create_record=_create_segment_record,
+        update_record=_update_segment_record,
+        rebuild_planning=_runtime_rebuild,
     )

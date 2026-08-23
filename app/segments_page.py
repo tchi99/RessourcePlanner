@@ -4,7 +4,7 @@ from typing import Any
 
 from nicegui import ui
 
-from .segment_editor_compat import open_segment_editor
+from .segment_editor_ui import open_segment_editor
 from .segment_repository import number, segment_records
 
 

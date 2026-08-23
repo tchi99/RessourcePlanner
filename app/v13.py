@@ -19,6 +19,7 @@ from .services import week_days, week_start
 from .segment_repository import (
     SEGMENT_HEADERS,
     SEGMENT_SHEET,
+    SEGMENT_TABLE,
     SEGMENT_STATUSES,
     add_segment,
     ensure_segment_sheet as _ensure_v13_sheets,
