@@ -54,7 +54,6 @@ RUNTIME_COMPOSITION_MANIFEST: tuple[CompositionStep, ...] = (
     CompositionStep("location_projection", "compatibility"),
     CompositionStep("demand_editor_ui", "application"),
     CompositionStep("planning_service_ui", "application"),
-    CompositionStep("demand_service_ui", "application"),
     CompositionStep("allocation_service_ui", "application"),
     CompositionStep("pure_validation_ui", "application"),
     CompositionStep("communication_ui", "communications"),
@@ -78,7 +77,6 @@ def _runtime_installers() -> tuple[tuple[str, Installer], ...]:
     from .communication_thunderbird_setup_fix import install_thunderbird_setup_fix
     from .communication_ui import install_communication_ui
     from .demand_editor_ui import install_demand_editor_ui
-    from .demand_service_ui import install_demand_service_ui
     from .effort_identity_guard import install_effort_identity_guard
     from .features import install_features
     from .features_runtime import apply_runtime_optimizations
@@ -132,7 +130,6 @@ def _runtime_installers() -> tuple[tuple[str, Installer], ...]:
         ("location_projection", install_location_projection),
         ("demand_editor_ui", install_demand_editor_ui),
         ("planning_service_ui", install_planning_service_ui),
-        ("demand_service_ui", install_demand_service_ui),
         ("allocation_service_ui", install_allocation_service_ui),
         ("pure_validation_ui", install_pure_validation_ui),
         ("communication_ui", install_communication_ui),

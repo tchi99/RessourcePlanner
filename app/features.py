@@ -485,7 +485,6 @@ def install_features() -> None:
 
     original_render_content = ui_module.PlannerUI._render_content
     original_page_sheets = ui_module.PlannerUI._page_sheets
-    original_request_actions = ui_module.PlannerUI._request_actions
     original_setup_style = ui_module.PlannerUI._setup_style
 
     def setup_style(self: ui_module.PlannerUI) -> None:
@@ -514,27 +513,10 @@ def install_features() -> None:
             sheets = [*sheets, AVAILABILITY_SHEET]
         return sheets
 
-    def request_actions(self: ui_module.PlannerUI) -> None:
-        original_request_actions(self)
-        if not self.selected_request:
-            return
-        demand = next(
-            (d for d in self.repo.demands() if d.get("NoDemande") == self.selected_request),
-            None,
-        )
-        if not demand or str(demand.get("Statut") or "") in {"Annulée", "Fermé"}:
-            return
-        with ui.row().classes("w-full mt-2"):
-            ui.button(
-                "Modifier la demande",
-                icon="edit",
-                on_click=lambda: self.open_edit_request_dialog(demand),
-            ).props("outline no-caps")
 
     ui_module.PlannerUI._setup_style = setup_style
     ui_module.PlannerUI._render_content = render_content
     ui_module.PlannerUI._page_sheets = page_sheets
-    ui_module.PlannerUI._request_actions = request_actions
     ui_module.PlannerUI.render_availability = _render_availability
     ui_module.PlannerUI.render_planning = _render_planning_with_availability
     ui_module.PlannerUI._v12_features_installed = True

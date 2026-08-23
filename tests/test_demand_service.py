@@ -466,33 +466,26 @@ class DemandServiceTests(unittest.TestCase):
         self.assertIn('import_module("app.v15_engine")', source)
 
     def test_request_lifecycle_ui_crosses_demand_service_boundary(self) -> None:
-        path = Path(__file__).resolve().parents[1] / "app" / "demand_service_ui.py"
+        path = Path(__file__).resolve().parents[1] / "app" / "demand_requests_page.py"
         source = path.read_text(encoding="utf-8")
 
         for call in (
-            "demand_service(self.repo).submit",
-            "demand_service(self.repo).approve",
-            "demand_service(self.repo).request_correction",
-            "demand_service(self.repo).cancel",
+            "demand_service(self.owner.repo).submit",
+            "demand_service(self.owner.repo).approve",
+            "demand_service(self.owner.repo).request_correction",
+            "demand_service(self.owner.repo).cancel",
         ):
             self.assertIn(call, source)
 
         for direct_repository_call in (
-            "self.repo.submit_demand",
-            "self.repo.approve_demand",
-            "self.repo.request_correction",
-            "self.repo.update_demand",
+            "self.owner.repo.submit_demand",
+            "self.owner.repo.approve_demand",
+            "self.owner.repo.request_correction",
+            "self.owner.repo.update_demand",
         ):
             self.assertNotIn(direct_repository_call, source)
 
-        self.assertIn("PlannerUI.submit_request = _submit_request_via_service", source)
-        self.assertIn("PlannerUI.cancel_request = _cancel_request_via_service", source)
-        self.assertIn("PlannerUI.open_approval_dialog = _open_approval_dialog_via_service", source)
-        self.assertIn("PlannerUI.open_correction_dialog = _open_correction_dialog_via_service", source)
-
-        names = [step.name for step in composition_manifest()]
-        self.assertLess(names.index("planning_service_ui"), names.index("demand_service_ui"))
-        self.assertLess(names.index("demand_service_ui"), names.index("communication_ui"))
+        self.assertFalse((Path(__file__).resolve().parents[1] / "app" / "demand_service_ui.py").exists())
 
     def test_request_edit_ui_crosses_demand_service_boundary(self) -> None:
         root = Path(__file__).resolve().parents[1]
@@ -516,37 +509,40 @@ class DemandServiceTests(unittest.TestCase):
         self.assertNotIn("original_update_demand", v15_source)
         self.assertNotIn("update_demand_v15", v15_source)
         self.assertFalse((root / "app" / "demand_legacy_cleanup.py").exists())
-        service_ui = (root / "app" / "demand_service_ui.py").read_text(encoding="utf-8")
-        self.assertNotIn("approve_demand", service_ui)
+        self.assertFalse((root / "app" / "demand_service_ui.py").exists())
 
-    def test_base_ui_no_longer_defines_dormant_demand_lifecycle(self) -> None:
+    def test_explicit_request_page_owns_demand_lifecycle(self) -> None:
         root = Path(__file__).resolve().parents[1]
-        source = (root / "app" / "ui.py").read_text(encoding="utf-8")
+        ui_source = (root / "app" / "ui.py").read_text(encoding="utf-8")
+        page_source = (root / "app" / "demand_requests_page.py").read_text(
+            encoding="utf-8"
+        )
+        v13_source = (root / "app" / "v13.py").read_text(encoding="utf-8")
+        features_source = (root / "app" / "features.py").read_text(encoding="utf-8")
 
+        self.assertFalse((root / "app" / "demand_service_ui.py").exists())
+        self.assertIn("DemandRequestsPage", ui_source)
+        self.assertIn("self.demand_requests_page.render()", ui_source)
         for definition in (
-            "def submit_request(",
-            "def cancel_request(",
-            "def open_approval_dialog(",
-            "def open_correction_dialog(",
+            "def render_requests(",
+            "def _request_actions(",
+            "def open_planning_dialog(",
+            "def _demand_grid_row(",
         ):
-            self.assertNotIn(definition, source)
+            self.assertNotIn(definition, ui_source)
 
-        for direct_repository_call in (
-            "self.repo.submit_demand(",
-            "self.repo.approve_demand(",
-            "self.repo.request_correction(",
-            "self.repo.update_demand(",
+        for service_call in (
+            "demand_service(self.owner.repo).submit(",
+            "demand_service(self.owner.repo).approve(",
+            "demand_service(self.owner.repo).request_correction(",
+            "demand_service(self.owner.repo).cancel(",
         ):
-            self.assertNotIn(direct_repository_call, source)
+            self.assertIn(service_call, page_source)
+        self.assertIn("open_edit_request_dialog", page_source)
+        self.assertIn("Gérer les segments", page_source)
+        self.assertNotIn("_request_actions_v13", v13_source)
+        self.assertNotIn("PlannerUI._request_actions", features_source)
 
-        service_ui = (root / "app" / "demand_service_ui.py").read_text(encoding="utf-8")
-        for binding in (
-            "PlannerUI.submit_request = _submit_request_via_service",
-            "PlannerUI.cancel_request = _cancel_request_via_service",
-            "PlannerUI.open_approval_dialog = _open_approval_dialog_via_service",
-            "PlannerUI.open_correction_dialog = _open_correction_dialog_via_service",
-        ):
-            self.assertIn(binding, service_ui)
 
 
 if __name__ == "__main__":

@@ -121,7 +121,6 @@ def install_bugfixes() -> None:
     # later by the composition root, so it must not be wrapped here.
     original_render_planning = ui_module.PlannerUI.render_planning
     original_effort_dialog = ui_module.PlannerUI.open_effort_dialog
-    original_planning_dialog = ui_module.PlannerUI.open_planning_dialog
 
     def render_planning(self: ui_module.PlannerUI) -> Any:
         return _run_with_schedulable_technicians(self, lambda: original_render_planning(self))
@@ -131,13 +130,8 @@ def install_bugfixes() -> None:
             self, lambda: original_effort_dialog(self, effort)
         )
 
-    def open_planning_dialog(self: ui_module.PlannerUI, demand: dict[str, Any]) -> Any:
-        return _run_with_schedulable_technicians(
-            self, lambda: original_planning_dialog(self, demand)
-        )
 
     ui_module.PlannerUI.render_planning = render_planning
     ui_module.PlannerUI.open_effort_dialog = open_effort_dialog
-    ui_module.PlannerUI.open_planning_dialog = open_planning_dialog
 
     features._v12_bugfixes_installed = True
