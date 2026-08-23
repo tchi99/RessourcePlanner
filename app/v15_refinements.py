@@ -11,6 +11,7 @@ from . import v13, v14, v14_engine, v14_fixes, v15, v15_engine
 from .bugfixes import schedulable_technicians
 from .excel_repository import DEMAND_HEADERS, ExcelRepository, _date_from_any
 from .services import week_days
+from .segment_editor_ui import open_segment_editor
 
 
 DEMAND_CONFIRMATION_FIELD = "Confirmation"
@@ -32,222 +33,6 @@ def is_missing_allocation(allocation: dict[str, Any]) -> bool:
     return str(allocation.get("TypeAllocation") or "") == MISSING_ALLOCATION_TYPE
 
 
-def _segment_dialog(
-    self: ui_module.PlannerUI,
-    segment: dict[str, Any] | None = None,
-    demand_number: str | None = None,
-) -> None:
-    self.interaction_lock = True
-    editing = segment is not None
-    demands = {str(row.get("NoDemande") or ""): row for row in self.repo.demands()}
-    selected_number = str(segment.get("NoDemande") or "") if segment else str(demand_number or "")
-    demand_options = v13._demand_options(self.repo)
-    current_demand = demands.get(selected_number, {})
-
-    tech_options = [row["name"] for row in schedulable_technicians(self.repo)]
-    competence_options = list(self.repo.competencies())
-    effort_options = v13._effort_options(self.repo, current_demand.get("NumeroProjet"))
-    inherited_source = v13._source_effort_for_demand(current_demand) if current_demand else None
-
-    source_value: Any = inherited_source
-    if segment and segment.get("SourceEffortRow") not in (None, ""):
-        try:
-            source_value = str(int(float(segment.get("SourceEffortRow"))))
-        except (TypeError, ValueError):
-            source_value = str(segment.get("SourceEffortRow"))
-    if source_value and source_value not in effort_options:
-        effort_options.update(v13._effort_options(self.repo))
-
-    initial_competence = (
-        str(segment.get("CompetenceRequise") or "")
-        if segment
-        else str(current_demand.get("CompetencesRequises") or "")
-    ) or None
-    if initial_competence and initial_competence not in competence_options:
-        competence_options.append(initial_competence)
-
-    initial_tech = (
-        str(segment.get("Technicien") or "")
-        if segment
-        else str(current_demand.get("TechnicienPropose") or "")
-    ).strip()
-    initial_tech = initial_tech if initial_tech in tech_options else None
-
-    with ui.dialog() as dialog, ui.card().classes("w-[840px] max-w-full"):
-        ui.label(
-            f"Modifier {segment.get('IDSegment')}" if editing else "Nouveau segment"
-        ).classes("text-xl font-bold")
-        ui.label(
-            "Le technicien est facultatif. Le travail hors horaire au niveau du segment autorise le moteur à placer le reliquat en soirée, fin de semaine ou jour férié."
-        ).classes("text-xs muted")
-
-        demand_select = ui.select(
-            demand_options,
-            label="Demande MO",
-            value=selected_number or None,
-            with_input=True,
-            clearable=False,
-        ).classes("w-full")
-        if selected_number:
-            demand_select.props("readonly")
-
-        with ui.row().classes("w-full"):
-            technician = ui.select(
-                tech_options,
-                label="Technicien (optionnel)",
-                value=initial_tech,
-                with_input=True,
-                clearable=True,
-            ).classes("flex-1")
-            competence = ui.select(
-                competence_options,
-                label="Compétence requise",
-                value=initial_competence,
-                with_input=True,
-                clearable=True,
-            ).classes("flex-1")
-
-        with ui.row().classes("w-full"):
-            planning_type = ui.select(
-                v14.PLAN_TYPES,
-                label="Type de planification",
-                value=v14_engine.segment_plan_type(segment or {}),
-            ).classes("flex-1")
-            priority = ui.select(
-                v14.PRIORITIES,
-                label="Priorité",
-                value=(str(segment.get("Priorite") or "") if segment else str(current_demand.get("Priorite") or "Normale")) or "Normale",
-            ).classes("flex-1")
-            status = ui.select(
-                v13.SEGMENT_STATUSES,
-                label="Statut",
-                value=(str(segment.get("Statut") or "") if segment else ("Planifié" if initial_tech else "À assigner")) or "À assigner",
-            ).classes("flex-1")
-
-        with ui.row().classes("w-full"):
-            start = ui.input(
-                "Début",
-                value=self._date_text(segment.get("DateDebut")) if segment else self._date_text(current_demand.get("DateDebutSouhaitee")),
-            ).props("type=date").classes("flex-1")
-            end = ui.input(
-                "Fin",
-                value=self._date_text(segment.get("DateFin")) if segment else self._date_text(current_demand.get("DateFinSouhaitee")),
-            ).props("type=date").classes("flex-1")
-            hours = ui.number(
-                "Heures prévues",
-                value=v13._number(segment.get("HeuresPrevues")) if segment else (v13._number(current_demand.get("TempsEstimeHeures")) or None),
-                min=0.5,
-                step=0.5,
-            ).classes("flex-1")
-
-        overtime_allowed = ui.checkbox(
-            "Autoriser le segment à utiliser du travail hors horaire standard si la capacité normale est insuffisante",
-            value=segment_overtime_allowed(segment),
-        )
-
-        source = ui.select(
-            effort_options,
-            label="Planification moyen terme liée (optionnel)",
-            value=source_value,
-            with_input=True,
-            clearable=True,
-        ).classes("w-full")
-        description = ui.input(
-            "Description / précision",
-            value=str(segment.get("Description") or "") if segment else str(current_demand.get("Description") or ""),
-        ).classes("w-full")
-
-        def validate() -> bool:
-            if not demand_select.value:
-                ui.notify("Sélectionne une demande.", type="warning")
-                return False
-            start_date = _date_from_any(start.value)
-            end_date = _date_from_any(end.value) or start_date
-            if not start_date:
-                ui.notify("La date de début est requise.", type="warning")
-                return False
-            if end_date and end_date < start_date:
-                ui.notify("La date de fin ne peut pas précéder la date de début.", type="warning")
-                return False
-            if v13._number(hours.value) <= 0:
-                ui.notify("Les heures prévues doivent être supérieures à zéro.", type="warning")
-                return False
-            if not competence.value:
-                ui.notify("La compétence requise est nécessaire.", type="warning")
-                return False
-            return True
-
-        def build_payload() -> dict[str, Any]:
-            demand = demands.get(str(demand_select.value or ""), {})
-            source_row: Any = source.value
-            if source_row not in (None, ""):
-                try:
-                    source_row = int(float(source_row))
-                except (TypeError, ValueError):
-                    pass
-            tech = str(technician.value or "").strip()
-            chosen_status = str(status.value or "")
-            if not tech and chosen_status not in {"Annulé", "Terminé"}:
-                chosen_status = "À assigner"
-            elif tech and chosen_status == "À assigner":
-                chosen_status = "Planifié"
-            return {
-                "NoDemande": demand_select.value,
-                "NumeroProjet": demand.get("NumeroProjet"),
-                "NomProjet": demand.get("NomProjet"),
-                "Technicien": tech or None,
-                "DateDebut": start.value,
-                "DateFin": end.value or start.value,
-                "HeuresPrevues": hours.value,
-                "Statut": chosen_status,
-                "Description": description.value,
-                "SourceEffortRow": source_row,
-                "CompetenceRequise": competence.value,
-                "TypePlanification": planning_type.value or "Flexible",
-                "Priorite": priority.value or "Normale",
-                SEGMENT_OVERTIME_FIELD: "Oui" if overtime_allowed.value else "Non",
-            }
-
-        def save() -> None:
-            if not validate():
-                return
-            try:
-                data = build_payload()
-                if editing:
-                    v13.update_segment(self.repo, str(segment["IDSegment"]), data)
-                    message = f"{segment['IDSegment']} mis à jour"
-                else:
-                    ident = v13.add_segment(self.repo, data)
-                    message = f"{ident} créé"
-                summary = rebuild_allocations_refined(self.repo)
-                dialog.close()
-                if summary["unallocated_hours"] > 0:
-                    message += f" · {summary['unallocated_hours']:g} h nécessitent du hors horaire"
-                self._after_write(message)
-            except Exception as exc:
-                ui.notify(str(exc), type="negative")
-
-        def cancel_segment() -> None:
-            try:
-                v13.update_segment(self.repo, str(segment["IDSegment"]), {"Statut": "Annulé"})
-                rebuild_allocations_refined(self.repo)
-                dialog.close()
-                self._after_write(f"{segment['IDSegment']} annulé")
-            except Exception as exc:
-                ui.notify(str(exc), type="negative")
-
-        with ui.row().classes("w-full justify-end"):
-            ui.button("Annuler", on_click=dialog.close).props("flat no-caps")
-            if editing and str(segment.get("Statut") or "") != "Annulé":
-                ui.button("Annuler le segment", icon="cancel", on_click=cancel_segment).props(
-                    "flat no-caps color=negative"
-                )
-            ui.button("Enregistrer", icon="save", on_click=save).props(
-                "unelevated no-caps color=primary"
-            )
-
-    dialog.on("hide", lambda _: self._unlock())
-    dialog.open()
 
 
 def _overtime_slots(repo: ExcelRepository, technician: str, segment: dict[str, Any], hours: float) -> list[tuple[date, float]]:
@@ -640,7 +425,7 @@ def _open_allocation_dialog(
             None,
         )
         if target:
-            _segment_dialog(self, segment=target)
+            open_segment_editor(self, segment=target)
         return
 
     self.interaction_lock = True
@@ -678,7 +463,7 @@ def _open_allocation_dialog(
             target = segment_lookup.get(str(segment_select.value or ""))
             dialog.close()
             if target:
-                ui.timer(0.05, lambda: _segment_dialog(self, segment=target), once=True)
+                ui.timer(0.05, lambda: open_segment_editor(self, segment=target), once=True)
 
         def save() -> None:
             if not segment_select.value or not technician.value or not day.value:
@@ -776,7 +561,7 @@ def _render_planning(self: ui_module.PlannerUI) -> None:
                         ui.label(f"{segment.get('NumeroProjet') or '—'} · {segment.get('NomProjet') or ''}").classes("text-sm font-semibold")
                         ui.label(str(segment.get("Description") or "")).classes("text-xs")
                         ui.label(f"{competence} · {v13._number(segment.get('HeuresPrevues')):g} h").classes("text-xs text-orange-700")
-                        ui.button("Ouvrir le segment", icon="view_timeline", on_click=lambda s=segment: _segment_dialog(self, segment=s)).props("flat dense no-caps")
+                        ui.button("Ouvrir le segment", icon="view_timeline", on_click=lambda s=segment: open_segment_editor(self, segment=s)).props("flat dense no-caps")
 
     if pending:
         with ui.card().classes("section-card w-full"):
@@ -885,8 +670,8 @@ def install_v15_refinements() -> None:
         v14.SEGMENT_EXTRA_HEADERS.append(SEGMENT_OVERTIME_FIELD)
     v15.BUSINESS_DEMAND_FIELDS.add(DEMAND_CONFIRMATION_FIELD)
 
-    v14._open_segment_dialog_v14 = _segment_dialog
-    v13._open_segment_dialog = _segment_dialog
+    v14._open_segment_dialog_v14 = open_segment_editor
+    v13._open_segment_dialog = open_segment_editor
 
     # Le moteur raffiné devient la cible de tous les appels V1.4/V1.5 au runtime.
     v15_engine.rebuild_allocations = rebuild_allocations_refined
