@@ -20,8 +20,7 @@ class RuntimeCompositionTests(unittest.TestCase):
         self.assertLess(names.index("effort_identity_guard"), names.index("v18_refinements"))
         self.assertLess(names.index("v18_refinements"), names.index("operational_planning_compat"))
         self.assertLess(names.index("operational_planning_compat"), names.index("resource_class_compat"))
-        self.assertLess(names.index("resource_class_compat"), names.index("segment_navigation_compat"))
-        self.assertLess(names.index("segment_navigation_compat"), names.index("location_projection"))
+        self.assertLess(names.index("resource_class_compat"), names.index("location_projection"))
         self.assertLess(names.index("location_projection"), names.index("demand_editor_ui"))
         self.assertLess(names.index("demand_editor_ui"), names.index("planning_service_ui"))
         self.assertLess(names.index("planning_service_ui"), names.index("allocation_service_ui"))
@@ -46,7 +45,6 @@ class RuntimeCompositionTests(unittest.TestCase):
             "effort_identity_guard",
             "operational_planning_compat",
             "resource_class_compat",
-            "segment_navigation_compat",
             "location_projection",
         ):
             self.assertIn(extracted, compatibility)
@@ -80,6 +78,8 @@ class RuntimeCompositionTests(unittest.TestCase):
             "v18_workflow_fixes.py",
             "demand_legacy_cleanup.py",
             "demand_service_ui.py",
+            "segment_navigation_compat.py",
+            "segment_editor_compat.py",
         ):
             self.assertFalse((app_dir / name).exists(), name)
 

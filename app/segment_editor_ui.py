@@ -169,6 +169,13 @@ def open_segment_editor(
         ).classes("w-full")
         if selected_number:
             demand_select.props("readonly")
+            if editing and current_demand:
+                demand_select.props("append-icon=open_in_new")
+                demand_select.on(
+                    "click:append",
+                    lambda _event: owner.open_edit_request_dialog(current_demand),
+                )
+                demand_select.tooltip("Ouvrir et modifier la demande associée")
 
         with ui.row().classes("w-full"):
             technician = ui.select(

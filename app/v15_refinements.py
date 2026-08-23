@@ -19,6 +19,10 @@ CONFIRMATION_OPTIONS = ["Confirmée", "Tentative"]
 SEGMENT_OVERTIME_FIELD = "HorsHoraireAutorise"
 MISSING_ALLOCATION_TYPE = "Hors horaire requis"
 
+# Transitional symbol for historical v16/v17 renderers. The implementation is now
+# the explicit editor above and no longer belongs to this versioned module.
+_segment_dialog = open_segment_editor
+
 
 def demand_confirmation(demand: dict[str, Any] | None) -> str:
     value = str((demand or {}).get(DEMAND_CONFIRMATION_FIELD) or "").strip()

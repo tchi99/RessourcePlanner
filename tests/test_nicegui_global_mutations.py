@@ -46,12 +46,13 @@ class NiceGUIGlobalMutationTests(unittest.TestCase):
         self.assertNotIn("original_scroll_area", source)
         self.assertNotIn("PlannerUI.render_planning =", source)
 
-    def test_segment_parent_navigation_reuses_scoped_facade(self) -> None:
-        source = self._source("segment_navigation_compat.py")
-        self.assertIn("ensure_scoped_ui(", source)
-        self.assertIn('with scoped_ui.override_factory("select", select_with_parent_link):', source)
-        self.assertNotIn("ContextVar", source)
-        self.assertNotIn("ui.select =", source)
+    def test_segment_parent_navigation_is_owned_by_explicit_editor(self) -> None:
+        source = self._source("segment_editor_ui.py")
+        self.assertIn('demand_select.props("append-icon=open_in_new")', source)
+        self.assertIn("owner.open_edit_request_dialog(current_demand)", source)
+        self.assertFalse(
+            (Path(__file__).resolve().parents[1] / "app" / "segment_navigation_compat.py").exists()
+        )
 
     def test_resource_class_precedence_is_an_explicit_compatibility_rule(self) -> None:
         source = self._source("resource_class_compat.py")
