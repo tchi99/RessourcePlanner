@@ -1,0 +1,65 @@
+name: One-off fix demand page tests
+
+on:
+  push:
+    branches:
+      - refactor/demand-requests-page
+    paths:
+      - .github/workflows/fix-demand-page-tests.yml
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: refactor/demand-requests-page
+
+      - name: Update architecture expectations
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          editor = Path('tests/test_demand_editor_ui.py')
+          text = editor.read_text(encoding='utf-8')
+          old = '        self.assertLess(names.index("demand_editor_ui"), names.index("demand_service_ui"))\n'
+          if old not in text:
+              raise SystemExit('demand editor obsolete expectation not found')
+          text = text.replace(
+              old,
+              '        self.assertLess(names.index("demand_editor_ui"), names.index("allocation_service_ui"))\n',
+              1,
+          )
+          editor.write_text(text, encoding='utf-8')
+
+          service = Path('tests/test_demand_service.py')
+          text = service.read_text(encoding='utf-8')
+          start = text.index('    def test_request_lifecycle_ui_crosses_demand_service_boundary(self) -> None:\n')
+          end = text.index('\n    def ', start + 8)
+          replacement = '''    def test_request_lifecycle_ui_crosses_demand_service_boundary(self) -> None:\n        path = Path(__file__).resolve().parents[1] / "app" / "demand_requests_page.py"\n        source = path.read_text(encoding="utf-8")\n\n        for call in (\n            "demand_service(self.owner.repo).submit",\n            "demand_service(self.owner.repo).approve",\n            "demand_service(self.owner.repo).request_correction",\n            "demand_service(self.owner.repo).cancel",\n        ):\n            self.assertIn(call, source)\n\n        for direct_repository_call in (\n            "self.owner.repo.submit_demand",\n            "self.owner.repo.approve_demand",\n            "self.owner.repo.request_correction",\n            "self.owner.repo.update_demand",\n        ):\n            self.assertNotIn(direct_repository_call, source)\n\n        self.assertFalse((Path(__file__).resolve().parents[1] / "app" / "demand_service_ui.py").exists())\n'''
+          text = text[:start] + replacement + text[end:]
+          service.write_text(text, encoding='utf-8')
+          PY
+
+      - name: Compile changed tests without writing bytecode
+        shell: bash
+        run: |
+          PYTHONDONTWRITEBYTECODE=1 python - <<'PY'
+          import ast
+          from pathlib import Path
+          for name in ('tests/test_demand_editor_ui.py', 'tests/test_demand_service.py'):
+              ast.parse(Path(name).read_text(encoding='utf-8'), filename=name)
+          PY
+
+      - name: Commit test updates
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add tests/test_demand_editor_ui.py tests/test_demand_service.py
+          git commit -m "Test: align demand page architecture expectations"
+          git push origin HEAD:refactor/demand-requests-page
