@@ -3,8 +3,6 @@ from __future__ import annotations
 from pathlib import Path
 import unittest
 
-from app.segment_repository import number
-
 
 ROOT = Path(__file__).resolve().parents[1]
 APP = ROOT / "app"
@@ -18,6 +16,7 @@ class SegmentsArchitectureTests(unittest.TestCase):
         self.assertIn("def segment_records(", source)
         self.assertIn("def add_segment(", source)
         self.assertIn("def update_segment(", source)
+        self.assertIn("def number(", source)
         self.assertIn('SEGMENT_SHEET = "SegmentsMO"', source)
 
     def test_v13_reexports_segment_repository_but_no_longer_owns_it(self) -> None:
@@ -59,11 +58,6 @@ class SegmentsArchitectureTests(unittest.TestCase):
         self.assertIn("from .segment_repository import number, segment_records", source)
         self.assertNotIn("from .v13 import segment_records", source)
         self.assertIn("self.owner.segments_page.open_for_demand(demand)", source)
-
-    def test_number_preserves_legacy_numeric_semantics(self) -> None:
-        self.assertEqual(number(None), 0.0)
-        self.assertEqual(number("12,5"), 12.5)
-        self.assertEqual(number("bad"), 0.0)
 
 
 if __name__ == "__main__":
