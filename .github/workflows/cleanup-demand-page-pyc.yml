@@ -1,0 +1,37 @@
+name: One-off cleanup refactor bytecode
+
+on:
+  push:
+    branches:
+      - refactor/demand-requests-page
+    paths:
+      - .github/workflows/cleanup-demand-page-pyc.yml
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: refactor/demand-requests-page
+
+      - name: Remove generated Python bytecode
+        shell: bash
+        run: |
+          find app tests -type d -name __pycache__ -prune -exec rm -rf {} +
+
+      - name: Commit cleanup
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A app tests
+          if git diff --cached --quiet; then
+            echo "No bytecode cleanup required."
+            exit 0
+          fi
+          git commit -m "Chore: remove generated Python bytecode"
+          git push origin HEAD:refactor/demand-requests-page
