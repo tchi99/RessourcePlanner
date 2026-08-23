@@ -24,8 +24,7 @@ class RuntimeCompositionTests(unittest.TestCase):
         self.assertLess(names.index("segment_navigation_compat"), names.index("location_projection"))
         self.assertLess(names.index("location_projection"), names.index("demand_editor_ui"))
         self.assertLess(names.index("demand_editor_ui"), names.index("planning_service_ui"))
-        self.assertLess(names.index("planning_service_ui"), names.index("demand_service_ui"))
-        self.assertLess(names.index("demand_service_ui"), names.index("allocation_service_ui"))
+        self.assertLess(names.index("planning_service_ui"), names.index("allocation_service_ui"))
         self.assertLess(names.index("allocation_service_ui"), names.index("pure_validation_ui"))
         self.assertLess(names.index("pure_validation_ui"), names.index("communication_ui"))
 
@@ -57,7 +56,6 @@ class RuntimeCompositionTests(unittest.TestCase):
             [
                 "demand_editor_ui",
                 "planning_service_ui",
-                "demand_service_ui",
                 "allocation_service_ui",
                 "pure_validation_ui",
             ],
@@ -81,6 +79,7 @@ class RuntimeCompositionTests(unittest.TestCase):
             "v18_calendar_sizing.py",
             "v18_workflow_fixes.py",
             "demand_legacy_cleanup.py",
+            "demand_service_ui.py",
         ):
             self.assertFalse((app_dir / name).exists(), name)
 

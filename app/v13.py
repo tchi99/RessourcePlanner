@@ -987,64 +987,6 @@ def _cancel_segment(self: ui_module.PlannerUI, segment: dict[str, Any], dialog: 
         ui.notify(str(exc), type="negative")
 
 
-def _request_actions_v13(self: ui_module.PlannerUI) -> None:
-    if not self.selected_request:
-        with ui.card().classes("section-card w-full"):
-            ui.label("Aucune demande sélectionnée").classes("muted")
-        return
-    demand = next(
-        (d for d in self.repo.demands() if str(d.get("NoDemande") or "") == str(self.selected_request)),
-        None,
-    )
-    if not demand:
-        return
-    status = str(demand.get("Statut") or "")
-    related_segments = [
-        segment
-        for segment in segment_records(self.repo)
-        if str(segment.get("NoDemande") or "") == str(demand.get("NoDemande") or "")
-        and str(segment.get("Statut") or "") != "Annulé"
-    ]
-    planned_hours = sum(_number(segment.get("HeuresPrevues")) for segment in related_segments)
-
-    with ui.card().classes("section-card w-full"):
-        with ui.row().classes("w-full items-center"):
-            with ui.column().classes("gap-0"):
-                ui.label(str(demand.get("NoDemande") or "")).classes("text-lg font-bold")
-                ui.label(f"{demand.get('NumeroProjet') or '—'} · {demand.get('NomProjet') or ''}").classes(
-                    "text-sm"
-                )
-                ui.label(str(demand.get("Description") or "")).classes("text-sm muted")
-                if related_segments:
-                    ui.label(f"{len(related_segments)} segment(s) · {planned_hours:g} h détaillées").classes(
-                        "text-xs text-blue-700"
-                    )
-            ui.space()
-            ui.label(status).classes("status-pill bg-blue-50 text-blue-800")
-
-        with ui.row().classes("w-full mt-3"):
-            if status in {"Brouillon", "À corriger"}:
-                ui.button("Soumettre", icon="send", on_click=lambda: self.submit_request(demand)).props(
-                    "outline no-caps"
-                )
-            if status == "Soumise":
-                ui.button(
-                    "Approuver", icon="check_circle", on_click=lambda: self.open_approval_dialog(demand)
-                ).props("unelevated no-caps color=positive")
-                ui.button(
-                    "À corriger", icon="edit_note", on_click=lambda: self.open_correction_dialog(demand)
-                ).props("outline no-caps color=warning")
-            if status == "En planification":
-                ui.button(
-                    "Gérer les segments", icon="view_timeline", on_click=lambda: _go_to_segments(self, demand)
-                ).props("unelevated no-caps color=primary")
-            if status not in {"Annulée", "Fermé"}:
-                ui.button(
-                    "Modifier la demande", icon="edit", on_click=lambda: self.open_edit_request_dialog(demand)
-                ).props("outline no-caps")
-                ui.button("Annuler", icon="cancel", on_click=lambda: self.cancel_request(demand)).props(
-                    "flat no-caps color=negative"
-                )
 
 
 def install_v13_features() -> None:
@@ -1122,7 +1064,6 @@ def install_v13_features() -> None:
     ui_module.PlannerUI._page_sheets = page_sheets
     ui_module.PlannerUI.render_dashboard = _render_dashboard_v13
     ui_module.PlannerUI.render_planning = _render_operational_planning
-    ui_module.PlannerUI._request_actions = _request_actions_v13
     ui_module.PlannerUI.render_segments = _render_segments
     ui_module.PlannerUI.render_medium_term = _render_medium_term
     ui_module.PlannerUI._v13_features_installed = True
