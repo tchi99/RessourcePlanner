@@ -26,6 +26,14 @@ def _load_demand_record(repository: Any, number: str) -> Mapping[str, Any] | Non
     )
 
 
+def _create_demand_record(
+    repository: Any,
+    values: Mapping[str, Any],
+    submit: bool,
+) -> str:
+    return str(repository.create_demand(dict(values), submit=submit))
+
+
 def _modify_demand_record(
     repository: Any,
     number: str,
@@ -123,13 +131,14 @@ def demand_service(repository: Any) -> DemandService[Any]:
     """Build the runtime demand service against today's Excel/V1 adapters.
 
     This is the migration seam between the current Excel/V1.x implementation and the
-    future repository/API architecture. The service owns demand edit/reapproval policy
-    and lifecycle workflow ordering while these adapters translate operations to the
-    current storage model.
+    future repository/API architecture. The service owns demand creation,
+    edit/reapproval policy and lifecycle workflow ordering while these adapters
+    translate operations to the current storage model.
     """
     return DemandService(
         repository,
         load_record=_load_demand_record,
+        create_record=_create_demand_record,
         modify_record=_modify_demand_record,
         submit_record=_submit_demand_record,
         approve_record=_approve_demand_record,

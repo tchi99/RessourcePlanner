@@ -30,6 +30,18 @@ BUSINESS_DEMAND_FIELDS = frozenset(
     }
 )
 
+WORKFLOW_OWNED_CREATION_FIELDS = frozenset(
+    {
+        "NoDemande",
+        "Statut",
+        "DateCreation",
+        "DateModification",
+        "ApprouvePar",
+        "DateApprobation",
+        "CommentaireApprobation",
+    }
+)
+
 
 class DemandService(Generic[RepositoryT]):
     """Application service for workforce-demand lifecycle workflows.
@@ -52,10 +64,12 @@ class DemandService(Generic[RepositoryT]):
         cancel_record: Callable[[RepositoryT, str], None],
         sync_approved_demand: Callable[[RepositoryT, str], None],
         rebuild_planning: Callable[[RepositoryT], Mapping[str, Any]],
+        create_record: Callable[[RepositoryT, Mapping[str, Any], bool], str] | None = None,
         batch: Callable[[RepositoryT, str], ContextManager[Any]] | None = None,
     ) -> None:
         self._repository = repository
         self._load_record = load_record
+        self._create_record = create_record
         self._modify_record = modify_record
         self._submit_record = submit_record
         self._approve_record = approve_record
@@ -71,6 +85,34 @@ class DemandService(Generic[RepositoryT]):
             if self._batch is not None
             else nullcontext()
         )
+
+    def create(self, data: Mapping[str, Any], *, submit: bool = False) -> str:
+        """Create a draft or submitted demand through the application boundary.
+
+        Identity, status and approval metadata are storage/workflow-owned and cannot
+        be injected by the UI. The current Excel adapter still generates the request
+        number and creation audit entry; callers only express business data plus the
+        intent to keep the demand as a draft or submit it immediately.
+        """
+        if self._create_record is None:
+            raise RuntimeError("La création de demandes n'est pas configurée.")
+
+        values = dict(data)
+        for field in WORKFLOW_OWNED_CREATION_FIELDS:
+            values.pop(field, None)
+
+        if not str(values.get("NumeroProjet") or "").strip():
+            raise ValueError("Le projet est requis.")
+        if values.get("DateDebutSouhaitee") in (None, ""):
+            raise ValueError("La date de début est requise.")
+
+        with self._context("create demand"):
+            number = self._create_record(self._repository, values, bool(submit))
+
+        normalized = str(number or "").strip()
+        if not normalized:
+            raise RuntimeError("La création de la demande n'a retourné aucun numéro.")
+        return normalized
 
     def modify(
         self,

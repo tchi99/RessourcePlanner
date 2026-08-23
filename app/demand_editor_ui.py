@@ -44,12 +44,10 @@ def _request_dialog(
     self: ui_module.PlannerUI,
     demand: dict[str, Any] | None = None,
 ) -> None:
-    """Open the authoritative V1 demand create/edit dialog.
+    """Open the authoritative demand create/edit dialog.
 
-    UI concerns live here. Editing an existing demand crosses ``DemandService`` so
-    reapproval policy remains in the application layer. Creation still uses the
-    current repository primitive until demand creation receives its own application
-    service boundary.
+    UI concerns live here. Both creation and editing cross ``DemandService`` so
+    workflow ownership stays in the application layer instead of NiceGUI or Excel.
     """
     self.interaction_lock = True
     editing = demand is not None
@@ -230,7 +228,7 @@ def _request_dialog(
             if not validate():
                 return
             try:
-                number = self.repo.create_demand(payload(), submit=False)
+                number = demand_service(self.repo).create(payload(), submit=False)
                 dialog.close()
                 self._after_write(f"{number} enregistré comme brouillon")
             except Exception as exc:
@@ -240,7 +238,7 @@ def _request_dialog(
             if not validate():
                 return
             try:
-                number = self.repo.create_demand(payload(), submit=True)
+                number = demand_service(self.repo).create(payload(), submit=True)
                 dialog.close()
                 self._after_write(f"{number} soumise pour approbation")
             except Exception as exc:
