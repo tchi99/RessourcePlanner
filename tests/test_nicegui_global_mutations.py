@@ -24,19 +24,17 @@ class NiceGUIGlobalMutationTests(unittest.TestCase):
         )
         self.assertEqual(offenders, [])
 
-    def test_legacy_select_assignments_are_limited_and_scoped_before_render(self) -> None:
-        # The two historical renderers still use save/assign/restore syntax. They no
-        # longer point at process-wide nicegui.ui: operational_planning_compat installs
-        # a ContextVar-backed facade for both modules before any page is rendered.
+    def test_operational_select_overrides_use_context_managers(self) -> None:
         offenders = sorted(
             set(self._offenders("ui.select =") + self._offenders("nicegui_ui.select ="))
         )
-        self.assertEqual(offenders, ["v16_refinements.py", "v17_refinements.py"])
+        self.assertEqual(offenders, [])
 
-        setup = self._source("operational_planning_compat.py")
-        self.assertIn("ensure_scoped_ui(\n        v16,", setup)
-        self.assertIn("ensure_scoped_ui(\n        v17,", setup)
-        self.assertIn('scoped_factories=("select",)', setup)
+        for filename in ("v16_refinements.py", "v17_refinements.py"):
+            renderer = self._source(filename)
+            self.assertIn("ensure_scoped_ui(", renderer)
+            self.assertIn('with scoped_ui.override_factory("select", select_proxy):', renderer)
+            self.assertNotIn(".ui.select = select_proxy", renderer)
 
     def test_operational_scroll_uses_static_module_local_override(self) -> None:
         source = self._source("operational_planning_compat.py")

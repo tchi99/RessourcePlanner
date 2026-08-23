@@ -8,6 +8,7 @@ from nicegui import ui
 from . import ui as ui_module
 from . import v13, v15, v15_refinements, v16, v16_refinements, v17
 from .excel_repository import ExcelRepository
+from .ui_context import ensure_scoped_ui
 
 
 RESOURCE_ORDER_FIELD = "Ordre"
@@ -276,7 +277,12 @@ def _set_resource_sort(self: ui_module.PlannerUI, value: Any) -> None:
 
 def _render_planning(self: ui_module.PlannerUI) -> None:
     sort_mode = str(getattr(self, "planning_resource_sort", SORT_AVAIL_DESC) or SORT_AVAIL_DESC)
-    original_select = v17.ui.select
+    scoped_ui = ensure_scoped_ui(
+        v17,
+        scope_name="v17_planning",
+        scoped_factories=("select",),
+    )
+    original_select = scoped_ui.base_factory("select")
 
     def select_proxy(options: Any, *args: Any, **kwargs: Any) -> Any:
         if kwargs.get("label") == "Classe":
@@ -288,11 +294,8 @@ def _render_planning(self: ui_module.PlannerUI) -> None:
             ).classes("min-w-[240px]")
         return original_select(options, *args, **kwargs)
 
-    v17.ui.select = select_proxy
-    try:
+    with scoped_ui.override_factory("select", select_proxy):
         v17._render_planning(self)
-    finally:
-        v17.ui.select = original_select
 
     ui.timer(0.08, lambda: _install_planning_browser_helpers(self), once=True)
 
