@@ -1,0 +1,34 @@
+name: One-off operational planning page refactor
+
+on:
+  push:
+    branches:
+      - refactor/operational-planning-page
+    paths:
+      - tools/refactor_operational_planning_page.py
+      - .github/workflows/refactor-operational-planning-page.yml
+
+permissions:
+  contents: write
+
+jobs:
+  refactor:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: refactor/operational-planning-page
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Apply refactor
+        run: python tools/refactor_operational_planning_page.py
+      - name: Compile transformed sources
+        run: python -m compileall -q app tests tools
+      - name: Commit transformed files
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/ui.py app/runtime_composition.py tests/test_runtime_composition.py tests/test_operational_planning_page.py
+          git commit -m "Route operational planning through explicit page"
+          git push
