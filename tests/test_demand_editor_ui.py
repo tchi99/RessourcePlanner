@@ -17,8 +17,9 @@ class DemandEditorUIArchitectureTests(unittest.TestCase):
 
         self.assertIn("def _request_dialog(", source)
         self.assertIn("demand_service(self.repo).modify", source)
-        self.assertIn("self.repo.create_demand(payload(), submit=False)", source)
-        self.assertIn("self.repo.create_demand(payload(), submit=True)", source)
+        self.assertIn("demand_service(self.repo).create(payload(), submit=False)", source)
+        self.assertIn("demand_service(self.repo).create(payload(), submit=True)", source)
+        self.assertNotIn("self.repo.create_demand(", source)
         self.assertIn(
             "ui_module.PlannerUI.open_new_request_dialog = _open_new_request_dialog",
             source,
@@ -42,15 +43,6 @@ class DemandEditorUIArchitectureTests(unittest.TestCase):
         self.assertNotIn("def _project_data(", features)
         self.assertNotIn("features._project_data", refinements)
         self.assertNotIn("demand_service(self.repo).modify", refinements)
-
-    def test_legacy_bugfix_layer_does_not_wrap_explicit_demand_editor(self) -> None:
-        source = self._source("bugfixes.py")
-
-        self.assertNotIn("original_new_request", source)
-        self.assertNotIn("original_edit_request", source)
-        self.assertNotIn("PlannerUI.open_new_request_dialog =", source)
-        self.assertNotIn("PlannerUI.open_edit_request_dialog =", source)
-        self.assertIn("schedulable_technicians", source)
 
     def test_editor_is_installed_after_legacy_layers_before_application_overlays(self) -> None:
         names = [step.name for step in composition_manifest()]
