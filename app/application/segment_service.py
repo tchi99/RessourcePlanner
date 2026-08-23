@@ -11,8 +11,8 @@ class SegmentService(Generic[RepositoryT]):
     """Application boundary for operational segment mutations.
 
     The service owns the create/update/cancel + planning-rebuild workflow. Storage
-    adapters are injected so this module remains independent from NiceGUI, Excel,
-    xlwings and versioned V1.x modules.
+    adapters are injected so this module remains independent from UI concerns,
+    persistence technology and versioned V1.x modules.
     """
 
     def __init__(
