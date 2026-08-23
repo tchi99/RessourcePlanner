@@ -32,6 +32,7 @@ class DemandEditorUIArchitectureTests(unittest.TestCase):
     def test_legacy_modules_no_longer_define_or_install_demand_form(self) -> None:
         features = self._source("features.py")
         refinements = self._source("v15_refinements.py")
+        base_ui = self._source("ui.py")
 
         for source in (features, refinements):
             self.assertNotIn("def _request_dialog(", source)
@@ -43,6 +44,11 @@ class DemandEditorUIArchitectureTests(unittest.TestCase):
         self.assertNotIn("def _project_data(", features)
         self.assertNotIn("features._project_data", refinements)
         self.assertNotIn("demand_service(self.repo).modify", refinements)
+
+        # The original V1.1 form is physically retired from the base UI. The only
+        # create/edit implementation is installed by demand_editor_ui.
+        self.assertNotIn("def open_new_request_dialog(", base_ui)
+        self.assertNotIn("self.repo.create_demand(", base_ui)
 
     def test_editor_is_installed_after_legacy_layers_before_application_overlays(self) -> None:
         names = [step.name for step in composition_manifest()]
