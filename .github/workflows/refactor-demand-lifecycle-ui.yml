@@ -1,0 +1,42 @@
+name: One-off demand lifecycle UI cleanup
+
+on:
+  push:
+    branches:
+      - refactor/demand-lifecycle-ui-cleanup
+    paths:
+      - .github/workflows/refactor-demand-lifecycle-ui.yml
+
+permissions:
+  contents: write
+
+jobs:
+  refactor:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: refactor/demand-lifecycle-ui-cleanup
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Remove dormant V1.1 demand lifecycle implementations
+        run: python tools/refactor_remove_dormant_demand_lifecycle.py
+
+      - name: Compile changed Python sources
+        run: python -m compileall app tests
+
+      - name: Commit generated cleanup
+        shell: bash
+        run: |
+          if git diff --quiet; then
+            echo "No generated changes."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/ui.py app/demand_service_ui.py tests/test_demand_service.py
+          git commit -m "Refactor: remove dormant V1.1 demand lifecycle UI"
+          git push origin HEAD:refactor/demand-lifecycle-ui-cleanup
