@@ -277,11 +277,7 @@ def install_v17_sort_fix() -> None:
         def ranked_stats(repo: Any, week: Any) -> dict[str, dict[str, float]]:
             return _ranked_weekly_stats(self, original_weekly_stats, repo, week)
 
-        v16._weekly_resource_stats = ranked_stats
-        try:
-            base_render(self)
-        finally:
-            v16._weekly_resource_stats = original_weekly_stats
+        base_render(self, weekly_stats_provider=ranked_stats)
 
         # Les flèches sont ajoutées uniquement lorsque « Ordre manuel » est actif.
         ui.timer(0.10, lambda: ui.run_javascript(_manual_order_script(self)), once=True)
