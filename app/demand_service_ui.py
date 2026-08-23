@@ -103,12 +103,11 @@ def _open_correction_dialog_via_service(
 
 
 def install_demand_service_ui() -> None:
-    """Bind demand lifecycle actions to DemandService until pages are extracted.
+    """Install explicit demand lifecycle actions on the current request page.
 
-    The V1.x request page still lives on ``PlannerUI``. These explicit composition-time
-    bindings make submit/approve/correction/cancel cross the application-service
-    boundary now; tranche 4 can delete them when the request page/dialog becomes a
-    dedicated UI module.
+    ``PlannerUI`` no longer carries dormant V1.1 implementations of these actions.
+    Until the whole request page is extracted, this module is the sole UI owner of
+    submit/approve/correction/cancel and routes every mutation through ``DemandService``.
     """
     if getattr(ui_module.PlannerUI, "_demand_service_ui_installed", False):
         return
