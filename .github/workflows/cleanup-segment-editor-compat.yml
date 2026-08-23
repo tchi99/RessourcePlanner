@@ -1,0 +1,31 @@
+name: One-off segment editor compatibility cleanup
+
+on:
+  push:
+    branches:
+      - refactor/segment-editor-service
+    paths:
+      - .github/workflows/cleanup-segment-editor-compat.yml
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: refactor/segment-editor-service
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Apply cleanup
+        run: python tools/cleanup_segment_editor_compat.py
+      - name: Commit transformed files
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/segment_editor_ui.py app/v15_refinements.py app/runtime_composition.py tests/test_runtime_composition.py tests/test_nicegui_global_mutations.py
+          git commit -m "Retire segment navigation compatibility layer"
+          git push
