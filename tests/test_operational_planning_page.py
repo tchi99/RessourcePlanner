@@ -44,7 +44,12 @@ class OperationalPlanningPageTests(unittest.TestCase):
             "from .operational_planning_page import register_operational_planning_renderer",
             source,
         )
+        self.assertIn(
+            "from .operational_planning_renderer import compose_operational_planning_renderer",
+            source,
+        )
         self.assertIn("register_operational_planning_renderer(render_planning)", source)
+        self.assertNotIn("def render_planning(", source)
         for token in (
             "PlannerUI.render_planning = render_planning",
             "v13._render_operational_planning = render_planning",
@@ -55,6 +60,15 @@ class OperationalPlanningPageTests(unittest.TestCase):
             "v17_refinements._render_planning = render_planning",
         ):
             self.assertNotIn(token, source)
+
+    def test_final_renderer_is_physically_defined_outside_versioned_modules(self) -> None:
+        source = (APP / "operational_planning_renderer.py").read_text(encoding="utf-8")
+        self.assertIn("def compose_operational_planning_renderer(", source)
+        self.assertIn("def render_planning(owner: ui_module.PlannerUI)", source)
+        self.assertIn("base_render(owner, weekly_stats_provider=ranked_stats)", source)
+        self.assertNotIn("from . import v15", source)
+        self.assertNotIn("from . import v16", source)
+        self.assertNotIn("from . import v17", source)
 
     def test_v17_refinements_calls_v17_renderer_without_rewriting_planning_aliases(self) -> None:
         source = (APP / "v17_refinements.py").read_text(encoding="utf-8")

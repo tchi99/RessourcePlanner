@@ -10,6 +10,7 @@ from . import ui as ui_module
 from . import v16, v16_refinements, v17_refinements
 from .bugfixes import schedulable_technicians
 from .operational_planning_page import register_operational_planning_renderer
+from .operational_planning_renderer import compose_operational_planning_renderer
 
 
 MANUAL_ORDER_EVENT = "v17-manual-resource-order"
@@ -269,22 +270,15 @@ def install_v17_sort_fix() -> None:
     v17_refinements._resource_sort_script = lambda _self: "void 0;"
     v17_refinements._set_resource_sort = _set_resource_sort
 
-    base_render = v17_refinements._render_planning
-    original_weekly_stats = v16._weekly_resource_stats
-
-    def render_planning(self: ui_module.PlannerUI) -> None:
-        _register_manual_order_handler(self)
-
-        def ranked_stats(repo: Any, week: Any) -> dict[str, dict[str, float]]:
-            return _ranked_weekly_stats(self, original_weekly_stats, repo, week)
-
-        base_render(self, weekly_stats_provider=ranked_stats)
-
-        # Les flèches sont ajoutées uniquement lorsque « Ordre manuel » est actif.
-        ui.timer(0.10, lambda: ui.run_javascript(_manual_order_script(self)), once=True)
+    render_planning = compose_operational_planning_renderer(
+        base_render=v17_refinements._render_planning,
+        weekly_stats_provider=v16._weekly_resource_stats,
+        rank_weekly_stats=_ranked_weekly_stats,
+        register_manual_order_handler=_register_manual_order_handler,
+        manual_order_script=_manual_order_script,
+    )
 
     # Le point d'entrée autoritaire est maintenant le registre de page explicite.
-    # Les anciens alias V1.x ne sont plus réécrits par cette couche finale.
     register_operational_planning_renderer(render_planning)
 
     ui_module.PlannerUI.move_resource_manual = _move_manual_resource
