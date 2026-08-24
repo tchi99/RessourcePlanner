@@ -1154,11 +1154,7 @@ def install_v17_features() -> None:
         )
 
     ui_module.PlannerUI._setup_style = setup_style
-    ui_module.PlannerUI.render_planning = _render_planning
-    v13._render_operational_planning = _render_planning
-    v15._render_operational_planning_v15 = _render_planning
-    v15_refinements._render_planning = _render_planning
-    v16._render_planning_v16 = _render_planning
-    v16_refinements._render_planning = _render_planning
+    # Le renderer V1.7 reste disponible explicitement pour v17_refinements;
+    # l'installer n'a plus à le propager dans les alias des couches précédentes.
     ui_module.PlannerUI.open_quick_allocation = _open_quick_allocation
     ui_module.PlannerUI._v17_features_installed = True
