@@ -48,7 +48,7 @@ RUNTIME_COMPOSITION_MANIFEST: tuple[CompositionStep, ...] = (
     CompositionStep("v18_features", "legacy"),
     CompositionStep("effort_identity_guard", "compatibility"),
     CompositionStep("v18_refinements", "legacy"),
-    CompositionStep("quick_shift_ui", "application"),
+    CompositionStep("quick_shift_ui", "compatibility"),
     CompositionStep("operational_planning_compat", "compatibility"),
     CompositionStep("resource_class_compat", "compatibility"),
     CompositionStep("location_projection", "compatibility"),
