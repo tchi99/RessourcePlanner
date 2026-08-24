@@ -113,11 +113,18 @@ def open_cell_shift_dialog(owner: Any, technician: str, day: date) -> None:
         quick_panel = ui.column().classes("w-full gap-3")
         with quick_panel:
             if project_options:
-                first_project = next(iter(project_options))
+                filtered_project = _normalize_project_number(
+                    getattr(owner, "planning_project_filter", "")
+                )
+                selected_project = (
+                    filtered_project
+                    if filtered_project in project_options
+                    else next(iter(project_options))
+                )
                 project_select = ui.select(
                     project_options,
                     label="Projet",
-                    value=first_project,
+                    value=selected_project,
                     with_input=True,
                 ).classes("w-full")
             else:
@@ -274,8 +281,12 @@ def open_cell_shift_dialog(owner: Any, technician: str, day: date) -> None:
                     technician,
                     day,
                     segment_hours.value,
-                    bool(segment_overtime.value) if segment_overtime else False,
-                    str(segment_note.value or "") if segment_note else "",
+                    bool(segment_overtime.value)
+                    if segment_overtime is not None
+                    else False,
+                    str(segment_note.value or "")
+                    if segment_note is not None
+                    else "",
                 )
                 dialog.close()
                 owner._after_write(
