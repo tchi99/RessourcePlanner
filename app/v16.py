@@ -811,9 +811,7 @@ def install_v16_features() -> None:
         previous_dashboard(self)
         _render_class_capacity_card(self)
 
-    ui_module.PlannerUI.render_planning = _render_planning_v16
-    v13._render_operational_planning = _render_planning_v16
-    v15._render_operational_planning_v15 = _render_planning_v16
-    v15_refinements._render_planning = _render_planning_v16
+    # Le renderer V1.6 reste une fonction explicite consommée par v16_refinements;
+    # l'installer conserve uniquement son extension du dashboard.
     ui_module.PlannerUI.render_dashboard = render_dashboard_v16
     ui_module.PlannerUI._v16_features_installed = True
