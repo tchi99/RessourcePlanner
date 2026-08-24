@@ -1,16 +1,6 @@
 name: Windows desktop package
 
 on:
-  pull_request:
-    paths:
-      - "main.py"
-      - "app/**"
-      - "requirements.txt"
-      - "constraints-release.txt"
-      - ".github/workflows/windows-release.yml"
-      - "tools/thunderbird_native_host.py"
-      - "tools/create_internal_code_signing_certificate.ps1"
-      - "CODE_SIGNING.md"
   push:
     tags:
       - "v*"
@@ -22,67 +12,7 @@ on:
         default: "1.8.0-signing-test"
 
 jobs:
-  build-ci:
-    if: github.event_name == 'pull_request'
-    runs-on: windows-latest
-    timeout-minutes: 30
-    permissions:
-      contents: read
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-          cache: "pip"
-
-      - name: Install application and packaging dependencies
-        shell: pwsh
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install -r requirements.txt -c constraints-release.txt "nicegui[native]==3.16.0" "pyinstaller==6.21.0"
-
-      - name: Smoke-test NiceGUI source startup
-        shell: pwsh
-        run: |
-          $stdout = Join-Path $env:RUNNER_TEMP "ressourceplanner-startup.out"
-          $stderr = Join-Path $env:RUNNER_TEMP "ressourceplanner-startup.err"
-          $process = Start-Process python -ArgumentList "main.py" -PassThru -RedirectStandardOutput $stdout -RedirectStandardError $stderr
-          Start-Sleep -Seconds 7
-          if ($process.HasExited) {
-            if (Test-Path $stdout) { Get-Content $stdout }
-            if (Test-Path $stderr) { Get-Content $stderr }
-            throw "RessourcePlanner exited during startup with code $($process.ExitCode)."
-          }
-          Stop-Process -Id $process.Id -Force
-
-      - name: Build unsigned CI executable and Thunderbird host
-        shell: pwsh
-        run: |
-          $name = "RessourcePlanner-CI-Windows-x64"
-          nicegui-pack --onefile --windowed --name $name main.py
-          python -m PyInstaller --noconfirm --clean --onefile --console --name RessourcePlanner-ThunderbirdHost tools/thunderbird_native_host.py
-          if (-not (Test-Path "dist/$name.exe")) {
-            throw "Expected executable was not produced."
-          }
-          if (-not (Test-Path "dist/RessourcePlanner-ThunderbirdHost.exe")) {
-            throw "Expected Thunderbird native messaging host was not produced."
-          }
-
-      - name: Upload unsigned CI artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: RessourcePlanner-CI-Windows-x64
-          path: |
-            dist/RessourcePlanner-CI-Windows-x64.exe
-            dist/RessourcePlanner-ThunderbirdHost.exe
-          if-no-files-found: error
-
   build-sign-release:
-    if: github.event_name != 'pull_request'
     runs-on: windows-latest
     timeout-minutes: 35
     environment: release-signing
