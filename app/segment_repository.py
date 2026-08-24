@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime
-from typing import Any
+from typing import Any, Iterable
 
 from .excel_repository import ExcelRepository, MASTER_SHEETS, _as_matrix, _date_from_any
 
@@ -25,6 +25,8 @@ SEGMENT_HEADERS = [
     "CreePar",
 ]
 SEGMENT_STATUSES = ["Planifié", "En cours", "Terminé", "Annulé"]
+SEGMENT_ORIGIN_FIELD = "OrigineSegment"
+QUICK_SHIFT_ORIGIN = "QUICK_SHIFT"
 
 
 def ensure_segment_sheet(repo: ExcelRepository) -> None:
@@ -41,6 +43,24 @@ def ensure_segment_sheet(repo: ExcelRepository) -> None:
     except Exception:
         repo._ensure_sheet_table(SEGMENT_SHEET, SEGMENT_HEADERS, SEGMENT_TABLE)
         repo.save()
+
+
+def ensure_segment_fields(repo: ExcelRepository, fields: Iterable[str]) -> None:
+    """Append optional V1 fields without reordering existing segment columns.
+
+    Versioned V1.x installers still extend ``SEGMENT_HEADERS`` at runtime. Optional
+    fields therefore have to be appended only after those installers ran; inserting
+    them into the static base list could relabel existing Excel columns. The future
+    SQL repository will model these fields directly instead of using this migration
+    helper.
+    """
+    for field in fields:
+        normalized = str(field or "").strip()
+        if normalized and normalized not in SEGMENT_HEADERS:
+            SEGMENT_HEADERS.append(normalized)
+    MASTER_SHEETS.add(SEGMENT_SHEET)
+    repo._ensure_sheet_table(SEGMENT_SHEET, SEGMENT_HEADERS, SEGMENT_TABLE)
+    repo.save()
 
 
 def number(value: Any) -> float:
