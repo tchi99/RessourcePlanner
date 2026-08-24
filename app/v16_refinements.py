@@ -509,8 +509,6 @@ def install_v16_refinements() -> None:
     ui_module.PlannerUI._render_content = render_content
     ui_module.PlannerUI._page_sheets = page_sheets
     ui_module.PlannerUI.render_resources = _render_resources
-    ui_module.PlannerUI.render_planning = _render_planning
-    v13._render_operational_planning = _render_planning
-    v15._render_operational_planning_v15 = _render_planning
-    v15_refinements._render_planning = _render_planning
+    # Le renderer de raffinement V1.6 reste explicitement disponible et appelle
+    # directement v16._render_planning_v16; il n'est plus propagé par alias.
     ui_module.PlannerUI._v16_refinements_installed = True
