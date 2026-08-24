@@ -7,6 +7,9 @@ from nicegui import ui
 
 from . import v15_engine, v17
 from .application.quick_shift_service import QuickShiftService
+from .operational_planning_cell_action import (
+    register_operational_planning_cell_shift_opener,
+)
 from .segment_repository import (
     SEGMENT_ORIGIN_FIELD,
     add_segment,
@@ -18,6 +21,7 @@ from .segment_repository import (
 
 MODE_QUICK = "quick"
 MODE_SEGMENT = "segment"
+_installed = False
 
 
 def _normalize_project_number(value: Any) -> str:
@@ -306,12 +310,10 @@ def open_cell_shift_dialog(owner: Any, technician: str, day: date) -> None:
 
 
 def install_quick_shift_ui() -> None:
-    """Transitional hook until the V1.7 cell renderer is fully extracted."""
-    if getattr(v17, "_quick_shift_ui_installed", False):
+    """Register the planning-cell action without rewriting a V1.x module."""
+    global _installed
+    if _installed:
         return
 
-    # The V1.7 cell '+' still resolves this module-level callback dynamically.
-    # Keeping the compatibility hook explicit here avoids adding another PlannerUI
-    # monkey-patch while the renderer is progressively moved out of versioned files.
-    v17._open_quick_allocation = open_cell_shift_dialog
-    v17._quick_shift_ui_installed = True
+    register_operational_planning_cell_shift_opener(open_cell_shift_dialog)
+    _installed = True
