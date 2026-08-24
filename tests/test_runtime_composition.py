@@ -45,6 +45,7 @@ class RuntimeCompositionTests(unittest.TestCase):
             self.assertNotIn(retired, legacy)
         for extracted in (
             "effort_identity_guard",
+            "quick_shift_ui",
             "operational_planning_compat",
             "resource_class_compat",
             "location_projection",
@@ -54,7 +55,6 @@ class RuntimeCompositionTests(unittest.TestCase):
         self.assertEqual(
             application,
             [
-                "quick_shift_ui",
                 "operational_planning_page",
                 "demand_editor_ui",
                 "planning_service_ui",
