@@ -38,14 +38,23 @@ class OperationalPlanningPageTests(unittest.TestCase):
         self.assertIn("self.operational_planning_page.render()", source)
         self.assertNotIn('elif self.current_page == "planning":\n            self.render_planning()', source)
 
-    def test_final_v17_sort_layer_registers_renderer_without_class_assignment(self) -> None:
+    def test_final_v17_sort_layer_registers_renderer_without_legacy_alias_rewrites(self) -> None:
         source = (APP / "v17_sort_fix.py").read_text(encoding="utf-8")
         self.assertIn(
             "from .operational_planning_page import register_operational_planning_renderer",
             source,
         )
         self.assertIn("register_operational_planning_renderer(render_planning)", source)
-        self.assertNotIn("PlannerUI.render_planning = render_planning", source)
+        for token in (
+            "PlannerUI.render_planning = render_planning",
+            "v13._render_operational_planning = render_planning",
+            "v15._render_operational_planning_v15 = render_planning",
+            "v15_refinements._render_planning = render_planning",
+            "v16._render_planning_v16 = render_planning",
+            "v16_refinements._render_planning = render_planning",
+            "v17_refinements._render_planning = render_planning",
+        ):
+            self.assertNotIn(token, source)
 
     def test_installer_prefers_registered_renderer_without_importing_versioned_modules(self) -> None:
         source = (APP / "operational_planning_page.py").read_text(encoding="utf-8")
