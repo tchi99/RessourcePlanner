@@ -60,7 +60,6 @@ _SCROLL_SETUP_JS = r"""
             left: scrollContainer.scrollLeft || 0,
           }));
         }, {passive: true});
-        scrollContainer.dataset.v17ScrollTracking = '1';
       }
     }
 
