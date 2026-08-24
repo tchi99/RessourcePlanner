@@ -686,8 +686,8 @@ def install_v15_features() -> None:
 
     ExcelRepository.ensure_app_sheets = ensure_app_sheets_v15
 
-    ui_module.PlannerUI.render_planning = _render_operational_planning_v15
-    v13._render_operational_planning = _render_operational_planning_v15
+    # Le renderer V1.5 reste une fonction explicite utilisée par v15_refinements;
+    # l'installer ne réécrit plus PlannerUI ni le renderer V1.3.
     ui_module.PlannerUI.render_dashboard = _render_dashboard_v15
     ui_module.PlannerUI.render_medium_term = _render_medium_term_v15
     v13._render_medium_term = _render_medium_term_v15
