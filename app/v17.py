@@ -11,6 +11,7 @@ from . import ui as ui_module
 from . import v13, v14_engine, v15, v15_engine, v15_refinements, v16, v16_refinements
 from .bugfixes import schedulable_technicians
 from .excel_repository import _date_from_any
+from .operational_planning_cell_action import open_operational_planning_cell_shift
 from .services import week_days
 
 
@@ -174,101 +175,8 @@ def _eligible_segments_for_cell(repo: Any, technician: str, day: date) -> list[d
 
 
 def _open_quick_allocation(self: ui_module.PlannerUI, technician: str, day: date) -> None:
-    candidates = _eligible_segments_for_cell(self.repo, technician, day)
-    if not candidates:
-        ui.notify(
-            "Aucun segment non terminé et compatible avec cette ressource ne couvre cette journée.",
-            type="warning",
-        )
-        return
-
-    self.interaction_lock = True
-    lookup = {str(row.get("IDSegment") or ""): row for row in candidates}
-    options = {
-        ident: (
-            f"{ident} — {row.get('NumeroProjet') or '—'} · {row.get('NomProjet') or ''} · "
-            f"{v13._number(row.get('HeuresPrevues')):g} h"
-        )
-        for ident, row in lookup.items()
-    }
-    first_id = next(iter(options))
-    capacity, used, free = _day_standard_load(self.repo, technician, day)
-
-    with ui.dialog() as dialog, ui.card().classes("w-[760px] max-w-full"):
-        ui.label("Planifier rapidement un quart").classes("text-xl font-bold")
-        ui.label(f"{technician} · {day.strftime('%d/%m/%Y')}").classes("font-semibold")
-        ui.label(
-            f"Capacité standard : {capacity:g} h · déjà utilisée : {used:g} h · libre : {free:g} h"
-        ).classes("text-sm muted")
-
-        segment_select = ui.select(
-            options,
-            label="Segment",
-            value=first_id,
-            with_input=True,
-        ).classes("w-full")
-        initial_segment = lookup[first_id]
-        lockable = max(
-            v13._number(initial_segment.get("HeuresPrevues")) - _locked_hours(self.repo, first_id),
-            0.25,
-        )
-        suggested = min(8.0, lockable, free if free > 0 else 8.0)
-        hours = ui.number(
-            "Heures",
-            value=max(suggested, 0.25),
-            min=0.25,
-            step=0.25,
-        ).classes("w-full")
-        hors_horaire = ui.checkbox(
-            "Hors horaire standard",
-            value=capacity <= 0,
-        )
-        skill_label = ui.label().classes("text-xs")
-        note = ui.input("Note", value="Planifié rapidement depuis la grille").classes("w-full")
-
-        def refresh_skill(*_: Any) -> None:
-            segment = lookup.get(str(segment_select.value or ""), {})
-            message, match = _skill_message(self.repo, technician, segment)
-            skill_label.text = message
-            skill_label.classes(
-                remove="text-green-700 text-amber-700",
-                add="text-green-700" if match else "text-amber-700",
-            )
-
-        segment_select.on("update:model-value", refresh_skill)
-        refresh_skill()
-
-        def save() -> None:
-            segment_id = str(segment_select.value or "")
-            if not segment_id:
-                ui.notify("Sélectionne un segment.", type="warning")
-                return
-            try:
-                _validate_locked_total(self.repo, segment_id, hours.value)
-                v15_engine.create_manual_allocation(
-                    self.repo,
-                    segment_id,
-                    technician,
-                    day,
-                    hours.value,
-                    bool(hors_horaire.value),
-                    str(note.value or ""),
-                )
-                dialog.close()
-                self._after_write(
-                    f"Quart de {v13._number(hours.value):g} h planifié pour {technician}"
-                )
-            except Exception as exc:
-                ui.notify(str(exc), type="negative")
-
-        with ui.row().classes("w-full justify-end"):
-            ui.button("Annuler", on_click=dialog.close).props("flat no-caps")
-            ui.button("Planifier et verrouiller", icon="lock", on_click=save).props(
-                "unelevated no-caps color=primary"
-            )
-
-    dialog.on("hide", lambda _: self._unlock())
-    dialog.open()
+    """Compatibility adapter until the V1.7 resource-row renderer is extracted."""
+    open_operational_planning_cell_shift(self, technician, day)
 
 
 def _move_allocation_same_resource(
@@ -1156,5 +1064,4 @@ def install_v17_features() -> None:
     ui_module.PlannerUI._setup_style = setup_style
     # Le renderer V1.7 reste disponible explicitement pour v17_refinements;
     # l'installer n'a plus à le propager dans les alias des couches précédentes.
-    ui_module.PlannerUI.open_quick_allocation = _open_quick_allocation
     ui_module.PlannerUI._v17_features_installed = True

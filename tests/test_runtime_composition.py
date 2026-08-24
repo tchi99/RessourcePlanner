@@ -45,16 +45,17 @@ class RuntimeCompositionTests(unittest.TestCase):
             self.assertNotIn(retired, legacy)
         for extracted in (
             "effort_identity_guard",
-            "quick_shift_ui",
             "operational_planning_compat",
             "resource_class_compat",
             "location_projection",
         ):
             self.assertIn(extracted, compatibility)
+        self.assertNotIn("quick_shift_ui", compatibility)
         self.assertNotIn("demand_legacy_cleanup", compatibility)
         self.assertEqual(
             application,
             [
+                "quick_shift_ui",
                 "operational_planning_page",
                 "demand_editor_ui",
                 "planning_service_ui",
@@ -103,7 +104,7 @@ class RuntimeCompositionTests(unittest.TestCase):
         ):
             self.assertNotIn(historical_prefix, source)
 
-    def test_quick_shift_ui_unifies_cell_plus_without_planner_ui_monkey_patch(self) -> None:
+    def test_quick_shift_ui_registers_cell_action_without_rewriting_v17(self) -> None:
         source = (Path(__file__).resolve().parents[1] / "app" / "quick_shift_ui.py").read_text(
             encoding="utf-8"
         )
@@ -113,8 +114,28 @@ class RuntimeCompositionTests(unittest.TestCase):
         self.assertIn('MODE_QUICK: "Quart rapide"', source)
         self.assertIn('MODE_SEGMENT: "Segment existant"', source)
         self.assertIn("QuickShiftService(", source)
-        self.assertIn("v17._open_quick_allocation = open_cell_shift_dialog", source)
+        self.assertIn(
+            "register_operational_planning_cell_shift_opener(open_cell_shift_dialog)",
+            source,
+        )
+        self.assertNotIn("v17._open_quick_allocation =", source)
         self.assertNotIn("PlannerUI.open_quick_allocation =", source)
+
+    def test_v17_cell_plus_uses_explicit_cell_action_boundary(self) -> None:
+        source = (Path(__file__).resolve().parents[1] / "app" / "v17.py").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn(
+            "from .operational_planning_cell_action import open_operational_planning_cell_shift",
+            source,
+        )
+        self.assertIn("def _open_quick_allocation(", source)
+        self.assertIn(
+            "open_operational_planning_cell_shift(self, technician, day)",
+            source,
+        )
+        self.assertNotIn("PlannerUI.open_quick_allocation =", source)
+        self.assertNotIn("ui.label(\"Planifier rapidement un quart\")", source)
 
     def test_planning_service_ui_binding_routes_recalculate_through_service(self) -> None:
         source = (Path(__file__).resolve().parents[1] / "app" / "planning_service_ui.py").read_text(
