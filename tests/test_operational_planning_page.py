@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 import unittest
 
+import app.operational_planning_page as planning_page
 from app.operational_planning_page import OperationalPlanningPage
 
 
@@ -11,6 +12,9 @@ APP = ROOT / "app"
 
 
 class OperationalPlanningPageTests(unittest.TestCase):
+    def tearDown(self) -> None:
+        planning_page._registered_renderer = None
+
     def test_page_invokes_injected_renderer_with_owner(self) -> None:
         owner = object()
         calls: list[object] = []
@@ -20,6 +24,13 @@ class OperationalPlanningPageTests(unittest.TestCase):
 
         self.assertEqual(calls, [owner])
 
+    def test_registry_accepts_callable_and_rejects_invalid_renderer(self) -> None:
+        renderer = lambda owner: None
+        planning_page.register_operational_planning_renderer(renderer)
+        self.assertIs(planning_page._registered_renderer, renderer)
+        with self.assertRaises(TypeError):
+            planning_page.register_operational_planning_renderer(None)  # type: ignore[arg-type]
+
     def test_base_ui_routes_planning_through_explicit_page(self) -> None:
         source = (APP / "ui.py").read_text(encoding="utf-8")
         self.assertIn("from .operational_planning_page import OperationalPlanningPage", source)
@@ -27,9 +38,18 @@ class OperationalPlanningPageTests(unittest.TestCase):
         self.assertIn("self.operational_planning_page.render()", source)
         self.assertNotIn('elif self.current_page == "planning":\n            self.render_planning()', source)
 
-    def test_installer_captures_final_renderer_without_importing_versioned_modules(self) -> None:
+    def test_final_v17_sort_layer_registers_renderer_without_class_assignment(self) -> None:
+        source = (APP / "v17_sort_fix.py").read_text(encoding="utf-8")
+        self.assertIn(
+            "from .operational_planning_page import register_operational_planning_renderer",
+            source,
+        )
+        self.assertIn("register_operational_planning_renderer(render_planning)", source)
+        self.assertNotIn("PlannerUI.render_planning = render_planning", source)
+
+    def test_installer_prefers_registered_renderer_without_importing_versioned_modules(self) -> None:
         source = (APP / "operational_planning_page.py").read_text(encoding="utf-8")
-        self.assertIn('getattr(ui_module.PlannerUI, "render_planning", None)', source)
+        self.assertIn("renderer = _registered_renderer", source)
         self.assertIn("PlannerUI._operational_planning_renderer = renderer", source)
         for token in ("import v13", "import v15", "import v16", "import v17", "import v18"):
             self.assertNotIn(token, source)

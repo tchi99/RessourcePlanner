@@ -9,6 +9,7 @@ from nicegui import ui
 from . import ui as ui_module
 from . import v13, v15, v15_refinements, v16, v16_refinements, v17, v17_refinements
 from .bugfixes import schedulable_technicians
+from .operational_planning_page import register_operational_planning_renderer
 
 
 MANUAL_ORDER_EVENT = "v17-manual-resource-order"
@@ -282,7 +283,7 @@ def install_v17_sort_fix() -> None:
         # Les flèches sont ajoutées uniquement lorsque « Ordre manuel » est actif.
         ui.timer(0.10, lambda: ui.run_javascript(_manual_order_script(self)), once=True)
 
-    ui_module.PlannerUI.render_planning = render_planning
+    register_operational_planning_renderer(render_planning)
     v13._render_operational_planning = render_planning
     v15._render_operational_planning_v15 = render_planning
     v15_refinements._render_planning = render_planning
