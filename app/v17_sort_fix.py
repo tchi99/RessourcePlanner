@@ -7,7 +7,7 @@ from typing import Any
 from nicegui import ui
 
 from . import ui as ui_module
-from . import v13, v15, v15_refinements, v16, v16_refinements, v17, v17_refinements
+from . import v16, v16_refinements, v17_refinements
 from .bugfixes import schedulable_technicians
 from .operational_planning_page import register_operational_planning_renderer
 
@@ -283,13 +283,9 @@ def install_v17_sort_fix() -> None:
         # Les flèches sont ajoutées uniquement lorsque « Ordre manuel » est actif.
         ui.timer(0.10, lambda: ui.run_javascript(_manual_order_script(self)), once=True)
 
+    # Le point d'entrée autoritaire est maintenant le registre de page explicite.
+    # Les anciens alias V1.x ne sont plus réécrits par cette couche finale.
     register_operational_planning_renderer(render_planning)
-    v13._render_operational_planning = render_planning
-    v15._render_operational_planning_v15 = render_planning
-    v15_refinements._render_planning = render_planning
-    v16._render_planning_v16 = render_planning
-    v16_refinements._render_planning = render_planning
-    v17_refinements._render_planning = render_planning
 
     ui_module.PlannerUI.move_resource_manual = _move_manual_resource
     ui_module.PlannerUI._v17_sort_fix_installed = True
