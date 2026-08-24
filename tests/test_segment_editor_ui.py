@@ -13,7 +13,6 @@ class SegmentEditorUIArchitectureTests(unittest.TestCase):
         source = (APP / "segment_editor_ui.py").read_text(encoding="utf-8")
 
         self.assertIn("def open_segment_editor(", source)
-        self.assertIn("segment_service(owner.repo).create", source) if False else None
         self.assertIn("service = segment_service(owner.repo)", source)
         self.assertIn("service.create(data)", source)
         self.assertIn("service.update(", source)
