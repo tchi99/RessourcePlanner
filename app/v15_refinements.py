@@ -690,7 +690,6 @@ def install_v15_refinements() -> None:
     v15.rebuild_allocations = rebuild_allocations_refined
     v15.weekly_allocation_load = weekly_allocation_load_refined
     v15._open_manual_allocation_dialog = _open_allocation_dialog
-    ui_module.PlannerUI.render_planning = _render_planning
-    v13._render_operational_planning = _render_planning
-    v15._render_operational_planning_v15 = _render_planning
+    # Le renderer raffiné V1.5 reste une fonction explicite utilisée par les
+    # couches suivantes; l'installer n'a plus à le propager dans PlannerUI/V1.3/V1.5.
     ui_module.PlannerUI._v15_refinements_installed = True
