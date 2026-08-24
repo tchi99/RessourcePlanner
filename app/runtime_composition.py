@@ -51,6 +51,7 @@ RUNTIME_COMPOSITION_MANIFEST: tuple[CompositionStep, ...] = (
     CompositionStep("operational_planning_compat", "compatibility"),
     CompositionStep("resource_class_compat", "compatibility"),
     CompositionStep("location_projection", "compatibility"),
+    CompositionStep("operational_planning_page", "application"),
     CompositionStep("demand_editor_ui", "application"),
     CompositionStep("planning_service_ui", "application"),
     CompositionStep("allocation_service_ui", "application"),
@@ -81,6 +82,7 @@ def _runtime_installers() -> tuple[tuple[str, Installer], ...]:
     from .features_runtime import apply_runtime_optimizations
     from .location_projection import install_location_projection
     from .operational_planning_compat import install_operational_planning_compat
+    from .operational_planning_page import install_operational_planning_page
     from .planning_service_ui import install_planning_service_ui
     from .pure_validation_ui import install_pure_validation_ui
     from .resource_class_compat import install_resource_class_compat
@@ -125,6 +127,7 @@ def _runtime_installers() -> tuple[tuple[str, Installer], ...]:
         ("operational_planning_compat", install_operational_planning_compat),
         ("resource_class_compat", install_resource_class_compat),
         ("location_projection", install_location_projection),
+        ("operational_planning_page", install_operational_planning_page),
         ("demand_editor_ui", install_demand_editor_ui),
         ("planning_service_ui", install_planning_service_ui),
         ("allocation_service_ui", install_allocation_service_ui),

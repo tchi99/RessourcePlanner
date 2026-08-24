@@ -7,6 +7,7 @@ from nicegui import ui
 
 from .config import save_workbook_path
 from .demand_requests_page import DemandRequestsPage
+from .operational_planning_page import OperationalPlanningPage
 from .segment_repository import SEGMENT_SHEET
 from .segments_page import SegmentsPage
 from .excel_repository import EFFORT_STATUSES, ExcelRepository, MASTER_SHEETS
@@ -55,6 +56,12 @@ class PlannerUI:
         # La page Demandes possède désormais son propre rendu et ses actions.
         self.demand_requests_page = DemandRequestsPage(self)
         self.segments_page = SegmentsPage(self)
+        planning_renderer = getattr(type(self), "_operational_planning_renderer", None)
+        if not callable(planning_renderer):
+            planning_renderer = type(self).render_planning
+        self.operational_planning_page = OperationalPlanningPage(
+            self, planning_renderer
+        )
 
         # Refreshable principal conservé sur le shell historique pendant l'extraction
         # progressive des autres pages. L'alias request_actions protège les adaptateurs
@@ -233,7 +240,7 @@ class PlannerUI:
         if self.current_page == "settings":
             self.render_settings()
         elif self.current_page == "planning":
-            self.render_planning()
+            self.operational_planning_page.render()
         elif self.current_page == "requests":
             self.demand_requests_page.render()
         elif self.current_page == "segments":
