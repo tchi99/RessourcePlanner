@@ -18,7 +18,8 @@ class RuntimeCompositionTests(unittest.TestCase):
         self.assertLess(names.index("runtime_optimizations"), names.index("features"))
         self.assertLess(names.index("v18_features"), names.index("effort_identity_guard"))
         self.assertLess(names.index("effort_identity_guard"), names.index("v18_refinements"))
-        self.assertLess(names.index("v18_refinements"), names.index("operational_planning_compat"))
+        self.assertLess(names.index("v18_refinements"), names.index("quick_shift_ui"))
+        self.assertLess(names.index("quick_shift_ui"), names.index("operational_planning_compat"))
         self.assertLess(names.index("operational_planning_compat"), names.index("resource_class_compat"))
         self.assertLess(names.index("resource_class_compat"), names.index("location_projection"))
         self.assertLess(names.index("location_projection"), names.index("operational_planning_page"))
@@ -44,6 +45,7 @@ class RuntimeCompositionTests(unittest.TestCase):
             self.assertNotIn(retired, legacy)
         for extracted in (
             "effort_identity_guard",
+            "quick_shift_ui",
             "operational_planning_compat",
             "resource_class_compat",
             "location_projection",
@@ -100,6 +102,19 @@ class RuntimeCompositionTests(unittest.TestCase):
             "install_v18_",
         ):
             self.assertNotIn(historical_prefix, source)
+
+    def test_quick_shift_ui_unifies_cell_plus_without_planner_ui_monkey_patch(self) -> None:
+        source = (Path(__file__).resolve().parents[1] / "app" / "quick_shift_ui.py").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn('MODE_QUICK = "quick"', source)
+        self.assertIn('MODE_SEGMENT = "segment"', source)
+        self.assertIn('MODE_QUICK: "Quart rapide"', source)
+        self.assertIn('MODE_SEGMENT: "Segment existant"', source)
+        self.assertIn("QuickShiftService(", source)
+        self.assertIn("v17._open_quick_allocation = open_cell_shift_dialog", source)
+        self.assertNotIn("PlannerUI.open_quick_allocation =", source)
 
     def test_planning_service_ui_binding_routes_recalculate_through_service(self) -> None:
         source = (Path(__file__).resolve().parents[1] / "app" / "planning_service_ui.py").read_text(
