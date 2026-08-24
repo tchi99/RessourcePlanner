@@ -129,9 +129,13 @@ class RuntimeCompositionTests(unittest.TestCase):
             "from .operational_planning_cell_action import open_operational_planning_cell_shift",
             source,
         )
-        self.assertIn("open_operational_planning_cell_shift(", source)
-        self.assertNotIn("def _open_quick_allocation(", source)
+        self.assertIn("def _open_quick_allocation(", source)
+        self.assertIn(
+            "open_operational_planning_cell_shift(self, technician, day)",
+            source,
+        )
         self.assertNotIn("PlannerUI.open_quick_allocation =", source)
+        self.assertNotIn("ui.label(\"Planifier rapidement un quart\")", source)
 
     def test_planning_service_ui_binding_routes_recalculate_through_service(self) -> None:
         source = (Path(__file__).resolve().parents[1] / "app" / "planning_service_ui.py").read_text(
