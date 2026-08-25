@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
 from datetime import date
-from typing import Any, TypeVar
+from typing import Any
 
 from .command_ports import AllocationCommandPort
 from .commands import (
@@ -12,14 +11,7 @@ from .commands import (
     ManualAllocationUpdateCommand,
     SegmentAssignCommand,
 )
-from .errors import (
-    ApplicationError,
-    ApplicationValidationError,
-    application_error_from_exception,
-)
-
-
-ResultT = TypeVar("ResultT")
+from .errors import ApplicationValidationError, call_application_port
 
 
 class AllocationService:
@@ -32,10 +24,7 @@ class AllocationService:
     def _required(value: object, *, code: str, message: str) -> str:
         normalized = str(value or "").strip()
         if not normalized:
-            raise ApplicationValidationError(
-                message,
-                code=code,
-            )
+            raise ApplicationValidationError(message, code=code)
         return normalized
 
     @staticmethod
@@ -66,24 +55,6 @@ class AllocationService:
             )
         return value
 
-    @staticmethod
-    def _call_adapter(
-        action: Callable[[], ResultT],
-        *,
-        code_prefix: str,
-        context: Mapping[str, Any],
-    ) -> ResultT:
-        try:
-            return action()
-        except ApplicationError:
-            raise
-        except Exception as exc:
-            raise application_error_from_exception(
-                exc,
-                code_prefix=code_prefix,
-                context=context,
-            ) from exc
-
     def create_manual_command(self, command: ManualAllocationCreateCommand) -> str:
         segment = self._required(
             command.segment_id,
@@ -97,7 +68,7 @@ class AllocationService:
         )
         day = self._day(command.day)
         hours = self._positive_hours(command.hours)
-        return self._call_adapter(
+        return call_application_port(
             lambda: self._commands.create_manual(
                 segment,
                 tech,
@@ -123,7 +94,7 @@ class AllocationService:
         )
         day = self._day(command.day)
         hours = self._positive_hours(command.hours)
-        self._call_adapter(
+        call_application_port(
             lambda: self._commands.update_manual(
                 identifier,
                 tech,
@@ -142,7 +113,7 @@ class AllocationService:
             code="allocation_id_required",
             message="Un identifiant d'allocation est requis.",
         )
-        self._call_adapter(
+        call_application_port(
             lambda: self._commands.release_manual(identifier),
             code_prefix="allocation_release",
             context={"allocation_id": identifier},
@@ -154,7 +125,7 @@ class AllocationService:
             code="allocation_id_required",
             message="Un identifiant d'allocation est requis.",
         )
-        self._call_adapter(
+        call_application_port(
             lambda: self._commands.delete_manual(identifier),
             code_prefix="allocation_delete",
             context={"allocation_id": identifier},
@@ -172,7 +143,7 @@ class AllocationService:
             message="Un technicien est requis pour l'affectation.",
         )
         return dict(
-            self._call_adapter(
+            call_application_port(
                 lambda: self._commands.assign_segment(segment, tech),
                 code_prefix="segment_assignment",
                 context={"segment_id": segment, "technician": tech},
