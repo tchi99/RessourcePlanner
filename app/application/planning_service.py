@@ -4,7 +4,7 @@ from typing import Any
 
 from .command_ports import PlanningCommandPort
 from .commands import PlanningRebuildCommand
-from .errors import ApplicationError, application_error_from_exception
+from .errors import call_application_port
 
 
 class PlanningService:
@@ -14,15 +14,12 @@ class PlanningService:
         self._commands = commands
 
     def rebuild_command(self, _command: PlanningRebuildCommand) -> dict[str, Any]:
-        try:
-            return dict(self._commands.rebuild())
-        except ApplicationError:
-            raise
-        except Exception as exc:
-            raise application_error_from_exception(
-                exc,
+        return dict(
+            call_application_port(
+                self._commands.rebuild,
                 code_prefix="planning_rebuild",
-            ) from exc
+            )
+        )
 
     def rebuild(self) -> dict[str, Any]:
         """Compatibility adapter for the current NiceGUI entry point."""
