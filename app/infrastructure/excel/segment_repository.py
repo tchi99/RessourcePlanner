@@ -6,25 +6,24 @@ from typing import Any
 
 from ...application.read_models import SegmentReadModel
 from ...application.repository_ports import SegmentRepositoryPort
-from ...excel_repository import ExcelRepository
-from ...segment_repository import segment_records
 
 
 class ExcelSegmentRepository(SegmentRepositoryPort):
     """Excel implementation of the operational segment persistence contract.
 
-    Reads use the stable ``segment_repository`` boundary. Writes resolve the composed
-    V1 alias lazily because compatibility installers still enrich those entry points
-    (for example approved location projection) until the Excel adapter is retired.
+    Reads and writes resolve Excel/V1 modules lazily. This keeps the application layer
+    importable without xlwings/NiceGUI while preserving composed V1 write aliases such
+    as approved-location projection until the Excel adapter is retired.
     """
 
-    def __init__(self, repository: ExcelRepository) -> None:
+    def __init__(self, repository: Any) -> None:
         self._repository = repository
 
     def list(self, *, include_cancelled: bool = True) -> Sequence[SegmentReadModel]:
+        segment_repository = import_module("app.segment_repository")
         return tuple(
             SegmentReadModel.from_mapping(row)
-            for row in segment_records(
+            for row in segment_repository.segment_records(
                 self._repository,
                 include_cancelled=include_cancelled,
             )
