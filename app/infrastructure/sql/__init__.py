@@ -5,6 +5,11 @@ planning engine must continue to depend on ports/read models rather than SQLAlch
 """
 
 from .base import Base, NAMING_CONVENTION, new_id
+from .command_adapters import (
+    SqlAllocationCommandAdapter,
+    SqlApprovedDemandSyncAdapter,
+    SqlPlanningCommandAdapter,
+)
 from .demand_repository import SqlDemandRepository
 from .models import (
     ORIGIN_AD_HOC,
@@ -44,7 +49,10 @@ __all__ = [
     "ResourceAvailabilityRule",
     "ResourceRequirement",
     "Shift",
+    "SqlAllocationCommandAdapter",
+    "SqlApprovedDemandSyncAdapter",
     "SqlDemandRepository",
+    "SqlPlanningCommandAdapter",
     "SqlPlanningReadRepository",
     "SqlSegmentRepository",
     "SqlSessionFactory",
