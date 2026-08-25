@@ -4,17 +4,17 @@ from typing import Any
 
 from nicegui import ui as nicegui_ui
 
-from . import ui as ui_module, v16, v17
+from . import ui as ui_module, v16
 from .ui_context import ensure_scoped_ui
 
 
-# Keep the validated CSS class name while the renderer is still historical. The
-# installer/module is no longer version-numbered, but changing the DOM class is not
-# required for this architecture-only tranche and could break local styling hooks.
+# Keep the validated CSS class name for layout compatibility. The historical V1.7
+# renderer that originally owned the scroll-area override has been physically removed.
 OPERATIONAL_SCROLL_CLASS = "v18-operational-scroll"
 
 
 def _horizontal_container(*args: Any, **kwargs: Any) -> Any:
+    """Retained layout helper for compatibility with any late-bound UI caller."""
     del args, kwargs
     return nicegui_ui.element("div").classes(OPERATIONAL_SCROLL_CLASS)
 
@@ -22,10 +22,10 @@ def _horizontal_container(*args: Any, **kwargs: Any) -> Any:
 def install_operational_planning_compat() -> None:
     """Install the remaining scoped UI compatibility for operational planning.
 
-    The V1.6/V1.7 renderers still temporarily replace their module-local ``select``
-    factory. ``ScopedNiceGUI`` keeps those overrides client/task-local instead of
-    mutating process-wide NiceGUI state. The V1.7 renderer also receives a simple
-    horizontal overflow container in place of Quasar ``scroll_area``.
+    V1.6 still temporarily replaces its module-local ``select`` factory.
+    ``ScopedNiceGUI`` keeps that override client/task-local instead of mutating
+    process-wide NiceGUI state. The V1.7 renderer no longer exists and must not be
+    imported or configured here.
 
     This module also owns the stable operational calendar dimensions. Keeping these
     compatibility details outside version-numbered installers makes the remaining
@@ -38,12 +38,6 @@ def install_operational_planning_compat() -> None:
         v16,
         scope_name="v16_planning",
         scoped_factories=("select",),
-    )
-    ensure_scoped_ui(
-        v17,
-        scope_name="v17_planning",
-        scoped_factories=("select",),
-        static_overrides={"scroll_area": _horizontal_container},
     )
 
     nicegui_ui.add_css(
