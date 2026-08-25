@@ -7,21 +7,6 @@ from nicegui import ui
 from . import ui as ui_module
 from . import v15_engine
 from .operational_planning_cell_context_compat import operational_planning_cell_context
-from .operational_planning_orchestrator import render_operational_planning
-from .operational_planning_orchestrator_compat import operational_planning_bindings
-
-
-def _render_planning(
-    self: ui_module.PlannerUI,
-    *,
-    weekly_stats_provider: Any | None = None,
-) -> None:
-    """Compatibility wrapper for refinements that still call the V1.7 entry point."""
-    render_operational_planning(
-        self,
-        weekly_stats_provider=weekly_stats_provider,
-        bindings=operational_planning_bindings(),
-    )
 
 
 def install_v17_features() -> None:
@@ -98,6 +83,4 @@ def install_v17_features() -> None:
         )
 
     ui_module.PlannerUI._setup_style = setup_style
-    # Le renderer V1.7 reste disponible explicitement pour v17_refinements;
-    # l'installer n'a plus à le propager dans les alias des couches précédentes.
     ui_module.PlannerUI._v17_features_installed = True
