@@ -19,6 +19,10 @@ from .models import (
     WorkforceRequestHistory,
     WorkPackage,
 )
+from .identity_constraints import (
+    RESOURCE_REQUIREMENT_NUMBER_INDEX,
+    WORKFORCE_REQUEST_NUMBER_INDEX,
+)
 from .segment_repository import SqlSegmentRepository
 from .session import (
     SqlSessionFactory,
@@ -34,6 +38,7 @@ __all__ = [
     "ORIGIN_QUICK_SHIFT",
     "ORIGIN_REQUEST",
     "Project",
+    "RESOURCE_REQUIREMENT_NUMBER_INDEX",
     "Resource",
     "ResourceAvailabilityRule",
     "ResourceRequirement",
@@ -41,6 +46,7 @@ __all__ = [
     "SqlDemandRepository",
     "SqlSegmentRepository",
     "SqlSessionFactory",
+    "WORKFORCE_REQUEST_NUMBER_INDEX",
     "WorkPackage",
     "WorkforceRequest",
     "WorkforceRequestHistory",
