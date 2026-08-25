@@ -13,6 +13,87 @@ from .performance_diagnostics import PerformanceSample, append_performance_sampl
 from .planning_shadow import ShadowPlanReport, build_planning_snapshot, build_shadow_report_from_snapshot
 
 
+INACTIVE_SEGMENT_STATUSES = {"Annulé", "Terminé"}
+
+
+def _active_source_segment_ids(snapshot: PlanningSnapshot) -> set[str]:
+    """Return active segment ids independently from pure-engine schedulability.
+
+    Manual/locked allocations are user decisions. Their persistence must depend on
+    whether the source segment is still active, not on whether the pure projection can
+    currently schedule that resource (for example while availability is being migrated).
+    """
+
+    return {
+        str(row.get("IDSegment") or "").strip()
+        for row in snapshot.segments
+        if str(row.get("IDSegment") or "").strip()
+        and str(row.get("Statut") or "").strip() not in INACTIVE_SEGMENT_STATUSES
+    }
+
+
+def _active_locked_rows(snapshot: PlanningSnapshot) -> list[dict[str, Any]]:
+    """Normalize every locked row attached to an active source segment.
+
+    A malformed locked decision is a fail-closed condition: automatic rebuild must not
+    silently discard it. The existing workbook remains untouched and the user can fix
+    the offending row explicitly.
+    """
+
+    active_ids = _active_source_segment_ids(snapshot)
+    rows: list[dict[str, Any]] = []
+    for row in snapshot.allocations:
+        if not v15_engine._truthy(row.get("Verrouillee")):
+            continue
+        segment_id = str(row.get("IDSegment") or "").strip()
+        if segment_id not in active_ids:
+            continue
+
+        identifier = str(row.get("IDAllocation") or "").strip()
+        day = _date_from_any(row.get("Date"))
+        technician = str(row.get("Technicien") or "").strip()
+        hours = v13._number(row.get("Heures"))
+        if not identifier or not day or not technician or hours <= 0:
+            raise RuntimeError(
+                "Une allocation verrouillée active est invalide. Le recalcul est annulé "
+                "afin de ne pas supprimer cette décision manuelle. "
+                f"IDAllocation={identifier or '<vide>'}, IDSegment={segment_id or '<vide>'}."
+            )
+
+        clean = dict(row)
+        clean["Date"] = day
+        clean["Heures"] = round(hours, 2)
+        clean["Verrouillee"] = "Oui"
+        clean["HorsHoraire"] = "Oui" if v15_engine._truthy(row.get("HorsHoraire")) else "Non"
+        rows.append(clean)
+    return rows
+
+
+def _locked_ids(rows: list[dict[str, Any]]) -> set[str]:
+    return {
+        str(row.get("IDAllocation") or "").strip()
+        for row in rows
+        if v15_engine._truthy(row.get("Verrouillee"))
+        and str(row.get("IDAllocation") or "").strip()
+    }
+
+
+def _assert_locked_allocations_preserved(
+    snapshot: PlanningSnapshot,
+    output_rows: list[dict[str, Any]],
+) -> None:
+    """Abort before persistence if an active locked allocation would disappear."""
+
+    required = _locked_ids(_active_locked_rows(snapshot))
+    persisted = _locked_ids(output_rows)
+    missing = sorted(required - persisted)
+    if missing:
+        raise RuntimeError(
+            "Le recalcul aurait supprimé des allocations verrouillées actives. "
+            "Écriture annulée. Allocations protégées: " + ", ".join(missing)
+        )
+
+
 def _pure_persistence_rows(
     snapshot: PlanningSnapshot,
     report: ShadowPlanReport,
@@ -21,6 +102,10 @@ def _pure_persistence_rows(
 
     Calculation and persistence reuse the same PlanningSnapshot. The adapter never
     re-reads SegmentsMO, DemandesMO or AllocationsMO after the pure calculation.
+
+    Locked rows are preserved from active *source* segments before automatic rows are
+    regenerated. Pure-engine schedulability is intentionally not allowed to delete a
+    manual decision.
     """
     segment_map = {
         str(row.get("IDSegment") or ""): row
@@ -32,26 +117,8 @@ def _pure_persistence_rows(
         for row in snapshot.demands
         if row.get("NoDemande")
     }
-    included_ids = {allocation.segment_id for allocation in report.shadow_result.allocations}
 
-    rows: list[dict[str, Any]] = []
-    for row in snapshot.allocations:
-        if not v15_engine._truthy(row.get("Verrouillee")):
-            continue
-        segment_id = str(row.get("IDSegment") or "")
-        if segment_id not in included_ids:
-            continue
-        day = _date_from_any(row.get("Date"))
-        technician = str(row.get("Technicien") or "").strip()
-        hours = v13._number(row.get("Heures"))
-        if not day or not technician or hours <= 0:
-            continue
-        clean = dict(row)
-        clean["Date"] = day
-        clean["Heures"] = round(hours, 2)
-        clean["Verrouillee"] = "Oui"
-        clean["HorsHoraire"] = "Oui" if v15_engine._truthy(row.get("HorsHoraire")) else "Non"
-        rows.append(clean)
+    rows: list[dict[str, Any]] = _active_locked_rows(snapshot)
 
     generation = datetime.now()
     sequence = 0
@@ -181,6 +248,7 @@ def rebuild_allocations_pure(repo: ExcelRepository) -> dict[str, Any]:
 
         phase_started = time.perf_counter()
         pure_rows = _pure_persistence_rows(snapshot, report)
+        _assert_locked_allocations_preserved(snapshot, pure_rows)
         convert_seconds = time.perf_counter() - phase_started
 
         phase_started = time.perf_counter()
@@ -251,6 +319,7 @@ def rebuild_allocations_pure(repo: ExcelRepository) -> dict[str, Any]:
         f"allocations={len([row for row in result.allocations if row.counts_as_allocated])}"
     )
     summary = _pure_result_summary(result)
+    summary["locked_allocations"] = len(_locked_ids(pure_rows))
     summary["performance"] = performance
     return summary
 

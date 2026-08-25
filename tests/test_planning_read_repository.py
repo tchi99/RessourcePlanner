@@ -6,7 +6,10 @@ from pathlib import Path
 import unittest
 
 from app.domain.planning_snapshot import PlanningSnapshot
-from app.infrastructure.excel.planning_repository import ExcelPlanningReadRepository
+from app.infrastructure.excel.planning_repository import (
+    ExcelPlanningReadRepository,
+    PlanningSourceReadError,
+)
 from app.planning_shadow import build_planning_snapshot, build_shadow_report_from_repository
 
 
@@ -79,6 +82,37 @@ class PlanningReadRepositoryTests(unittest.TestCase):
         self.assertEqual(snapshot.allocations[0]["IDAllocation"], "A1")
         self.assertEqual(snapshot.availability[0]["ID"], "AV1")
         self.assertEqual(snapshot.technicians[0]["name"], "R1")
+
+    def test_excel_reader_fails_closed_when_allocations_cannot_be_read(self) -> None:
+        class FakeLock:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+        class FakeExcelRepository:
+            def __init__(self):
+                self._lock = FakeLock()
+
+            def _sheet_as_records(self, sheet, header):
+                if sheet == "AllocationsMO":
+                    raise RuntimeError("COM read failed")
+                fixtures = {
+                    "SegmentsMO": [{"IDSegment": "S1"}],
+                    "DemandesMO": [{"NoDemande": "D1"}],
+                    "Disponibilites": [{"ID": "AV1"}],
+                }
+                return fixtures[sheet]
+
+            def technicians(self):
+                return [{"name": "R1"}]
+
+        with self.assertRaises(PlanningSourceReadError) as ctx:
+            ExcelPlanningReadRepository(FakeExcelRepository()).capture()
+
+        self.assertEqual(ctx.exception.sheet, "AllocationsMO")
+        self.assertIn("recalcul est annulé", str(ctx.exception))
 
     def test_shadow_report_repository_path_captures_once(self) -> None:
         snapshot = PlanningSnapshot.capture(
