@@ -16,12 +16,13 @@ class PlanningService:
     def rebuild_command(self, _command: PlanningRebuildCommand) -> dict[str, Any]:
         try:
             return dict(self._commands.rebuild())
+        except ApplicationError:
+            raise
         except Exception as exc:
-            error = application_error_from_exception(
+            raise application_error_from_exception(
                 exc,
                 code_prefix="planning_rebuild",
-            )
-            raise error from exc if not isinstance(exc, ApplicationError) else None
+            ) from exc
 
     def rebuild(self) -> dict[str, Any]:
         """Compatibility adapter for the current NiceGUI entry point."""
