@@ -1,0 +1,295 @@
+from __future__ import annotations
+
+from collections.abc import Mapping, Sequence
+from datetime import date
+from decimal import Decimal
+import re
+from typing import Any
+
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from ...application.read_models import SegmentReadModel
+from ...application.repository_ports import SegmentRepositoryPort
+from .models import (
+    ORIGIN_REQUEST,
+    Project,
+    Resource,
+    ResourceRequirement,
+    WorkforceRequest,
+)
+
+
+_SEGMENT_ID_RE = re.compile(r"^SEG-(\d{4})-(\d+)$", re.IGNORECASE)
+
+
+def _text(value: object) -> str:
+    return str(value or "").strip()
+
+
+def _optional_text(value: object) -> str | None:
+    value_text = _text(value)
+    return value_text or None
+
+
+def _decimal(value: object) -> Decimal:
+    return Decimal(str(value).replace(",", "."))
+
+
+def _bool(value: object) -> bool:
+    if isinstance(value, bool):
+        return value
+    return _text(value).lower() in {"1", "true", "yes", "oui", "on"}
+
+
+class SqlSegmentRepository(SegmentRepositoryPort):
+    """SQLAlchemy implementation of the ResourceRequirement/segment port."""
+
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def _row_query(self):
+        return (
+            select(
+                ResourceRequirement,
+                Project,
+                WorkforceRequest,
+                Resource,
+            )
+            .join(Project, ResourceRequirement.project_id == Project.id)
+            .outerjoin(
+                WorkforceRequest,
+                ResourceRequirement.workforce_request_id == WorkforceRequest.id,
+            )
+            .outerjoin(Resource, ResourceRequirement.assigned_resource_id == Resource.id)
+        )
+
+    @staticmethod
+    def _read_model(
+        requirement: ResourceRequirement,
+        project: Project,
+        request: WorkforceRequest | None,
+        resource: Resource | None,
+    ) -> SegmentReadModel:
+        return SegmentReadModel(
+            segment_id=_text(requirement.legacy_segment_id) or requirement.id,
+            demand_number=(
+                _text(request.legacy_demand_number) or request.id
+                if request is not None
+                else None
+            ),
+            project_number=_optional_text(project.number),
+            project_name=_optional_text(project.name),
+            resource_name=_optional_text(resource.name) if resource else None,
+            start_date=requirement.start_date,
+            end_date=requirement.end_date,
+            planned_hours=float(requirement.planned_hours),
+            status=_text(requirement.status),
+            description=_optional_text(requirement.description),
+            origin=_optional_text(requirement.origin),
+            required_competency=_optional_text(requirement.required_competency),
+            planning_type=_optional_text(requirement.planning_type),
+            priority=_optional_text(requirement.priority),
+            outside_standard_hours=bool(requirement.outside_standard_hours_allowed),
+        )
+
+    def list(self, *, include_cancelled: bool = True) -> Sequence[SegmentReadModel]:
+        statement = self._row_query()
+        if not include_cancelled:
+            statement = statement.where(ResourceRequirement.status != "Annulé")
+        rows = self._session.execute(
+            statement.order_by(
+                ResourceRequirement.start_date,
+                ResourceRequirement.legacy_segment_id,
+                ResourceRequirement.id,
+            )
+        ).all()
+        return tuple(
+            self._read_model(requirement, project, request, resource)
+            for requirement, project, request, resource in rows
+        )
+
+    def get(self, segment_id: str) -> SegmentReadModel | None:
+        wanted = _text(segment_id)
+        if not wanted:
+            return None
+        row = self._session.execute(
+            self._row_query().where(
+                (ResourceRequirement.legacy_segment_id == wanted)
+                | (ResourceRequirement.id == wanted)
+            )
+        ).one_or_none()
+        if row is None:
+            return None
+        requirement, project, request, resource = row
+        return self._read_model(requirement, project, request, resource)
+
+    def _requirement(self, segment_id: str) -> ResourceRequirement:
+        wanted = _text(segment_id)
+        requirement = self._session.scalar(
+            select(ResourceRequirement).where(
+                (ResourceRequirement.legacy_segment_id == wanted)
+                | (ResourceRequirement.id == wanted)
+            )
+        )
+        if requirement is None:
+            raise KeyError(f"Segment {wanted} introuvable")
+        return requirement
+
+    def _project(self, number: object) -> Project:
+        project_number = _text(number)
+        project = self._session.scalar(
+            select(Project).where(Project.number == project_number)
+        )
+        if project is None:
+            raise KeyError(f"Projet {project_number} introuvable")
+        return project
+
+    def _request(self, number: object) -> WorkforceRequest | None:
+        request_number = _text(number)
+        if not request_number:
+            return None
+        request = self._session.scalar(
+            select(WorkforceRequest).where(
+                (WorkforceRequest.legacy_demand_number == request_number)
+                | (WorkforceRequest.id == request_number)
+            )
+        )
+        if request is None:
+            raise KeyError(f"Demande {request_number} introuvable")
+        return request
+
+    def _resource(self, name: object) -> Resource | None:
+        resource_name = _text(name)
+        if not resource_name:
+            return None
+        resource = self._session.scalar(
+            select(Resource).where(Resource.name == resource_name)
+        )
+        if resource is None:
+            raise KeyError(f"Ressource {resource_name} introuvable")
+        return resource
+
+    def _next_segment_id(self) -> str:
+        year = date.today().year
+        prefix = f"SEG-{year}-"
+        identifiers = self._session.scalars(
+            select(ResourceRequirement.legacy_segment_id).where(
+                ResourceRequirement.legacy_segment_id.like(f"{prefix}%")
+            )
+        ).all()
+        max_sequence = 0
+        for identifier in identifiers:
+            match = _SEGMENT_ID_RE.match(_text(identifier))
+            if match and int(match.group(1)) == year:
+                max_sequence = max(max_sequence, int(match.group(2)))
+        return f"SEG-{year}-{max_sequence + 1:04d}"
+
+    def _resolve_project_and_request(
+        self,
+        *,
+        project_number: object,
+        demand_number: object,
+    ) -> tuple[Project, WorkforceRequest | None]:
+        request = self._request(demand_number)
+        supplied_project = _text(project_number)
+        if supplied_project:
+            project = self._project(supplied_project)
+        elif request is not None:
+            project = self._session.get(Project, request.project_id)
+            if project is None:
+                raise KeyError(f"Projet {request.project_id} introuvable")
+        else:
+            raise KeyError("Un projet est requis pour le segment")
+
+        if request is not None and request.project_id != project.id:
+            raise ValueError(
+                "Le projet du segment ne correspond pas au projet de la demande."
+            )
+        return project, request
+
+    def create(self, values: Mapping[str, Any]) -> str:
+        project, request = self._resolve_project_and_request(
+            project_number=values.get("NumeroProjet"),
+            demand_number=values.get("NoDemande"),
+        )
+        resource = self._resource(values.get("Technicien"))
+        identifier = self._next_segment_id()
+        origin = _text(values.get("OrigineSegment")) or ORIGIN_REQUEST
+
+        requirement = ResourceRequirement(
+            legacy_segment_id=identifier,
+            project_id=project.id,
+            workforce_request_id=request.id if request else None,
+            assigned_resource_id=resource.id if resource else None,
+            start_date=values.get("DateDebut"),
+            end_date=values.get("DateFin") or values.get("DateDebut"),
+            planned_hours=_decimal(values.get("HeuresPrevues")),
+            status=_text(values.get("Statut")) or "Planifié",
+            description=_optional_text(values.get("Description")),
+            source_effort_id=_optional_text(
+                values.get("SourceEffortID") or values.get("SourceEffortRow")
+            ),
+            required_competency=_optional_text(values.get("CompetenceRequise")),
+            planning_type=_text(values.get("TypePlanification")) or "Flexible",
+            priority=_text(values.get("Priorite")) or "Normale",
+            outside_standard_hours_allowed=_bool(values.get("HorsHoraireAutorise")),
+            origin=origin,
+        )
+        self._session.add(requirement)
+        self._session.flush()
+        return identifier
+
+    def update(self, segment_id: str, updates: Mapping[str, Any]) -> None:
+        requirement = self._requirement(segment_id)
+
+        request = None
+        if "NoDemande" in updates:
+            request = self._request(updates.get("NoDemande"))
+            requirement.workforce_request_id = request.id if request else None
+        elif requirement.workforce_request_id:
+            request = self._session.get(WorkforceRequest, requirement.workforce_request_id)
+
+        if "NumeroProjet" in updates:
+            requirement.project_id = self._project(updates.get("NumeroProjet")).id
+        elif request is not None and "NoDemande" in updates:
+            requirement.project_id = request.project_id
+
+        if request is not None and request.project_id != requirement.project_id:
+            raise ValueError(
+                "Le projet du segment ne correspond pas au projet de la demande."
+            )
+
+        if "Technicien" in updates:
+            resource = self._resource(updates.get("Technicien"))
+            requirement.assigned_resource_id = resource.id if resource else None
+        if "DateDebut" in updates:
+            requirement.start_date = updates.get("DateDebut")
+        if "DateFin" in updates:
+            requirement.end_date = updates.get("DateFin")
+        if "HeuresPrevues" in updates:
+            requirement.planned_hours = _decimal(updates.get("HeuresPrevues"))
+        if "Statut" in updates:
+            requirement.status = _text(updates.get("Statut"))
+        if "Description" in updates:
+            requirement.description = _optional_text(updates.get("Description"))
+        if "SourceEffortID" in updates or "SourceEffortRow" in updates:
+            requirement.source_effort_id = _optional_text(
+                updates.get("SourceEffortID") or updates.get("SourceEffortRow")
+            )
+        if "CompetenceRequise" in updates:
+            requirement.required_competency = _optional_text(
+                updates.get("CompetenceRequise")
+            )
+        if "TypePlanification" in updates:
+            requirement.planning_type = _text(updates.get("TypePlanification")) or "Flexible"
+        if "Priorite" in updates:
+            requirement.priority = _text(updates.get("Priorite")) or "Normale"
+        if "HorsHoraireAutorise" in updates:
+            requirement.outside_standard_hours_allowed = _bool(
+                updates.get("HorsHoraireAutorise")
+            )
+        if "OrigineSegment" in updates:
+            requirement.origin = _text(updates.get("OrigineSegment")) or ORIGIN_REQUEST
+
+        self._session.flush()
