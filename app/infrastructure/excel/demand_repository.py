@@ -5,13 +5,16 @@ from typing import Any
 
 from ...application.read_models import DemandReadModel
 from ...application.repository_ports import DemandRepositoryPort
-from ...excel_repository import ExcelRepository
 
 
 class ExcelDemandRepository(DemandRepositoryPort):
-    """Excel implementation of the demand persistence contract."""
+    """Excel implementation of the demand persistence contract.
 
-    def __init__(self, repository: ExcelRepository) -> None:
+    The adapter is intentionally duck-typed at this boundary so importing application
+    services does not import xlwings. The concrete runtime object is ExcelRepository.
+    """
+
+    def __init__(self, repository: Any) -> None:
         self._repository = repository
 
     def list(self) -> Sequence[DemandReadModel]:
