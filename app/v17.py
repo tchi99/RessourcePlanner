@@ -72,7 +72,6 @@ def _render_planning(
 
     filter_state = resolve_planning_filter_state(
         self,
-        techs,
         allocations,
         unassigned,
         pending,
