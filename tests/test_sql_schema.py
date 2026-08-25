@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+from datetime import date
 from pathlib import Path
 import unittest
 
@@ -15,6 +16,7 @@ from app.infrastructure.sql import Base
 ROOT = Path(__file__).resolve().parents[1]
 APPLICATION = ROOT / "app" / "application"
 DOMAIN_ENGINE = ROOT / "app" / "domain" / "planning_engine.py"
+DAY = date(2026, 8, 26)
 
 EXPECTED_TABLES = {
     "projects",
@@ -58,17 +60,15 @@ class SqlSchemaTests(unittest.TestCase):
             connection.execute(
                 projects.insert().values(id="P1", number="P-1", name="Projet test")
             )
-            connection.execute(
-                resources.insert().values(id="R1", name="Alice")
-            )
+            connection.execute(resources.insert().values(id="R1", name="Alice"))
             connection.execute(
                 requirements.insert().values(
                     id="REQ-QS",
                     project_id="P1",
                     workforce_request_id=None,
                     assigned_resource_id="R1",
-                    start_date="2026-08-26",
-                    end_date="2026-08-26",
+                    start_date=DAY,
+                    end_date=DAY,
                     planned_hours=4,
                     origin="QUICK_SHIFT",
                 )
@@ -78,7 +78,7 @@ class SqlSchemaTests(unittest.TestCase):
                     id="SHIFT-QS",
                     resource_requirement_id="REQ-QS",
                     resource_id="R1",
-                    work_date="2026-08-26",
+                    work_date=DAY,
                     hours=4,
                     source="MANUAL",
                     locked=True,
@@ -92,8 +92,8 @@ class SqlSchemaTests(unittest.TestCase):
                         id="REQ-INVALID",
                         project_id="P1",
                         workforce_request_id=None,
-                        start_date="2026-08-27",
-                        end_date="2026-08-27",
+                        start_date=DAY,
+                        end_date=DAY,
                         planned_hours=2,
                         origin="REQUEST",
                     )
