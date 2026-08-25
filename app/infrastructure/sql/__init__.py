@@ -5,6 +5,7 @@ planning engine must continue to depend on ports/read models rather than SQLAlch
 """
 
 from .base import Base, NAMING_CONVENTION, new_id
+from .demand_repository import SqlDemandRepository
 from .models import (
     ORIGIN_AD_HOC,
     ORIGIN_QUICK_SHIFT,
@@ -18,6 +19,17 @@ from .models import (
     WorkforceRequestHistory,
     WorkPackage,
 )
+from .identity_constraints import (
+    RESOURCE_REQUIREMENT_NUMBER_INDEX,
+    WORKFORCE_REQUEST_NUMBER_INDEX,
+)
+from .segment_repository import SqlSegmentRepository
+from .session import (
+    SqlSessionFactory,
+    create_session_factory,
+    create_sql_engine,
+    transactional_session,
+)
 
 __all__ = [
     "Base",
@@ -26,12 +38,20 @@ __all__ = [
     "ORIGIN_QUICK_SHIFT",
     "ORIGIN_REQUEST",
     "Project",
+    "RESOURCE_REQUIREMENT_NUMBER_INDEX",
     "Resource",
     "ResourceAvailabilityRule",
     "ResourceRequirement",
     "Shift",
+    "SqlDemandRepository",
+    "SqlSegmentRepository",
+    "SqlSessionFactory",
+    "WORKFORCE_REQUEST_NUMBER_INDEX",
     "WorkPackage",
     "WorkforceRequest",
     "WorkforceRequestHistory",
+    "create_session_factory",
+    "create_sql_engine",
     "new_id",
+    "transactional_session",
 ]
