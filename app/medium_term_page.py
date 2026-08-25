@@ -42,6 +42,20 @@ def install_medium_term_page() -> None:
     if not callable(renderer):
         raise RuntimeError("Aucun renderer moyen terme n'est enregistré.")
 
+    if not any(item[0] == "medium_term" for item in ui_module.NAV_ITEMS):
+        planning_index = next(
+            (
+                index
+                for index, item in enumerate(ui_module.NAV_ITEMS)
+                if item[0] == "planning"
+            ),
+            1,
+        )
+        ui_module.NAV_ITEMS.insert(
+            planning_index,
+            ("medium_term", "timeline", "Planification moyen terme"),
+        )
+
     previous_render_content = ui_module.PlannerUI._render_content
     previous_page_sheets = ui_module.PlannerUI._page_sheets
 
