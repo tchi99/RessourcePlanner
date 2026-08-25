@@ -43,8 +43,8 @@ RUNTIME_COMPOSITION_MANIFEST: tuple[CompositionStep, ...] = (
     CompositionStep("operational_planning_runtime", "compatibility"),
     CompositionStep("resource_management", "compatibility"),
     CompositionStep("operational_planning_sorting", "compatibility"),
-    CompositionStep("v171_performance", "legacy"),
-    CompositionStep("v171_local_preferences", "legacy"),
+    CompositionStep("runtime_performance", "compatibility"),
+    CompositionStep("resource_local_preferences", "compatibility"),
     CompositionStep("v18_features", "legacy"),
     CompositionStep("effort_identity_guard", "compatibility"),
     CompositionStep("v18_refinements", "legacy"),
@@ -92,7 +92,9 @@ def _runtime_installers() -> tuple[tuple[str, Installer], ...]:
     from .pure_validation_ui import install_pure_validation_ui
     from .quick_shift_ui import install_quick_shift_ui
     from .resource_class_compat import install_resource_class_compat
+    from .resource_local_preferences_compat import install_resource_local_preferences_compat
     from .resource_management_compat import install_resource_management_compat
+    from .runtime_performance_compat import install_runtime_performance_compat
     from .v13 import install_v13_features
     from .v13_fixes import install_v13_fixes
     from .v14 import install_v14_features
@@ -102,8 +104,6 @@ def _runtime_installers() -> tuple[tuple[str, Installer], ...]:
     from .v15_refinements import install_v15_refinements
     from .v16 import install_v16_features
     from .v16_refinements import install_v16_refinements
-    from .v171_local_preferences import install_v171_local_preferences
-    from .v171_performance import install_v171_performance
     from .v18 import install_v18_features
     from .v18_refinements import install_v18_refinements
 
@@ -123,8 +123,8 @@ def _runtime_installers() -> tuple[tuple[str, Installer], ...]:
         ("operational_planning_runtime", install_operational_planning_runtime_compat),
         ("resource_management", install_resource_management_compat),
         ("operational_planning_sorting", install_operational_planning_sorting),
-        ("v171_performance", install_v171_performance),
-        ("v171_local_preferences", install_v171_local_preferences),
+        ("runtime_performance", install_runtime_performance_compat),
+        ("resource_local_preferences", install_resource_local_preferences_compat),
         ("v18_features", install_v18_features),
         ("effort_identity_guard", install_effort_identity_guard),
         ("v18_refinements", install_v18_refinements),
