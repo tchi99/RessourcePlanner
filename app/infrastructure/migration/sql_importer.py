@@ -92,11 +92,11 @@ def _count(session: Session, model: Any) -> int:
 
 
 def _assert_empty_database(session: Session) -> None:
-    occupied = {
-        model.__tablename__: _count(session, model)
-        for model in CORE_MODELS
-        if _count(session, model) > 0
-    }
+    occupied: dict[str, int] = {}
+    for model in CORE_MODELS:
+        count = _count(session, model)
+        if count > 0:
+            occupied[model.__tablename__] = count
     if occupied:
         details = ", ".join(f"{name}={count}" for name, count in sorted(occupied.items()))
         raise CutoverImportError(
@@ -168,6 +168,7 @@ def import_cutover_dataset(
     session: Session,
     source: CutoverExtractionReport,
     *,
+    demand_work_package_links: Mapping[str, str] | None = None,
     require_empty: bool = True,
 ) -> CutoverImportReport:
     """Import one validated V1 snapshot into the caller-owned SQL transaction.
@@ -185,6 +186,7 @@ def import_cutover_dataset(
         _assert_empty_database(session)
 
     dataset = source.dataset
+    demand_work_package_links = dict(demand_work_package_links or {})
 
     projects: dict[str, Project] = {}
     for row in dataset.projects:
@@ -261,8 +263,12 @@ def import_cutover_dataset(
         number = _text(row.get("number"))
         project = projects[_text(row.get("project_number"))]
         proposed = resources.get(_text(row.get("proposed_resource")))
-        source_effort = _text(row.get("source_effort_id"))
+        source_effort = _text(demand_work_package_links.get(number))
         linked_work_package = work_packages.get(source_effort) if source_effort else None
+        if source_effort and linked_work_package is None:
+            raise CutoverImportError(
+                f"Demande {number}: SourceEffortID/SourceEffortRow introuvable: {source_effort}"
+            )
         request = WorkforceRequest(
             legacy_demand_number=number,
             project_id=project.id,
@@ -325,6 +331,13 @@ def import_cutover_dataset(
         demand_number = _text(row.get("demand_number"))
         request = demands.get(demand_number) if demand_number else None
         resource = resources.get(_text(row.get("resource_name")))
+        raw_source_effort = _text(row.get("source_effort_id"))
+        source_work_package = work_packages.get(raw_source_effort) if raw_source_effort else None
+        canonical_source_effort = (
+            _text(source_work_package.legacy_effort_id)
+            if source_work_package is not None and source_work_package.legacy_effort_id
+            else raw_source_effort
+        )
         requirement = ResourceRequirement(
             legacy_segment_id=identifier,
             project_id=project.id,
@@ -337,7 +350,7 @@ def import_cutover_dataset(
             ),
             status=_text(row.get("status")) or "À assigner",
             description=_text(row.get("description")) or None,
-            source_effort_id=_text(row.get("source_effort_id")) or None,
+            source_effort_id=canonical_source_effort or None,
             required_competency=_text(row.get("required_competency")) or None,
             planning_type=_text(row.get("planning_type")) or "Flexible",
             priority=_text(row.get("priority")) or "Normale",
