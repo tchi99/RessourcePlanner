@@ -1,35 +1,21 @@
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
-from typing import Any, Generic, TypeVar
+from typing import Any
+
+from .command_ports import PlanningCommandPort
 
 
-RepositoryT = TypeVar("RepositoryT")
+class PlanningService:
+    """Application boundary for authoritative planning rebuilds.
 
-
-class PlanningService(Generic[RepositoryT]):
-    """Application boundary for planning write workflows.
-
-    The service deliberately knows nothing about NiceGUI, Excel, xlwings or the
-    concrete planning engine. Those dependencies are supplied by the composition
-    layer. This makes the same orchestration callable from the current desktop UI
-    and, later, from FastAPI/Teams without moving business rules again.
+    The service depends only on ``PlanningCommandPort``. NiceGUI, Excel, xlwings and
+    the concrete planning engine belong to the adapter/composition layers.
     """
 
-    def __init__(
-        self,
-        repository: RepositoryT,
-        *,
-        rebuild_planning: Callable[[RepositoryT], Mapping[str, Any]],
-    ) -> None:
-        self._repository = repository
-        self._rebuild_planning = rebuild_planning
+    def __init__(self, commands: PlanningCommandPort) -> None:
+        self._commands = commands
 
     def rebuild(self) -> dict[str, Any]:
-        """Recalculate and persist the authoritative operational plan.
+        """Recalculate and persist the authoritative operational plan."""
 
-        Exceptions are intentionally not translated here. The caller owns the
-        presentation/transport policy (NiceGUI notification today, HTTP error later).
-        """
-        summary = self._rebuild_planning(self._repository)
-        return dict(summary)
+        return dict(self._commands.rebuild())
