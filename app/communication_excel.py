@@ -169,7 +169,10 @@ def ensure_communication_sheets(
         )
         if report.changed:
             repo.save()
-        repo._communication_schema_marker = marker
+        else:
+            # A no-change pass confirms that the change-aware Excel adapter sees
+            # all four structures as complete. Only then is it safe to cache.
+            repo._communication_schema_marker = marker
         return report
 
 
