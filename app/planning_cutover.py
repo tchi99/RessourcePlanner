@@ -8,6 +8,7 @@ from . import v13, v14, v14_engine, v14_fixes, v15, v15_engine, v15_refinements
 from .domain.planning_engine import PlanResult
 from .domain.planning_snapshot import PlanningSnapshot
 from .excel_repository import ExcelRepository, _date_from_any
+from .infrastructure.excel import ExcelPlanningReadRepository
 from .performance_diagnostics import PerformanceSample, append_performance_sample
 from .planning_shadow import ShadowPlanReport, build_planning_snapshot, build_shadow_report_from_snapshot
 
@@ -167,7 +168,7 @@ def rebuild_allocations_pure(repo: ExcelRepository) -> dict[str, Any]:
 
     try:
         phase_started = time.perf_counter()
-        snapshot = build_planning_snapshot(repo)
+        snapshot = build_planning_snapshot(ExcelPlanningReadRepository(repo))
         read_seconds = time.perf_counter() - phase_started
 
         phase_started = time.perf_counter()
