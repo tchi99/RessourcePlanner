@@ -2,10 +2,15 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 from contextlib import nullcontext
+from datetime import datetime
 from typing import Any, ContextManager, Generic, TypeVar
+
+from .read_models import DemandReadModel
+from .repository_ports import DemandRepositoryPort
 
 
 RepositoryT = TypeVar("RepositoryT")
+DemandRecordLike = DemandReadModel | Mapping[str, Any]
 
 
 BUSINESS_DEMAND_FIELDS = frozenset(
@@ -43,6 +48,14 @@ WORKFLOW_OWNED_CREATION_FIELDS = frozenset(
 )
 
 
+def _record_status(record: DemandRecordLike) -> str:
+    """Read status from the portable model; Mapping support is transitional only."""
+
+    if isinstance(record, DemandReadModel):
+        return record.status
+    return str(record.get("Statut") or "")
+
+
 class DemandService(Generic[RepositoryT]):
     """Application service for workforce-demand lifecycle workflows.
 
@@ -50,13 +63,17 @@ class DemandService(Generic[RepositoryT]):
     mutation, synchronization of approved operational requirements, planning rebuild
     and batching are injected by the composition layer so this module stays
     independent from NiceGUI, Excel, xlwings and versioned V1.x modules.
+
+    New runtime composition should use :meth:`from_repository_port`. The lower-level
+    injectable constructor remains available for focused unit tests and transitional
+    adapters while the rest of the V1 repository surface is extracted.
     """
 
     def __init__(
         self,
         repository: RepositoryT,
         *,
-        load_record: Callable[[RepositoryT, str], Mapping[str, Any] | None],
+        load_record: Callable[[RepositoryT, str], DemandRecordLike | None],
         modify_record: Callable[[RepositoryT, str, Mapping[str, Any], str], None],
         submit_record: Callable[[RepositoryT, str], None],
         approve_record: Callable[[RepositoryT, str, str], None],
@@ -79,6 +96,99 @@ class DemandService(Generic[RepositoryT]):
         self._rebuild_planning = rebuild_planning
         self._batch = batch
 
+    @classmethod
+    def from_repository_port(
+        cls,
+        repository_context: RepositoryT,
+        demands: DemandRepositoryPort,
+        *,
+        current_user: str,
+        sync_approved_demand: Callable[[RepositoryT, str], None],
+        rebuild_planning: Callable[[RepositoryT], Mapping[str, Any]],
+        batch: Callable[[RepositoryT, str], ContextManager[Any]] | None = None,
+    ) -> "DemandService[RepositoryT]":
+        """Compose the workflow against a storage-independent demand repository."""
+
+        def load_record(_repository: RepositoryT, number: str) -> DemandReadModel | None:
+            return demands.get(number)
+
+        def create_record(
+            _repository: RepositoryT,
+            values: Mapping[str, Any],
+            submit: bool,
+        ) -> str:
+            return demands.create(values, submit=submit)
+
+        def modify_record(
+            _repository: RepositoryT,
+            number: str,
+            updates: Mapping[str, Any],
+            comment: str,
+        ) -> None:
+            demands.update(number, updates, action="Modification", comment=comment)
+
+        def submit_record(_repository: RepositoryT, number: str) -> None:
+            demands.update(
+                number,
+                {"Statut": "Soumise"},
+                action="Soumission",
+                comment="Demande soumise pour approbation",
+            )
+
+        def approve_record(
+            _repository: RepositoryT,
+            number: str,
+            comment: str,
+        ) -> None:
+            demands.update(
+                number,
+                {
+                    "Statut": "En planification",
+                    "ApprouvePar": str(current_user or ""),
+                    "DateApprobation": datetime.now(),
+                    "CommentaireApprobation": comment,
+                },
+                action="Approbation",
+                comment=comment or "Demande approuvée",
+            )
+
+        def request_correction_record(
+            _repository: RepositoryT,
+            number: str,
+            comment: str,
+        ) -> None:
+            demands.update(
+                number,
+                {
+                    "Statut": "À corriger",
+                    "CommentaireApprobation": comment,
+                },
+                action="Retour pour correction",
+                comment=comment,
+            )
+
+        def cancel_record(_repository: RepositoryT, number: str) -> None:
+            demands.update(
+                number,
+                {"Statut": "Annulée"},
+                action="Annulation",
+                comment="Demande annulée",
+            )
+
+        return cls(
+            repository_context,
+            load_record=load_record,
+            create_record=create_record,
+            modify_record=modify_record,
+            submit_record=submit_record,
+            approve_record=approve_record,
+            request_correction_record=request_correction_record,
+            cancel_record=cancel_record,
+            sync_approved_demand=sync_approved_demand,
+            rebuild_planning=rebuild_planning,
+            batch=batch,
+        )
+
     def _context(self, label: str) -> ContextManager[Any]:
         return (
             self._batch(self._repository, label)
@@ -87,13 +197,7 @@ class DemandService(Generic[RepositoryT]):
         )
 
     def create(self, data: Mapping[str, Any], *, submit: bool = False) -> str:
-        """Create a draft or submitted demand through the application boundary.
-
-        Identity, status and approval metadata are storage/workflow-owned and cannot
-        be injected by the UI. The current Excel adapter still generates the request
-        number and creation audit entry; callers only express business data plus the
-        intent to keep the demand as a draft or submit it immediately.
-        """
+        """Create a draft or submitted demand through the application boundary."""
         if self._create_record is None:
             raise RuntimeError("La création de demandes n'est pas configurée.")
 
@@ -134,7 +238,7 @@ class DemandService(Generic[RepositoryT]):
 
         data = dict(updates)
         reapproval_required = (
-            str(existing.get("Statut") or "") == "En planification"
+            _record_status(existing) == "En planification"
             and bool(BUSINESS_DEMAND_FIELDS.intersection(data))
         )
 
@@ -159,13 +263,7 @@ class DemandService(Generic[RepositoryT]):
             self._submit_record(self._repository, number)
 
     def approve(self, number: str, comment: str = "") -> dict[str, Any]:
-        """Approve or reapprove one demand and rebuild planning exactly once.
-
-        The approved record is persisted first, then the operational requirements are
-        synchronized to that approved version, then the selected planning engine is
-        run once. A repository-specific batch context may collapse all physical saves
-        into one write transaction.
-        """
+        """Approve or reapprove one demand and rebuild planning exactly once."""
         with self._context("approve demand"):
             self._approve_record(self._repository, number, comment)
             self._sync_approved_demand(self._repository, number)
@@ -181,12 +279,6 @@ class DemandService(Generic[RepositoryT]):
             self._request_correction_record(self._repository, number, reason)
 
     def cancel(self, number: str) -> None:
-        """Cancel a demand using the current V1 lifecycle semantics.
-
-        Cancellation intentionally does not add a planning rebuild here. This tranche
-        preserves the existing V1 behavior; any future policy for cancelling already
-        approved operational requirements must be decided explicitly rather than
-        introduced as an architecture side effect.
-        """
+        """Cancel a demand using the current V1 lifecycle semantics."""
         with self._context("cancel demand"):
             self._cancel_record(self._repository, number)

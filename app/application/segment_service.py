@@ -3,6 +3,8 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping
 from typing import Any, Generic, TypeVar
 
+from .repository_ports import SegmentRepositoryPort
+
 
 RepositoryT = TypeVar("RepositoryT")
 
@@ -13,6 +15,9 @@ class SegmentService(Generic[RepositoryT]):
     The service owns the create/update/cancel + planning-rebuild workflow. Storage
     adapters are injected so this module remains independent from UI concerns,
     persistence technology and versioned V1.x modules.
+
+    New runtime composition should use :meth:`from_repository_port`; the lower-level
+    constructor remains available for focused unit tests during the V1 migration.
     """
 
     def __init__(
@@ -27,6 +32,36 @@ class SegmentService(Generic[RepositoryT]):
         self._create_record = create_record
         self._update_record = update_record
         self._rebuild_planning = rebuild_planning
+
+    @classmethod
+    def from_repository_port(
+        cls,
+        repository_context: RepositoryT,
+        segments: SegmentRepositoryPort,
+        *,
+        rebuild_planning: Callable[[RepositoryT], Mapping[str, Any]],
+    ) -> "SegmentService[RepositoryT]":
+        """Compose the workflow against a storage-independent segment repository."""
+
+        def create_record(
+            _repository: RepositoryT,
+            values: Mapping[str, Any],
+        ) -> str:
+            return segments.create(values)
+
+        def update_record(
+            _repository: RepositoryT,
+            segment_id: str,
+            updates: Mapping[str, Any],
+        ) -> None:
+            segments.update(segment_id, updates)
+
+        return cls(
+            repository_context,
+            create_record=create_record,
+            update_record=update_record,
+            rebuild_planning=rebuild_planning,
+        )
 
     @staticmethod
     def _identifier(value: object, label: str) -> str:
