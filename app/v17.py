@@ -5,12 +5,27 @@ from typing import Any
 from nicegui import ui
 
 from . import ui as ui_module
-from . import v13, v15, v15_engine, v15_refinements, v16, v16_refinements
+from . import v13, v15, v15_engine, v16
 from .bugfixes import schedulable_technicians
 from .operational_planning_cell_context_compat import operational_planning_cell_context
 from .operational_planning_drop_handler import register_operational_planning_drop_handler
 from .operational_planning_drop_handler_compat import (
     operational_planning_drop_handler_bindings,
+)
+from .operational_planning_header_filters import (
+    render_operational_planning_header_filters,
+    resolve_planning_filter_state,
+)
+from .operational_planning_header_filters_compat import (
+    operational_planning_header_filter_bindings,
+)
+from .operational_planning_resource_groups import (
+    group_operational_planning_resources,
+    ordered_resource_group_names,
+    resource_group_totals,
+)
+from .operational_planning_resource_groups_compat import (
+    operational_planning_resource_group_bindings,
 )
 from .operational_planning_resource_row import render_operational_planning_resource_row
 from .operational_planning_resource_row_compat import (
@@ -34,6 +49,9 @@ def _render_planning(
     register_operational_planning_drop_handler(self, bindings=drop_bindings)
     row_bindings = operational_planning_resource_row_bindings()
     work_sections_bindings = operational_planning_work_sections_bindings()
+    header_filter_bindings = operational_planning_header_filter_bindings()
+    resource_group_bindings = operational_planning_resource_group_bindings()
+
     days = week_days(self.current_week)
     techs = schedulable_technicians(self.repo)
     class_map = v16.resource_class_map(self.repo)
@@ -52,131 +70,41 @@ def _render_planning(
     unassigned = v15._unassigned_segments_for_week(self.repo, self.current_week)
     pending = v15._pending_demands_for_week(self.repo, self.current_week)
 
-    class_filter = v16._filter_value(self, "planning_class_filter", v16.ALL_CLASSES)
-    resource_filter = v16._filter_value(
-        self, "planning_resource_filter", v16.ALL_RESOURCES
+    filter_state = resolve_planning_filter_state(
+        self,
+        techs,
+        allocations,
+        unassigned,
+        pending,
+        bindings=header_filter_bindings,
     )
-    project_filter = v16._filter_value(
-        self, "planning_project_filter", v16.ALL_PROJECTS
+    render_operational_planning_header_filters(
+        self,
+        days,
+        techs,
+        filter_state,
+        bindings=header_filter_bindings,
     )
-    confirmation_filter = v16._filter_value(
-        self, "planning_confirmation_filter", v16.ALL_CONFIRMATIONS
-    )
-    only_available = bool(v16._filter_value(self, "planning_only_available", False))
-
-    project_values = sorted(
-        {
-            str(row.get("NumeroProjet") or "").strip()
-            for row in [*allocations, *unassigned, *pending]
-            if str(row.get("NumeroProjet") or "").strip()
-        }
-    )
-    labels = v16_refinements._project_labels(self.repo)
-    project_options = {v16.ALL_PROJECTS: v16.ALL_PROJECTS}
-    for number in project_values:
-        project_options[number] = labels.get(number, number)
-
-    with ui.row().classes("w-full items-center"):
-        with ui.column().classes("gap-0"):
-            ui.label("Planning opérationnel").classes("text-2xl font-bold")
-            ui.label(
-                "Glisser un quart sur une autre journée pour le verrouiller; glisser sur une autre ressource permet de réaffecter ou fractionner."
-            ).classes("muted")
-        ui.space()
-        ui.button(
-            "Quart manuel",
-            icon="add_task",
-            on_click=lambda: v15_refinements._open_allocation_dialog(self),
-        ).props("outline no-caps")
-        ui.button(
-            "Recalculer",
-            icon="calculate",
-            on_click=lambda: v15_refinements._recalculate(self),
-        ).props("outline no-caps")
-        ui.button(icon="chevron_left", on_click=self.previous_week).props("flat round")
-        ui.button("Aujourd'hui", on_click=self.today_week).props("outline no-caps")
-        ui.button(icon="chevron_right", on_click=self.next_week).props("flat round")
-        ui.label(
-            f"{days[0].strftime('%d %b')} – {days[-1].strftime('%d %b %Y')}"
-        ).classes("font-semibold ml-2")
-
-    with ui.card().classes("section-card w-full"):
-        with ui.row().classes("w-full items-end gap-3"):
-            ui.select(
-                [v16.ALL_CLASSES, *v16.RESOURCE_CLASSES, v16.UNCLASSIFIED],
-                label="Classe",
-                value=class_filter,
-                on_change=lambda event: v16._set_planning_filter(
-                    self, "planning_class_filter", event.value
-                ),
-            ).classes("min-w-[190px]")
-            ui.select(
-                [v16.ALL_RESOURCES, *sorted(tech["name"] for tech in techs)],
-                label="Ressource",
-                value=resource_filter,
-                with_input=True,
-                on_change=lambda event: v16._set_planning_filter(
-                    self, "planning_resource_filter", event.value
-                ),
-            ).classes("min-w-[210px]")
-            ui.select(
-                project_options,
-                label="Projet",
-                value=project_filter,
-                with_input=True,
-                on_change=lambda event: v16._set_planning_filter(
-                    self, "planning_project_filter", event.value
-                ),
-            ).classes("min-w-[250px]")
-            ui.select(
-                [v16.ALL_CONFIRMATIONS, "Confirmée", "Tentative"],
-                label="Confirmation",
-                value=confirmation_filter,
-                on_change=lambda event: v16._set_planning_filter(
-                    self, "planning_confirmation_filter", event.value
-                ),
-            ).classes("min-w-[160px]")
-            ui.checkbox(
-                "Seulement avec capacité",
-                value=only_available,
-                on_change=lambda event: v16._set_planning_filter(
-                    self, "planning_only_available", event.value
-                ),
-            )
 
     render_operational_planning_work_sections(
         self,
         unassigned,
         pending,
         demands,
-        project_filter,
-        confirmation_filter,
+        filter_state.project_filter,
+        filter_state.confirmation_filter,
         bindings=work_sections_bindings,
     )
 
-    filtered_techs: list[dict[str, Any]] = []
-    for tech in techs:
-        name = tech["name"]
-        group = class_map.get(name, v16.UNCLASSIFIED)
-        if class_filter != v16.ALL_CLASSES and group != class_filter:
-            continue
-        if resource_filter != v16.ALL_RESOURCES and name != resource_filter:
-            continue
-        if only_available and week_stats.get(name, {}).get("prudent_free", 0) <= 0.01:
-            continue
-        filtered_techs.append(tech)
-
-    grouped: dict[str, list[dict[str, Any]]] = {}
-    for tech in filtered_techs:
-        group = class_map.get(tech["name"], v16.UNCLASSIFIED)
-        grouped.setdefault(group, []).append(tech)
-    for group in grouped:
-        grouped[group].sort(
-            key=lambda tech: (
-                -week_stats.get(tech["name"], {}).get("prudent_free", 0.0),
-                tech["name"],
-            )
-        )
+    grouped = group_operational_planning_resources(
+        techs,
+        class_map,
+        week_stats,
+        filter_state.class_filter,
+        filter_state.resource_filter,
+        filter_state.only_available,
+        bindings=resource_group_bindings,
+    )
 
     if not grouped:
         with ui.card().classes("section-card w-full"):
@@ -184,15 +112,14 @@ def _render_planning(
         return
 
     with ui.scroll_area().classes("w-full h-[calc(100vh-360px)]"):
-        for group_name in sorted(grouped, key=v16._resource_group_order):
+        for group_name in ordered_resource_group_names(
+            grouped,
+            bindings=resource_group_bindings,
+        ):
             group_techs = grouped[group_name]
-            total_free = sum(
-                week_stats.get(tech["name"], {}).get("prudent_free", 0.0)
-                for tech in group_techs
-            )
-            total_capacity = sum(
-                week_stats.get(tech["name"], {}).get("capacity", 0.0)
-                for tech in group_techs
+            total_free, total_capacity = resource_group_totals(
+                group_techs,
+                week_stats,
             )
             with ui.expansion(
                 f"{group_name} · {len(group_techs)} ressource(s) · "
@@ -223,8 +150,8 @@ def _render_planning(
                             demands,
                             pending,
                             week_stats,
-                            project_filter,
-                            confirmation_filter,
+                            filter_state.project_filter,
+                            filter_state.confirmation_filter,
                             bindings=row_bindings,
                         )
 
