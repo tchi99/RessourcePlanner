@@ -34,31 +34,30 @@ class V171AdapterExtractionTests(unittest.TestCase):
         self.assertNotIn("v17_sort_fix", source)
         ast.parse(source)
 
-    def test_only_bridge_mentions_remaining_v17_shims(self) -> None:
-        bridge = self._source("resource_local_preferences_compat.py")
-        self.assertIn("legacy_resource_shim", bridge)
-        self.assertIn("legacy_sort_shim", bridge)
-        self.assertIn("Temporary bridge only", bridge)
-        ast.parse(bridge)
+    def test_v17_v171_shims_and_bridge_are_physically_removed(self) -> None:
+        for name in (
+            "v17_refinements.py",
+            "v17_sort_fix.py",
+            "v171_performance.py",
+            "v171_local_preferences.py",
+            "resource_local_preferences_compat.py",
+        ):
+            self.assertFalse((APP / name).exists(), name)
 
-    def test_v171_modules_are_shims_only(self) -> None:
-        performance = self._source("v171_performance.py")
-        preferences = self._source("v171_local_preferences.py")
-
-        self.assertIn("Compatibility shim", performance)
-        self.assertIn("install_runtime_performance_compat()", performance)
-        self.assertNotIn("from nicegui import ui", performance)
-        self.assertIn("Compatibility shim", preferences)
-        self.assertIn("install_resource_local_preferences_compat()", preferences)
-        self.assertNotIn("from nicegui import ui", preferences)
-        ast.parse(performance)
-        ast.parse(preferences)
-
-    def test_runtime_composition_no_longer_installs_v171_steps(self) -> None:
+    def test_runtime_composition_installs_stable_adapters_directly(self) -> None:
         source = self._source("runtime_composition.py")
 
         self.assertIn('CompositionStep("runtime_performance", "compatibility")', source)
         self.assertIn('CompositionStep("resource_local_preferences", "compatibility")', source)
+        self.assertIn(
+            "from .resource_local_preferences import install_resource_local_preferences",
+            source,
+        )
+        self.assertIn(
+            '("resource_local_preferences", install_resource_local_preferences)',
+            source,
+        )
+        self.assertNotIn("resource_local_preferences_compat", source)
         self.assertNotIn('CompositionStep("v171_performance"', source)
         self.assertNotIn('CompositionStep("v171_local_preferences"', source)
 
