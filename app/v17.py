@@ -12,6 +12,7 @@ from .operational_planning_drop_handler import register_operational_planning_dro
 from .operational_planning_drop_handler_compat import (
     operational_planning_drop_handler_bindings,
 )
+from .operational_planning_grid import render_operational_planning_grid
 from .operational_planning_header_filters import (
     render_operational_planning_header_filters,
     resolve_planning_filter_state,
@@ -19,15 +20,10 @@ from .operational_planning_header_filters import (
 from .operational_planning_header_filters_compat import (
     operational_planning_header_filter_bindings,
 )
-from .operational_planning_resource_groups import (
-    group_operational_planning_resources,
-    ordered_resource_group_names,
-    resource_group_totals,
-)
+from .operational_planning_resource_groups import group_operational_planning_resources
 from .operational_planning_resource_groups_compat import (
     operational_planning_resource_group_bindings,
 )
-from .operational_planning_resource_row import render_operational_planning_resource_row
 from .operational_planning_resource_row_compat import (
     operational_planning_resource_row_bindings,
 )
@@ -105,54 +101,20 @@ def _render_planning(
         bindings=resource_group_bindings,
     )
 
-    if not grouped:
-        with ui.card().classes("section-card w-full"):
-            ui.label("Aucune ressource ne correspond aux filtres.").classes("muted")
-        return
-
-    with ui.scroll_area().classes("w-full h-[calc(100vh-360px)]"):
-        for group_name in ordered_resource_group_names(
-            grouped,
-            bindings=resource_group_bindings,
-        ):
-            group_techs = grouped[group_name]
-            total_free, total_capacity = resource_group_totals(
-                group_techs,
-                week_stats,
-            )
-            with ui.expansion(
-                f"{group_name} · {len(group_techs)} ressource(s) · "
-                f"{total_free:.1f} h libres / {total_capacity:.1f} h",
-                icon="groups",
-                value=True,
-            ).classes("w-full"):
-                with ui.grid(columns=8).classes("schedule-grid gap-0 w-full"):
-                    with ui.column().classes("day-header p-3 justify-center"):
-                        ui.label("Ressource").classes("font-semibold")
-                    for day in days:
-                        with ui.column().classes(
-                            "day-header p-2 items-center justify-center"
-                        ):
-                            ui.label(day.strftime("%a").capitalize()).classes(
-                                "text-xs uppercase muted"
-                            )
-                            ui.label(day.strftime("%d")).classes(
-                                "text-xl font-semibold"
-                            )
-                    for tech in group_techs:
-                        render_operational_planning_resource_row(
-                            self,
-                            tech,
-                            days,
-                            allocations,
-                            segments,
-                            demands,
-                            pending,
-                            week_stats,
-                            filter_state.project_filter,
-                            filter_state.confirmation_filter,
-                            bindings=row_bindings,
-                        )
+    render_operational_planning_grid(
+        self,
+        days,
+        grouped,
+        allocations,
+        segments,
+        demands,
+        pending,
+        week_stats,
+        filter_state.project_filter,
+        filter_state.confirmation_filter,
+        resource_group_bindings=resource_group_bindings,
+        row_bindings=row_bindings,
+    )
 
 
 def install_v17_features() -> None:
