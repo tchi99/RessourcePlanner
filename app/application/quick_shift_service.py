@@ -1,25 +1,28 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import date
 from typing import Any
 
 from .command_ports import AllocationCommandPort
+from .commands import QuickShiftCreateCommand
+from .errors import (
+    ApplicationError,
+    ApplicationOperationError,
+    ApplicationValidationError,
+    application_error_from_exception,
+)
 from .repository_ports import SegmentRepositoryPort
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class QuickShiftResult:
     segment_id: str
     allocation_id: str
 
 
 class QuickShiftService:
-    """Create an ad-hoc segment and its locked shift as one application workflow.
-
-    Quick Shift deliberately bypasses the workforce-request workflow. Segment and
-    allocation persistence are expressed only through application ports so the same
-    workflow can later run against SQL without knowing Excel or V1 modules.
-    """
+    """Create an ad-hoc segment and its locked shift as one application workflow."""
 
     ORIGIN_FIELD = "OrigineSegment"
     ORIGIN_QUICK_SHIFT = "QUICK_SHIFT"
@@ -33,21 +36,130 @@ class QuickShiftService:
         self._allocations = allocations
 
     @staticmethod
-    def _required(value: object, message: str) -> str:
+    def _required(value: object, *, code: str, message: str) -> str:
         normalized = str(value or "").strip()
         if not normalized:
-            raise ValueError(message)
+            raise ApplicationValidationError(message, code=code)
         return normalized
 
     @staticmethod
     def _positive_hours(value: object) -> float:
         try:
-            hours = float(str(value).replace(",", "."))
-        except (TypeError, ValueError):
-            hours = 0.0
+            hours = float(value)
+        except (TypeError, ValueError) as exc:
+            raise ApplicationValidationError(
+                "Les heures du quart doivent être numériques.",
+                code="quick_shift_hours_invalid",
+                context={"value": value},
+            ) from exc
         if hours <= 0:
-            raise ValueError("Les heures du quart doivent être supérieures à zéro.")
+            raise ApplicationValidationError(
+                "Les heures du quart doivent être supérieures à zéro.",
+                code="quick_shift_hours_invalid",
+                context={"value": hours},
+            )
         return round(hours, 2)
+
+    @staticmethod
+    def _day(value: object) -> date:
+        if not isinstance(value, date):
+            raise ApplicationValidationError(
+                "La date du quart rapide est requise.",
+                code="quick_shift_day_invalid",
+                context={"value": value},
+            )
+        return value
+
+    @staticmethod
+    def _created_identifier(value: object, *, entity: str) -> str:
+        identifier = str(value or "").strip()
+        if not identifier:
+            raise ApplicationOperationError(
+                f"La création n'a retourné aucun identifiant pour {entity}.",
+                code=f"quick_shift_{entity}_id_missing",
+            )
+        return identifier
+
+    def create_command(self, command: QuickShiftCreateCommand) -> QuickShiftResult:
+        project = self._required(
+            command.project_number,
+            code="quick_shift_project_required",
+            message="Un projet est requis pour le quart rapide.",
+        )
+        tech = self._required(
+            command.technician,
+            code="quick_shift_resource_required",
+            message="Une ressource est requise pour le quart rapide.",
+        )
+        day = self._day(command.day)
+        hours = self._positive_hours(command.hours)
+        label = str(command.description or "").strip() or "Quart rapide"
+
+        segment_values = {
+            "NoDemande": None,
+            "NumeroProjet": project,
+            "NomProjet": str(command.project_name or "").strip() or None,
+            "Technicien": tech,
+            "DateDebut": day,
+            "DateFin": day,
+            "HeuresPrevues": hours,
+            "Statut": "Planifié",
+            "Description": label,
+            "SourceEffortRow": None,
+            "TypePlanification": "Fixe",
+            "Priorite": "Normale",
+            self.ORIGIN_FIELD: self.ORIGIN_QUICK_SHIFT,
+        }
+
+        try:
+            segment_id = self._created_identifier(
+                self._segments.create(segment_values),
+                entity="segment",
+            )
+        except ApplicationError:
+            raise
+        except Exception as exc:
+            raise application_error_from_exception(
+                exc,
+                code_prefix="quick_shift_segment_create",
+                context={"project_number": project, "technician": tech},
+            ) from exc
+
+        try:
+            allocation_id = self._created_identifier(
+                self._allocations.create_manual(
+                    segment_id,
+                    tech,
+                    day,
+                    hours,
+                    bool(command.outside_standard_hours),
+                    str(command.note or "").strip(),
+                ),
+                entity="allocation",
+            )
+        except Exception as exc:
+            try:
+                self._segments.update(segment_id, {"Statut": "Annulé"})
+            except Exception as rollback_exc:
+                raise ApplicationOperationError(
+                    f"Le quart rapide n'a pas été créé et le segment {segment_id} "
+                    "n'a pas pu être annulé automatiquement.",
+                    code="quick_shift_rollback_failed",
+                    context={
+                        "segment_id": segment_id,
+                        "project_number": project,
+                        "technician": tech,
+                    },
+                ) from rollback_exc
+            if isinstance(exc, ApplicationError):
+                raise
+            raise application_error_from_exception(
+                exc,
+                code_prefix="quick_shift_allocation_create",
+                context={"segment_id": segment_id, "technician": tech},
+            ) from exc
+
+        return QuickShiftResult(segment_id=segment_id, allocation_id=allocation_id)
 
     def create(
         self,
@@ -61,56 +173,17 @@ class QuickShiftService:
         note: str = "",
         description: str = "",
     ) -> QuickShiftResult:
-        project = self._required(project_number, "Un projet est requis pour le quart rapide.")
-        tech = self._required(technician, "Une ressource est requise pour le quart rapide.")
-        if day_value in (None, ""):
-            raise ValueError("La date du quart rapide est requise.")
-        hours = self._positive_hours(hours_value)
-        label = str(description or "").strip() or "Quart rapide"
+        """Compatibility adapter for the current NiceGUI dialog."""
 
-        segment_values = {
-            "NoDemande": None,
-            "NumeroProjet": project,
-            "NomProjet": str(project_name or "").strip() or None,
-            "Technicien": tech,
-            "DateDebut": day_value,
-            "DateFin": day_value,
-            "HeuresPrevues": hours,
-            "Statut": "Planifié",
-            "Description": label,
-            "SourceEffortRow": None,
-            "TypePlanification": "Fixe",
-            "Priorite": "Normale",
-            self.ORIGIN_FIELD: self.ORIGIN_QUICK_SHIFT,
-        }
-
-        segment_id = self._required(
-            self._segments.create(segment_values),
-            "L'identifiant du segment ad hoc",
-        )
-        try:
-            allocation_id = self._required(
-                self._allocations.create_manual(
-                    segment_id,
-                    tech,
-                    day_value,
-                    hours,
-                    bool(hors_horaire),
-                    str(note or "").strip(),
-                ),
-                "L'identifiant du quart rapide",
+        return self.create_command(
+            QuickShiftCreateCommand.from_values(
+                project_number=project_number,
+                project_name=project_name,
+                technician=technician,
+                day_value=day_value,
+                hours_value=hours_value,
+                outside_standard_hours=hors_horaire,
+                note=note,
+                description=description,
             )
-        except Exception as exc:
-            try:
-                self._segments.update(segment_id, {"Statut": "Annulé"})
-            except Exception as rollback_exc:
-                raise RuntimeError(
-                    f"Le quart rapide n'a pas été créé et le segment {segment_id} "
-                    "n'a pas pu être annulé automatiquement."
-                ) from rollback_exc
-            raise exc
-
-        return QuickShiftResult(
-            segment_id=segment_id,
-            allocation_id=allocation_id,
         )
