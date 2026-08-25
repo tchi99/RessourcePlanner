@@ -16,6 +16,8 @@ class RuntimeCompositionTests(unittest.TestCase):
         self.assertEqual(names[0], "nicegui_compat")
         self.assertEqual(names[-1], "thunderbird_setup")
         self.assertLess(names.index("runtime_optimizations"), names.index("features"))
+        self.assertLess(names.index("v16_refinements"), names.index("operational_planning_runtime"))
+        self.assertLess(names.index("operational_planning_runtime"), names.index("v17_refinements"))
         self.assertLess(names.index("v18_features"), names.index("effort_identity_guard"))
         self.assertLess(names.index("effort_identity_guard"), names.index("v18_refinements"))
         self.assertLess(names.index("v18_refinements"), names.index("quick_shift_ui"))
@@ -36,6 +38,7 @@ class RuntimeCompositionTests(unittest.TestCase):
         communications = [step.name for step in composition_manifest() if step.category == "communications"]
 
         self.assertIn("v13_features", legacy)
+        self.assertNotIn("v17_features", legacy)
         for retired in (
             "v18_fixes",
             "v18_single_scroll",
@@ -44,6 +47,7 @@ class RuntimeCompositionTests(unittest.TestCase):
         ):
             self.assertNotIn(retired, legacy)
         for extracted in (
+            "operational_planning_runtime",
             "effort_identity_guard",
             "operational_planning_compat",
             "resource_class_compat",
@@ -77,6 +81,7 @@ class RuntimeCompositionTests(unittest.TestCase):
     def test_retired_compatibility_modules_are_physically_removed(self) -> None:
         app_dir = Path(__file__).resolve().parents[1] / "app"
         for name in (
+            "v17.py",
             "v18_fixes.py",
             "v18_single_scroll.py",
             "v18_calendar_sizing.py",
@@ -104,7 +109,7 @@ class RuntimeCompositionTests(unittest.TestCase):
         ):
             self.assertNotIn(historical_prefix, source)
 
-    def test_quick_shift_ui_registers_cell_action_without_rewriting_v17(self) -> None:
+    def test_quick_shift_ui_registers_cell_action_without_versioned_rewrite(self) -> None:
         source = (Path(__file__).resolve().parents[1] / "app" / "quick_shift_ui.py").read_text(
             encoding="utf-8"
         )
@@ -118,13 +123,11 @@ class RuntimeCompositionTests(unittest.TestCase):
             "register_operational_planning_cell_shift_opener(open_cell_shift_dialog)",
             source,
         )
-        self.assertNotIn("v17._open_quick_allocation =", source)
         self.assertNotIn("PlannerUI.open_quick_allocation =", source)
         self.assertNotIn("v17._", source)
 
     def test_cell_plus_uses_explicit_non_versioned_action_boundary(self) -> None:
         app_dir = Path(__file__).resolve().parents[1] / "app"
-        v17_source = (app_dir / "v17.py").read_text(encoding="utf-8")
         row_source = (app_dir / "operational_planning_resource_row.py").read_text(
             encoding="utf-8"
         )
@@ -132,16 +135,14 @@ class RuntimeCompositionTests(unittest.TestCase):
             encoding="utf-8"
         )
 
-        self.assertNotIn("def _open_quick_allocation(", v17_source)
-        self.assertNotIn("open_operational_planning_cell_shift", v17_source)
+        self.assertFalse((app_dir / "v17.py").exists())
         self.assertIn(
             "from .operational_planning_cell_action import open_operational_planning_cell_shift",
             row_source,
         )
         self.assertIn("open_operational_planning_cell_shift(", row_source)
         self.assertIn("register_operational_planning_cell_shift_opener", action_source)
-        self.assertNotIn("PlannerUI.open_quick_allocation =", v17_source)
-        self.assertNotIn("ui.label(\"Planifier rapidement un quart\")", v17_source)
+        self.assertNotIn("ui.label(\"Planifier rapidement un quart\")", row_source)
 
     def test_planning_service_ui_binding_routes_recalculate_through_service(self) -> None:
         source = (Path(__file__).resolve().parents[1] / "app" / "planning_service_ui.py").read_text(
