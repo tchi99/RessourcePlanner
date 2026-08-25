@@ -7,14 +7,6 @@ from nicegui import ui
 from . import ui as ui_module
 from . import v16, v16_refinements
 from .excel_repository import ExcelRepository
-from .operational_planning_sorting import (
-    SORT_ALPHA_ASC,
-    SORT_ALPHA_DESC,
-    SORT_AVAIL_ASC,
-    SORT_AVAIL_DESC,
-    SORT_MANUAL,
-    SORT_OPTIONS,
-)
 
 
 RESOURCE_ORDER_FIELD = "Ordre"
@@ -235,20 +227,16 @@ def _manual_order_dialog(self: ui_module.PlannerUI) -> None:
 
 
 def _render_resources(self: ui_module.PlannerUI) -> None:
-    # V1.71 still overrides the two dialog entry points through the historical shim.
-    # Keep that dispatch dynamic until the V1.71 extraction step removes the shim.
-    from . import v17_refinements as legacy_overrides
-
     with ui.row().classes("w-full justify-end gap-2"):
         ui.button(
             "Ordre manuel",
             icon="format_list_numbered",
-            on_click=lambda: legacy_overrides._manual_order_dialog(self),
+            on_click=lambda: _manual_order_dialog(self),
         ).props("outline no-caps")
         ui.button(
             "Nouvelle ressource",
             icon="person_add",
-            on_click=lambda: legacy_overrides._new_resource_dialog(self),
+            on_click=lambda: _new_resource_dialog(self),
         ).props("unelevated no-caps color=primary")
     v16_refinements._render_resources(self)
 
