@@ -5,11 +5,12 @@ from typing import Any
 
 from nicegui import ui
 
-from . import v15_engine, v17
+from . import v15_engine
 from .application.quick_shift_service import QuickShiftService
 from .operational_planning_cell_action import (
     register_operational_planning_cell_shift_opener,
 )
+from .operational_planning_cell_context_compat import operational_planning_cell_context
 from .segment_repository import (
     SEGMENT_ORIGIN_FIELD,
     add_segment,
@@ -81,7 +82,8 @@ def _quick_shift_service(repo: Any) -> QuickShiftService[Any]:
 
 def open_cell_shift_dialog(owner: Any, technician: str, day: date) -> None:
     """Open the single cell action for ad-hoc or existing-segment shifts."""
-    candidates = v17._eligible_segments_for_cell(owner.repo, technician, day)
+    cell_context = operational_planning_cell_context()
+    candidates = cell_context.eligible_segments_for_cell(owner.repo, technician, day)
     segment_lookup = {
         str(row.get("IDSegment") or ""): row
         for row in candidates
@@ -95,7 +97,11 @@ def open_cell_shift_dialog(owner: Any, technician: str, day: date) -> None:
         for identifier, row in segment_lookup.items()
     }
     project_options, project_names = _project_options(owner.repo)
-    capacity, used, free = v17._day_standard_load(owner.repo, technician, day)
+    capacity, used, free = cell_context.day_standard_load(
+        owner.repo,
+        technician,
+        day,
+    )
     suggested_quick_hours = max(min(8.0, free if free > 0 else 8.0), 0.25)
 
     owner.interaction_lock = True
@@ -174,7 +180,7 @@ def open_cell_shift_dialog(owner: Any, technician: str, day: date) -> None:
                 first_segment = segment_lookup[first_segment_id]
                 initial_lockable = max(
                     number(first_segment.get("HeuresPrevues"))
-                    - v17._locked_hours(owner.repo, first_segment_id),
+                    - cell_context.locked_hours(owner.repo, first_segment_id),
                     0.25,
                 )
                 segment_hours = ui.number(
@@ -202,14 +208,14 @@ def open_cell_shift_dialog(owner: Any, technician: str, day: date) -> None:
                     if segment_id:
                         lockable = max(
                             number(segment.get("HeuresPrevues"))
-                            - v17._locked_hours(owner.repo, segment_id),
+                            - cell_context.locked_hours(owner.repo, segment_id),
                             0.25,
                         )
                         segment_hours.value = max(
                             min(8.0, lockable, free if free > 0 else 8.0),
                             0.25,
                         )
-                    message, match = v17._skill_message(
+                    message, match = cell_context.skill_message(
                         owner.repo,
                         technician,
                         segment,
@@ -274,7 +280,7 @@ def open_cell_shift_dialog(owner: Any, technician: str, day: date) -> None:
                 if not segment_id:
                     ui.notify("Sélectionne un segment.", type="warning")
                     return
-                v17._validate_locked_total(
+                cell_context.validate_locked_total(
                     owner.repo,
                     segment_id,
                     segment_hours.value,
