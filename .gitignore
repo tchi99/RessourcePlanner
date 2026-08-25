@@ -14,6 +14,12 @@ user_preferences.json.tmp
 planning_pure_validation.json
 planning_pure_validation.json.tmp
 
+# Local SQL databases used for development/migrations
+resourceplanner.db
+*.db
+*.sqlite
+*.sqlite3
+
 # Local confidential-term denylist used by tools/privacy_scan.py
 .privacy_terms.local
 
