@@ -36,7 +36,6 @@ class PlanningFilterState:
 
 def resolve_planning_filter_state(
     owner: Any,
-    techs: list[dict[str, Any]],
     allocations: list[dict[str, Any]],
     unassigned: list[dict[str, Any]],
     pending: list[dict[str, Any]],
