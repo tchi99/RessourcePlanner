@@ -30,7 +30,7 @@ class NiceGUIGlobalMutationTests(unittest.TestCase):
         )
         self.assertEqual(offenders, [])
 
-        for filename in ("v16_refinements.py", "v17_refinements.py"):
+        for filename in ("v16_refinements.py", "operational_planning_base_renderer.py"):
             renderer = self._source(filename)
             self.assertIn("ensure_scoped_ui(", renderer)
             self.assertIn('with scoped_ui.override_factory("select", select_proxy):', renderer)

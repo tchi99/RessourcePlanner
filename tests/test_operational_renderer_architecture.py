@@ -19,11 +19,16 @@ class OperationalRendererArchitectureTests(unittest.TestCase):
         self.assertIn("week_stats = stats_provider(owner.repo, owner.current_week)", source)
         self.assertFalse((APP / "v17.py").exists())
 
-    def test_refinement_forwards_provider_without_global_mutation(self) -> None:
-        source = self._source("v17_refinements.py")
+    def test_stable_base_renderer_forwards_provider_and_bindings(self) -> None:
+        source = self._source("operational_planning_base_renderer.py")
+        refinements = self._source("v17_refinements.py")
+
         self.assertIn("weekly_stats_provider: Any | None = None", source)
         self.assertIn("weekly_stats_provider=weekly_stats_provider", source)
-        self.assertIn("bindings=operational_planning_bindings()", source)
+        self.assertIn("bindings=bindings", source)
+        self.assertIn("render_operational_planning(", source)
+        self.assertNotIn("def _render_planning(", refinements)
+        self.assertNotIn("SCROLL_SETUP_JS", refinements)
 
     def test_stable_sorting_composes_ranked_stats_without_replacing_stats_provider(self) -> None:
         stable = self._source("operational_planning_sorting.py")
@@ -32,8 +37,11 @@ class OperationalRendererArchitectureTests(unittest.TestCase):
 
         self.assertIn("def rank_weekly_stats(", stable)
         self.assertIn("compose_operational_planning_renderer(", compat)
+        self.assertIn("base_render=base_render", compat)
+        self.assertIn("render_operational_planning_base(", compat)
         self.assertIn("rank_weekly_stats=ranked_weekly_stats", compat)
         self.assertNotIn("v16._weekly_resource_stats =", compat)
+        self.assertNotIn("v17_refinements._render_planning", compat)
         self.assertIn("Compatibility shim", shim)
         self.assertNotIn("compose_operational_planning_renderer(", shim)
 
