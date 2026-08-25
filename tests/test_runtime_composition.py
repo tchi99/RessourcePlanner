@@ -96,6 +96,11 @@ class RuntimeCompositionTests(unittest.TestCase):
         app_dir = Path(__file__).resolve().parents[1] / "app"
         for name in (
             "v17.py",
+            "v17_refinements.py",
+            "v17_sort_fix.py",
+            "v171_performance.py",
+            "v171_local_preferences.py",
+            "resource_local_preferences_compat.py",
             "v18_fixes.py",
             "v18_single_scroll.py",
             "v18_calendar_sizing.py",
@@ -106,19 +111,6 @@ class RuntimeCompositionTests(unittest.TestCase):
             "segment_editor_compat.py",
         ):
             self.assertFalse((app_dir / name).exists(), name)
-
-    def test_v17_and_v171_shims_are_not_runtime_steps_anymore(self) -> None:
-        app_dir = Path(__file__).resolve().parents[1] / "app"
-        v17 = (app_dir / "v17_refinements.py").read_text(encoding="utf-8")
-        v171_perf = (app_dir / "v171_performance.py").read_text(encoding="utf-8")
-        v171_prefs = (app_dir / "v171_local_preferences.py").read_text(encoding="utf-8")
-
-        self.assertIn("Compatibility shim", v17)
-        self.assertIn("install_resource_management_compat()", v17)
-        self.assertIn("Compatibility shim", v171_perf)
-        self.assertIn("install_runtime_performance_compat()", v171_perf)
-        self.assertIn("Compatibility shim", v171_prefs)
-        self.assertIn("install_resource_local_preferences_compat()", v171_prefs)
 
     def test_main_is_only_a_composition_root_consumer(self) -> None:
         source = (Path(__file__).resolve().parents[1] / "main.py").read_text(encoding="utf-8")
