@@ -6,7 +6,7 @@ technologies must not leak into this package.
 """
 
 from .allocation_service import AllocationService
-from .command_dtos import (
+from .commands import (
     DemandApproveCommand,
     DemandCancelCommand,
     DemandCorrectionCommand,
