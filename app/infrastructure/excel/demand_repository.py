@@ -27,6 +27,21 @@ class ExcelDemandRepository(DemandRepositoryPort):
             return None
         return next((row for row in self.list() if row.number == wanted), None)
 
+    def raw_mapping(self, number: str) -> Mapping[str, Any] | None:
+        """Return the V1 Excel row only for compatibility code outside the port."""
+
+        wanted = str(number or "").strip()
+        if not wanted:
+            return None
+        return next(
+            (
+                row
+                for row in self._repository.demands()
+                if str(row.get("NoDemande") or "").strip() == wanted
+            ),
+            None,
+        )
+
     def create(self, values: Mapping[str, Any], *, submit: bool = False) -> str:
         return str(self._repository.create_demand(dict(values), submit=submit))
 
