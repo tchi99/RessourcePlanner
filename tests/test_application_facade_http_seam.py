@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 from datetime import date
 from pathlib import Path
 from types import SimpleNamespace
@@ -91,22 +92,37 @@ class ApplicationFacadeHttpSeamTests(unittest.TestCase):
         self.assertEqual(status, 422)
         self.assertEqual(payload["code"], "demand_project_required")
 
-    def test_seam_does_not_import_framework_storage_or_internal_services(self) -> None:
+    def test_seam_imports_only_public_application_surface(self) -> None:
         source = Path(__file__).read_text(encoding="utf-8")
-        forbidden = (
+        tree = ast.parse(source)
+        application_imports = [
+            node.module or ""
+            for node in ast.walk(tree)
+            if isinstance(node, ast.ImportFrom)
+            and (node.module or "").startswith("app.application")
+        ]
+
+        self.assertEqual(application_imports, ["app.application"])
+        all_imports: list[str] = []
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                all_imports.extend(alias.name for alias in node.names)
+            elif isinstance(node, ast.ImportFrom):
+                all_imports.append(node.module or "")
+        forbidden_modules = (
             "fastapi",
             "pydantic",
             "nicegui",
             "xlwings",
-            "ExcelRepository",
-            "demand_service",
-            "segment_service",
-            "allocation_service",
-            "quick_shift_service",
-            "planning_service",
+            "app.excel_repository",
+            "app.application.demand_service",
+            "app.application.segment_service",
+            "app.application.allocation_service",
+            "app.application.quick_shift_service",
+            "app.application.planning_service",
         )
-        for token in forbidden:
-            self.assertNotIn(token, source)
+        for module in all_imports:
+            self.assertNotIn(module, forbidden_modules)
 
 
 if __name__ == "__main__":
