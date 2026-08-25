@@ -35,7 +35,6 @@ RUNTIME_COMPOSITION_MANIFEST: tuple[CompositionStep, ...] = (
     CompositionStep("v13_fixes", "legacy"),
     CompositionStep("v14_features", "legacy"),
     CompositionStep("v14_fixes", "legacy"),
-    CompositionStep("v14_runtime", "legacy"),
     CompositionStep("v15_features", "legacy"),
     CompositionStep("v15_refinements", "legacy"),
     CompositionStep("v16_features", "legacy"),
@@ -99,7 +98,6 @@ def _runtime_installers() -> tuple[tuple[str, Installer], ...]:
     from .v13_fixes import install_v13_fixes
     from .v14 import install_v14_features
     from .v14_fixes import install_v14_fixes
-    from .v14_runtime import install_v14_runtime
     from .v15 import install_v15_features
     from .v15_refinements import install_v15_refinements
     from .v16 import install_v16_features
@@ -115,7 +113,6 @@ def _runtime_installers() -> tuple[tuple[str, Installer], ...]:
         ("v13_fixes", install_v13_fixes),
         ("v14_features", install_v14_features),
         ("v14_fixes", install_v14_fixes),
-        ("v14_runtime", install_v14_runtime),
         ("v15_features", install_v15_features),
         ("v15_refinements", install_v15_refinements),
         ("v16_features", install_v16_features),
