@@ -9,6 +9,8 @@ from alembic import command
 from alembic.config import Config
 from sqlalchemy import create_engine, inspect
 
+from app.infrastructure.sql import Base
+
 
 ROOT = Path(__file__).resolve().parents[1]
 MIGRATIONS = ROOT / "migrations"
@@ -66,6 +68,32 @@ class SqlMigrationTests(unittest.TestCase):
             downgraded = set(inspect(engine).get_table_names())
             self.assertFalse(EXPECTED_TABLES.intersection(downgraded))
             engine.dispose()
+
+    def test_migration_matches_orm_columns_and_nullability(self) -> None:
+        with TemporaryDirectory() as directory:
+            database_path = Path(directory) / "schema-parity.db"
+            config = alembic_config(database_path)
+            command.upgrade(config, "head")
+
+            engine = create_engine(f"sqlite:///{database_path.as_posix()}")
+            inspector = inspect(engine)
+            try:
+                for table_name, table in Base.metadata.tables.items():
+                    migrated_columns = {
+                        column["name"]: bool(column["nullable"])
+                        for column in inspector.get_columns(table_name)
+                    }
+                    model_columns = {
+                        column.name: bool(column.nullable)
+                        for column in table.columns
+                    }
+                    self.assertEqual(
+                        migrated_columns,
+                        model_columns,
+                        f"Migration/ORM drift for {table_name}",
+                    )
+            finally:
+                engine.dispose()
 
     def test_initial_migration_compiles_offline_for_postgresql_and_mssql(self) -> None:
         for url in ("postgresql://", "mssql+pyodbc://"):
