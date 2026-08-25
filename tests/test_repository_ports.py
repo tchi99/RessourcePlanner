@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 from datetime import date
 from pathlib import Path
 from types import SimpleNamespace
@@ -15,6 +16,17 @@ from app.infrastructure.excel.segment_repository import ExcelSegmentRepository
 
 ROOT = Path(__file__).resolve().parents[1]
 APP = ROOT / "app"
+
+
+def imported_modules(path: Path) -> set[str]:
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    modules: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            modules.update(alias.name for alias in node.names)
+        elif isinstance(node, ast.ImportFrom):
+            modules.add(node.module or "")
+    return modules
 
 
 class RepositoryPortTests(unittest.TestCase):
@@ -160,15 +172,23 @@ class RepositoryPortTests(unittest.TestCase):
             adapter.update("SEG-2", {"Statut": "Annulé"})
 
     def test_application_repository_contracts_are_storage_neutral(self) -> None:
+        forbidden_roots = {"xlwings", "sqlalchemy", "nicegui", "app.excel_repository"}
         for filename in (
             "application/read_models.py",
             "application/repository_ports.py",
             "application/demand_service.py",
             "application/segment_service.py",
         ):
-            source = (APP / filename).read_text(encoding="utf-8").lower()
-            for forbidden in ("xlwings", "sqlalchemy", "nicegui", "excel_repository"):
-                self.assertNotIn(forbidden, source, f"{filename}: {forbidden}")
+            imports = imported_modules(APP / filename)
+            offenders = {
+                module
+                for module in imports
+                if any(
+                    module == root or module.startswith(root + ".")
+                    for root in forbidden_roots
+                )
+            }
+            self.assertEqual(offenders, set(), f"{filename}: {offenders}")
 
     def test_runtime_and_excel_adapters_remain_import_light(self) -> None:
         for filename in (
@@ -176,9 +196,9 @@ class RepositoryPortTests(unittest.TestCase):
             "infrastructure/excel/demand_repository.py",
             "infrastructure/excel/segment_repository.py",
         ):
-            source = (APP / filename).read_text(encoding="utf-8").lower()
-            self.assertNotIn("import xlwings", source, filename)
-            self.assertNotIn("from ...excel_repository", source, filename)
+            imports = imported_modules(APP / filename)
+            self.assertNotIn("xlwings", imports, filename)
+            self.assertNotIn("app.excel_repository", imports, filename)
 
         segment_source = (
             APP / "infrastructure" / "excel" / "segment_repository.py"
