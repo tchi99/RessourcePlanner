@@ -8,6 +8,8 @@ This module is intentionally absent from the runtime composition manifest and ma
 removed once the remaining V1.71 compatibility installers stop importing it.
 """
 
+from .operational_planning_sorting import MANUAL_ORDER_EVENT
+from .operational_planning_sorting import RankedFree as _RankedFree
 from .operational_planning_sorting import alpha_key as _alpha_key
 from .operational_planning_sorting import set_resource_sort as _set_resource_sort
 from .operational_planning_sorting_compat import (
