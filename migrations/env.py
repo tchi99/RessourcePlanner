@@ -15,7 +15,9 @@ if config.config_file_name is not None:
 
 runtime_url = os.getenv("RESOURCEPLANNER_DATABASE_URL", "").strip()
 if runtime_url:
-    config.set_main_option("sqlalchemy.url", runtime_url)
+    # Alembic stores values in ConfigParser, where '%' has interpolation semantics.
+    # Escaping is required for encoded ODBC URLs such as mssql+pyodbc odbc_connect.
+    config.set_main_option("sqlalchemy.url", runtime_url.replace("%", "%%"))
 
 target_metadata = Base.metadata
 
