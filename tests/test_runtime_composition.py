@@ -17,7 +17,8 @@ class RuntimeCompositionTests(unittest.TestCase):
         self.assertEqual(names[-1], "thunderbird_setup")
         self.assertLess(names.index("runtime_optimizations"), names.index("features"))
         self.assertLess(names.index("v16_refinements"), names.index("operational_planning_runtime"))
-        self.assertLess(names.index("operational_planning_runtime"), names.index("v17_refinements"))
+        self.assertLess(names.index("operational_planning_runtime"), names.index("resource_management"))
+        self.assertLess(names.index("resource_management"), names.index("operational_planning_sorting"))
         self.assertLess(names.index("v18_features"), names.index("effort_identity_guard"))
         self.assertLess(names.index("effort_identity_guard"), names.index("v18_refinements"))
         self.assertLess(names.index("v18_refinements"), names.index("quick_shift_ui"))
@@ -39,6 +40,8 @@ class RuntimeCompositionTests(unittest.TestCase):
 
         self.assertIn("v13_features", legacy)
         self.assertNotIn("v17_features", legacy)
+        self.assertNotIn("v17_refinements", legacy)
+        self.assertNotIn("v17_refinements", [step.name for step in composition_manifest()])
         for retired in (
             "v18_fixes",
             "v18_single_scroll",
@@ -48,6 +51,8 @@ class RuntimeCompositionTests(unittest.TestCase):
             self.assertNotIn(retired, legacy)
         for extracted in (
             "operational_planning_runtime",
+            "resource_management",
+            "operational_planning_sorting",
             "effort_identity_guard",
             "operational_planning_compat",
             "resource_class_compat",
@@ -92,6 +97,13 @@ class RuntimeCompositionTests(unittest.TestCase):
             "segment_editor_compat.py",
         ):
             self.assertFalse((app_dir / name).exists(), name)
+
+    def test_v17_refinements_is_not_a_runtime_step_anymore(self) -> None:
+        source = (Path(__file__).resolve().parents[1] / "app" / "v17_refinements.py").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("Compatibility shim", source)
+        self.assertIn("install_resource_management_compat()", source)
 
     def test_main_is_only_a_composition_root_consumer(self) -> None:
         source = (Path(__file__).resolve().parents[1] / "main.py").read_text(encoding="utf-8")
