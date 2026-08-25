@@ -5,7 +5,7 @@ from datetime import date
 from typing import Any
 
 from . import v13, v18
-from .excel_repository import DEMAND_HEADERS, ExcelRepository
+from .excel_repository import DEMAND_HEADERS, ExcelRepository, _as_matrix, _best_header_row
 from .infrastructure.excel.data_migrations import (
     ExcelDataMigration,
     ExcelDataMigrationReport,
@@ -48,19 +48,9 @@ class EffortIdentityMigrationReport:
         )
 
 
-def _column_matrix(value: Any) -> list[list[Any]]:
-    if value is None:
-        return []
-    if not isinstance(value, list):
-        return [[value]]
-    if not value:
-        return []
-    if isinstance(value[0], list):
-        return value
-    return [[item] for item in value]
-
-
 def _effort_table_and_header(repo: ExcelRepository) -> tuple[Any | None, int, int, list[Any]]:
+    """Locate the Liste_Effort header using the historical V1.8 rules."""
+
     sheet = repo._book().sheets[v18.EFFORT_SHEET]
 
     try:
@@ -68,56 +58,25 @@ def _effort_table_and_header(repo: ExcelRepository) -> tuple[Any | None, int, in
             first_row = int(table.range.row)
             first_col = int(table.range.column)
             last_col = int(table.range.last_cell.column)
-            headers = repo._sheet_as_records  # keep adapter capability explicit for type checkers
-            del headers
-            values = sheet.range((first_row, first_col), (first_row, last_col)).value
-            matrix = values if isinstance(values, list) else [[values]]
-            if matrix and not isinstance(matrix[0], list):
-                matrix = [matrix]
-            row = matrix[0] if matrix else []
+            headers = _as_matrix(
+                sheet.range((first_row, first_col), (first_row, last_col)).value
+            )
+            row = headers[0] if headers else []
             if any(str(value or "").strip() == "N° projet" for value in row):
                 return table, first_row, first_col, row
     except Exception:
         pass
 
     used = sheet.used_range
-    matrix = used.value
-    if matrix is None:
-        rows: list[list[Any]] = []
-    elif not isinstance(matrix, list):
-        rows = [[matrix]]
-    elif not matrix:
-        rows = []
-    elif isinstance(matrix[0], list):
-        rows = matrix
-    else:
-        rows = [matrix]
-
-    header_relative = 1
-    best_score = -1.0
-    for index, row in enumerate(rows[:15]):
-        nonempty = [value for value in row if value not in (None, "")]
-        if not nonempty:
-            continue
-        strings = sum(isinstance(value, str) for value in nonempty)
-        unique_strings = len(
-            {str(value).strip().lower() for value in nonempty if isinstance(value, str)}
-        )
-        score = len(nonempty) + strings * 1.5 + unique_strings * 0.25
-        if strings < max(2, len(nonempty) // 2):
-            score *= 0.6
-        if score > best_score:
-            best_score = score
-            header_relative = index + 1
-
+    matrix = _as_matrix(used.value)
+    header_relative = _best_header_row(matrix)
     header_row = int(used.row) + header_relative - 1
     first_col = int(used.column)
     last_col = int(used.last_cell.column)
-    values = sheet.range((header_row, first_col), (header_row, last_col)).value
-    matrix = values if isinstance(values, list) else [[values]]
-    if matrix and not isinstance(matrix[0], list):
-        matrix = [matrix]
-    return None, header_row, first_col, matrix[0] if matrix else []
+    headers = _as_matrix(
+        sheet.range((header_row, first_col), (header_row, last_col)).value
+    )
+    return None, header_row, first_col, headers[0] if headers else []
 
 
 def _ensure_effort_id_column(repo: ExcelRepository) -> bool:
@@ -191,7 +150,6 @@ def _write_changed_cells(
     if not changed_by_row:
         return
     rows = sorted(changed_by_row)
-    start = rows[0]
     block = [rows[0]]
 
     def flush(block_rows: list[int]) -> None:
@@ -205,15 +163,12 @@ def _write_changed_cells(
             block.append(row)
             continue
         flush(block)
-        start = row
         block = [row]
-    del start
     flush(block)
 
 
 def _seed_missing_effort_ids(repo: ExcelRepository) -> int:
-    header_row, id_col = _effort_id_column(repo)
-    del header_row
+    _header_row, id_col = _effort_id_column(repo)
     rows = [
         row
         for row in repo._sheet_as_records(v18.EFFORT_SHEET, "N° projet")
@@ -230,11 +185,10 @@ def _seed_missing_effort_ids(repo: ExcelRepository) -> int:
     identifiers = _next_effort_ids(existing, len(missing))
     changed = {
         int(row["_row"]): identifier
-        for row, identifier in zip(missing, identifiers, strict=True)
+        for row, identifier in zip(missing, identifiers)
     }
     if changed:
-        sheet = repo._book().sheets[v18.EFFORT_SHEET]
-        _write_changed_cells(sheet, id_col, changed)
+        _write_changed_cells(repo._book().sheets[v18.EFFORT_SHEET], id_col, changed)
     return len(changed)
 
 
