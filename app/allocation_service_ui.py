@@ -1,52 +1,22 @@
 from __future__ import annotations
 
-from typing import Any, Callable
+from typing import Any
 
 from nicegui import ui
 
-from . import v13, v15_engine, v16
 from .application.allocation_service import AllocationService
+from .infrastructure.excel.command_adapters import (
+    capture_excel_allocation_commands,
+    excel_allocation_commands,
+    install_excel_allocation_service_entrypoints,
+)
 
 
-CreateFn = Callable[[Any, str, str, Any, Any, bool, str], str]
-UpdateFn = Callable[[Any, str, str, Any, Any, bool, str], None]
-IdFn = Callable[[Any, str], None]
+_installed = False
 
 
-_legacy_create: CreateFn | None = None
-_legacy_update: UpdateFn | None = None
-_legacy_release: IdFn | None = None
-_legacy_delete: IdFn | None = None
-
-
-def _assign_segment_record(repository: Any, segment_id: str, technician: str):
-    """Translate assignment intent to today's segment store and active engine.
-
-    ``v15_engine.rebuild_allocations`` is resolved when the action executes, not when
-    this installer runs. The planning cutover therefore remains authoritative after it
-    replaces that alias with legacy/guarded-pure/pure mode.
-    """
-    v13.update_segment(
-        repository,
-        segment_id,
-        {"Technicien": technician, "Statut": "Planifié"},
-    )
-    return v15_engine.rebuild_allocations(repository)
-
-
-def _service(repository: Any) -> AllocationService[Any]:
-    assert _legacy_create is not None
-    assert _legacy_update is not None
-    assert _legacy_release is not None
-    assert _legacy_delete is not None
-    return AllocationService(
-        repository,
-        create_manual_record=_legacy_create,
-        update_manual_record=_legacy_update,
-        release_manual_record=_legacy_release,
-        delete_manual_record=_legacy_delete,
-        assign_segment_record=_assign_segment_record,
-    )
+def _service(repository: Any) -> AllocationService:
+    return AllocationService(excel_allocation_commands(repository))
 
 
 def _create_manual_via_service(
@@ -116,25 +86,20 @@ def _assign_segment_via_service(
 
 
 def install_allocation_service_ui() -> None:
-    """Bind historical operational UI entry points to AllocationService.
+    """Bind V1 UI entry points to AllocationService through an Excel command port."""
 
-    This is a transitional #15 seam. The dialogs remain in the V1.x renderer for now,
-    but their write paths no longer own allocation workflow directly. The original V1
-    persistence functions are captured as adapters so behavior stays unchanged.
-    """
-    global _legacy_create, _legacy_update, _legacy_release, _legacy_delete
-
-    if getattr(v15_engine, "_allocation_service_ui_installed", False):
+    global _installed
+    if _installed:
         return
 
-    _legacy_create = v15_engine.create_manual_allocation
-    _legacy_update = v15_engine.update_manual_allocation
-    _legacy_release = v15_engine.release_manual_allocation
-    _legacy_delete = v15_engine.delete_manual_allocation
-
-    v15_engine.create_manual_allocation = _create_manual_via_service
-    v15_engine.update_manual_allocation = _update_manual_via_service
-    v15_engine.release_manual_allocation = _release_manual_via_service
-    v15_engine.delete_manual_allocation = _delete_manual_via_service
-    v16._assign_segment = _assign_segment_via_service
-    v15_engine._allocation_service_ui_installed = True
+    # Operational runtime guards are installed earlier. Capture those guarded
+    # functions once, before replacing the historical entrypoints with service calls.
+    capture_excel_allocation_commands()
+    install_excel_allocation_service_entrypoints(
+        create_manual=_create_manual_via_service,
+        update_manual=_update_manual_via_service,
+        release_manual=_release_manual_via_service,
+        delete_manual=_delete_manual_via_service,
+        assign_segment=_assign_segment_via_service,
+    )
+    _installed = True

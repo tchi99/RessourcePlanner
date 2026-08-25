@@ -11,29 +11,35 @@ from app.application.planning_service import PlanningService
 from app.application.runtime_services import planning_service
 
 
+class _PlanningCommands:
+    def __init__(self, result=None, failure: Exception | None = None) -> None:
+        self.calls = 0
+        self.result = result or {"allocated_hours": 24.0, "engine": "pure"}
+        self.failure = failure
+
+    def rebuild(self):
+        self.calls += 1
+        if self.failure is not None:
+            raise self.failure
+        return self.result
+
+
 class PlanningServiceTests(unittest.TestCase):
     def test_rebuild_delegates_once_and_returns_plain_dict(self) -> None:
-        repository = object()
-        calls: list[object] = []
+        commands = _PlanningCommands()
 
-        def rebuild(repo: object):
-            calls.append(repo)
-            return {"allocated_hours": 24.0, "engine": "pure"}
+        result = PlanningService(commands).rebuild()
 
-        result = PlanningService(repository, rebuild_planning=rebuild).rebuild()
-
-        self.assertEqual(calls, [repository])
+        self.assertEqual(commands.calls, 1)
         self.assertEqual(result, {"allocated_hours": 24.0, "engine": "pure"})
         self.assertIsInstance(result, dict)
 
     def test_rebuild_propagates_domain_or_repository_failure(self) -> None:
         expected = RuntimeError("planning failed")
-
-        def rebuild(_repo: object):
-            raise expected
+        commands = _PlanningCommands(failure=expected)
 
         with self.assertRaises(RuntimeError) as raised:
-            PlanningService(object(), rebuild_planning=rebuild).rebuild()
+            PlanningService(commands).rebuild()
 
         self.assertIs(raised.exception, expected)
 
@@ -55,13 +61,8 @@ class PlanningServiceTests(unittest.TestCase):
         self.assertEqual(calls, ["selected"])
         self.assertEqual(result["engine"], "selected")
 
-    def test_application_service_has_no_ui_or_storage_import(self) -> None:
-        path = (
-            Path(__file__).resolve().parents[1]
-            / "app"
-            / "application"
-            / "planning_service.py"
-        )
+    def test_application_service_has_no_ui_storage_or_v1_import(self) -> None:
+        path = Path(__file__).resolve().parents[1] / "app" / "application" / "planning_service.py"
         tree = ast.parse(path.read_text(encoding="utf-8"))
         imported_modules: list[str] = []
         for node in ast.walk(tree):
@@ -75,8 +76,11 @@ class PlanningServiceTests(unittest.TestCase):
             "xlwings",
             "app.excel_repository",
             "app.v13",
-            "app.v14_engine",
-            "app.v15_engine",
+            "app.v14",
+            "app.v15",
+            "app.v16",
+            "app.v17",
+            "app.v18",
         )
         for module in imported_modules:
             self.assertFalse(
@@ -84,17 +88,19 @@ class PlanningServiceTests(unittest.TestCase):
                 f"planning_service.py must stay transport/storage agnostic; found import {module}",
             )
 
-    def test_runtime_adapter_does_not_import_legacy_engine_eagerly(self) -> None:
-        path = (
-            Path(__file__).resolve().parents[1]
-            / "app"
-            / "application"
-            / "runtime_services.py"
-        )
+    def test_runtime_services_contains_no_direct_v1_bridge(self) -> None:
+        path = Path(__file__).resolve().parents[1] / "app" / "application" / "runtime_services.py"
         source = path.read_text(encoding="utf-8")
 
-        self.assertNotIn("from .. import v15_engine", source)
-        self.assertIn('import_module("app.v15_engine")', source)
+        for token in (
+            "app.v15_engine",
+            "app.v15_refinements",
+            "_sync_segments_to_approved_demand",
+            "rebuild_allocations",
+        ):
+            self.assertNotIn(token, source)
+        self.assertIn("ExcelPlanningCommandAdapter", source)
+        self.assertIn("ExcelApprovedDemandSyncAdapter", source)
 
 
 if __name__ == "__main__":

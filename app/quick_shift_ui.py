@@ -5,19 +5,14 @@ from typing import Any
 
 from nicegui import ui
 
-from . import v15_engine
+from .application.allocation_service import AllocationService
 from .application.quick_shift_service import QuickShiftService
+from .infrastructure.excel import ExcelSegmentRepository, excel_allocation_commands
 from .operational_planning_cell_action import (
     register_operational_planning_cell_shift_opener,
 )
 from .operational_planning_cell_context_compat import operational_planning_cell_context
-from .segment_repository import (
-    SEGMENT_ORIGIN_FIELD,
-    add_segment,
-    ensure_segment_fields,
-    number,
-    update_segment,
-)
+from .segment_repository import SEGMENT_ORIGIN_FIELD, ensure_segment_fields, number
 
 
 MODE_QUICK = "quick"
@@ -64,19 +59,15 @@ def _project_options(repo: Any) -> tuple[dict[str, str], dict[str, str]]:
     return options, names
 
 
-def _quick_shift_service(repo: Any) -> QuickShiftService[Any]:
+def _allocation_service(repo: Any) -> AllocationService:
+    return AllocationService(excel_allocation_commands(repo))
+
+
+def _quick_shift_service(repo: Any) -> QuickShiftService:
     ensure_segment_fields(repo, [SEGMENT_ORIGIN_FIELD])
     return QuickShiftService(
-        repo,
-        create_segment_record=lambda target_repo, values: add_segment(
-            target_repo, dict(values)
-        ),
-        cancel_segment_record=lambda target_repo, segment_id: update_segment(
-            target_repo,
-            segment_id,
-            {"Statut": "Annulé"},
-        ),
-        create_locked_shift_record=v15_engine.create_manual_allocation,
+        ExcelSegmentRepository(repo),
+        excel_allocation_commands(repo),
     )
 
 
@@ -285,8 +276,7 @@ def open_cell_shift_dialog(owner: Any, technician: str, day: date) -> None:
                     segment_id,
                     segment_hours.value,
                 )
-                v15_engine.create_manual_allocation(
-                    owner.repo,
+                _allocation_service(owner.repo).create_manual(
                     segment_id,
                     technician,
                     day,
