@@ -92,7 +92,7 @@ def _runtime_installers() -> tuple[tuple[str, Installer], ...]:
     from .pure_validation_ui import install_pure_validation_ui
     from .quick_shift_ui import install_quick_shift_ui
     from .resource_class_compat import install_resource_class_compat
-    from .resource_local_preferences_compat import install_resource_local_preferences_compat
+    from .resource_local_preferences import install_resource_local_preferences
     from .resource_management_compat import install_resource_management_compat
     from .runtime_performance_compat import install_runtime_performance_compat
     from .v13 import install_v13_features
@@ -124,7 +124,7 @@ def _runtime_installers() -> tuple[tuple[str, Installer], ...]:
         ("resource_management", install_resource_management_compat),
         ("operational_planning_sorting", install_operational_planning_sorting),
         ("runtime_performance", install_runtime_performance_compat),
-        ("resource_local_preferences", install_resource_local_preferences_compat),
+        ("resource_local_preferences", install_resource_local_preferences),
         ("v18_features", install_v18_features),
         ("effort_identity_guard", install_effort_identity_guard),
         ("v18_refinements", install_v18_refinements),
