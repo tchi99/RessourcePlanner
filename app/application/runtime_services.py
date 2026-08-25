@@ -26,29 +26,25 @@ def planning_service(repository: Any) -> PlanningService:
     return PlanningService(ExcelPlanningCommandAdapter(repository))
 
 
-def demand_service(repository: Any) -> DemandService[Any]:
-    """Build demand workflows through portable repositories/command adapters."""
+def demand_service(repository: Any) -> DemandService:
+    """Build demand workflows directly from portable ports/adapters."""
 
     demands = ExcelDemandRepository(repository)
     planning = ExcelPlanningCommandAdapter(repository)
     approved_sync = ExcelApprovedDemandSyncAdapter(repository, demands)
-    return DemandService.from_repository_port(
-        repository,
+    return DemandService(
         demands,
+        planning,
+        approved_sync,
         current_user=str(getattr(repository, "current_user", "") or ""),
-        sync_approved_demand=lambda _repo, number: approved_sync.sync_approved(number),
-        rebuild_planning=lambda _repo: planning.rebuild(),
-        batch=_runtime_batch,
+        batch=lambda label: _runtime_batch(repository, label),
     )
 
 
-def segment_service(repository: Any) -> SegmentService[Any]:
-    """Build segment workflows through portable repository/command adapters."""
+def segment_service(repository: Any) -> SegmentService:
+    """Build segment workflows directly from portable ports/adapters."""
 
-    segments = ExcelSegmentRepository(repository)
-    planning = ExcelPlanningCommandAdapter(repository)
-    return SegmentService.from_repository_port(
-        repository,
-        segments,
-        rebuild_planning=lambda _repo: planning.rebuild(),
+    return SegmentService(
+        ExcelSegmentRepository(repository),
+        ExcelPlanningCommandAdapter(repository),
     )
