@@ -1,20 +1,33 @@
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 from typing import Any, Mapping
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from ...application.command_ports import AllocationCommandPort, PlanningCommandPort
+from ...application.command_ports import (
+    AllocationCommandPort,
+    ApprovedDemandSyncPort,
+    PlanningCommandPort,
+)
 from ...domain.availability_rules import availability_hours_for_day
-from ...domain.planning_engine import MISSING_ALLOCATION_TYPE, build_allocation_plan
+from ...domain.planning_engine import build_allocation_plan
 from ...domain.planning_projection import project_planning_snapshot
 from ...domain.value_coercion import date_from_value
-from .base import new_id
-from .models import Resource, ResourceRequirement, Shift
+from .base import new_id, utc_now
+from .models import (
+    ORIGIN_REQUEST,
+    Project,
+    Resource,
+    ResourceRequirement,
+    Shift,
+    WorkforceRequest,
+    WorkforceRequestHistory,
+)
 from .planning_repository import SqlPlanningReadRepository
+from .segment_repository import SqlSegmentRepository
 
 
 INACTIVE_REQUIREMENT_STATUSES = {"Annulé", "Terminé"}
@@ -131,11 +144,15 @@ class SqlPlanningCommandAdapter(PlanningCommandPort):
             )
         self._session.flush()
 
-        persisted_protected = set(
-            self._session.scalars(
-                select(Shift.id).where(Shift.id.in_(protected_ids))
-            ).all()
-        ) if protected_ids else set()
+        persisted_protected = (
+            set(
+                self._session.scalars(
+                    select(Shift.id).where(Shift.id.in_(protected_ids))
+                ).all()
+            )
+            if protected_ids
+            else set()
+        )
         missing_locked = sorted(protected_ids - persisted_protected)
         if missing_locked:
             raise RuntimeError(
@@ -345,3 +362,183 @@ class SqlAllocationCommandAdapter(AllocationCommandPort):
         requirement.status = "Planifié"
         self._session.flush()
         return self._planning.rebuild()
+
+
+class SqlApprovedDemandSyncAdapter(ApprovedDemandSyncPort):
+    """Synchronize an approved workforce request to SQL resource requirements."""
+
+    def __init__(self, session: Session) -> None:
+        self._session = session
+        self._segments = SqlSegmentRepository(session)
+
+    def _request(self, number: str) -> WorkforceRequest:
+        wanted = _text(number)
+        request = self._session.scalar(
+            select(WorkforceRequest).where(
+                (WorkforceRequest.legacy_demand_number == wanted)
+                | (WorkforceRequest.id == wanted)
+            )
+        )
+        if request is None:
+            raise KeyError(f"Demande {wanted} introuvable après approbation")
+        return request
+
+    def _active_requirements(self, request: WorkforceRequest) -> list[ResourceRequirement]:
+        return list(
+            self._session.scalars(
+                select(ResourceRequirement)
+                .where(
+                    ResourceRequirement.workforce_request_id == request.id,
+                    ResourceRequirement.status != "Annulé",
+                )
+                .order_by(ResourceRequirement.created_at, ResourceRequirement.id)
+            ).all()
+        )
+
+    def _proposed_resource(self, request: WorkforceRequest) -> Resource | None:
+        if not request.proposed_resource_id:
+            return None
+        return self._session.get(Resource, request.proposed_resource_id)
+
+    def _hours_per_resource(
+        self,
+        request: WorkforceRequest,
+        desired: int,
+        current: list[ResourceRequirement],
+    ) -> Decimal:
+        if request.estimated_hours is not None and request.estimated_hours > 0:
+            return (request.estimated_hours / Decimal(desired)).quantize(Decimal("0.01"))
+
+        proposed = self._proposed_resource(request)
+        if (
+            request.estimated_days is not None
+            and request.estimated_days > 0
+            and proposed is not None
+            and request.desired_start is not None
+        ):
+            end = request.desired_end or request.desired_start
+            snapshot = SqlPlanningReadRepository(self._session).capture()
+            capacities: list[float] = []
+            cursor = request.desired_start
+            while cursor <= end:
+                capacity = availability_hours_for_day(
+                    snapshot.availability,
+                    proposed.name,
+                    cursor,
+                )
+                if capacity > 0:
+                    capacities.append(capacity)
+                cursor += timedelta(days=1)
+            if capacities:
+                average_day = sum(capacities) / len(capacities)
+                return _decimal(float(request.estimated_days) * average_day).quantize(
+                    Decimal("0.01")
+                )
+
+        existing_hours = [
+            requirement.planned_hours
+            for requirement in current
+            if requirement.planned_hours > 0
+        ]
+        if existing_hours:
+            return (
+                sum(existing_hours, Decimal("0")) / Decimal(len(existing_hours))
+            ).quantize(Decimal("0.01"))
+
+        raise ValueError(
+            "Impossible de déterminer les heures prévues par ressource pour la demande "
+            f"{_text(request.legacy_demand_number) or request.id}."
+        )
+
+    def sync_approved(self, demand_number: str) -> None:
+        request = self._request(demand_number)
+        project = self._session.get(Project, request.project_id)
+        if project is None:
+            raise KeyError(f"Projet {request.project_id} introuvable")
+        if request.desired_start is None:
+            raise ValueError("La date de début de la demande est requise pour synchroniser les besoins.")
+
+        desired = max(int(request.resource_count or 1), 1)
+        current = self._active_requirements(request)
+        per_resource = self._hours_per_resource(request, desired, current)
+        if per_resource <= 0:
+            raise ValueError("Les heures prévues par ressource doivent être supérieures à zéro.")
+
+        while len(current) < desired:
+            identifier = self._segments.create(
+                {
+                    "NoDemande": _text(request.legacy_demand_number) or request.id,
+                    "NumeroProjet": project.number,
+                    "Technicien": None,
+                    "DateDebut": request.desired_start,
+                    "DateFin": request.desired_end or request.desired_start,
+                    "HeuresPrevues": per_resource,
+                    "Statut": "À assigner",
+                    "Description": request.description or "Ressource additionnelle",
+                    "CompetenceRequise": request.required_competencies,
+                    "TypePlanification": "Flexible",
+                    "Priorite": request.priority or "Normale",
+                    "HorsHoraireAutorise": False,
+                    "OrigineSegment": ORIGIN_REQUEST,
+                }
+            )
+            created = self._session.scalar(
+                select(ResourceRequirement).where(
+                    ResourceRequirement.legacy_segment_id == identifier
+                )
+            )
+            if created is None:
+                raise RuntimeError("Le besoin créé à l'approbation est introuvable.")
+            current.append(created)
+
+        if len(current) > desired:
+            # Keep already assigned requirements first, mirroring the V1 policy.
+            ranked = sorted(
+                current,
+                key=lambda row: (
+                    0 if row.assigned_resource_id else 1,
+                    row.created_at,
+                    row.id,
+                ),
+            )
+            keep_ids = {row.id for row in ranked[:desired]}
+            for requirement in current:
+                if requirement.id not in keep_ids:
+                    requirement.status = "Annulé"
+            current = [row for row in ranked if row.id in keep_ids]
+
+        proposed = self._proposed_resource(request)
+        for index, requirement in enumerate(current[:desired]):
+            if index == 0 and not requirement.assigned_resource_id and proposed is not None:
+                requirement.assigned_resource_id = proposed.id
+
+            if requirement.assigned_resource_id and requirement.status == "À assigner":
+                requirement.status = "Planifié"
+            elif (
+                not requirement.assigned_resource_id
+                and requirement.status not in {"Terminé", "Annulé"}
+            ):
+                requirement.status = "À assigner"
+
+            requirement.project_id = request.project_id
+            requirement.start_date = request.desired_start
+            requirement.end_date = request.desired_end or request.desired_start
+            requirement.planned_hours = per_resource
+            requirement.description = request.description or requirement.description or ""
+            requirement.required_competency = request.required_competencies
+            requirement.priority = request.priority or "Normale"
+            requirement.origin = ORIGIN_REQUEST
+
+        self._session.add(
+            WorkforceRequestHistory(
+                workforce_request_id=request.id,
+                action="Synchronisation segments",
+                status="En planification",
+                comment=(
+                    f"Segments synchronisés avec la version approuvée ({desired} ressource(s))."
+                ),
+                actor_name=request.approved_by_name,
+                occurred_at=utc_now(),
+            )
+        )
+        self._session.flush()
