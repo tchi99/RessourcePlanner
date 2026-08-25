@@ -19,6 +19,9 @@ class RuntimeCompositionTests(unittest.TestCase):
         self.assertLess(names.index("v16_refinements"), names.index("operational_planning_runtime"))
         self.assertLess(names.index("operational_planning_runtime"), names.index("resource_management"))
         self.assertLess(names.index("resource_management"), names.index("operational_planning_sorting"))
+        self.assertLess(names.index("operational_planning_sorting"), names.index("runtime_performance"))
+        self.assertLess(names.index("runtime_performance"), names.index("resource_local_preferences"))
+        self.assertLess(names.index("resource_local_preferences"), names.index("v18_features"))
         self.assertLess(names.index("v18_features"), names.index("effort_identity_guard"))
         self.assertLess(names.index("effort_identity_guard"), names.index("v18_refinements"))
         self.assertLess(names.index("v18_refinements"), names.index("quick_shift_ui"))
@@ -37,22 +40,28 @@ class RuntimeCompositionTests(unittest.TestCase):
         application = [step.name for step in composition_manifest() if step.category == "application"]
         compatibility = [step.name for step in composition_manifest() if step.category == "compatibility"]
         communications = [step.name for step in composition_manifest() if step.category == "communications"]
+        names = [step.name for step in composition_manifest()]
 
         self.assertIn("v13_features", legacy)
-        self.assertNotIn("v17_features", legacy)
-        self.assertNotIn("v17_refinements", legacy)
-        self.assertNotIn("v17_refinements", [step.name for step in composition_manifest()])
         for retired in (
+            "v17_features",
+            "v17_refinements",
+            "v171_performance",
+            "v171_local_preferences",
             "v18_fixes",
             "v18_single_scroll",
             "v18_calendar_sizing",
             "v18_workflow_fixes",
         ):
             self.assertNotIn(retired, legacy)
+        for retired in ("v17_refinements", "v171_performance", "v171_local_preferences"):
+            self.assertNotIn(retired, names)
         for extracted in (
             "operational_planning_runtime",
             "resource_management",
             "operational_planning_sorting",
+            "runtime_performance",
+            "resource_local_preferences",
             "effort_identity_guard",
             "operational_planning_compat",
             "resource_class_compat",
@@ -98,12 +107,18 @@ class RuntimeCompositionTests(unittest.TestCase):
         ):
             self.assertFalse((app_dir / name).exists(), name)
 
-    def test_v17_refinements_is_not_a_runtime_step_anymore(self) -> None:
-        source = (Path(__file__).resolve().parents[1] / "app" / "v17_refinements.py").read_text(
-            encoding="utf-8"
-        )
-        self.assertIn("Compatibility shim", source)
-        self.assertIn("install_resource_management_compat()", source)
+    def test_v17_and_v171_shims_are_not_runtime_steps_anymore(self) -> None:
+        app_dir = Path(__file__).resolve().parents[1] / "app"
+        v17 = (app_dir / "v17_refinements.py").read_text(encoding="utf-8")
+        v171_perf = (app_dir / "v171_performance.py").read_text(encoding="utf-8")
+        v171_prefs = (app_dir / "v171_local_preferences.py").read_text(encoding="utf-8")
+
+        self.assertIn("Compatibility shim", v17)
+        self.assertIn("install_resource_management_compat()", v17)
+        self.assertIn("Compatibility shim", v171_perf)
+        self.assertIn("install_runtime_performance_compat()", v171_perf)
+        self.assertIn("Compatibility shim", v171_prefs)
+        self.assertIn("install_resource_local_preferences_compat()", v171_prefs)
 
     def test_main_is_only_a_composition_root_consumer(self) -> None:
         source = (Path(__file__).resolve().parents[1] / "main.py").read_text(encoding="utf-8")
