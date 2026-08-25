@@ -11,14 +11,15 @@ APPLICATION = APP / "application"
 
 
 class CommandPortArchitectureTests(unittest.TestCase):
+    SERVICE_FILES = (
+        "allocation_service.py",
+        "planning_service.py",
+        "quick_shift_service.py",
+        "demand_service.py",
+        "segment_service.py",
+    )
+
     def test_core_application_services_do_not_import_ui_excel_or_v1_modules(self) -> None:
-        service_files = (
-            "allocation_service.py",
-            "planning_service.py",
-            "quick_shift_service.py",
-            "demand_service.py",
-            "segment_service.py",
-        )
         forbidden = (
             "nicegui",
             "xlwings",
@@ -39,7 +40,7 @@ class CommandPortArchitectureTests(unittest.TestCase):
             "app.v18",
         )
 
-        for filename in service_files:
+        for filename in self.SERVICE_FILES:
             source = (APPLICATION / filename).read_text(encoding="utf-8")
             tree = ast.parse(source)
             imports: list[str] = []
@@ -88,6 +89,20 @@ class CommandPortArchitectureTests(unittest.TestCase):
             source = (APPLICATION / filename).read_text(encoding="utf-8")
             for token in tokens:
                 self.assertIn(token, source, f"{filename} missing 6A seam {token}")
+
+    def test_services_share_one_adapter_error_translation_policy(self) -> None:
+        for filename in self.SERVICE_FILES:
+            source = (APPLICATION / filename).read_text(encoding="utf-8")
+            self.assertIn(
+                "call_application_port",
+                source,
+                f"{filename} must use the shared application-port executor",
+            )
+            self.assertNotIn(
+                "application_error_from_exception",
+                source,
+                f"{filename} must not own adapter-error translation policy",
+            )
 
     def test_runtime_services_has_no_direct_versioned_bridge_or_callback_composition(self) -> None:
         source = (APPLICATION / "runtime_services.py").read_text(encoding="utf-8")
