@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from typing import Any, Protocol
 
+from ..domain.planning_snapshot import PlanningSnapshot
 from .read_models import DemandReadModel, SegmentReadModel
 
 
@@ -39,3 +40,13 @@ class SegmentRepositoryPort(Protocol):
     def create(self, values: Mapping[str, Any]) -> str: ...
 
     def update(self, segment_id: str, updates: Mapping[str, Any]) -> None: ...
+
+
+class PlanningReadRepositoryPort(Protocol):
+    """Atomic read contract for one pure-planning calculation cycle.
+
+    Implementations may read Excel, SQL Server or another store, but callers receive
+    one immutable ``PlanningSnapshot`` and never coordinate physical tables/sheets.
+    """
+
+    def capture(self) -> PlanningSnapshot: ...
