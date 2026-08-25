@@ -14,6 +14,14 @@ SOURCE_EFFORT_ID_FIELD = v18.SOURCE_EFFORT_ID_FIELD
 EFFORT_SHEET = v18.EFFORT_SHEET
 
 
+def _declare_effort_identity_fields() -> None:
+    if SOURCE_EFFORT_ID_FIELD not in DEMAND_HEADERS:
+        DEMAND_HEADERS.append(SOURCE_EFFORT_ID_FIELD)
+    if SOURCE_EFFORT_ID_FIELD not in v13.SEGMENT_HEADERS:
+        v13.SEGMENT_HEADERS.append(SOURCE_EFFORT_ID_FIELD)
+    MASTER_SHEETS.add(EFFORT_SHEET)
+
+
 def ensure_effort_ids(repo: ExcelRepository) -> dict[int, str]:
     """Ensure stable identities for directly edited Liste_Effort rows."""
 
@@ -25,6 +33,7 @@ def ensure_effort_identity_schema(
 ) -> EffortIdentityMigrationReport:
     """Run the controlled stable effort-link migration."""
 
+    _declare_effort_identity_fields()
     return ensure_effort_identity_schema_controlled(repo)
 
 
@@ -34,11 +43,7 @@ def install_effort_identity_compat() -> None:
     if getattr(ExcelRepository, "_effort_identity_compat_installed", False):
         return
 
-    if SOURCE_EFFORT_ID_FIELD not in DEMAND_HEADERS:
-        DEMAND_HEADERS.append(SOURCE_EFFORT_ID_FIELD)
-    if SOURCE_EFFORT_ID_FIELD not in v13.SEGMENT_HEADERS:
-        v13.SEGMENT_HEADERS.append(SOURCE_EFFORT_ID_FIELD)
-    MASTER_SHEETS.add(EFFORT_SHEET)
+    _declare_effort_identity_fields()
 
     # V1.8 business wrappers resolve these module globals at execution time. Point
     # only their migration hooks at the controlled implementation before installing
