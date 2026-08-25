@@ -60,7 +60,13 @@ class SegmentService:
 
     @staticmethod
     def _validate_window(start: date | None, end: date | None) -> None:
-        if start is not None and end is not None and end < start:
+        if start is None:
+            raise ApplicationValidationError(
+                "La date de début est requise.",
+                code="segment_start_required",
+                context={"field": "start_date"},
+            )
+        if end is not None and end < start:
             raise ApplicationValidationError(
                 "La date de fin ne peut pas précéder la date de début.",
                 code="segment_date_window_invalid",
@@ -107,6 +113,20 @@ class SegmentService:
             )
 
         values = command.to_repository_values()
+        if "NoDemande" in values and not str(values["NoDemande"] or "").strip():
+            raise ApplicationValidationError(
+                "La demande est requise.",
+                code="segment_demand_required",
+                context={"field": "demand_number"},
+            )
+        if "HeuresPrevues" in values and (
+            values["HeuresPrevues"] is None or float(values["HeuresPrevues"]) <= 0
+        ):
+            raise ApplicationValidationError(
+                "Les heures prévues doivent être supérieures à zéro.",
+                code="segment_hours_invalid",
+                context={"field": "planned_hours", "value": values["HeuresPrevues"]},
+            )
         start = values.get("DateDebut", existing.start_date)
         end = values.get("DateFin", existing.end_date)
         self._validate_window(
