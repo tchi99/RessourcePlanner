@@ -1,11 +1,16 @@
 """Application-service layer for RessourcePlanner.
 
-This package contains orchestration that can be called from NiceGUI today and from
-FastAPI adapters later. Business rules remain in the domain/planning engine;
-transport and persistence technologies must not leak into this package.
+This package contains orchestration callable from NiceGUI today and from FastAPI
+later. Business rules remain in the domain/planning engine; transport and persistence
+technologies must not leak into this package.
 """
 
 from .allocation_service import AllocationService
+from .command_ports import (
+    AllocationCommandPort,
+    ApprovedDemandSyncPort,
+    PlanningCommandPort,
+)
 from .planning_service import PlanningService
 from .read_models import DemandReadModel, SegmentReadModel
 from .repository_ports import (
@@ -15,11 +20,14 @@ from .repository_ports import (
 )
 
 __all__ = [
+    "AllocationCommandPort",
     "AllocationService",
-    "PlanningService",
+    "ApprovedDemandSyncPort",
     "DemandReadModel",
-    "SegmentReadModel",
     "DemandRepositoryPort",
+    "PlanningCommandPort",
     "PlanningReadRepositoryPort",
+    "PlanningService",
+    "SegmentReadModel",
     "SegmentRepositoryPort",
 ]
