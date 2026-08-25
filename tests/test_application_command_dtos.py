@@ -13,7 +13,13 @@ from app.application.commands import (
     QuickShiftCreateCommand,
     SegmentCreateCommand,
 )
-from app.application.errors import ApplicationError, ApplicationValidationError
+from app.application.errors import (
+    ApplicationError,
+    ApplicationNotFoundError,
+    ApplicationOperationError,
+    ApplicationValidationError,
+    application_error_from_exception,
+)
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -154,6 +160,30 @@ class ApplicationCommandDtoTests(unittest.TestCase):
             },
         )
         self.assertEqual(str(error), "Impossible de planifier")
+
+    def test_legacy_adapter_errors_are_translated_consistently(self) -> None:
+        validation = application_error_from_exception(
+            ValueError("heures invalides"),
+            code_prefix="allocation_create",
+            context={"segment_id": "SEG-1"},
+        )
+        missing = application_error_from_exception(
+            KeyError("SEG-404"),
+            code_prefix="segment_lookup",
+        )
+        operation = application_error_from_exception(
+            RuntimeError("storage offline"),
+            code_prefix="demand_create",
+        )
+
+        self.assertIsInstance(validation, ApplicationValidationError)
+        self.assertEqual(validation.code, "allocation_create_invalid")
+        self.assertEqual(validation.context["segment_id"], "SEG-1")
+        self.assertIsInstance(missing, ApplicationNotFoundError)
+        self.assertEqual(missing.code, "segment_lookup_not_found")
+        self.assertEqual(str(missing), "SEG-404")
+        self.assertIsInstance(operation, ApplicationOperationError)
+        self.assertEqual(operation.code, "demand_create_failed")
 
     def test_command_and_error_modules_are_transport_and_storage_neutral(self) -> None:
         forbidden = (
