@@ -10,7 +10,7 @@ from .errors import (
     ApplicationError,
     ApplicationOperationError,
     ApplicationValidationError,
-    application_error_from_exception,
+    call_application_port,
 )
 from .repository_ports import SegmentRepositoryPort
 
@@ -111,33 +111,35 @@ class QuickShiftService:
             self.ORIGIN_FIELD: self.ORIGIN_QUICK_SHIFT,
         }
 
-        try:
-            segment_id = self._created_identifier(
-                self._segments.create(segment_values),
-                entity="segment",
-            )
-        except ApplicationError:
-            raise
-        except Exception as exc:
-            raise application_error_from_exception(
-                exc,
+        segment_id = self._created_identifier(
+            call_application_port(
+                lambda: self._segments.create(segment_values),
                 code_prefix="quick_shift_segment_create",
                 context={"project_number": project, "technician": tech},
-            ) from exc
+            ),
+            entity="segment",
+        )
 
         try:
             allocation_id = self._created_identifier(
-                self._allocations.create_manual(
-                    segment_id,
-                    tech,
-                    day,
-                    hours,
-                    bool(command.outside_standard_hours),
-                    str(command.note or "").strip(),
+                call_application_port(
+                    lambda: self._allocations.create_manual(
+                        segment_id,
+                        tech,
+                        day,
+                        hours,
+                        bool(command.outside_standard_hours),
+                        str(command.note or "").strip(),
+                    ),
+                    code_prefix="quick_shift_allocation_create",
+                    context={"segment_id": segment_id, "technician": tech},
                 ),
                 entity="allocation",
             )
-        except Exception as exc:
+        except ApplicationError:
+            # Rollback is intentionally specialized here because Quick Shift creates
+            # two persisted objects as one application workflow. If allocation creation
+            # fails, the just-created segment must not remain active by itself.
             try:
                 self._segments.update(segment_id, {"Statut": "Annulé"})
             except Exception as rollback_exc:
@@ -151,13 +153,7 @@ class QuickShiftService:
                         "technician": tech,
                     },
                 ) from rollback_exc
-            if isinstance(exc, ApplicationError):
-                raise
-            raise application_error_from_exception(
-                exc,
-                code_prefix="quick_shift_allocation_create",
-                context={"segment_id": segment_id, "technician": tech},
-            ) from exc
+            raise
 
         return QuickShiftResult(segment_id=segment_id, allocation_id=allocation_id)
 
