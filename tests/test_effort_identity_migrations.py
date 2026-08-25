@@ -6,6 +6,7 @@ from pathlib import Path
 import unittest
 from unittest.mock import patch
 
+from app.effort_identity_compat import ensure_effort_identity_schema
 from app.effort_identity_migrations import (
     _next_effort_ids,
     _write_changed_cells,
@@ -42,6 +43,7 @@ class _FakeSheet:
 
 class _FakeRepository:
     def __init__(self):
+        self.path = "fixture.xlsx"
         self._lock = nullcontext()
         self.save_calls = 0
 
@@ -177,13 +179,30 @@ class EffortIdentityMigrationTests(unittest.TestCase):
         self.assertFalse(report.changed)
         self.assertEqual(repo.save_calls, 0)
 
+    def test_full_schema_facade_preserves_v18_workbook_marker(self) -> None:
+        repo = _FakeRepository()
+        sentinel = object()
+
+        with patch(
+            "app.effort_identity_compat._declare_effort_identity_fields"
+        ), patch(
+            "app.effort_identity_compat.ensure_effort_identity_schema_controlled",
+            return_value=sentinel,
+        ) as controlled:
+            first = ensure_effort_identity_schema(repo)
+            second = ensure_effort_identity_schema(repo)
+
+        self.assertIs(first, sentinel)
+        self.assertEqual(controlled.call_count, 1)
+        self.assertFalse(second.changed)
+
     def test_effort_identity_compat_no_longer_delegates_migration_to_v18_privates(self) -> None:
         source = (APP / "effort_identity_compat.py").read_text(encoding="utf-8")
 
         self.assertNotIn("return v18._ensure_effort_ids(repo)", source)
         self.assertNotIn("v18.ensure_v18_schema(repo)", source)
         self.assertIn("v18._ensure_effort_ids = ensure_effort_ids_controlled", source)
-        self.assertIn("v18.ensure_v18_schema = ensure_effort_identity_schema_controlled", source)
+        self.assertIn("v18.ensure_v18_schema = ensure_effort_identity_schema", source)
         self.assertIn("v18._install_stable_link_wrappers()", source)
 
     def test_read_guard_is_preserved_but_routes_through_controlled_boundary(self) -> None:
