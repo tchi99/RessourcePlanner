@@ -15,6 +15,7 @@ from .operational_planning_sorting import (
     alpha_key,
     manual_order_script as build_manual_order_script,
     rank_weekly_stats,
+    set_resource_sort,
 )
 
 
@@ -132,6 +133,12 @@ def install_operational_planning_sorting() -> None:
 
     if getattr(ui_module.PlannerUI, "_operational_planning_sorting_installed", False):
         return
+
+    # Preserve the V1.7.1 behavior while the base renderer still lives in
+    # v17_refinements: the old DOM reorder is disabled and the selector refreshes the
+    # Python-ranked renderer instead.
+    v17_refinements._resource_sort_script = lambda _owner: "void 0;"
+    v17_refinements._set_resource_sort = set_resource_sort
 
     render_planning = compose_operational_planning_renderer(
         base_render=v17_refinements._render_planning,
