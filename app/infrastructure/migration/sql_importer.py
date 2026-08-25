@@ -164,6 +164,16 @@ def _reconcile(
     )
 
 
+def _resolve_work_package(
+    reference: str,
+    by_legacy_id: Mapping[str, WorkPackage],
+    by_source_row: Mapping[str, WorkPackage],
+) -> WorkPackage | None:
+    if not reference:
+        return None
+    return by_legacy_id.get(reference) or by_source_row.get(reference)
+
+
 def import_cutover_dataset(
     session: Session,
     source: CutoverExtractionReport,
@@ -217,10 +227,15 @@ def import_cutover_dataset(
         resources[name] = resource
     session.flush()
 
-    work_packages: dict[str, WorkPackage] = {}
+    work_packages_by_legacy: dict[str, WorkPackage] = {}
+    work_packages_by_row: dict[str, WorkPackage] = {}
     for row in dataset.work_packages:
         identifier = _text(row.get("legacy_effort_id"))
         source_row = _text(row.get("source_row"))
+        if identifier and identifier in work_packages_by_legacy:
+            raise CutoverImportError(f"IDEffort dupliqué pendant l'import: {identifier}")
+        if source_row and source_row in work_packages_by_row:
+            raise CutoverImportError(f"Ligne effort dupliquée pendant l'import: {source_row}")
         project = projects[_text(row.get("project_number"))]
         work_package = WorkPackage(
             project_id=project.id,
@@ -234,9 +249,9 @@ def import_cutover_dataset(
         )
         session.add(work_package)
         if identifier:
-            work_packages[identifier] = work_package
+            work_packages_by_legacy[identifier] = work_package
         if source_row:
-            work_packages[source_row] = work_package
+            work_packages_by_row[source_row] = work_package
     session.flush()
 
     for row in dataset.availability:
@@ -264,7 +279,11 @@ def import_cutover_dataset(
         project = projects[_text(row.get("project_number"))]
         proposed = resources.get(_text(row.get("proposed_resource")))
         source_effort = _text(demand_work_package_links.get(number))
-        linked_work_package = work_packages.get(source_effort) if source_effort else None
+        linked_work_package = _resolve_work_package(
+            source_effort,
+            work_packages_by_legacy,
+            work_packages_by_row,
+        )
         if source_effort and linked_work_package is None:
             raise CutoverImportError(
                 f"Demande {number}: SourceEffortID/SourceEffortRow introuvable: {source_effort}"
@@ -332,7 +351,15 @@ def import_cutover_dataset(
         request = demands.get(demand_number) if demand_number else None
         resource = resources.get(_text(row.get("resource_name")))
         raw_source_effort = _text(row.get("source_effort_id"))
-        source_work_package = work_packages.get(raw_source_effort) if raw_source_effort else None
+        source_work_package = _resolve_work_package(
+            raw_source_effort,
+            work_packages_by_legacy,
+            work_packages_by_row,
+        )
+        if raw_source_effort and source_work_package is None:
+            raise CutoverImportError(
+                f"Segment {identifier}: SourceEffortID/SourceEffortRow introuvable: {raw_source_effort}"
+            )
         canonical_source_effort = (
             _text(source_work_package.legacy_effort_id)
             if source_work_package is not None and source_work_package.legacy_effort_id
