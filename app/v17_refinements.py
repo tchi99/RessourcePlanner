@@ -5,9 +5,12 @@ from typing import Any
 
 from nicegui import ui
 
+from . import operational_planning_header_filters as header_filters_module
 from . import ui as ui_module
-from . import v16, v16_refinements, v17
+from . import v16, v16_refinements
 from .excel_repository import ExcelRepository
+from .operational_planning_orchestrator import render_operational_planning
+from .operational_planning_orchestrator_compat import operational_planning_bindings
 from .ui_context import ensure_scoped_ui
 
 
@@ -282,8 +285,8 @@ def _render_planning(
 ) -> None:
     sort_mode = str(getattr(self, "planning_resource_sort", SORT_AVAIL_DESC) or SORT_AVAIL_DESC)
     scoped_ui = ensure_scoped_ui(
-        v17,
-        scope_name="v17_planning",
+        header_filters_module,
+        scope_name="operational_planning_header_filters",
         scoped_factories=("select",),
     )
     original_select = scoped_ui.base_factory("select")
@@ -299,9 +302,10 @@ def _render_planning(
         return original_select(options, *args, **kwargs)
 
     with scoped_ui.override_factory("select", select_proxy):
-        v17._render_planning(
+        render_operational_planning(
             self,
             weekly_stats_provider=weekly_stats_provider,
+            bindings=operational_planning_bindings(),
         )
 
     ui.timer(0.08, lambda: _install_planning_browser_helpers(self), once=True)
@@ -530,6 +534,6 @@ def install_v17_refinements() -> None:
     ui_module.PlannerUI._render_content = render_content
     ui_module.PlannerUI.render_resources = _render_resources
 
-    # Le renderer de planning V1.7 reste une fonction explicite consommée par
-    # v17_sort_fix; cette couche n'a plus besoin de réécrire les alias historiques.
+    # Le renderer de planning raffiné est consommé par v17_sort_fix mais compose
+    # maintenant directement l'orchestrateur stable, sans repasser par v17.
     ui_module.PlannerUI._v17_refinements_installed = True
