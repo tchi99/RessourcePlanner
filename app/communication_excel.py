@@ -17,11 +17,24 @@ from .domain.communication_audit import (
 )
 from .domain.communication_planning import CommunicationBatch, Contact, WeeklyAssignment
 from .excel_repository import ExcelRepository, MASTER_SHEETS, _as_matrix, _date_from_any
+from .infrastructure.excel.schema_migrations import (
+    ExcelSchemaMigration,
+    ExcelSchemaMigrationReport,
+    ensure_table_schema,
+    run_excel_schema_migrations,
+)
 
 
 CONTACT_SHEET = "ContactsMO"
 CONTACT_TABLE = "ContactsMOTable"
-CONTACT_HEADERS = ["PersonneCle", "TypePersonne", "NomAffiche", "Courriel", "Actif", "DateModification"]
+CONTACT_HEADERS = [
+    "PersonneCle",
+    "TypePersonne",
+    "NomAffiche",
+    "Courriel",
+    "Actif",
+    "DateModification",
+]
 
 BATCH_SHEET = "CommunicationLotsMO"
 BATCH_TABLE = "CommunicationLotsMOTable"
@@ -71,6 +84,13 @@ SNAPSHOT_HEADERS = [
 
 TRUE_VALUES = {"oui", "true", "1", "x", "yes", "actif", "active"}
 
+_COMMUNICATION_MIGRATION_IDS = (
+    "communication.contacts.table.v1",
+    "communication.batches.table.v1",
+    "communication.messages.table.v1",
+    "communication.snapshot.table.v1",
+)
+
 
 def _truthy(value: Any) -> bool:
     if isinstance(value, bool):
@@ -78,15 +98,79 @@ def _truthy(value: Any) -> bool:
     return str(value or "").strip().lower() in TRUE_VALUES
 
 
-def ensure_communication_sheets(repo: ExcelRepository) -> None:
-    """Create the communication registry without enabling any email transport."""
+def _communication_schema_marker(repo: ExcelRepository) -> tuple[Any, ...]:
+    return (
+        str(repo.path or ""),
+        tuple(CONTACT_HEADERS),
+        tuple(BATCH_HEADERS),
+        tuple(MESSAGE_HEADERS),
+        tuple(SNAPSHOT_HEADERS),
+    )
+
+
+def _unchanged_communication_schema_report() -> ExcelSchemaMigrationReport:
+    return ExcelSchemaMigrationReport(
+        migration_ids=_COMMUNICATION_MIGRATION_IDS,
+        changed_migration_ids=(),
+    )
+
+
+def ensure_communication_sheets(
+    repo: ExcelRepository,
+) -> ExcelSchemaMigrationReport:
+    """Ensure the communication registry and save only on a structural change."""
+
     with repo._lock:
         MASTER_SHEETS.add(CONTACT_SHEET)
-        repo._ensure_sheet_table(CONTACT_SHEET, CONTACT_HEADERS, CONTACT_TABLE)
-        repo._ensure_sheet_table(BATCH_SHEET, BATCH_HEADERS, BATCH_TABLE)
-        repo._ensure_sheet_table(MESSAGE_SHEET, MESSAGE_HEADERS, MESSAGE_TABLE)
-        repo._ensure_sheet_table(SNAPSHOT_SHEET, SNAPSHOT_HEADERS, SNAPSHOT_TABLE)
-        repo.save()
+        marker = _communication_schema_marker(repo)
+        if getattr(repo, "_communication_schema_marker", None) == marker:
+            return _unchanged_communication_schema_report()
+
+        report = run_excel_schema_migrations(
+            repo,
+            (
+                ExcelSchemaMigration(
+                    "communication.contacts.table.v1",
+                    lambda current: ensure_table_schema(
+                        current,
+                        CONTACT_SHEET,
+                        CONTACT_HEADERS,
+                        CONTACT_TABLE,
+                    ),
+                ),
+                ExcelSchemaMigration(
+                    "communication.batches.table.v1",
+                    lambda current: ensure_table_schema(
+                        current,
+                        BATCH_SHEET,
+                        BATCH_HEADERS,
+                        BATCH_TABLE,
+                    ),
+                ),
+                ExcelSchemaMigration(
+                    "communication.messages.table.v1",
+                    lambda current: ensure_table_schema(
+                        current,
+                        MESSAGE_SHEET,
+                        MESSAGE_HEADERS,
+                        MESSAGE_TABLE,
+                    ),
+                ),
+                ExcelSchemaMigration(
+                    "communication.snapshot.table.v1",
+                    lambda current: ensure_table_schema(
+                        current,
+                        SNAPSHOT_SHEET,
+                        SNAPSHOT_HEADERS,
+                        SNAPSHOT_TABLE,
+                    ),
+                ),
+            ),
+        )
+        if report.changed:
+            repo.save()
+        repo._communication_schema_marker = marker
+        return report
 
 
 def contacts_by_id(repo: ExcelRepository) -> dict[str, Contact]:
@@ -96,7 +180,13 @@ def contacts_by_id(repo: ExcelRepository) -> dict[str, Contact]:
     for row in rows:
         person_id = str(row.get("PersonneCle") or "").strip()
         email = str(row.get("Courriel") or "").strip()
-        if not person_id or not email or not _truthy(row.get("Actif") if row.get("Actif") not in (None, "") else "Oui"):
+        if (
+            not person_id
+            or not email
+            or not _truthy(
+                row.get("Actif") if row.get("Actif") not in (None, "") else "Oui"
+            )
+        ):
             continue
         result[person_id] = Contact(
             person_id=person_id,
@@ -106,7 +196,13 @@ def contacts_by_id(repo: ExcelRepository) -> dict[str, Contact]:
     return result
 
 
-def _append_rows(repo: ExcelRepository, sheet_name: str, table_name: str, headers: list[str], rows: Sequence[dict[str, Any]]) -> None:
+def _append_rows(
+    repo: ExcelRepository,
+    sheet_name: str,
+    table_name: str,
+    headers: list[str],
+    rows: Sequence[dict[str, Any]],
+) -> None:
     if not rows:
         return
     sheet = repo._book().sheets[sheet_name]
@@ -129,10 +225,22 @@ def _batch_state_from_row(row: dict[str, Any]) -> CommunicationAuditState:
         snapshot_fingerprint=str(row.get("EmpreintePlanning") or ""),
         status=str(row.get("Statut") or STATUS_PREPARED),
         prepared_by=str(row.get("PreparePar") or ""),
-        prepared_at=row.get("DatePreparation") if isinstance(row.get("DatePreparation"), datetime) else None,
+        prepared_at=(
+            row.get("DatePreparation")
+            if isinstance(row.get("DatePreparation"), datetime)
+            else None
+        ),
         approved_by=str(row.get("ApprouvePar") or ""),
-        approved_at=row.get("DateApprobation") if isinstance(row.get("DateApprobation"), datetime) else None,
-        communicated_at=row.get("DateCommunication") if isinstance(row.get("DateCommunication"), datetime) else None,
+        approved_at=(
+            row.get("DateApprobation")
+            if isinstance(row.get("DateApprobation"), datetime)
+            else None
+        ),
+        communicated_at=(
+            row.get("DateCommunication")
+            if isinstance(row.get("DateCommunication"), datetime)
+            else None
+        ),
     )
 
 
@@ -214,7 +322,13 @@ def persist_prepared_batch(
     with repo._lock:
         _append_rows(repo, BATCH_SHEET, BATCH_TABLE, BATCH_HEADERS, [batch_row])
         _append_rows(repo, MESSAGE_SHEET, MESSAGE_TABLE, MESSAGE_HEADERS, message_rows)
-        _append_rows(repo, SNAPSHOT_SHEET, SNAPSHOT_TABLE, SNAPSHOT_HEADERS, snapshot_rows)
+        _append_rows(
+            repo,
+            SNAPSHOT_SHEET,
+            SNAPSHOT_TABLE,
+            SNAPSHOT_HEADERS,
+            snapshot_rows,
+        )
         repo.save()
     return batch_id
 
@@ -284,8 +398,12 @@ def approve_persisted_batch(
         row = _locate_batch_row(repo, batch_id)
         sheet = repo._book().sheets[BATCH_SHEET]
         sheet.range((row, BATCH_HEADERS.index("Statut") + 1)).value = updated.status
-        sheet.range((row, BATCH_HEADERS.index("ApprouvePar") + 1)).value = updated.approved_by
-        sheet.range((row, BATCH_HEADERS.index("DateApprobation") + 1)).value = updated.approved_at
+        sheet.range((row, BATCH_HEADERS.index("ApprouvePar") + 1)).value = (
+            updated.approved_by
+        )
+        sheet.range((row, BATCH_HEADERS.index("DateApprobation") + 1)).value = (
+            updated.approved_at
+        )
         _set_message_status(repo, batch_id, STATUS_APPROVED)
         repo.save()
 
@@ -305,12 +423,17 @@ def mark_persisted_batch_communicated(
         row = _locate_batch_row(repo, batch_id)
         sheet = repo._book().sheets[BATCH_SHEET]
         sheet.range((row, BATCH_HEADERS.index("Statut") + 1)).value = updated.status
-        sheet.range((row, BATCH_HEADERS.index("DateCommunication") + 1)).value = updated.communicated_at
+        sheet.range((row, BATCH_HEADERS.index("DateCommunication") + 1)).value = (
+            updated.communicated_at
+        )
         _set_message_status(repo, batch_id, STATUS_COMMUNICATED)
         repo.save()
 
 
-def latest_communicated_snapshot(repo: ExcelRepository, week_start: date) -> tuple[str, list[WeeklyAssignment]]:
+def latest_communicated_snapshot(
+    repo: ExcelRepository,
+    week_start: date,
+) -> tuple[str, list[WeeklyAssignment]]:
     ensure_communication_sheets(repo)
     batches = [
         row
