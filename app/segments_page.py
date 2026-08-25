@@ -4,8 +4,21 @@ from typing import Any
 
 from nicegui import ui
 
-from .segment_editor_ui import open_segment_editor
 from .segment_repository import number, segment_records
+
+
+def _open_segment_editor(owner: Any, **kwargs: Any) -> None:
+    """Load the editor only when the user opens it.
+
+    ``SegmentsPage`` is imported while ``PlannerUI`` itself is being initialized.
+    Importing ``segment_editor_ui`` at module load time pulls ``bugfixes`` back into
+    that chain and creates a circular import during application startup. Keeping this
+    dependency lazy makes page discovery independent from runtime installer order.
+    """
+
+    from .segment_editor_ui import open_segment_editor
+
+    open_segment_editor(owner, **kwargs)
 
 
 class SegmentsPage:
@@ -48,7 +61,7 @@ class SegmentsPage:
             ui.button(
                 "Nouveau segment",
                 icon="add",
-                on_click=lambda: open_segment_editor(
+                on_click=lambda: _open_segment_editor(
                     self.owner,
                     demand_number=self.request_filter,
                 ),
@@ -129,7 +142,7 @@ class SegmentsPage:
                 None,
             )
             if segment:
-                open_segment_editor(self.owner, segment=segment)
+                _open_segment_editor(self.owner, segment=segment)
 
         grid.on("cellClicked", row_click)
 
