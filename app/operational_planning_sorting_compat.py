@@ -7,6 +7,8 @@ from nicegui import ui
 from . import ui as ui_module
 from . import v16, v16_refinements, v17_refinements
 from .bugfixes import schedulable_technicians
+from .operational_planning_base_renderer import render_operational_planning_base
+from .operational_planning_orchestrator_compat import operational_planning_bindings
 from .operational_planning_page import register_operational_planning_renderer
 from .operational_planning_renderer import compose_operational_planning_renderer
 from .operational_planning_sorting import (
@@ -15,7 +17,6 @@ from .operational_planning_sorting import (
     alpha_key,
     manual_order_script as build_manual_order_script,
     rank_weekly_stats,
-    set_resource_sort,
 )
 
 
@@ -129,20 +130,26 @@ def register_manual_order_handler(owner: ui_module.PlannerUI) -> None:
     owner._operational_manual_order_handler_registered = True
 
 
+def base_render(
+    owner: ui_module.PlannerUI,
+    *,
+    weekly_stats_provider: Any | None = None,
+) -> None:
+    render_operational_planning_base(
+        owner,
+        weekly_stats_provider=weekly_stats_provider,
+        bindings=operational_planning_bindings(),
+    )
+
+
 def install_operational_planning_sorting() -> None:
     """Install the authoritative operational-planning resource sort path."""
 
     if getattr(ui_module.PlannerUI, "_operational_planning_sorting_installed", False):
         return
 
-    # Preserve the V1.7.1 behavior while the base renderer still lives in
-    # v17_refinements: the old DOM reorder is disabled and the selector refreshes the
-    # Python-ranked renderer instead.
-    v17_refinements._resource_sort_script = lambda _owner: "void 0;"
-    v17_refinements._set_resource_sort = set_resource_sort
-
     render_planning = compose_operational_planning_renderer(
-        base_render=v17_refinements._render_planning,
+        base_render=base_render,
         weekly_stats_provider=v16._weekly_resource_stats,
         rank_weekly_stats=ranked_weekly_stats,
         register_manual_order_handler=register_manual_order_handler,
