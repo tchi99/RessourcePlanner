@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from .excel_repository import ExcelRepository
-from .v171_local_preferences import _load_preferences, _save_preferences, _workbook_key
+from .resource_local_preferences import _load_preferences, _save_preferences, _workbook_key
 
 
 MAIL_CLIENT_OUTLOOK = "outlook"
