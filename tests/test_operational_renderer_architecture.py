@@ -25,11 +25,17 @@ class OperationalRendererArchitectureTests(unittest.TestCase):
         self.assertIn("weekly_stats_provider=weekly_stats_provider", source)
         self.assertIn("bindings=operational_planning_bindings()", source)
 
-    def test_sort_fix_injects_ranked_stats_without_replacing_module_function(self) -> None:
-        source = self._source("v17_sort_fix.py")
-        self.assertIn("base_render(owner, weekly_stats_provider=ranked_stats)", source)
-        self.assertNotIn("v16._weekly_resource_stats = ranked_stats", source)
-        self.assertNotIn("v16._weekly_resource_stats = original_weekly_stats", source)
+    def test_stable_sorting_composes_ranked_stats_without_replacing_stats_provider(self) -> None:
+        stable = self._source("operational_planning_sorting.py")
+        compat = self._source("operational_planning_sorting_compat.py")
+        shim = self._source("v17_sort_fix.py")
+
+        self.assertIn("def rank_weekly_stats(", stable)
+        self.assertIn("compose_operational_planning_renderer(", compat)
+        self.assertIn("rank_weekly_stats=ranked_weekly_stats", compat)
+        self.assertNotIn("v16._weekly_resource_stats =", compat)
+        self.assertIn("Compatibility shim", shim)
+        self.assertNotIn("compose_operational_planning_renderer(", shim)
 
 
 if __name__ == "__main__":
