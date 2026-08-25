@@ -52,7 +52,7 @@ class CommandPortArchitectureTests(unittest.TestCase):
                     f"{filename} leaks transport/storage/V1 dependency: {module}",
                 )
 
-    def test_runtime_services_has_no_direct_versioned_bridge(self) -> None:
+    def test_runtime_services_has_no_direct_versioned_bridge_or_callback_composition(self) -> None:
         source = (APPLICATION / "runtime_services.py").read_text(encoding="utf-8")
         for token in (
             "app.v13",
@@ -64,8 +64,28 @@ class CommandPortArchitectureTests(unittest.TestCase):
             "v15_engine",
             "v15_refinements",
             "_sync_segments_to_approved_demand",
+            "rebuild_planning=lambda",
+            "sync_approved_demand=lambda",
+            "from_repository_port",
         ):
             self.assertNotIn(token, source)
+        self.assertIn("DemandService(", source)
+        self.assertIn("SegmentService(", source)
+        self.assertIn("ExcelPlanningCommandAdapter", source)
+        self.assertIn("ExcelApprovedDemandSyncAdapter", source)
+
+    def test_demand_and_segment_services_store_ports_not_repository_context(self) -> None:
+        demand = (APPLICATION / "demand_service.py").read_text(encoding="utf-8")
+        segment = (APPLICATION / "segment_service.py").read_text(encoding="utf-8")
+
+        for source in (demand, segment):
+            self.assertNotIn("repository_context", source)
+            self.assertNotIn("self._repository", source)
+            self.assertNotIn("rebuild_planning", source)
+        self.assertIn("ApprovedDemandSyncPort", demand)
+        self.assertIn("PlanningCommandPort", demand)
+        self.assertIn("SegmentRepositoryPort", segment)
+        self.assertIn("PlanningCommandPort", segment)
 
     def test_quick_shift_ui_no_longer_calls_v15_engine_directly(self) -> None:
         source = (APP / "quick_shift_ui.py").read_text(encoding="utf-8")
