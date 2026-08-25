@@ -1,22 +1,18 @@
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
+from collections.abc import Mapping
 from datetime import date
-from typing import Any, TypeVar
+from typing import Any
 
 from .command_ports import PlanningCommandPort
 from .commands import SegmentCancelCommand, SegmentCreateCommand, SegmentUpdateCommand
 from .errors import (
-    ApplicationError,
     ApplicationNotFoundError,
     ApplicationOperationError,
     ApplicationValidationError,
-    application_error_from_exception,
+    call_application_port,
 )
 from .repository_ports import SegmentRepositoryPort
-
-
-ResultT = TypeVar("ResultT")
 
 
 class SegmentService:
@@ -41,24 +37,6 @@ class SegmentService:
         return identifier
 
     @staticmethod
-    def _call_adapter(
-        action: Callable[[], ResultT],
-        *,
-        code_prefix: str,
-        context: Mapping[str, Any],
-    ) -> ResultT:
-        try:
-            return action()
-        except ApplicationError:
-            raise
-        except Exception as exc:
-            raise application_error_from_exception(
-                exc,
-                code_prefix=code_prefix,
-                context=context,
-            ) from exc
-
-    @staticmethod
     def _validate_window(start: date | None, end: date | None) -> None:
         if start is None:
             raise ApplicationValidationError(
@@ -75,23 +53,21 @@ class SegmentService:
 
     def create_command(self, command: SegmentCreateCommand) -> tuple[str, dict[str, Any]]:
         values = command.to_repository_values()
-        try:
-            identifier = str(self._segments.create(values) or "").strip()
-        except ApplicationError:
-            raise
-        except Exception as exc:
-            raise application_error_from_exception(
-                exc,
+        identifier = str(
+            call_application_port(
+                lambda: self._segments.create(values),
                 code_prefix="segment_create",
                 context={"demand_number": command.demand_number},
-            ) from exc
+            )
+            or ""
+        ).strip()
         if not identifier:
             raise ApplicationOperationError(
                 "La création du segment n'a retourné aucun identifiant.",
                 code="segment_create_id_missing",
                 context={"demand_number": command.demand_number},
             )
-        summary = self._call_adapter(
+        summary = call_application_port(
             self._planning.rebuild,
             code_prefix="segment_create_rebuild",
             context={"segment_id": identifier},
@@ -100,7 +76,7 @@ class SegmentService:
 
     def update_command(self, command: SegmentUpdateCommand) -> dict[str, Any]:
         identifier = self._identifier(command.segment_id)
-        existing = self._call_adapter(
+        existing = call_application_port(
             lambda: self._segments.get(identifier),
             code_prefix="segment_lookup",
             context={"segment_id": identifier},
@@ -134,13 +110,13 @@ class SegmentService:
             end if isinstance(end, date) else None,
         )
 
-        self._call_adapter(
+        call_application_port(
             lambda: self._segments.update(identifier, values),
             code_prefix="segment_update",
             context={"segment_id": identifier},
         )
         return dict(
-            self._call_adapter(
+            call_application_port(
                 self._planning.rebuild,
                 code_prefix="segment_update_rebuild",
                 context={"segment_id": identifier},
@@ -149,7 +125,7 @@ class SegmentService:
 
     def cancel_command(self, command: SegmentCancelCommand) -> dict[str, Any]:
         identifier = self._identifier(command.segment_id)
-        existing = self._call_adapter(
+        existing = call_application_port(
             lambda: self._segments.get(identifier),
             code_prefix="segment_lookup",
             context={"segment_id": identifier},
@@ -160,13 +136,13 @@ class SegmentService:
                 code="segment_not_found",
                 context={"segment_id": identifier},
             )
-        self._call_adapter(
+        call_application_port(
             lambda: self._segments.update(identifier, {"Statut": "Annulé"}),
             code_prefix="segment_cancel",
             context={"segment_id": identifier},
         )
         return dict(
-            self._call_adapter(
+            call_application_port(
                 self._planning.rebuild,
                 code_prefix="segment_cancel_rebuild",
                 context={"segment_id": identifier},
