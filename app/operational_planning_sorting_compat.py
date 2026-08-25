@@ -5,7 +5,8 @@ from typing import Any
 from nicegui import ui
 
 from . import ui as ui_module
-from . import v16, v16_refinements, v17_refinements
+from . import v16, v16_refinements
+from . import resource_management_compat as resource_management
 from .bugfixes import schedulable_technicians
 from .operational_planning_base_renderer import render_operational_planning_base
 from .operational_planning_orchestrator_compat import operational_planning_bindings
@@ -31,7 +32,7 @@ def ranked_weekly_stats(
         original_stats,
         repo,
         week,
-        order_map=v17_refinements._resource_order_map,
+        order_map=resource_management._resource_order_map,
     )
 
 
@@ -57,7 +58,7 @@ def move_manual_resource(
 
     class_map = v16.resource_class_map(owner.repo)
     group = class_map.get(name, v16.UNCLASSIFIED)
-    manual = v17_refinements._resource_order_map(owner.repo)
+    manual = resource_management._resource_order_map(owner.repo)
     profiles = v16_refinements.resource_profile_map(owner.repo)
 
     group_names = [
