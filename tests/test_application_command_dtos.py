@@ -6,17 +6,14 @@ from datetime import date
 from pathlib import Path
 import unittest
 
-from app.application.command_dtos import (
+from app.application.commands import (
     DemandCreateCommand,
     DemandUpdateCommand,
     ManualAllocationCreateCommand,
     QuickShiftCreateCommand,
     SegmentCreateCommand,
 )
-from app.application.errors import (
-    ApplicationError,
-    ApplicationValidationError,
-)
+from app.application.errors import ApplicationError, ApplicationValidationError
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -158,7 +155,7 @@ class ApplicationCommandDtoTests(unittest.TestCase):
         )
         self.assertEqual(str(error), "Impossible de planifier")
 
-    def test_dto_and_error_modules_are_transport_and_storage_neutral(self) -> None:
+    def test_command_and_error_modules_are_transport_and_storage_neutral(self) -> None:
         forbidden = (
             "nicegui",
             "fastapi",
@@ -173,8 +170,12 @@ class ApplicationCommandDtoTests(unittest.TestCase):
             "app.v17",
             "app.v18",
         )
-        for filename in ("command_dtos.py", "errors.py"):
-            tree = ast.parse((APPLICATION / filename).read_text(encoding="utf-8"))
+        files = [
+            APPLICATION / "errors.py",
+            *(APPLICATION / "commands").glob("*.py"),
+        ]
+        for path in files:
+            tree = ast.parse(path.read_text(encoding="utf-8"))
             imports: list[str] = []
             for node in ast.walk(tree):
                 if isinstance(node, ast.Import):
@@ -184,7 +185,7 @@ class ApplicationCommandDtoTests(unittest.TestCase):
             for module in imports:
                 self.assertFalse(
                     any(token in module for token in forbidden),
-                    f"{filename} leaks transport/storage dependency: {module}",
+                    f"{path.name} leaks transport/storage dependency: {module}",
                 )
 
 
