@@ -33,6 +33,38 @@ class ExplicitPageBoundaryTests(unittest.TestCase):
             ]
             self.assertEqual(offenders, [], f"{filename}: {offenders}")
 
+    def test_segments_page_does_not_eagerly_import_segment_editor(self) -> None:
+        path = APP / "segments_page.py"
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+
+        top_level_modules = {
+            node.module or ""
+            for node in tree.body
+            if isinstance(node, ast.ImportFrom)
+        }
+        self.assertNotIn(
+            "segment_editor_ui",
+            top_level_modules,
+            "SegmentsPage is imported while PlannerUI starts; the editor must stay lazy to avoid bugfixes -> ui -> segments_page -> segment_editor_ui -> bugfixes.",
+        )
+
+        helper = next(
+            (
+                node
+                for node in tree.body
+                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+                and node.name == "_open_segment_editor"
+            ),
+            None,
+        )
+        self.assertIsNotNone(helper)
+        lazy_modules = {
+            node.module or ""
+            for node in ast.walk(helper)
+            if isinstance(node, ast.ImportFrom)
+        }
+        self.assertIn("segment_editor_ui", lazy_modules)
+
     def test_medium_term_page_owns_route_and_read_signature(self) -> None:
         source = (APP / "medium_term_page.py").read_text(encoding="utf-8")
 
