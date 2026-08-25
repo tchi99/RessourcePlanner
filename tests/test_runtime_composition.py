@@ -21,14 +21,16 @@ class RuntimeCompositionTests(unittest.TestCase):
         self.assertLess(names.index("resource_management"), names.index("operational_planning_sorting"))
         self.assertLess(names.index("operational_planning_sorting"), names.index("runtime_performance"))
         self.assertLess(names.index("runtime_performance"), names.index("resource_local_preferences"))
-        self.assertLess(names.index("resource_local_preferences"), names.index("v18_features"))
-        self.assertLess(names.index("v18_features"), names.index("effort_identity_guard"))
-        self.assertLess(names.index("effort_identity_guard"), names.index("v18_refinements"))
-        self.assertLess(names.index("v18_refinements"), names.index("quick_shift_ui"))
+        self.assertLess(names.index("resource_local_preferences"), names.index("effort_identity"))
+        self.assertLess(names.index("effort_identity"), names.index("effort_identity_guard"))
+        self.assertLess(names.index("effort_identity_guard"), names.index("demand_cancellation"))
+        self.assertLess(names.index("demand_cancellation"), names.index("medium_term_renderer"))
+        self.assertLess(names.index("medium_term_renderer"), names.index("quick_shift_ui"))
         self.assertLess(names.index("quick_shift_ui"), names.index("operational_planning_compat"))
         self.assertLess(names.index("operational_planning_compat"), names.index("resource_class_compat"))
         self.assertLess(names.index("resource_class_compat"), names.index("location_projection"))
-        self.assertLess(names.index("location_projection"), names.index("operational_planning_page"))
+        self.assertLess(names.index("location_projection"), names.index("medium_term_page"))
+        self.assertLess(names.index("medium_term_page"), names.index("operational_planning_page"))
         self.assertLess(names.index("operational_planning_page"), names.index("demand_editor_ui"))
         self.assertLess(names.index("demand_editor_ui"), names.index("planning_service_ui"))
         self.assertLess(names.index("planning_service_ui"), names.index("allocation_service_ui"))
@@ -49,18 +51,14 @@ class RuntimeCompositionTests(unittest.TestCase):
             "v17_refinements",
             "v171_performance",
             "v171_local_preferences",
+            "v18_features",
+            "v18_refinements",
             "v18_fixes",
             "v18_single_scroll",
             "v18_calendar_sizing",
             "v18_workflow_fixes",
         ):
             self.assertNotIn(retired, legacy)
-        for retired in (
-            "v14_runtime",
-            "v17_refinements",
-            "v171_performance",
-            "v171_local_preferences",
-        ):
             self.assertNotIn(retired, names)
         for extracted in (
             "operational_planning_runtime",
@@ -68,7 +66,10 @@ class RuntimeCompositionTests(unittest.TestCase):
             "operational_planning_sorting",
             "runtime_performance",
             "resource_local_preferences",
+            "effort_identity",
             "effort_identity_guard",
+            "demand_cancellation",
+            "medium_term_renderer",
             "operational_planning_compat",
             "resource_class_compat",
             "location_projection",
@@ -80,6 +81,7 @@ class RuntimeCompositionTests(unittest.TestCase):
             application,
             [
                 "quick_shift_ui",
+                "medium_term_page",
                 "operational_planning_page",
                 "demand_editor_ui",
                 "planning_service_ui",
