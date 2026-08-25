@@ -44,6 +44,7 @@ class RuntimeCompositionTests(unittest.TestCase):
 
         self.assertIn("v13_features", legacy)
         for retired in (
+            "v14_runtime",
             "v17_features",
             "v17_refinements",
             "v171_performance",
@@ -54,7 +55,12 @@ class RuntimeCompositionTests(unittest.TestCase):
             "v18_workflow_fixes",
         ):
             self.assertNotIn(retired, legacy)
-        for retired in ("v17_refinements", "v171_performance", "v171_local_preferences"):
+        for retired in (
+            "v14_runtime",
+            "v17_refinements",
+            "v171_performance",
+            "v171_local_preferences",
+        ):
             self.assertNotIn(retired, names)
         for extracted in (
             "operational_planning_runtime",
@@ -95,6 +101,7 @@ class RuntimeCompositionTests(unittest.TestCase):
     def test_retired_compatibility_modules_are_physically_removed(self) -> None:
         app_dir = Path(__file__).resolve().parents[1] / "app"
         for name in (
+            "v14_runtime.py",
             "v17.py",
             "v17_refinements.py",
             "v17_sort_fix.py",
