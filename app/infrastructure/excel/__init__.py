@@ -1,11 +1,19 @@
-"""Excel-backed implementations of application repository ports."""
+"""Excel-backed implementations of application repository ports and V1 migrations."""
 
 from .demand_repository import ExcelDemandRepository
 from .planning_repository import ExcelPlanningReadRepository
+from .schema_migrations import (
+    ExcelSchemaMigration,
+    ExcelSchemaMigrationReport,
+    run_excel_schema_migrations,
+)
 from .segment_repository import ExcelSegmentRepository
 
 __all__ = [
     "ExcelDemandRepository",
     "ExcelPlanningReadRepository",
+    "ExcelSchemaMigration",
+    "ExcelSchemaMigrationReport",
     "ExcelSegmentRepository",
+    "run_excel_schema_migrations",
 ]
