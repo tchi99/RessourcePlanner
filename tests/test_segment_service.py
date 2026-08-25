@@ -87,20 +87,24 @@ class SegmentServiceTests(unittest.TestCase):
         self.assertNotIn("xlwings", source)
         self.assertNotIn("app.v13", source)
         self.assertNotIn("v15", source)
+        self.assertIn("SegmentRepositoryPort", source)
+        self.assertIn("from_repository_port", source)
 
-    def test_runtime_adapter_resolves_composed_segment_alias_lazily(self) -> None:
-        source = (
-            Path(__file__).resolve().parents[1]
-            / "app"
-            / "application"
-            / "runtime_services.py"
+    def test_excel_adapter_resolves_composed_segment_alias_lazily(self) -> None:
+        root = Path(__file__).resolve().parents[1]
+        runtime_source = (root / "app" / "application" / "runtime_services.py").read_text(
+            encoding="utf-8"
+        )
+        adapter_source = (
+            root / "app" / "infrastructure" / "excel" / "segment_repository.py"
         ).read_text(encoding="utf-8")
 
-        self.assertIn('import_module("app.v13")', source)
-        self.assertIn("def segment_service(repository", source)
-        self.assertIn("create_record=_create_segment_record", source)
-        self.assertIn("update_record=_update_segment_record", source)
-        self.assertIn("rebuild_planning=_runtime_rebuild", source)
+        self.assertIn("ExcelSegmentRepository(repository)", runtime_source)
+        self.assertIn("SegmentService.from_repository_port(", runtime_source)
+        self.assertIn('import_module("app.v13")', adapter_source)
+        self.assertIn("v13.add_segment", adapter_source)
+        self.assertIn("v13.update_segment", adapter_source)
+        self.assertIn("rebuild_planning=_runtime_rebuild", runtime_source)
 
 
 if __name__ == "__main__":
