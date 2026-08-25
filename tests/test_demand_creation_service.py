@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
+from datetime import date
 from pathlib import Path
 import unittest
 
+from app.application.commands import DemandCreateCommand
 from app.application.demand_service import DemandService
+from app.application.errors import ApplicationValidationError
 from app.application.runtime_services import demand_service
 
 
@@ -45,28 +48,29 @@ class DemandCreationServiceTests(unittest.TestCase):
             batch=batch,
         )
 
-    def test_create_forwards_business_payload_and_submit_intent(self) -> None:
+    def test_typed_create_forwards_business_payload_and_submit_intent(self) -> None:
         calls: list[object] = []
 
         def create_record(values: object, submit: bool) -> str:
             calls.append((values, submit))
             return "DMO-2026-0042"
 
-        number = self._service(create_record).create(
-            {
-                "NumeroProjet": "P-100",
-                "DateDebutSouhaitee": "2026-08-24",
-                "Description": "Travaux chantier",
-            },
-            submit=True,
+        number = self._service(create_record).create_command(
+            DemandCreateCommand(
+                project_number="P-100",
+                desired_start=date(2026, 8, 24),
+                description="Travaux chantier",
+                submit=True,
+            )
         )
 
         self.assertEqual(number, "DMO-2026-0042")
         self.assertEqual(calls[0][1], True)
         self.assertEqual(calls[0][0]["NumeroProjet"], "P-100")
         self.assertEqual(calls[0][0]["Description"], "Travaux chantier")
+        self.assertEqual(calls[0][0]["DateDebutSouhaitee"], date(2026, 8, 24))
 
-    def test_create_strips_workflow_owned_fields(self) -> None:
+    def test_legacy_create_strips_workflow_owned_fields_via_closed_dto(self) -> None:
         captured: dict[str, object] = {}
 
         def create_record(values: object, submit: bool) -> str:
@@ -90,6 +94,7 @@ class DemandCreationServiceTests(unittest.TestCase):
         self.assertNotIn("Statut", captured)
         self.assertNotIn("ApprouvePar", captured)
         self.assertNotIn("DateApprobation", captured)
+        self.assertEqual(captured["DateDebutSouhaitee"], date(2026, 8, 25))
         self.assertEqual(captured["_submit"], False)
 
     def test_create_requires_project_and_start_date_before_storage(self) -> None:
@@ -100,10 +105,13 @@ class DemandCreationServiceTests(unittest.TestCase):
             return "DMO-2026-0044"
 
         service = self._service(create_record)
-        with self.assertRaisesRegex(ValueError, "projet"):
+        with self.assertRaises(ApplicationValidationError) as project_error:
             service.create({"DateDebutSouhaitee": "2026-08-24"})
-        with self.assertRaisesRegex(ValueError, "date de début"):
+        with self.assertRaises(ApplicationValidationError) as date_error:
             service.create({"NumeroProjet": "P-300"})
+
+        self.assertEqual(project_error.exception.code, "demand_project_required")
+        self.assertEqual(date_error.exception.code, "demand_start_required")
         self.assertEqual(writes, [])
 
     def test_create_runs_in_named_batch_when_available(self) -> None:
@@ -151,6 +159,7 @@ class DemandCreationServiceTests(unittest.TestCase):
         self.assertEqual(number, "DMO-2026-0046")
         self.assertEqual(calls[0][1], True)
         self.assertEqual(calls[0][0]["Confirmation"], "Tentative")
+        self.assertEqual(calls[0][0]["DateDebutSouhaitee"], date(2026, 8, 24))
 
     def test_editor_creation_crosses_demand_service_boundary(self) -> None:
         root = Path(__file__).resolve().parents[1]
