@@ -161,13 +161,19 @@ class ResourceAvailabilityRule(TimestampMixin, Base):
             "end_date IS NULL OR start_date IS NULL OR end_date >= start_date",
             name="availability_date_window",
         ),
+        CheckConstraint(
+            "resource_id IS NOT NULL OR availability_type = 'Jour férié'",
+            name="availability_resource_or_global_holiday",
+        ),
         Index("ix_availability_resource_window", "resource_id", "start_date", "end_date"),
     )
 
     id: Mapped[str] = mapped_column(String(ID_LENGTH), primary_key=True, default=new_id)
     legacy_id: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
-    resource_id: Mapped[str] = mapped_column(
-        String(ID_LENGTH), ForeignKey("resources.id"), nullable=False, index=True
+    # NULL means a global holiday. Standard schedules/vacations must remain scoped to
+    # one resource; the check constraint above enforces that distinction.
+    resource_id: Mapped[str | None] = mapped_column(
+        String(ID_LENGTH), ForeignKey("resources.id"), nullable=True, index=True
     )
     availability_type: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     start_date: Mapped[date | None] = mapped_column(Date, nullable=True)

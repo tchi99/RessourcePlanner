@@ -36,11 +36,13 @@ class SqlSchemaTests(unittest.TestCase):
 
         requirements = Base.metadata.tables["resource_requirements"].c
         requests = Base.metadata.tables["workforce_requests"].c
+        availability = Base.metadata.tables["resource_availability_rules"].c
 
         self.assertFalse(requirements.project_id.nullable)
         self.assertTrue(requirements.workforce_request_id.nullable)
         self.assertTrue(requests.work_package_id.nullable)
         self.assertFalse(requests.project_id.nullable)
+        self.assertTrue(availability.resource_id.nullable)
 
     def test_metadata_creates_all_tables_on_sqlite_memory(self) -> None:
         engine = create_engine("sqlite+pysqlite:///:memory:")
@@ -96,6 +98,34 @@ class SqlSchemaTests(unittest.TestCase):
                         end_date=DAY,
                         planned_hours=2,
                         origin="REQUEST",
+                    )
+                )
+
+    def test_only_holiday_rule_may_be_global(self) -> None:
+        engine = create_engine("sqlite+pysqlite:///:memory:")
+        Base.metadata.create_all(engine)
+        availability = Base.metadata.tables["resource_availability_rules"]
+
+        with engine.begin() as connection:
+            connection.execute(
+                availability.insert().values(
+                    id="HOLIDAY",
+                    resource_id=None,
+                    availability_type="Jour férié",
+                    start_date=DAY,
+                    end_date=DAY,
+                )
+            )
+
+        with self.assertRaises(IntegrityError):
+            with engine.begin() as connection:
+                connection.execute(
+                    availability.insert().values(
+                        id="VACATION-GLOBAL",
+                        resource_id=None,
+                        availability_type="Vacances",
+                        start_date=DAY,
+                        end_date=DAY,
                     )
                 )
 

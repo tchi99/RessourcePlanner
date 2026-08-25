@@ -23,6 +23,7 @@ from .identity_constraints import (
     RESOURCE_REQUIREMENT_NUMBER_INDEX,
     WORKFORCE_REQUEST_NUMBER_INDEX,
 )
+from .planning_repository import SqlPlanningReadRepository
 from .segment_repository import SqlSegmentRepository
 from .session import (
     SqlSessionFactory,
@@ -44,6 +45,7 @@ __all__ = [
     "ResourceRequirement",
     "Shift",
     "SqlDemandRepository",
+    "SqlPlanningReadRepository",
     "SqlSegmentRepository",
     "SqlSessionFactory",
     "WORKFORCE_REQUEST_NUMBER_INDEX",
