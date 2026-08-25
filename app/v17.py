@@ -11,7 +11,10 @@ from . import ui as ui_module
 from . import v13, v14_engine, v15, v15_engine, v15_refinements, v16, v16_refinements
 from .bugfixes import schedulable_technicians
 from .excel_repository import _date_from_any
-from .operational_planning_cell_action import open_operational_planning_cell_shift
+from .operational_planning_resource_row import (
+    ResourceRowBindings,
+    render_operational_planning_resource_row,
+)
 from .services import week_days
 
 
@@ -172,11 +175,6 @@ def _eligible_segments_for_cell(repo: Any, technician: str, day: date) -> list[d
         )
     )
     return rows
-
-
-def _open_quick_allocation(self: ui_module.PlannerUI, technician: str, day: date) -> None:
-    """Compatibility adapter until the V1.7 resource-row renderer is extracted."""
-    open_operational_planning_cell_shift(self, technician, day)
 
 
 def _move_allocation_same_resource(
@@ -521,170 +519,36 @@ def _render_resource_row(
     project_filter: str,
     confirmation_filter: str,
 ) -> None:
-    name = tech["name"]
-    stats = week_stats.get(name, {})
-
-    resource_cell = ui.column().classes("resource-cell p-3 justify-center gap-1")
-    _make_drop_zone(resource_cell, name, None)
-    with resource_cell:
-        ui.label(name).classes("font-semibold")
-        ui.label(
-            f"{stats.get('prudent_free', 0):.1f} h libres / {stats.get('capacity', 0):.1f} h"
-        ).classes("text-xs text-green-700")
-        if stats.get("tentative", 0) > 0:
-            ui.label(f"{stats['tentative']:.1f} h tentatives").classes(
-                "text-[10px] text-amber-700"
-            )
-        ui.label("Déposer un travail ici pour l'assigner").classes("text-[9px] muted")
-
-    for day in days:
-        state = features.availability_for_day(self.repo, name, day)
-        day_capacity = v13._availability_hours(self.repo, name, day)
-        day_allocations = [
-            row
-            for row in allocations
-            if str(row.get("Technicien") or "").strip() == name
-            and row.get("Date") == day
-            and (
-                project_filter == v16.ALL_PROJECTS
-                or v16._project_number_for_allocation(row) == project_filter
-            )
-        ]
-        if confirmation_filter != v16.ALL_CONFIRMATIONS:
-            day_allocations = [
-                row
-                for row in day_allocations
-                if v15_refinements.demand_confirmation(
-                    demands.get(str(row.get("NoDemande") or ""), {})
-                )
-                == confirmation_filter
-            ]
-        actual_allocations = [
-            row
-            for row in day_allocations
-            if not v15_refinements.is_missing_allocation(row)
-        ]
-        pending_day = [
-            row
-            for row in pending
-            if str(row.get("TechnicienPropose") or "").strip() == name
-            and v15._pending_covers_day(row, day)
-            and v13._availability_hours(self.repo, name, day) > 0
-            and (
-                project_filter == v16.ALL_PROJECTS
-                or str(row.get("NumeroProjet") or "") == project_filter
-            )
-            and (
-                confirmation_filter == v16.ALL_CONFIRMATIONS
-                or v15_refinements.demand_confirmation(row) == confirmation_filter
-            )
-        ]
-        planned = sum(v13._number(row.get("Heures")) for row in actual_allocations)
-        standard_planned = sum(
-            v13._number(row.get("Heures"))
-            for row in actual_allocations
-            if not v15_engine._truthy(row.get("HorsHoraire"))
-        )
-        overloaded = standard_planned > day_capacity + 0.01 and day_capacity >= 0
-        free = max(day_capacity - standard_planned, 0.0)
-        classes = "day-cell gap-1"
-        if not state.get("available"):
-            classes += " unavailable-cell"
-        elif day.weekday() >= 5:
-            classes += " weekend-cell"
-
-        cell = ui.column().classes(classes)
-        _make_drop_zone(cell, name, day)
-        with cell:
-            with ui.row().classes("w-full items-center justify-between gap-1"):
-                with ui.column().classes("gap-0"):
-                    if state.get("available") and state.get("hours"):
-                        ui.label(state["hours"]).classes("text-[10px] availability-hours")
-                    elif not state.get("available"):
-                        ui.label(str(state.get("reason") or "Indisponible")).classes(
-                            "text-[10px] unavailable-label"
-                        )
-                    if planned > 0 or day_capacity > 0:
-                        css = (
-                            "text-[10px] text-red-700 font-semibold"
-                            if overloaded
-                            else "text-[10px] muted"
-                        )
-                        ui.label(
-                            f"{standard_planned:.1f}/{day_capacity:.1f} h · {free:.1f} h libres"
-                        ).classes(css)
-                ui.button(
-                    icon="add",
-                    on_click=lambda _, tech_name=name, target_day=day: _open_quick_allocation(
-                        self, tech_name, target_day
-                    ),
-                ).props("flat dense round size=sm").tooltip("Planifier rapidement un quart")
-
-            for allocation in day_allocations:
-                segment = segments.get(str(allocation.get("IDSegment") or ""), {})
-                demand = demands.get(str(allocation.get("NoDemande") or ""), {})
-                style, label = v15_refinements._allocation_style(
-                    allocation, demand, overloaded
-                )
-                card = ui.element("div").classes("shift-card").style(style)
-                card.on(
-                    "click",
-                    lambda _, a=allocation: v15_refinements._open_allocation_dialog(
-                        self, allocation=a
-                    ),
-                )
-                if not v15_refinements.is_missing_allocation(allocation):
-                    _make_draggable(
-                        card,
-                        f"allocation:{allocation.get('IDAllocation') or ''}",
-                    )
-                with card:
-                    ui.label(
-                        f"{allocation.get('NumeroProjet') or '—'} · {allocation.get('NomProjet') or ''}"
-                    ).classes("text-xs font-semibold")
-                    ui.label(
-                        str(
-                            segment.get("Description")
-                            or allocation.get("IDSegment")
-                            or "Allocation"
-                        )
-                    ).classes("text-xs")
-                    suffix = (
-                        " · 🔒"
-                        if v15_engine._truthy(allocation.get("Verrouillee"))
-                        else ""
-                    )
-                    if (
-                        v15_refinements.demand_confirmation(demand) == "Tentative"
-                        and "Tentative" not in label
-                    ):
-                        label = f"Tentative · {label}"
-                    ui.label(
-                        f"{v13._number(allocation.get('Heures')):.1f} h · {label}{suffix}"
-                    ).classes("text-[11px] muted")
-
-            for demand in pending_day:
-                tentative = v15_refinements.demand_confirmation(demand) == "Tentative"
-                style = (
-                    "background:#fffbeb;border:2px dashed #d97706;opacity:.95;"
-                    if tentative
-                    else "background:#f3f4f6;border:2px dashed #9ca3af;opacity:.9;"
-                )
-                pending_card = ui.element("div").classes("shift-card").style(style)
-                pending_card.on(
-                    "click",
-                    lambda _, d=demand: self.open_edit_request_dialog(d),
-                )
-                with pending_card:
-                    ui.label(
-                        f"{demand.get('NumeroProjet') or '—'} · {demand.get('NomProjet') or ''}"
-                    ).classes("text-xs font-semibold")
-                    ui.label(str(demand.get("Description") or "")).classes("text-xs")
-                    ui.label(
-                        f"{v15_refinements.demand_confirmation(demand)} · "
-                        "en attente d'approbation · 0 h"
-                    ).classes("text-[11px] text-gray-600")
-                    ui.label("Cliquer pour ouvrir la demande").classes("text-[9px] muted")
+    """Compatibility wrapper while the parent V1.7 renderer is still versioned."""
+    bindings = ResourceRowBindings(
+        make_drop_zone=_make_drop_zone,
+        availability_for_day=features.availability_for_day,
+        availability_hours=v13._availability_hours,
+        all_projects=v16.ALL_PROJECTS,
+        project_number_for_allocation=v16._project_number_for_allocation,
+        all_confirmations=v16.ALL_CONFIRMATIONS,
+        demand_confirmation=v15_refinements.demand_confirmation,
+        is_missing_allocation=v15_refinements.is_missing_allocation,
+        pending_covers_day=v15._pending_covers_day,
+        number=v13._number,
+        truthy=v15_engine._truthy,
+        allocation_style=v15_refinements._allocation_style,
+        open_allocation_dialog=v15_refinements._open_allocation_dialog,
+        make_draggable=_make_draggable,
+    )
+    render_operational_planning_resource_row(
+        self,
+        tech,
+        days,
+        allocations,
+        segments,
+        demands,
+        pending,
+        week_stats,
+        project_filter,
+        confirmation_filter,
+        bindings=bindings,
+    )
 
 
 def _render_planning(
