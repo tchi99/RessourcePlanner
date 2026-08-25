@@ -26,7 +26,7 @@ from .domain.planning_engine import (
     build_allocation_plan,
 )
 from .domain.planning_snapshot import PlanningSnapshot
-from .excel_repository import _date_from_any
+from .domain.value_coercion import date_from_value
 
 
 PRIORITY_ORDER = {"Urgent": 0, "Élevée": 1, "Normale": 2, "Basse": 3}
@@ -118,8 +118,8 @@ def _segment_inputs(
             continue
 
         segment_id = str(row.get("IDSegment") or "").strip()
-        start = _date_from_any(row.get("DateDebut"))
-        end = _date_from_any(row.get("DateFin")) or start
+        start = date_from_value(row.get("DateDebut"))
+        end = date_from_value(row.get("DateFin")) or start
         if not segment_id or not start or not end:
             if segment_id:
                 unsupported.append(segment_id)
@@ -147,7 +147,7 @@ def _locked_inputs(allocation_rows: Sequence[dict[str, Any]]) -> list[LockedAllo
     for row in allocation_rows:
         if not _truthy(row.get("Verrouillee")):
             continue
-        day = _date_from_any(row.get("Date"))
+        day = date_from_value(row.get("Date"))
         resource_id = str(row.get("Technicien") or "").strip()
         segment_id = str(row.get("IDSegment") or "").strip()
         hours = _number(row.get("Heures"))
@@ -213,7 +213,7 @@ def _legacy_projection(
         segment_id = str(row.get("IDSegment") or "").strip()
         if segment_id not in included_segment_ids:
             continue
-        day = _date_from_any(row.get("Date"))
+        day = date_from_value(row.get("Date"))
         resource_id = str(row.get("Technicien") or "").strip()
         hours = _number(row.get("Heures"))
         if not day or not resource_id or hours <= 0:
