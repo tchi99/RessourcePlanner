@@ -1,43 +1,20 @@
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
-from typing import Any, Generic, TypeVar
+from typing import Any
+
+from .command_ports import AllocationCommandPort
 
 
-RepositoryT = TypeVar("RepositoryT")
-
-
-class AllocationService(Generic[RepositoryT]):
+class AllocationService:
     """Application boundary for operational allocation mutations.
 
-    The service deliberately owns only workflow-level intent. Validation and physical
-    persistence remain behind injected adapters while V1.8 still runs on Excel. This
-    gives the operational UI a stable seam that can later be backed by PostgreSQL/API
-    without importing NiceGUI, xlwings or historical version modules here.
+    Workflow intent lives here; persistence and planning side effects live behind
+    ``AllocationCommandPort``. The service therefore has no knowledge of Excel,
+    SQLAlchemy, NiceGUI or historical V1 modules.
     """
 
-    def __init__(
-        self,
-        repository: RepositoryT,
-        *,
-        create_manual_record: Callable[
-            [RepositoryT, str, str, Any, Any, bool, str], str
-        ],
-        update_manual_record: Callable[
-            [RepositoryT, str, str, Any, Any, bool, str], None
-        ],
-        release_manual_record: Callable[[RepositoryT, str], None],
-        delete_manual_record: Callable[[RepositoryT, str], None],
-        assign_segment_record: Callable[
-            [RepositoryT, str, str], Mapping[str, Any]
-        ],
-    ) -> None:
-        self._repository = repository
-        self._create_manual_record = create_manual_record
-        self._update_manual_record = update_manual_record
-        self._release_manual_record = release_manual_record
-        self._delete_manual_record = delete_manual_record
-        self._assign_segment_record = assign_segment_record
+    def __init__(self, commands: AllocationCommandPort) -> None:
+        self._commands = commands
 
     @staticmethod
     def _required(value: object, message: str) -> str:
@@ -55,11 +32,11 @@ class AllocationService(Generic[RepositoryT]):
         hors_horaire: bool = False,
         note: str = "",
     ) -> str:
-        """Create and lock a manual shift using the active storage/planning adapter."""
+        """Create and lock a manual shift through the configured command adapter."""
+
         segment = self._required(segment_id, "Un segment est requis pour le quart manuel.")
         tech = self._required(technician, "Un technicien est requis pour le quart manuel.")
-        return self._create_manual_record(
-            self._repository,
+        return self._commands.create_manual(
             segment,
             tech,
             day_value,
@@ -77,13 +54,13 @@ class AllocationService(Generic[RepositoryT]):
         hors_horaire: bool = False,
         note: str = "",
     ) -> None:
-        """Move/reassign/update one locked shift while preserving V1 invariants."""
+        """Move/reassign/update one locked shift while preserving adapter invariants."""
+
         identifier = self._required(
             allocation_id, "Un identifiant d'allocation est requis."
         )
         tech = self._required(technician, "Un technicien est requis pour le quart manuel.")
-        self._update_manual_record(
-            self._repository,
+        self._commands.update_manual(
             identifier,
             tech,
             day_value,
@@ -93,21 +70,18 @@ class AllocationService(Generic[RepositoryT]):
         )
 
     def release_manual(self, allocation_id: str) -> None:
-        """Return one locked shift to automatic planning."""
         identifier = self._required(
             allocation_id, "Un identifiant d'allocation est requis."
         )
-        self._release_manual_record(self._repository, identifier)
+        self._commands.release_manual(identifier)
 
     def delete_manual(self, allocation_id: str) -> None:
-        """Delete one manual shift and let the active engine replace its remainder."""
         identifier = self._required(
             allocation_id, "Un identifiant d'allocation est requis."
         )
-        self._delete_manual_record(self._repository, identifier)
+        self._commands.delete_manual(identifier)
 
     def assign_segment(self, segment_id: str, technician: str) -> dict[str, Any]:
-        """Assign/reassign a segment resource and rebuild planning exactly once."""
         segment = self._required(segment_id, "Un segment est requis pour l'affectation.")
         tech = self._required(technician, "Un technicien est requis pour l'affectation.")
-        return dict(self._assign_segment_record(self._repository, segment, tech))
+        return dict(self._commands.assign_segment(segment, tech))
