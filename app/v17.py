@@ -5,10 +5,9 @@ from typing import Any
 from nicegui import ui
 
 from . import ui as ui_module
-from . import v13, v14_engine, v15, v15_engine, v15_refinements, v16, v16_refinements
+from . import v13, v15, v15_engine, v15_refinements, v16, v16_refinements
 from .bugfixes import schedulable_technicians
 from .operational_planning_cell_context_compat import operational_planning_cell_context
-from .operational_planning_drag_drop import make_draggable
 from .operational_planning_drop_handler import register_operational_planning_drop_handler
 from .operational_planning_drop_handler_compat import (
     operational_planning_drop_handler_bindings,
@@ -16,6 +15,12 @@ from .operational_planning_drop_handler_compat import (
 from .operational_planning_resource_row import render_operational_planning_resource_row
 from .operational_planning_resource_row_compat import (
     operational_planning_resource_row_bindings,
+)
+from .operational_planning_work_sections import (
+    render_operational_planning_work_sections,
+)
+from .operational_planning_work_sections_compat import (
+    operational_planning_work_sections_bindings,
 )
 from .services import week_days
 
@@ -28,6 +33,7 @@ def _render_planning(
     drop_bindings = operational_planning_drop_handler_bindings()
     register_operational_planning_drop_handler(self, bindings=drop_bindings)
     row_bindings = operational_planning_resource_row_bindings()
+    work_sections_bindings = operational_planning_work_sections_bindings()
     days = week_days(self.current_week)
     techs = schedulable_technicians(self.repo)
     class_map = v16.resource_class_map(self.repo)
@@ -138,117 +144,15 @@ def _render_planning(
                 ),
             )
 
-    visible_unassigned = [
-        segment
-        for segment in unassigned
-        if (
-            project_filter == v16.ALL_PROJECTS
-            or str(segment.get("NumeroProjet") or "") == project_filter
-        )
-        and (
-            confirmation_filter == v16.ALL_CONFIRMATIONS
-            or v15_refinements.demand_confirmation(
-                demands.get(str(segment.get("NoDemande") or ""), {})
-            )
-            == confirmation_filter
-        )
-    ]
-    if visible_unassigned:
-        with ui.card().classes("section-card w-full"):
-            ui.label(
-                f"Travaux à planifier cette semaine ({len(visible_unassigned)})"
-            ).classes("text-lg font-semibold")
-            ui.label(
-                "Tu peux utiliser Trouver une ressource ou glisser directement une carte sur le nom d'une ressource."
-            ).classes("text-xs muted")
-            with ui.row().classes("w-full gap-2 flex-wrap"):
-                for segment in visible_unassigned[:20]:
-                    competence = (
-                        v14_engine.segment_competence(segment, demands)
-                        or "Compétence non précisée"
-                    )
-                    required_class = v16._required_class(self.repo, segment)
-                    card = ui.card().classes(
-                        "p-3 min-w-[280px] max-w-[370px]"
-                    )
-                    make_draggable(
-                        card,
-                        f"segment:{segment.get('IDSegment') or ''}",
-                    )
-                    with card:
-                        ui.label(
-                            f"{segment.get('NumeroProjet') or '—'} · {segment.get('NomProjet') or ''}"
-                        ).classes("text-sm font-semibold")
-                        ui.label(str(segment.get("Description") or "")).classes("text-xs")
-                        ui.label(
-                            f"{competence} · {required_class or 'Classe non déterminée'} · "
-                            f"{v13._number(segment.get('HeuresPrevues')):g} h"
-                        ).classes("text-xs text-orange-700")
-                        with ui.row().classes("gap-1"):
-                            ui.button(
-                                "Trouver une ressource",
-                                icon="recommend",
-                                on_click=lambda _, s=segment: v16_refinements._open_recommendation_dialog(
-                                    self, s
-                                ),
-                            ).props("unelevated dense no-caps color=primary")
-                            ui.button(
-                                "Segment",
-                                icon="view_timeline",
-                                on_click=lambda _, s=segment: v15_refinements._segment_dialog(
-                                    self, segment=s
-                                ),
-                            ).props("flat dense no-caps")
-
-    visible_pending = [
-        demand
-        for demand in pending
-        if (
-            project_filter == v16.ALL_PROJECTS
-            or str(demand.get("NumeroProjet") or "") == project_filter
-        )
-        and (
-            confirmation_filter == v16.ALL_CONFIRMATIONS
-            or v15_refinements.demand_confirmation(demand) == confirmation_filter
-        )
-    ]
-    if visible_pending:
-        with ui.card().classes("section-card w-full"):
-            ui.label(
-                f"En attente d'approbation dans cette semaine ({len(visible_pending)})"
-            ).classes("text-lg font-semibold")
-            ui.label(
-                "Ces besoins comptent 0 h de charge. Clique une carte pour ouvrir la demande."
-            ).classes("text-xs muted")
-            with ui.row().classes("w-full gap-2 flex-wrap"):
-                for demand in visible_pending[:20]:
-                    tentative = (
-                        v15_refinements.demand_confirmation(demand) == "Tentative"
-                    )
-                    style = (
-                        "background:#fffbeb;border:2px dashed #d97706;cursor:pointer;"
-                        if tentative
-                        else "background:#f9fafb;border:1px dashed #9ca3af;cursor:pointer;"
-                    )
-                    card = ui.card().classes(
-                        "p-3 min-w-[250px] max-w-[340px]"
-                    ).style(style)
-                    card.on(
-                        "click",
-                        lambda _, d=demand: self.open_edit_request_dialog(d),
-                    )
-                    with card:
-                        ui.label(
-                            f"{demand.get('NumeroProjet') or '—'} · {demand.get('NomProjet') or ''}"
-                        ).classes("text-sm font-semibold")
-                        ui.label(
-                            f"{v15_refinements.demand_confirmation(demand)} · "
-                            f"{demand.get('CompetencesRequises') or 'Compétence non précisée'}"
-                        ).classes("text-xs")
-                        ui.label(
-                            f"{self._date_text(demand.get('DateDebutSouhaitee'))} → "
-                            f"{self._date_text(demand.get('DateFinSouhaitee'))}"
-                        ).classes("text-xs muted")
+    render_operational_planning_work_sections(
+        self,
+        unassigned,
+        pending,
+        demands,
+        project_filter,
+        confirmation_filter,
+        bindings=work_sections_bindings,
+    )
 
     filtered_techs: list[dict[str, Any]] = []
     for tech in techs:
