@@ -120,22 +120,28 @@ class RuntimeCompositionTests(unittest.TestCase):
         )
         self.assertNotIn("v17._open_quick_allocation =", source)
         self.assertNotIn("PlannerUI.open_quick_allocation =", source)
+        self.assertNotIn("v17._", source)
 
-    def test_v17_cell_plus_uses_explicit_cell_action_boundary(self) -> None:
-        source = (Path(__file__).resolve().parents[1] / "app" / "v17.py").read_text(
+    def test_cell_plus_uses_explicit_non_versioned_action_boundary(self) -> None:
+        app_dir = Path(__file__).resolve().parents[1] / "app"
+        v17_source = (app_dir / "v17.py").read_text(encoding="utf-8")
+        row_source = (app_dir / "operational_planning_resource_row.py").read_text(
             encoding="utf-8"
         )
+        action_source = (app_dir / "operational_planning_cell_action.py").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertNotIn("def _open_quick_allocation(", v17_source)
+        self.assertNotIn("open_operational_planning_cell_shift", v17_source)
         self.assertIn(
             "from .operational_planning_cell_action import open_operational_planning_cell_shift",
-            source,
+            row_source,
         )
-        self.assertIn("def _open_quick_allocation(", source)
-        self.assertIn(
-            "open_operational_planning_cell_shift(self, technician, day)",
-            source,
-        )
-        self.assertNotIn("PlannerUI.open_quick_allocation =", source)
-        self.assertNotIn("ui.label(\"Planifier rapidement un quart\")", source)
+        self.assertIn("open_operational_planning_cell_shift(", row_source)
+        self.assertIn("register_operational_planning_cell_shift_opener", action_source)
+        self.assertNotIn("PlannerUI.open_quick_allocation =", v17_source)
+        self.assertNotIn("ui.label(\"Planifier rapidement un quart\")", v17_source)
 
     def test_planning_service_ui_binding_routes_recalculate_through_service(self) -> None:
         source = (Path(__file__).resolve().parents[1] / "app" / "planning_service_ui.py").read_text(
