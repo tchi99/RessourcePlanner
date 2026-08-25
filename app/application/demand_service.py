@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping
 from contextlib import nullcontext
 from datetime import date, datetime
-from typing import Any, ContextManager, TypeVar
+from typing import Any, ContextManager
 
 from .command_ports import ApprovedDemandSyncPort, PlanningCommandPort
 from .commands import (
@@ -15,16 +15,13 @@ from .commands import (
     DemandUpdateCommand,
 )
 from .errors import (
-    ApplicationError,
     ApplicationNotFoundError,
     ApplicationOperationError,
     ApplicationValidationError,
-    application_error_from_exception,
+    call_application_port,
 )
 from .repository_ports import DemandRepositoryPort
 
-
-ResultT = TypeVar("ResultT")
 
 BUSINESS_DEMAND_FIELDS = frozenset(
     {
@@ -81,24 +78,6 @@ class DemandService:
         return identifier
 
     @staticmethod
-    def _call_adapter(
-        action: Callable[[], ResultT],
-        *,
-        code_prefix: str,
-        context: Mapping[str, Any],
-    ) -> ResultT:
-        try:
-            return action()
-        except ApplicationError:
-            raise
-        except Exception as exc:
-            raise application_error_from_exception(
-                exc,
-                code_prefix=code_prefix,
-                context=context,
-            ) from exc
-
-    @staticmethod
     def _validate_window(start: date | None, end: date | None) -> None:
         if start is None:
             raise ApplicationValidationError(
@@ -116,7 +95,7 @@ class DemandService:
     def create_command(self, command: DemandCreateCommand) -> str:
         values = command.to_repository_values()
         with self._context("create demand"):
-            number = self._call_adapter(
+            number = call_application_port(
                 lambda: self._demands.create(values, submit=bool(command.submit)),
                 code_prefix="demand_create",
                 context={"project_number": command.project_number},
@@ -133,7 +112,7 @@ class DemandService:
 
     def modify_command(self, command: DemandUpdateCommand) -> bool:
         number = self._required_identifier(command.number, entity="demand")
-        existing = self._call_adapter(
+        existing = call_application_port(
             lambda: self._demands.get(number),
             code_prefix="demand_lookup",
             context={"demand_number": number},
@@ -176,7 +155,7 @@ class DemandService:
             audit_comment = f"{audit_comment} · {suffix}" if audit_comment else suffix
 
         with self._context("modify demand"):
-            self._call_adapter(
+            call_application_port(
                 lambda: self._demands.update(
                     number,
                     data,
@@ -191,7 +170,7 @@ class DemandService:
     def submit_command(self, command: DemandSubmitCommand) -> None:
         number = self._required_identifier(command.number, entity="demand")
         with self._context("submit demand"):
-            self._call_adapter(
+            call_application_port(
                 lambda: self._demands.update(
                     number,
                     {"Statut": "Soumise"},
@@ -206,7 +185,7 @@ class DemandService:
         number = self._required_identifier(command.number, entity="demand")
         comment = str(command.comment or "")
         with self._context("approve demand"):
-            self._call_adapter(
+            call_application_port(
                 lambda: self._demands.update(
                     number,
                     {
@@ -221,12 +200,12 @@ class DemandService:
                 code_prefix="demand_approve",
                 context={"demand_number": number},
             )
-            self._call_adapter(
+            call_application_port(
                 lambda: self._approved_sync.sync_approved(number),
                 code_prefix="demand_approval_sync",
                 context={"demand_number": number},
             )
-            summary = self._call_adapter(
+            summary = call_application_port(
                 self._planning.rebuild,
                 code_prefix="demand_approval_rebuild",
                 context={"demand_number": number},
@@ -243,7 +222,7 @@ class DemandService:
                 context={"demand_number": number},
             )
         with self._context("request demand correction"):
-            self._call_adapter(
+            call_application_port(
                 lambda: self._demands.update(
                     number,
                     {
@@ -260,7 +239,7 @@ class DemandService:
     def cancel_command(self, command: DemandCancelCommand) -> None:
         number = self._required_identifier(command.number, entity="demand")
         with self._context("cancel demand"):
-            self._call_adapter(
+            call_application_port(
                 lambda: self._demands.update(
                     number,
                     {"Statut": "Annulée"},
