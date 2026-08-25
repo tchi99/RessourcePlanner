@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from datetime import date, timedelta
 from typing import Any, Sequence
 
+from .application.repository_ports import PlanningReadRepositoryPort
 from .domain.availability_rules import (
     availability_hours_for_day,
     has_standard_schedule,
@@ -25,7 +26,7 @@ from .domain.planning_engine import (
     build_allocation_plan,
 )
 from .domain.planning_snapshot import PlanningSnapshot
-from .excel_repository import ExcelRepository, _date_from_any
+from .excel_repository import _date_from_any
 
 
 PRIORITY_ORDER = {"Urgent": 0, "Élevée": 1, "Normale": 2, "Basse": 3}
@@ -61,34 +62,10 @@ def _truthy(value: Any) -> bool:
     return str(value or "").strip().lower() in TRUE_VALUES
 
 
-def _records(repo: ExcelRepository, sheet: str, expected_header: str) -> list[dict[str, Any]]:
-    try:
-        return repo._sheet_as_records(sheet, expected_header)
-    except Exception:
-        return []
+def build_planning_snapshot(reader: PlanningReadRepositoryPort) -> PlanningSnapshot:
+    """Capture one immutable calculation snapshot through the persistence port."""
 
-
-def build_planning_snapshot(repo: ExcelRepository) -> PlanningSnapshot:
-    """Capture all planning inputs once for one logical calculation.
-
-    Every workbook-backed source needed by the current pure adapter is read under one
-    repository lock.  The resulting snapshot is then reused by calculation,
-    diagnostics and persistence so those phases do not re-read Excel.
-    """
-    with repo._lock:
-        segment_rows = _records(repo, "SegmentsMO", "IDSegment")
-        demand_rows = _records(repo, "DemandesMO", "NoDemande")
-        allocation_rows = _records(repo, "AllocationsMO", "IDAllocation")
-        availability_rows = _records(repo, "Disponibilites", "ID")
-        technician_rows = repo.technicians()
-
-    return PlanningSnapshot.capture(
-        segments=segment_rows,
-        demands=demand_rows,
-        allocations=allocation_rows,
-        availability=availability_rows,
-        technicians=technician_rows,
-    )
+    return reader.capture()
 
 
 def _demand_lookup(rows: Sequence[dict[str, Any]]) -> dict[str, dict[str, Any]]:
@@ -250,9 +227,6 @@ def _legacy_projection(
                 hours=hours,
                 allocation_type="Locked" if locked else str(row.get("TypeAllocation") or ""),
                 locked=locked,
-                # The refined engine persists missing placeholders with HorsHoraire="Requis".
-                # That value is intentionally not truthy; the allocation type carries the
-                # semantic distinction in the comparison key.
                 outside_schedule=_truthy(row.get("HorsHoraire")),
             )
         )
@@ -307,6 +281,17 @@ def build_shadow_report_from_snapshot(snapshot: PlanningSnapshot) -> ShadowPlanR
     )
 
 
-def build_shadow_report(repo: ExcelRepository) -> ShadowPlanReport:
-    """Backward-compatible repository adapter for diagnostics and guarded cutover."""
-    return build_shadow_report_from_snapshot(build_planning_snapshot(repo))
+def build_shadow_report_from_repository(
+    reader: PlanningReadRepositoryPort,
+) -> ShadowPlanReport:
+    """Capture once through the repository port, then calculate entirely in memory."""
+
+    return build_shadow_report_from_snapshot(build_planning_snapshot(reader))
+
+
+def build_shadow_report(repo: Any) -> ShadowPlanReport:
+    """Backward-compatible Excel adapter for diagnostics/tools during V1 migration."""
+
+    from .infrastructure.excel.planning_repository import ExcelPlanningReadRepository
+
+    return build_shadow_report_from_repository(ExcelPlanningReadRepository(repo))
