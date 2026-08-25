@@ -100,7 +100,13 @@ class DemandService:
 
     @staticmethod
     def _validate_window(start: date | None, end: date | None) -> None:
-        if start is not None and end is not None and end < start:
+        if start is None:
+            raise ApplicationValidationError(
+                "La date de début est requise.",
+                code="demand_start_required",
+                context={"field": "desired_start"},
+            )
+        if end is not None and end < start:
             raise ApplicationValidationError(
                 "La date de fin ne peut pas précéder la date de début.",
                 code="demand_date_window_invalid",
@@ -140,6 +146,12 @@ class DemandService:
             )
 
         data = command.to_repository_values()
+        if "NumeroProjet" in data and not str(data["NumeroProjet"] or "").strip():
+            raise ApplicationValidationError(
+                "Le projet est requis.",
+                code="demand_project_required",
+                context={"field": "project_number"},
+            )
         start = data.get("DateDebutSouhaitee", existing.desired_start)
         end = data.get("DateFinSouhaitee", existing.desired_end)
         self._validate_window(
