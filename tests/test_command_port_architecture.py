@@ -23,6 +23,8 @@ class CommandPortArchitectureTests(unittest.TestCase):
             "nicegui",
             "xlwings",
             "excel_repository",
+            "fastapi",
+            "pydantic",
             ".v13",
             ".v14",
             ".v15",
@@ -51,6 +53,41 @@ class CommandPortArchitectureTests(unittest.TestCase):
                     any(token in module for token in forbidden),
                     f"{filename} leaks transport/storage/V1 dependency: {module}",
                 )
+
+    def test_services_expose_typed_command_entrypoints(self) -> None:
+        expected = {
+            "planning_service.py": ("rebuild_command", "PlanningRebuildCommand"),
+            "allocation_service.py": (
+                "create_manual_command",
+                "update_manual_command",
+                "release_manual_command",
+                "delete_manual_command",
+                "assign_segment_command",
+                "ManualAllocationCreateCommand",
+            ),
+            "quick_shift_service.py": ("create_command", "QuickShiftCreateCommand"),
+            "demand_service.py": (
+                "create_command",
+                "modify_command",
+                "submit_command",
+                "approve_command",
+                "request_correction_command",
+                "cancel_command",
+                "DemandCreateCommand",
+                "DemandUpdateCommand",
+            ),
+            "segment_service.py": (
+                "create_command",
+                "update_command",
+                "cancel_command",
+                "SegmentCreateCommand",
+                "SegmentUpdateCommand",
+            ),
+        }
+        for filename, tokens in expected.items():
+            source = (APPLICATION / filename).read_text(encoding="utf-8")
+            for token in tokens:
+                self.assertIn(token, source, f"{filename} missing 6A seam {token}")
 
     def test_runtime_services_has_no_direct_versioned_bridge_or_callback_composition(self) -> None:
         source = (APPLICATION / "runtime_services.py").read_text(encoding="utf-8")
