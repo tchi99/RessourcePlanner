@@ -132,8 +132,12 @@ class OperationalPlanningDropHandlerTests(unittest.TestCase):
             self.assertNotIn(f"from . import {versioned}", source)
             self.assertNotIn(f"from .{versioned}", source)
 
-    def test_v17_no_longer_owns_drop_workflow(self) -> None:
-        source = (APP / "v17.py").read_text(encoding="utf-8")
+    def test_orchestrator_owns_drop_registration_and_v17_is_retired(self) -> None:
+        source = (APP / "operational_planning_orchestrator.py").read_text(
+            encoding="utf-8"
+        )
+        self.assertFalse((APP / "v17.py").exists())
+        self.assertIn("register_operational_planning_drop_handler(", source)
         for retired in (
             "def _move_allocation_same_resource(",
             "def _open_move_confirmation(",
@@ -144,8 +148,6 @@ class OperationalPlanningDropHandlerTests(unittest.TestCase):
             "def _register_drop_handler(",
         ):
             self.assertNotIn(retired, source)
-        self.assertIn("operational_planning_drop_handler_bindings()", source)
-        self.assertIn("register_operational_planning_drop_handler(", source)
 
 
 if __name__ == "__main__":
