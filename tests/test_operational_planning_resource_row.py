@@ -21,17 +21,29 @@ class OperationalPlanningResourceRowArchitectureTests(unittest.TestCase):
             self.assertNotIn(f"from . import {versioned}", source)
             self.assertNotIn(f"from .{versioned}", source)
 
-    def test_v17_resource_row_is_only_a_compatibility_wrapper(self) -> None:
+    def test_v17_calls_extracted_resource_row_without_local_wrapper(self) -> None:
         source = (APP / "v17.py").read_text(encoding="utf-8")
-        start = source.index("def _render_resource_row(")
-        end = source.index("\ndef _render_planning(", start)
-        wrapper = source[start:end]
 
-        self.assertIn("ResourceRowBindings(", wrapper)
-        self.assertIn("render_operational_planning_resource_row(", wrapper)
-        self.assertNotIn("ui.", wrapper)
-        self.assertNotIn("def _open_quick_allocation(", source)
-        self.assertNotIn("open_operational_planning_cell_shift", source)
+        self.assertNotIn("def _render_resource_row(", source)
+        self.assertNotIn("ResourceRowBindings(", source)
+        self.assertNotIn("def _make_draggable(", source)
+        self.assertNotIn("def _make_drop_zone(", source)
+        self.assertIn("row_bindings = operational_planning_resource_row_bindings()", source)
+        self.assertIn("render_operational_planning_resource_row(", source)
+        self.assertIn("bindings=row_bindings", source)
+
+    def test_legacy_bindings_are_isolated_in_explicit_compatibility_module(self) -> None:
+        source = (APP / "operational_planning_resource_row_compat.py").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn("def operational_planning_resource_row_bindings(", source)
+        self.assertIn("ResourceRowBindings(", source)
+        self.assertIn("make_drop_zone=make_drop_zone", source)
+        self.assertIn("make_draggable=make_draggable", source)
+        self.assertIn("v13", source)
+        self.assertIn("v15", source)
+        self.assertIn("v16", source)
 
 
 if __name__ == "__main__":
