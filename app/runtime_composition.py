@@ -29,6 +29,7 @@ class RuntimeCompositionReport:
 RUNTIME_COMPOSITION_MANIFEST: tuple[CompositionStep, ...] = (
     CompositionStep("nicegui_compat", "compatibility"),
     CompositionStep("runtime_optimizations", "core"),
+    CompositionStep("schema_migrations", "compatibility"),
     CompositionStep("features", "legacy"),
     CompositionStep("bugfixes", "legacy"),
     CompositionStep("v13_features", "legacy"),
@@ -100,6 +101,7 @@ def _runtime_installers() -> tuple[tuple[str, Installer], ...]:
     from .resource_local_preferences import install_resource_local_preferences
     from .resource_management_compat import install_resource_management_compat
     from .runtime_performance_compat import install_runtime_performance_compat
+    from .schema_migration_compat import install_schema_migration_compat
     from .v13 import install_v13_features
     from .v13_fixes import install_v13_fixes
     from .v14 import install_v14_features
@@ -111,6 +113,7 @@ def _runtime_installers() -> tuple[tuple[str, Installer], ...]:
 
     return (
         ("runtime_optimizations", apply_runtime_optimizations),
+        ("schema_migrations", install_schema_migration_compat),
         ("features", install_features),
         ("bugfixes", install_bugfixes),
         ("v13_features", install_v13_features),
