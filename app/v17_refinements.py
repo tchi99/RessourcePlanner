@@ -1,126 +1,23 @@
 from __future__ import annotations
 
-import json
 from typing import Any
 
 from nicegui import ui
 
-from . import operational_planning_header_filters as header_filters_module
 from . import ui as ui_module
 from . import v16, v16_refinements
 from .excel_repository import ExcelRepository
-from .operational_planning_orchestrator import render_operational_planning
-from .operational_planning_orchestrator_compat import operational_planning_bindings
-from .ui_context import ensure_scoped_ui
+from .operational_planning_sorting import (
+    SORT_ALPHA_ASC,
+    SORT_ALPHA_DESC,
+    SORT_AVAIL_ASC,
+    SORT_AVAIL_DESC,
+    SORT_MANUAL,
+    SORT_OPTIONS,
+)
 
 
 RESOURCE_ORDER_FIELD = "Ordre"
-SORT_AVAIL_DESC = "availability_desc"
-SORT_AVAIL_ASC = "availability_asc"
-SORT_ALPHA_ASC = "alpha_asc"
-SORT_ALPHA_DESC = "alpha_desc"
-SORT_MANUAL = "manual"
-SORT_OPTIONS = {
-    SORT_AVAIL_DESC: "Disponibilité — plus disponible d'abord",
-    SORT_AVAIL_ASC: "Disponibilité — plus occupé d'abord",
-    SORT_ALPHA_ASC: "Alphabétique A → Z",
-    SORT_ALPHA_DESC: "Alphabétique Z → A",
-    SORT_MANUAL: "Ordre manuel",
-}
-
-
-_SCROLL_SETUP_JS = r"""
-(() => {
-  const PAGE_KEY = 'planner:v17:planning:windowY';
-  const GRID_KEY = 'planner:v17:planning:gridScroll';
-  const PENDING_KEY = 'planner:v17:planning:pendingCollapsed';
-
-  const install = () => {
-    // Preserve the browser/page vertical position across NiceGUI refreshes.
-    const savedWindowY = Number(sessionStorage.getItem(PAGE_KEY) || 0);
-    if (savedWindowY > 0) window.scrollTo({top: savedWindowY, behavior: 'instant'});
-    if (!window.__plannerV17WindowScrollInstalled) {
-      window.addEventListener('scroll', () => {
-        sessionStorage.setItem(PAGE_KEY, String(window.scrollY || 0));
-      }, {passive: true});
-      window.__plannerV17WindowScrollInstalled = true;
-    }
-
-    // Preserve both axes of the large operational planning scroll area.
-    const scrollRoot = [...document.querySelectorAll('.q-scrollarea')]
-      .find(el => el.querySelector('.schedule-grid'));
-    const scrollContainer = scrollRoot?.querySelector('.q-scrollarea__container');
-    if (scrollContainer) {
-      let saved = {};
-      try { saved = JSON.parse(sessionStorage.getItem(GRID_KEY) || '{}'); } catch (_) {}
-      if (Number.isFinite(Number(saved.top))) scrollContainer.scrollTop = Number(saved.top);
-      if (Number.isFinite(Number(saved.left))) scrollContainer.scrollLeft = Number(saved.left);
-      if (!scrollContainer.dataset.v17ScrollTracking) {
-        scrollContainer.dataset.v17ScrollTracking = '1';
-        scrollContainer.addEventListener('scroll', () => {
-          sessionStorage.setItem(GRID_KEY, JSON.stringify({
-            top: scrollContainer.scrollTop || 0,
-            left: scrollContainer.scrollLeft || 0,
-          }));
-        }, {passive: true});
-      }
-    }
-
-    // Make the pending-approval section collapsible without changing its business logic.
-    const cards = [...document.querySelectorAll('.q-card')];
-    const pendingCard = cards.find(card =>
-      (card.textContent || '').includes("En attente d'approbation dans cette semaine")
-    );
-    if (pendingCard && !pendingCard.dataset.v17Collapsible) {
-      pendingCard.dataset.v17Collapsible = '1';
-      const directChildren = [...pendingCard.children];
-      const titleHost = directChildren.find(child =>
-        (child.textContent || '').includes("En attente d'approbation dans cette semaine")
-      ) || directChildren[0];
-
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.className = 'v17-pending-toggle';
-      button.style.cssText = [
-        'align-self:flex-start',
-        'border:1px solid #cbd5e1',
-        'border-radius:6px',
-        'padding:4px 10px',
-        'font-size:12px',
-        'background:white',
-        'cursor:pointer',
-        'margin-left:auto'
-      ].join(';');
-      pendingCard.insertBefore(button, pendingCard.children[1] || null);
-
-      const apply = collapsed => {
-        directChildren.forEach(child => {
-          if (child !== titleHost) child.style.display = collapsed ? 'none' : '';
-        });
-        button.textContent = collapsed ? 'Afficher' : 'Réduire';
-        button.title = collapsed
-          ? "Afficher les demandes en attente d'approbation"
-          : "Réduire les demandes en attente d'approbation";
-        pendingCard.style.paddingBottom = collapsed ? '10px' : '';
-        sessionStorage.setItem(PENDING_KEY, collapsed ? '1' : '0');
-      };
-
-      let collapsed = sessionStorage.getItem(PENDING_KEY) === '1';
-      apply(collapsed);
-      button.addEventListener('click', event => {
-        event.preventDefault();
-        event.stopPropagation();
-        collapsed = !collapsed;
-        apply(collapsed);
-      });
-    }
-  };
-
-  // NiceGUI/Quasar can finish laying out a moment after the Python render returns.
-  requestAnimationFrame(() => requestAnimationFrame(install));
-  setTimeout(install, 120);
-})();
-"""
 
 
 def _ensure_manual_order_column(repo: ExcelRepository) -> None:
@@ -201,114 +98,6 @@ def _update_resource_profile_extended(
             (excel_row, len(v16_refinements.RESOURCE_PROFILE_HEADERS)),
         ).value = [[payload.get(header) for header in v16_refinements.RESOURCE_PROFILE_HEADERS]]
         repo.save()
-
-
-def _resource_sort_script(self: ui_module.PlannerUI) -> str:
-    mode = str(getattr(self, "planning_resource_sort", SORT_AVAIL_DESC) or SORT_AVAIL_DESC)
-    orders = _resource_order_map(self.repo)
-    stats = v16._weekly_resource_stats(self.repo, self.current_week)
-    free = {
-        str(name): float(values.get("prudent_free", 0.0) or 0.0)
-        for name, values in stats.items()
-    }
-    all_names = sorted(set(free) | set(orders), key=len, reverse=True)
-
-    mode_json = json.dumps(mode, ensure_ascii=False)
-    orders_json = json.dumps(orders, ensure_ascii=False)
-    free_json = json.dumps(free, ensure_ascii=False)
-    names_json = json.dumps(all_names, ensure_ascii=False)
-
-    return f"""
-(() => {{
-  const mode = {mode_json};
-  const orders = {orders_json};
-  const free = {free_json};
-  const knownNames = {names_json};
-
-  const resourceName = cell => {{
-    const text = (cell?.textContent || '').trim();
-    return knownNames.find(name => text.startsWith(name)) || text.split('\n')[0].trim();
-  }};
-
-  const compareNames = (a, b) => a.localeCompare(b, 'fr', {{sensitivity: 'base'}});
-  const compareRows = (a, b) => {{
-    const nameA = resourceName(a[0]);
-    const nameB = resourceName(b[0]);
-    if (mode === 'alpha_asc') return compareNames(nameA, nameB);
-    if (mode === 'alpha_desc') return compareNames(nameB, nameA);
-    if (mode === 'availability_asc') {{
-      const diff = Number(free[nameA] || 0) - Number(free[nameB] || 0);
-      return diff || compareNames(nameA, nameB);
-    }}
-    if (mode === 'manual') {{
-      const orderA = Number.isFinite(Number(orders[nameA])) ? Number(orders[nameA]) : 999999;
-      const orderB = Number.isFinite(Number(orders[nameB])) ? Number(orders[nameB]) : 999999;
-      return (orderA - orderB) || compareNames(nameA, nameB);
-    }}
-    const diff = Number(free[nameB] || 0) - Number(free[nameA] || 0);
-    return diff || compareNames(nameA, nameB);
-  }};
-
-  const apply = () => {{
-    document.querySelectorAll('.schedule-grid').forEach(grid => {{
-      const children = [...grid.children];
-      if (children.length <= 8) return;
-      const rows = [];
-      for (let index = 8; index + 7 < children.length; index += 8) {{
-        rows.push(children.slice(index, index + 8));
-      }}
-      rows.sort(compareRows);
-      rows.forEach(row => row.forEach(element => grid.appendChild(element)));
-    }});
-  }};
-
-  requestAnimationFrame(() => requestAnimationFrame(apply));
-  setTimeout(apply, 130);
-}})();
-"""
-
-
-def _install_planning_browser_helpers(self: ui_module.PlannerUI) -> None:
-    ui.run_javascript(_SCROLL_SETUP_JS)
-    ui.run_javascript(_resource_sort_script(self))
-
-
-def _set_resource_sort(self: ui_module.PlannerUI, value: Any) -> None:
-    self.planning_resource_sort = str(value or SORT_AVAIL_DESC)
-    self.render_content.refresh()
-
-
-def _render_planning(
-    self: ui_module.PlannerUI,
-    *,
-    weekly_stats_provider: Any | None = None,
-) -> None:
-    sort_mode = str(getattr(self, "planning_resource_sort", SORT_AVAIL_DESC) or SORT_AVAIL_DESC)
-    scoped_ui = ensure_scoped_ui(
-        header_filters_module,
-        scope_name="operational_planning_header_filters",
-        scoped_factories=("select",),
-    )
-    original_select = scoped_ui.base_factory("select")
-
-    def select_proxy(options: Any, *args: Any, **kwargs: Any) -> Any:
-        if kwargs.get("label") == "Classe":
-            original_select(
-                SORT_OPTIONS,
-                label="Tri des ressources",
-                value=sort_mode,
-                on_change=lambda event: _set_resource_sort(self, event.value),
-            ).classes("min-w-[240px]")
-        return original_select(options, *args, **kwargs)
-
-    with scoped_ui.override_factory("select", select_proxy):
-        render_operational_planning(
-            self,
-            weekly_stats_provider=weekly_stats_provider,
-            bindings=operational_planning_bindings(),
-        )
-
-    ui.timer(0.08, lambda: _install_planning_browser_helpers(self), once=True)
 
 
 def _new_resource_dialog(self: ui_module.PlannerUI) -> None:
@@ -468,13 +257,10 @@ def install_v17_refinements() -> None:
     if getattr(ui_module.PlannerUI, "_v17_refinements_installed", False):
         return
 
-    # Étend RessourcesMO avec un ordre manuel persistant. Le wrapper préserve
-    # cette valeur lorsque l'ancien formulaire V1.6 ne la modifie pas.
     if RESOURCE_ORDER_FIELD not in v16_refinements.RESOURCE_PROFILE_HEADERS:
         v16_refinements.RESOURCE_PROFILE_HEADERS.append(RESOURCE_ORDER_FIELD)
     v16_refinements.update_resource_profile = _update_resource_profile_extended
 
-    # Expose l'ordre dans le profil normalisé pour l'éditeur d'ordre manuel.
     original_profile_map = v16_refinements.resource_profile_map
 
     def resource_profile_map_with_order(repo: ExcelRepository) -> dict[str, dict[str, Any]]:
@@ -489,10 +275,6 @@ def install_v17_refinements() -> None:
 
     v16_refinements.resource_profile_map = resource_profile_map_with_order
 
-    # RessourcesMO devient aussi une source de noms de ressources. Cela permet de
-    # créer une ressource depuis l'application sans écrire dans le tableau historique
-    # Configuration des listes. Elle reste non planifiable tant qu'aucun horaire
-    # standard actif n'a été configuré dans Disponibilites.
     original_technicians = ExcelRepository.technicians
 
     def technicians_with_profiles(self: ExcelRepository) -> list[dict[str, Any]]:
@@ -533,7 +315,4 @@ def install_v17_refinements() -> None:
 
     ui_module.PlannerUI._render_content = render_content
     ui_module.PlannerUI.render_resources = _render_resources
-
-    # Le renderer de planning raffiné est consommé par v17_sort_fix mais compose
-    # maintenant directement l'orchestrateur stable, sans repasser par v17.
     ui_module.PlannerUI._v17_refinements_installed = True
