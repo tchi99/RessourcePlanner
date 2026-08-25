@@ -1,11 +1,10 @@
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
 from dataclasses import dataclass
-from typing import Any, Generic, TypeVar
+from typing import Any
 
-
-RepositoryT = TypeVar("RepositoryT")
+from .command_ports import AllocationCommandPort
+from .repository_ports import SegmentRepositoryPort
 
 
 @dataclass(frozen=True)
@@ -14,13 +13,12 @@ class QuickShiftResult:
     allocation_id: str
 
 
-class QuickShiftService(Generic[RepositoryT]):
+class QuickShiftService:
     """Create an ad-hoc segment and its locked shift as one application workflow.
 
-    A quick shift deliberately bypasses the workforce-request workflow: it represents
-    an operational decision already made. The generated segment remains the parent
-    business entity so the shift can later be edited, audited and migrated to SQL
-    without inventing a hidden demand.
+    Quick Shift deliberately bypasses the workforce-request workflow. Segment and
+    allocation persistence are expressed only through application ports so the same
+    workflow can later run against SQL without knowing Excel or V1 modules.
     """
 
     ORIGIN_FIELD = "OrigineSegment"
@@ -28,18 +26,11 @@ class QuickShiftService(Generic[RepositoryT]):
 
     def __init__(
         self,
-        repository: RepositoryT,
-        *,
-        create_segment_record: Callable[[RepositoryT, Mapping[str, Any]], str],
-        cancel_segment_record: Callable[[RepositoryT, str], None],
-        create_locked_shift_record: Callable[
-            [RepositoryT, str, str, Any, Any, bool, str], str
-        ],
+        segments: SegmentRepositoryPort,
+        allocations: AllocationCommandPort,
     ) -> None:
-        self._repository = repository
-        self._create_segment_record = create_segment_record
-        self._cancel_segment_record = cancel_segment_record
-        self._create_locked_shift_record = create_locked_shift_record
+        self._segments = segments
+        self._allocations = allocations
 
     @staticmethod
     def _required(value: object, message: str) -> str:
@@ -94,13 +85,12 @@ class QuickShiftService(Generic[RepositoryT]):
         }
 
         segment_id = self._required(
-            self._create_segment_record(self._repository, segment_values),
+            self._segments.create(segment_values),
             "L'identifiant du segment ad hoc",
         )
         try:
             allocation_id = self._required(
-                self._create_locked_shift_record(
-                    self._repository,
+                self._allocations.create_manual(
                     segment_id,
                     tech,
                     day_value,
@@ -112,7 +102,7 @@ class QuickShiftService(Generic[RepositoryT]):
             )
         except Exception as exc:
             try:
-                self._cancel_segment_record(self._repository, segment_id)
+                self._segments.update(segment_id, {"Statut": "Annulé"})
             except Exception as rollback_exc:
                 raise RuntimeError(
                     f"Le quart rapide n'a pas été créé et le segment {segment_id} "
