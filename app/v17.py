@@ -1,15 +1,13 @@
 from __future__ import annotations
 
-from datetime import date
 from typing import Any
 
 from nicegui import ui
 
-from . import features
 from . import ui as ui_module
 from . import v13, v14_engine, v15, v15_engine, v15_refinements, v16, v16_refinements
 from .bugfixes import schedulable_technicians
-from .excel_repository import _date_from_any
+from .operational_planning_cell_context_compat import operational_planning_cell_context
 from .operational_planning_drag_drop import make_draggable
 from .operational_planning_drop_handler import register_operational_planning_drop_handler
 from .operational_planning_drop_handler_compat import (
@@ -20,111 +18,6 @@ from .operational_planning_resource_row_compat import (
     operational_planning_resource_row_bindings,
 )
 from .services import week_days
-
-
-def _segment_by_id(repo: Any, segment_id: str) -> dict[str, Any] | None:
-    return next(
-        (
-            row
-            for row in v13.segment_records(repo, include_cancelled=False)
-            if str(row.get("IDSegment") or "") == str(segment_id)
-        ),
-        None,
-    )
-
-
-def _actual_allocations(repo: Any) -> list[dict[str, Any]]:
-    return [
-        row
-        for row in v15_engine.allocation_records(repo)
-        if not v15_refinements.is_missing_allocation(row)
-    ]
-
-
-def _locked_hours(repo: Any, segment_id: str, *, exclude_allocation: str | None = None) -> float:
-    total = 0.0
-    for row in v15_engine.allocation_records(repo):
-        if str(row.get("IDSegment") or "") != str(segment_id):
-            continue
-        if exclude_allocation and str(row.get("IDAllocation") or "") == str(exclude_allocation):
-            continue
-        if not v15_engine._truthy(row.get("Verrouillee")):
-            continue
-        if v15_refinements.is_missing_allocation(row):
-            continue
-        total += v13._number(row.get("Heures"))
-    return round(total, 2)
-
-
-def _validate_locked_total(
-    repo: Any,
-    segment_id: str,
-    hours: Any,
-    *,
-    exclude_allocation: str | None = None,
-) -> None:
-    segment = _segment_by_id(repo, segment_id)
-    if not segment:
-        return
-    planned = v13._number(segment.get("HeuresPrevues"))
-    locked = _locked_hours(repo, segment_id, exclude_allocation=exclude_allocation)
-    requested = v13._number(hours)
-    if locked + requested > planned + 0.01:
-        raise ValueError(
-            f"Les quarts verrouillés dépasseraient les {planned:g} h prévues du segment "
-            f"({locked:g} h déjà verrouillées + {requested:g} h)."
-        )
-
-
-def _skill_message(repo: Any, technician: str, segment: dict[str, Any]) -> tuple[str, bool]:
-    required = str(segment.get("CompetenceRequise") or "").strip()
-    if not required:
-        return "Aucune compétence requise spécifiée.", True
-    profile_skills = v16_refinements.resource_competence_map(repo).get(technician, set())
-    match = v16._normalized_text(required) in profile_skills
-    if match:
-        return f"Compétence {required} attribuée à {technician}.", True
-    return f"Attention : {required} n'est pas attribuée à {technician}.", False
-
-
-def _day_standard_load(repo: Any, technician: str, day: date) -> tuple[float, float, float]:
-    capacity = v13._availability_hours(repo, technician, day)
-    used = 0.0
-    for row in _actual_allocations(repo):
-        if str(row.get("Technicien") or "").strip() != technician:
-            continue
-        if _date_from_any(row.get("Date")) != day:
-            continue
-        if v15_engine._truthy(row.get("HorsHoraire")):
-            continue
-        used += v13._number(row.get("Heures"))
-    return round(capacity, 2), round(used, 2), round(max(capacity - used, 0.0), 2)
-
-
-def _eligible_segments_for_cell(repo: Any, technician: str, day: date) -> list[dict[str, Any]]:
-    rows: list[dict[str, Any]] = []
-    for segment in v13.segment_records(repo, include_cancelled=False):
-        if str(segment.get("Statut") or "") in {"Annulé", "Terminé"}:
-            continue
-        start, end = v13._segment_dates(segment)
-        if not start or not end or not (start <= day <= end):
-            continue
-        current_tech = str(segment.get("Technicien") or "").strip()
-        if current_tech and current_tech != technician:
-            continue
-        segment_id = str(segment.get("IDSegment") or "")
-        lockable = v13._number(segment.get("HeuresPrevues")) - _locked_hours(repo, segment_id)
-        if lockable <= 0.01:
-            continue
-        rows.append(segment)
-    rows.sort(
-        key=lambda row: (
-            str(row.get("Priorite") or "Normale"),
-            str(row.get("NumeroProjet") or ""),
-            str(row.get("IDSegment") or ""),
-        )
-    )
-    return rows
 
 
 def _render_planning(
@@ -436,6 +329,7 @@ def install_v17_features() -> None:
     if getattr(ui_module.PlannerUI, "_v17_features_installed", False):
         return
 
+    cell_context = operational_planning_cell_context()
     original_create = v15_engine.create_manual_allocation
     original_update = v15_engine.update_manual_allocation
 
@@ -448,7 +342,7 @@ def install_v17_features() -> None:
         hors_horaire: bool = False,
         note: str = "",
     ) -> str:
-        _validate_locked_total(repo, segment_id, hours_value)
+        cell_context.validate_locked_total(repo, segment_id, hours_value)
         return original_create(
             repo,
             segment_id,
@@ -470,7 +364,7 @@ def install_v17_features() -> None:
     ) -> None:
         allocation = v15_engine.allocation_by_id(repo, identifier)
         if allocation:
-            _validate_locked_total(
+            cell_context.validate_locked_total(
                 repo,
                 str(allocation.get("IDSegment") or ""),
                 hours_value,
