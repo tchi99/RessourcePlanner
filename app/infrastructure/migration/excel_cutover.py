@@ -8,7 +8,6 @@ from typing import Any, Protocol
 
 
 TRUE_VALUES = {"1", "true", "yes", "oui", "on", "x", "verrouille", "verrouillée"}
-INACTIVE_STATUSES = {"annulé", "annule", "terminé", "termine", "fermé", "ferme"}
 AD_HOC_ORIGINS = {"QUICK_SHIFT", "AD_HOC"}
 
 
@@ -85,6 +84,18 @@ class CutoverExtractionReport:
 
 def _text(value: object) -> str:
     return str(value or "").strip()
+
+
+def _business_id(value: object) -> str:
+    """Normalize Excel numeric identifiers without changing true text identifiers."""
+    text = _text(value)
+    if not text:
+        return ""
+    try:
+        number = float(text.replace(",", "."))
+    except (TypeError, ValueError):
+        return text
+    return str(int(number)) if number.is_integer() else text
 
 
 def _optional_text(value: object) -> str | None:
@@ -176,7 +187,9 @@ def _time_value(value: object) -> time | None:
 
 
 def _project_number(row: Mapping[str, Any]) -> str:
-    return _text(row.get("Numéro de Projet") or row.get("N° projet") or row.get("NumeroProjet"))
+    return _business_id(
+        row.get("Numéro de Projet") or row.get("N° projet") or row.get("NumeroProjet")
+    )
 
 
 def _project_rows(rows: Sequence[Mapping[str, Any]]) -> tuple[dict[str, Any], ...]:
@@ -209,10 +222,9 @@ def _work_package_rows(rows: Sequence[Mapping[str, Any]]) -> tuple[dict[str, Any
         project = _project_number(row)
         if not project and not any(value not in (None, "") for value in row.values()):
             continue
-        legacy = _optional_text(row.get("IDEffort"))
         result.append(
             {
-                "legacy_effort_id": legacy,
+                "legacy_effort_id": _optional_text(row.get("IDEffort")),
                 "source_row": _integer(row.get("_row"), 0) or None,
                 "project_number": project,
                 "name": _text(row.get("Précision") or row.get("Compétence") or row.get("Projet"))
@@ -279,7 +291,7 @@ def _demand_rows(rows: Sequence[Mapping[str, Any]]) -> tuple[dict[str, Any], ...
         result.append(
             {
                 "number": number,
-                "project_number": _text(row.get("NumeroProjet")),
+                "project_number": _business_id(row.get("NumeroProjet")),
                 "requester": _optional_text(row.get("Demandeur")),
                 "request_type": _text(row.get("TypeDemande")) or "Projet",
                 "priority": _text(row.get("Priorite")) or "Normale",
@@ -336,7 +348,7 @@ def _requirement_rows(rows: Sequence[Mapping[str, Any]]) -> tuple[dict[str, Any]
             {
                 "segment_id": identifier,
                 "demand_number": _optional_text(row.get("NoDemande")),
-                "project_number": _text(row.get("NumeroProjet")),
+                "project_number": _business_id(row.get("NumeroProjet")),
                 "resource_name": _optional_text(row.get("Technicien")),
                 "start_date": _date_value(row.get("DateDebut")),
                 "end_date": _date_value(row.get("DateFin")) or _date_value(row.get("DateDebut")),
@@ -420,9 +432,25 @@ def _validate(dataset: CutoverDataset) -> tuple[CutoverDiagnostic, ...]:
     for row in dataset.work_packages:
         identifier = _text(row.get("legacy_effort_id")) or f"row:{row.get('source_row') or '?'}"
         if not row.get("project_number") or row.get("project_number") not in project_ids:
-            diagnostics.append(CutoverDiagnostic("error", "unknown_project", "work_package", identifier, "Effort lié à un projet inconnu."))
+            diagnostics.append(
+                CutoverDiagnostic(
+                    "error",
+                    "unknown_project",
+                    "work_package",
+                    identifier,
+                    "Effort lié à un projet inconnu.",
+                )
+            )
         if row.get("planned_hours") is not None and float(row["planned_hours"]) < 0:
-            diagnostics.append(CutoverDiagnostic("error", "invalid_hours", "work_package", identifier, "Heures prévues négatives."))
+            diagnostics.append(
+                CutoverDiagnostic(
+                    "error",
+                    "invalid_hours",
+                    "work_package",
+                    identifier,
+                    "Heures prévues négatives.",
+                )
+            )
 
     for row in dataset.demands:
         identifier = _text(row.get("number"))
@@ -518,10 +546,18 @@ def extract_cutover_dataset(reader: CutoverReader) -> CutoverExtractionReport:
         "locked_shifts": len(locked),
     }
     hours = {
-        "work_package_planned": round(sum(float(row.get("planned_hours") or 0) for row in dataset.work_packages), 4),
-        "requirement_planned": round(sum(float(row.get("planned_hours") or 0) for row in dataset.requirements), 4),
-        "shift_total": round(sum(float(row.get("hours") or 0) for row in dataset.shifts), 4),
-        "locked_shift_total": round(sum(float(row.get("hours") or 0) for row in locked), 4),
+        "work_package_planned": round(
+            sum(float(row.get("planned_hours") or 0) for row in dataset.work_packages), 4
+        ),
+        "requirement_planned": round(
+            sum(float(row.get("planned_hours") or 0) for row in dataset.requirements), 4
+        ),
+        "shift_total": round(
+            sum(float(row.get("hours") or 0) for row in dataset.shifts), 4
+        ),
+        "locked_shift_total": round(
+            sum(float(row.get("hours") or 0) for row in locked), 4
+        ),
     }
     return CutoverExtractionReport(
         dataset=dataset,
