@@ -32,6 +32,10 @@ from .results import (
 from .segment_service import SegmentService
 
 
+def _identifier(value: object) -> str:
+    return str(value or "").strip()
+
+
 class ApplicationFacade:
     """Stable use-case surface for UI/API adapters.
 
@@ -58,26 +62,26 @@ class ApplicationFacade:
     def create_demand(self, command: DemandCreateCommand) -> DemandMutationResult:
         number = self._demands.create_command(command)
         return DemandMutationResult(
-            demand_number=number,
+            demand_number=_identifier(number),
             status="Soumise" if command.submit else "Brouillon",
         )
 
     def update_demand(self, command: DemandUpdateCommand) -> DemandMutationResult:
         reapproval = self._demands.modify_command(command)
         return DemandMutationResult(
-            demand_number=command.number,
+            demand_number=_identifier(command.number),
             status="Soumise" if reapproval else None,
             reapproval_required=reapproval,
         )
 
     def submit_demand(self, command: DemandSubmitCommand) -> DemandMutationResult:
         self._demands.submit_command(command)
-        return DemandMutationResult(command.number, status="Soumise")
+        return DemandMutationResult(_identifier(command.number), status="Soumise")
 
     def approve_demand(self, command: DemandApproveCommand) -> DemandMutationResult:
         summary = self._demands.approve_command(command)
         return DemandMutationResult(
-            command.number,
+            _identifier(command.number),
             status="En planification",
             planning=PlanningResult.from_mapping(summary),
         )
@@ -87,16 +91,16 @@ class ApplicationFacade:
         command: DemandCorrectionCommand,
     ) -> DemandMutationResult:
         self._demands.request_correction_command(command)
-        return DemandMutationResult(command.number, status="À corriger")
+        return DemandMutationResult(_identifier(command.number), status="À corriger")
 
     def cancel_demand(self, command: DemandCancelCommand) -> DemandMutationResult:
         self._demands.cancel_command(command)
-        return DemandMutationResult(command.number, status="Annulée")
+        return DemandMutationResult(_identifier(command.number), status="Annulée")
 
     def create_segment(self, command: SegmentCreateCommand) -> SegmentMutationResult:
         identifier, summary = self._segments.create_command(command)
         return SegmentMutationResult(
-            segment_id=identifier,
+            segment_id=_identifier(identifier),
             action="created",
             planning=PlanningResult.from_mapping(summary),
         )
@@ -104,7 +108,7 @@ class ApplicationFacade:
     def update_segment(self, command: SegmentUpdateCommand) -> SegmentMutationResult:
         summary = self._segments.update_command(command)
         return SegmentMutationResult(
-            segment_id=command.segment_id,
+            segment_id=_identifier(command.segment_id),
             action="updated",
             planning=PlanningResult.from_mapping(summary),
         )
@@ -112,7 +116,7 @@ class ApplicationFacade:
     def cancel_segment(self, command: SegmentCancelCommand) -> SegmentMutationResult:
         summary = self._segments.cancel_command(command)
         return SegmentMutationResult(
-            segment_id=command.segment_id,
+            segment_id=_identifier(command.segment_id),
             action="cancelled",
             planning=PlanningResult.from_mapping(summary),
         )
@@ -120,10 +124,10 @@ class ApplicationFacade:
     def assign_segment(self, command: SegmentAssignCommand) -> SegmentMutationResult:
         summary = self._allocations.assign_segment_command(command)
         return SegmentMutationResult(
-            segment_id=command.segment_id,
+            segment_id=_identifier(command.segment_id),
             action="assigned",
             planning=PlanningResult.from_mapping(summary),
-            technician=command.technician,
+            technician=_identifier(command.technician) or None,
         )
 
     def create_allocation(
@@ -131,28 +135,37 @@ class ApplicationFacade:
         command: ManualAllocationCreateCommand,
     ) -> AllocationMutationResult:
         identifier = self._allocations.create_manual_command(command)
-        return AllocationMutationResult(identifier, action="created")
+        return AllocationMutationResult(_identifier(identifier), action="created")
 
     def update_allocation(
         self,
         command: ManualAllocationUpdateCommand,
     ) -> AllocationMutationResult:
         self._allocations.update_manual_command(command)
-        return AllocationMutationResult(command.allocation_id, action="updated")
+        return AllocationMutationResult(
+            _identifier(command.allocation_id),
+            action="updated",
+        )
 
     def release_allocation(
         self,
         command: ManualAllocationReleaseCommand,
     ) -> AllocationMutationResult:
         self._allocations.release_manual_command(command)
-        return AllocationMutationResult(command.allocation_id, action="released")
+        return AllocationMutationResult(
+            _identifier(command.allocation_id),
+            action="released",
+        )
 
     def delete_allocation(
         self,
         command: ManualAllocationDeleteCommand,
     ) -> AllocationMutationResult:
         self._allocations.delete_manual_command(command)
-        return AllocationMutationResult(command.allocation_id, action="deleted")
+        return AllocationMutationResult(
+            _identifier(command.allocation_id),
+            action="deleted",
+        )
 
     def create_quick_shift(
         self,
@@ -160,8 +173,8 @@ class ApplicationFacade:
     ) -> QuickShiftCreatedResult:
         result = self._quick_shifts.create_command(command)
         return QuickShiftCreatedResult(
-            segment_id=result.segment_id,
-            allocation_id=result.allocation_id,
+            segment_id=_identifier(result.segment_id),
+            allocation_id=_identifier(result.allocation_id),
         )
 
     def rebuild_planning(self, command: PlanningRebuildCommand) -> PlanningResult:
