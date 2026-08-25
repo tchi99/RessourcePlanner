@@ -1,0 +1,46 @@
+from __future__ import annotations
+
+from collections.abc import Mapping
+from typing import Any, Protocol
+
+
+class PlanningCommandPort(Protocol):
+    """Command boundary for one authoritative planning rebuild."""
+
+    def rebuild(self) -> Mapping[str, Any]: ...
+
+
+class AllocationCommandPort(Protocol):
+    """Command boundary for manual shifts and operational assignment mutations."""
+
+    def create_manual(
+        self,
+        segment_id: str,
+        technician: str,
+        day_value: Any,
+        hours_value: Any,
+        hors_horaire: bool = False,
+        note: str = "",
+    ) -> str: ...
+
+    def update_manual(
+        self,
+        allocation_id: str,
+        technician: str,
+        day_value: Any,
+        hours_value: Any,
+        hors_horaire: bool = False,
+        note: str = "",
+    ) -> None: ...
+
+    def release_manual(self, allocation_id: str) -> None: ...
+
+    def delete_manual(self, allocation_id: str) -> None: ...
+
+    def assign_segment(self, segment_id: str, technician: str) -> Mapping[str, Any]: ...
+
+
+class ApprovedDemandSyncPort(Protocol):
+    """Synchronize the approved demand version to operational requirements."""
+
+    def sync_approved(self, demand_number: str) -> None: ...
