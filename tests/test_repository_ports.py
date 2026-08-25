@@ -170,6 +170,22 @@ class RepositoryPortTests(unittest.TestCase):
             for forbidden in ("xlwings", "sqlalchemy", "nicegui", "excel_repository"):
                 self.assertNotIn(forbidden, source, f"{filename}: {forbidden}")
 
+    def test_runtime_and_excel_adapters_remain_import_light(self) -> None:
+        for filename in (
+            "application/runtime_services.py",
+            "infrastructure/excel/demand_repository.py",
+            "infrastructure/excel/segment_repository.py",
+        ):
+            source = (APP / filename).read_text(encoding="utf-8").lower()
+            self.assertNotIn("import xlwings", source, filename)
+            self.assertNotIn("from ...excel_repository", source, filename)
+
+        segment_source = (
+            APP / "infrastructure" / "excel" / "segment_repository.py"
+        ).read_text(encoding="utf-8")
+        self.assertIn('import_module("app.segment_repository")', segment_source)
+        self.assertIn('import_module("app.v13")', segment_source)
+
     def test_runtime_services_use_repository_ports_not_excel_rows(self) -> None:
         source = (APP / "application" / "runtime_services.py").read_text(encoding="utf-8")
 
