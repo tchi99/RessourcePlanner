@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from contextlib import nullcontext
+from datetime import date
 from pathlib import Path
 import unittest
 
@@ -60,6 +61,7 @@ class CommunicationSchemaMigrationTests(unittest.TestCase):
         )
         self.assertEqual(len(repo.ensure_calls), 4)
         self.assertEqual(repo.save_calls, 0)
+        self.assertTrue(hasattr(repo, "_communication_schema_marker"))
 
     def test_one_save_when_one_or_more_tables_change(self) -> None:
         repo = _FakeRepository(
@@ -81,18 +83,34 @@ class CommunicationSchemaMigrationTests(unittest.TestCase):
         )
         self.assertEqual(len(repo.ensure_calls), 4)
         self.assertEqual(repo.save_calls, 1)
+        self.assertFalse(hasattr(repo, "_communication_schema_marker"))
 
-    def test_second_pass_uses_schema_marker_without_rechecking_excel(self) -> None:
+    def test_changed_pass_requires_one_confirmation_then_uses_marker(self) -> None:
         repo = _FakeRepository({MESSAGE_SHEET: True})
+
+        first = ensure_communication_sheets(repo)
+        second = ensure_communication_sheets(repo)
+        calls_after_confirmation = list(repo.ensure_calls)
+        third = ensure_communication_sheets(repo)
+
+        self.assertTrue(first.changed)
+        self.assertFalse(second.changed)
+        self.assertFalse(third.changed)
+        self.assertEqual(len(calls_after_confirmation), 8)
+        self.assertEqual(repo.ensure_calls, calls_after_confirmation)
+        self.assertEqual(repo.save_calls, 1)
+
+    def test_current_schema_uses_marker_on_second_pass(self) -> None:
+        repo = _FakeRepository()
 
         first = ensure_communication_sheets(repo)
         calls_after_first = list(repo.ensure_calls)
         second = ensure_communication_sheets(repo)
 
-        self.assertTrue(first.changed)
+        self.assertFalse(first.changed)
         self.assertFalse(second.changed)
         self.assertEqual(repo.ensure_calls, calls_after_first)
-        self.assertEqual(repo.save_calls, 1)
+        self.assertEqual(repo.save_calls, 0)
 
     def test_header_shape_change_invalidates_schema_marker(self) -> None:
         repo = _FakeRepository()
@@ -114,7 +132,7 @@ class CommunicationSchemaMigrationTests(unittest.TestCase):
         contacts = contacts_by_id(repo)
         fingerprint, assignments = latest_communicated_snapshot(
             repo,
-            __import__("datetime").date(2026, 8, 24),
+            date(2026, 8, 24),
         )
 
         self.assertEqual(contacts, {})
@@ -134,9 +152,10 @@ class CommunicationSchemaMigrationTests(unittest.TestCase):
 
         self.assertIn("run_excel_schema_migrations(", ensure_source)
         self.assertIn("if report.changed:", ensure_source)
+        self.assertIn("else:", ensure_source)
         self.assertIn("repo._communication_schema_marker = marker", ensure_source)
         self.assertNotIn("repo._ensure_sheet_table(", ensure_source)
-        self.assertNotIn("repo.save()\n        repo.save()", ensure_source)
+        self.assertEqual(ensure_source.count("repo.save()"), 1)
 
     def test_contact_header_constant_is_unchanged(self) -> None:
         self.assertEqual(
