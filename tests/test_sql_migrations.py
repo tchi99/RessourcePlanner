@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from io import StringIO
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
@@ -31,6 +32,13 @@ def alembic_config(database_path: Path) -> Config:
     return config
 
 
+def offline_config(url: str, output: StringIO) -> Config:
+    config = Config(str(ROOT / "alembic.ini"), output_buffer=output)
+    config.set_main_option("script_location", str(MIGRATIONS))
+    config.set_main_option("sqlalchemy.url", url.replace("%", "%%"))
+    return config
+
+
 class SqlMigrationTests(unittest.TestCase):
     def test_initial_revision_is_self_contained(self) -> None:
         source = INITIAL_REVISION.read_text(encoding="utf-8")
@@ -58,6 +66,17 @@ class SqlMigrationTests(unittest.TestCase):
             downgraded = set(inspect(engine).get_table_names())
             self.assertFalse(EXPECTED_TABLES.intersection(downgraded))
             engine.dispose()
+
+    def test_initial_migration_compiles_offline_for_postgresql_and_mssql(self) -> None:
+        for url in ("postgresql://", "mssql+pyodbc://"):
+            output = StringIO()
+            command.upgrade(offline_config(url, output), "head", sql=True)
+            ddl = output.getvalue().upper()
+
+            self.assertIn("CREATE TABLE PROJECTS", ddl, url)
+            self.assertIn("CREATE TABLE RESOURCE_REQUIREMENTS", ddl, url)
+            self.assertIn("CREATE TABLE SHIFTS", ddl, url)
+            self.assertIn("WORKFORCE_REQUEST_ID", ddl, url)
 
 
 if __name__ == "__main__":
