@@ -42,7 +42,7 @@ RUNTIME_COMPOSITION_MANIFEST: tuple[CompositionStep, ...] = (
     CompositionStep("v16_refinements", "legacy"),
     CompositionStep("operational_planning_runtime", "compatibility"),
     CompositionStep("v17_refinements", "legacy"),
-    CompositionStep("v17_sort_fix", "legacy"),
+    CompositionStep("operational_planning_sorting", "compatibility"),
     CompositionStep("v171_performance", "legacy"),
     CompositionStep("v171_local_preferences", "legacy"),
     CompositionStep("v18_features", "legacy"),
@@ -87,6 +87,7 @@ def _runtime_installers() -> tuple[tuple[str, Installer], ...]:
     from .operational_planning_runtime_compat import (
         install_operational_planning_runtime_compat,
     )
+    from .operational_planning_sorting_compat import install_operational_planning_sorting
     from .planning_service_ui import install_planning_service_ui
     from .pure_validation_ui import install_pure_validation_ui
     from .quick_shift_ui import install_quick_shift_ui
@@ -101,7 +102,6 @@ def _runtime_installers() -> tuple[tuple[str, Installer], ...]:
     from .v16 import install_v16_features
     from .v16_refinements import install_v16_refinements
     from .v17_refinements import install_v17_refinements
-    from .v17_sort_fix import install_v17_sort_fix
     from .v171_local_preferences import install_v171_local_preferences
     from .v171_performance import install_v171_performance
     from .v18 import install_v18_features
@@ -122,7 +122,7 @@ def _runtime_installers() -> tuple[tuple[str, Installer], ...]:
         ("v16_refinements", install_v16_refinements),
         ("operational_planning_runtime", install_operational_planning_runtime_compat),
         ("v17_refinements", install_v17_refinements),
-        ("v17_sort_fix", install_v17_sort_fix),
+        ("operational_planning_sorting", install_operational_planning_sorting),
         ("v171_performance", install_v171_performance),
         ("v171_local_preferences", install_v171_local_preferences),
         ("v18_features", install_v18_features),
