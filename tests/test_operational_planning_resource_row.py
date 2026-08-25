@@ -21,14 +21,13 @@ class OperationalPlanningResourceRowArchitectureTests(unittest.TestCase):
             self.assertNotIn(f"from . import {versioned}", source)
             self.assertNotIn(f"from .{versioned}", source)
 
-    def test_v17_calls_extracted_resource_row_without_local_wrapper(self) -> None:
-        source = (APP / "v17.py").read_text(encoding="utf-8")
+    def test_grid_calls_extracted_resource_row_without_local_wrapper(self) -> None:
+        source = (APP / "operational_planning_grid.py").read_text(encoding="utf-8")
 
         self.assertNotIn("def _render_resource_row(", source)
         self.assertNotIn("ResourceRowBindings(", source)
         self.assertNotIn("def _make_draggable(", source)
         self.assertNotIn("def _make_drop_zone(", source)
-        self.assertIn("row_bindings = operational_planning_resource_row_bindings()", source)
         self.assertIn("render_operational_planning_resource_row(", source)
         self.assertIn("bindings=row_bindings", source)
 

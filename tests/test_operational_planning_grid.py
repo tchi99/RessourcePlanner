@@ -17,9 +17,11 @@ class OperationalPlanningGridExtractionTests(unittest.TestCase):
             self.assertNotIn(f"from . import {version}", source)
             self.assertNotIn(f"from .{version}", source)
 
-    def test_v17_delegates_the_complete_grid(self) -> None:
+    def test_orchestrator_delegates_the_complete_grid(self) -> None:
         app_dir = Path(__file__).resolve().parents[1] / "app"
-        source = (app_dir / "v17.py").read_text(encoding="utf-8")
+        source = (app_dir / "operational_planning_orchestrator.py").read_text(
+            encoding="utf-8"
+        )
 
         self.assertIn("render_operational_planning_grid(", source)
         self.assertNotIn("ui.scroll_area(", source)

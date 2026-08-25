@@ -21,13 +21,9 @@ class OperationalPlanningOrchestratorExtractionTests(unittest.TestCase):
             self.assertNotIn(f"from . import {version}", source)
             self.assertNotIn(f"from .{version}", source)
 
-    def test_v17_no_longer_contains_a_planning_renderer(self) -> None:
+    def test_v17_module_is_retired(self) -> None:
         app_dir = Path(__file__).resolve().parents[1] / "app"
-        source = (app_dir / "v17.py").read_text(encoding="utf-8")
-
-        self.assertNotIn("def _render_planning(", source)
-        self.assertNotIn("render_operational_planning(", source)
-        self.assertNotIn("operational_planning_bindings", source)
+        self.assertFalse((app_dir / "v17.py").exists())
 
     def test_v17_refinement_targets_stable_filter_ui_and_orchestrator(self) -> None:
         app_dir = Path(__file__).resolve().parents[1] / "app"

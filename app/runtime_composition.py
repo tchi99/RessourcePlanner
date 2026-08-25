@@ -40,7 +40,7 @@ RUNTIME_COMPOSITION_MANIFEST: tuple[CompositionStep, ...] = (
     CompositionStep("v15_refinements", "legacy"),
     CompositionStep("v16_features", "legacy"),
     CompositionStep("v16_refinements", "legacy"),
-    CompositionStep("v17_features", "legacy"),
+    CompositionStep("operational_planning_runtime", "compatibility"),
     CompositionStep("v17_refinements", "legacy"),
     CompositionStep("v17_sort_fix", "legacy"),
     CompositionStep("v171_performance", "legacy"),
@@ -84,6 +84,9 @@ def _runtime_installers() -> tuple[tuple[str, Installer], ...]:
     from .location_projection import install_location_projection
     from .operational_planning_compat import install_operational_planning_compat
     from .operational_planning_page import install_operational_planning_page
+    from .operational_planning_runtime_compat import (
+        install_operational_planning_runtime_compat,
+    )
     from .planning_service_ui import install_planning_service_ui
     from .pure_validation_ui import install_pure_validation_ui
     from .quick_shift_ui import install_quick_shift_ui
@@ -97,7 +100,6 @@ def _runtime_installers() -> tuple[tuple[str, Installer], ...]:
     from .v15_refinements import install_v15_refinements
     from .v16 import install_v16_features
     from .v16_refinements import install_v16_refinements
-    from .v17 import install_v17_features
     from .v17_refinements import install_v17_refinements
     from .v17_sort_fix import install_v17_sort_fix
     from .v171_local_preferences import install_v171_local_preferences
@@ -118,7 +120,7 @@ def _runtime_installers() -> tuple[tuple[str, Installer], ...]:
         ("v15_refinements", install_v15_refinements),
         ("v16_features", install_v16_features),
         ("v16_refinements", install_v16_refinements),
-        ("v17_features", install_v17_features),
+        ("operational_planning_runtime", install_operational_planning_runtime_compat),
         ("v17_refinements", install_v17_refinements),
         ("v17_sort_fix", install_v17_sort_fix),
         ("v171_performance", install_v171_performance),

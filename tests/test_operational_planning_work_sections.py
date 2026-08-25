@@ -83,15 +83,17 @@ class OperationalPlanningWorkSectionsTests(unittest.TestCase):
             self.assertNotIn(f"from . import {versioned}", source)
             self.assertNotIn(f"from .{versioned}", source)
 
-    def test_v17_delegates_work_sections_instead_of_rendering_them_inline(self) -> None:
+    def test_orchestrator_delegates_work_sections(self) -> None:
         source = (
-            Path(__file__).resolve().parents[1] / "app" / "v17.py"
+            Path(__file__).resolve().parents[1]
+            / "app"
+            / "operational_planning_orchestrator.py"
         ).read_text(encoding="utf-8")
 
         self.assertIn("render_operational_planning_work_sections(", source)
         self.assertNotIn("visible_unassigned = [", source)
         self.assertNotIn("visible_pending = [", source)
-        self.assertNotIn("v14_engine.segment_competence", source)
+        self.assertNotIn("segment_competence", source)
         self.assertNotIn("make_draggable(", source)
 
 

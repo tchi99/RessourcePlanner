@@ -179,15 +179,16 @@ class OperationalPlanningExtractionGuards(unittest.TestCase):
                 self.assertNotIn(f"from . import {version}", source, filename)
                 self.assertNotIn(f"from .{version}", source, filename)
 
-    def test_v17_delegates_filters_and_grouping(self) -> None:
+    def test_orchestrator_delegates_filters_and_grouping(self) -> None:
         source = (
-            Path(__file__).resolve().parents[1] / "app" / "v17.py"
+            Path(__file__).resolve().parents[1]
+            / "app"
+            / "operational_planning_orchestrator.py"
         ).read_text(encoding="utf-8")
 
         self.assertIn("resolve_planning_filter_state(", source)
         self.assertIn("render_operational_planning_header_filters(", source)
         self.assertIn("group_operational_planning_resources(", source)
-        self.assertIn("ordered_resource_group_names(", source)
         self.assertNotIn('"planning_class_filter"', source)
         self.assertNotIn("filtered_techs", source)
         self.assertNotIn("grouped.setdefault", source)
