@@ -1,13 +1,20 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
+from datetime import date
 from pathlib import Path
 import sys
 from types import ModuleType
 import unittest
 from unittest.mock import patch
 
+from app.application.commands import DemandApproveCommand, DemandUpdateCommand
 from app.application.demand_service import DemandService
+from app.application.errors import (
+    ApplicationNotFoundError,
+    ApplicationOperationError,
+    ApplicationValidationError,
+)
 from app.application.read_models import DemandReadModel
 from app.application.runtime_services import demand_service
 
@@ -102,11 +109,12 @@ class DemandServiceTests(unittest.TestCase):
         self.assertNotIn("Statut", payload)
         self.assertNotIn("NoDemande", payload)
         self.assertNotIn("ApprouvePar", payload)
+        self.assertEqual(payload["DateDebutSouhaitee"], date(2026, 8, 25))
         self.assertTrue(events[0][2])
 
-        with self.assertRaises(ValueError):
+        with self.assertRaises(ApplicationValidationError):
             service.create({"NumeroProjet": "", "DateDebutSouhaitee": "2026-08-25"})
-        with self.assertRaises(ValueError):
+        with self.assertRaises(ApplicationValidationError):
             service.create({"NumeroProjet": "5094"})
 
     def test_modify_approved_business_demand_requires_reapproval_without_touching_plan(self) -> None:
@@ -125,10 +133,12 @@ class DemandServiceTests(unittest.TestCase):
             events=events,
             batch=batch,
         )
-        required = service.modify(
-            "DMO-EDIT",
-            {"Description": "Nouvelle portée", "Confirmation": "Tentative"},
-            "Demande modifiée dans l'application",
+        required = service.modify_command(
+            DemandUpdateCommand.from_mapping(
+                "DMO-EDIT",
+                {"Description": "Nouvelle portée", "Confirmation": "Tentative"},
+                comment="Demande modifiée dans l'application",
+            )
         )
 
         self.assertTrue(required)
@@ -142,7 +152,13 @@ class DemandServiceTests(unittest.TestCase):
         self.assertIsNone(updates["DateApprobation"])
         self.assertIn("nouvelle approbation requise", updates["CommentaireApprobation"])
         self.assertIn("planification existante est conservée", write[4])
-        self.assertFalse(any(event[0] in {"sync", "rebuild"} for event in events if isinstance(event, tuple)))
+        self.assertFalse(
+            any(
+                event[0] in {"sync", "rebuild"}
+                for event in events
+                if isinstance(event, tuple)
+            )
+        )
 
     def test_modify_unapproved_demand_does_not_force_reapproval(self) -> None:
         service, _demands, events = self._service(
@@ -158,13 +174,36 @@ class DemandServiceTests(unittest.TestCase):
         self.assertFalse(required)
         self.assertEqual(events[0][2], {"Description": "Brouillon modifié"})
 
-    def test_modify_unknown_demand_fails_before_write(self) -> None:
+    def test_modify_unknown_demand_is_structured_not_found(self) -> None:
         service, _demands, events = self._service(record=None)
-        with self.assertRaisesRegex(KeyError, "DMO-MISSING"):
+        with self.assertRaises(ApplicationNotFoundError) as raised:
             service.modify("DMO-MISSING", {"Description": "x"})
+        self.assertEqual(raised.exception.code, "demand_not_found")
+        self.assertEqual(raised.exception.context["demand_number"], "DMO-MISSING")
         self.assertEqual(events, [])
 
-    def test_approve_orders_record_sync_rebuild_inside_one_batch(self) -> None:
+    def test_modify_command_validates_date_window_against_existing_read_model(self) -> None:
+        service, _demands, events = self._service(
+            record=DemandReadModel(
+                number="DMO-DATES",
+                status="Brouillon",
+                desired_start=date(2026, 8, 25),
+                desired_end=date(2026, 8, 30),
+            )
+        )
+
+        with self.assertRaises(ApplicationValidationError) as raised:
+            service.modify_command(
+                DemandUpdateCommand(
+                    number="DMO-DATES",
+                    desired_start=date(2026, 9, 1),
+                )
+            )
+
+        self.assertEqual(raised.exception.code, "demand_date_window_invalid")
+        self.assertEqual(events, [])
+
+    def test_typed_approve_orders_record_sync_rebuild_inside_one_batch(self) -> None:
         events: list[object] = []
 
         @contextmanager
@@ -176,7 +215,7 @@ class DemandServiceTests(unittest.TestCase):
                 events.append(("batch-exit", label))
 
         service, _demands, _ = self._service(events=events, batch=batch)
-        result = service.approve("DMO-1", "ok")
+        result = service.approve_command(DemandApproveCommand("DMO-1", "ok"))
 
         self.assertEqual(
             [event[0] for event in events],
@@ -188,16 +227,18 @@ class DemandServiceTests(unittest.TestCase):
         self.assertEqual(update[3], "Approbation")
         self.assertEqual(result["allocated_hours"], 40.0)
 
-    def test_sync_failure_stops_rebuild(self) -> None:
+    def test_sync_failure_stops_rebuild_and_is_structured(self) -> None:
         events: list[object] = []
         service, _demands, _ = self._service(
             events=events,
             sync_failure=RuntimeError("sync failed"),
         )
 
-        with self.assertRaisesRegex(RuntimeError, "sync failed"):
+        with self.assertRaises(ApplicationOperationError) as raised:
             service.approve("DMO-2")
 
+        self.assertEqual(raised.exception.code, "demand_approval_sync_failed")
+        self.assertEqual(str(raised.exception), "sync failed")
         self.assertEqual([event[0] for event in events], ["update", "sync"])
 
     def test_simple_lifecycle_transitions_preserve_status_and_audit_semantics(self) -> None:
@@ -214,10 +255,11 @@ class DemandServiceTests(unittest.TestCase):
         self.assertEqual(events[2][2], {"Statut": "Annulée"})
         self.assertEqual(events[2][3], "Annulation")
 
-    def test_correction_reason_is_validated_before_repository(self) -> None:
+    def test_correction_reason_is_structured_validation_error(self) -> None:
         service, _demands, events = self._service()
-        with self.assertRaisesRegex(ValueError, "commentaire de correction"):
+        with self.assertRaises(ApplicationValidationError) as raised:
             service.request_correction("DMO-20", "   ")
+        self.assertEqual(raised.exception.code, "demand_correction_comment_required")
         self.assertEqual(events, [])
 
     def test_runtime_adapter_uses_excel_command_adapters_and_rebuilds_once(self) -> None:
@@ -268,7 +310,7 @@ class DemandServiceTests(unittest.TestCase):
         )
         self.assertEqual(result["allocated_hours"], 32.0)
 
-    def test_application_service_has_only_port_dependencies(self) -> None:
+    def test_application_service_has_only_port_and_command_dependencies(self) -> None:
         source = (
             Path(__file__).resolve().parents[1]
             / "app"
@@ -289,6 +331,8 @@ class DemandServiceTests(unittest.TestCase):
         self.assertIn("DemandRepositoryPort", source)
         self.assertIn("PlanningCommandPort", source)
         self.assertIn("ApprovedDemandSyncPort", source)
+        self.assertIn("DemandUpdateCommand", source)
+        self.assertIn("ApplicationError", source)
 
 
 if __name__ == "__main__":

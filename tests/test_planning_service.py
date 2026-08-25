@@ -7,6 +7,8 @@ from types import ModuleType
 import unittest
 from unittest.mock import patch
 
+from app.application.commands import PlanningRebuildCommand
+from app.application.errors import ApplicationOperationError
 from app.application.planning_service import PlanningService
 from app.application.runtime_services import planning_service
 
@@ -25,23 +27,30 @@ class _PlanningCommands:
 
 
 class PlanningServiceTests(unittest.TestCase):
-    def test_rebuild_delegates_once_and_returns_plain_dict(self) -> None:
+    def test_typed_rebuild_command_delegates_once_and_returns_plain_dict(self) -> None:
         commands = _PlanningCommands()
 
-        result = PlanningService(commands).rebuild()
+        result = PlanningService(commands).rebuild_command(PlanningRebuildCommand())
 
         self.assertEqual(commands.calls, 1)
         self.assertEqual(result, {"allocated_hours": 24.0, "engine": "pure"})
         self.assertIsInstance(result, dict)
 
-    def test_rebuild_propagates_domain_or_repository_failure(self) -> None:
-        expected = RuntimeError("planning failed")
-        commands = _PlanningCommands(failure=expected)
+    def test_legacy_rebuild_routes_through_typed_command(self) -> None:
+        commands = _PlanningCommands()
+        result = PlanningService(commands).rebuild()
 
-        with self.assertRaises(RuntimeError) as raised:
-            PlanningService(commands).rebuild()
+        self.assertEqual(commands.calls, 1)
+        self.assertEqual(result["engine"], "pure")
 
-        self.assertIs(raised.exception, expected)
+    def test_rebuild_translates_adapter_failure_to_application_error(self) -> None:
+        commands = _PlanningCommands(failure=RuntimeError("planning failed"))
+
+        with self.assertRaises(ApplicationOperationError) as raised:
+            PlanningService(commands).rebuild_command(PlanningRebuildCommand())
+
+        self.assertEqual(str(raised.exception), "planning failed")
+        self.assertEqual(raised.exception.code, "planning_rebuild_failed")
 
     def test_runtime_adapter_resolves_selected_engine_at_execution_time(self) -> None:
         repository = object()

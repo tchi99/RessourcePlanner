@@ -7,6 +7,7 @@ from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
+from app.application.commands import DemandUpdateCommand, SegmentCreateCommand
 from app.application.demand_service import DemandService
 from app.application.read_models import DemandReadModel, SegmentReadModel
 from app.application.segment_service import SegmentService
@@ -83,7 +84,7 @@ class RepositoryPortTests(unittest.TestCase):
         self.assertEqual(model.start_date, date(2026, 8, 25))
         self.assertEqual(model.origin, "QUICK_SHIFT")
 
-    def test_demand_service_composes_directly_against_ports(self) -> None:
+    def test_demand_service_composes_directly_against_ports_and_typed_commands(self) -> None:
         writes: list[tuple[object, ...]] = []
         sync_events: list[object] = []
 
@@ -108,7 +109,11 @@ class RepositoryPortTests(unittest.TestCase):
             current_user="coord@example.com",
         )
 
-        self.assertTrue(service.modify("DMO-1", {"Description": "révisée"}))
+        self.assertTrue(
+            service.modify_command(
+                DemandUpdateCommand(number="DMO-1", description="révisée")
+            )
+        )
         service.approve("DMO-1", "ok")
 
         self.assertEqual(writes[0][0], "update")
@@ -118,15 +123,26 @@ class RepositoryPortTests(unittest.TestCase):
         self.assertEqual(approval[2]["ApprouvePar"], "coord@example.com")
         self.assertEqual(sync_events, [("sync", "DMO-1")])
 
-    def test_segment_service_composes_directly_against_ports(self) -> None:
+    def test_segment_service_composes_directly_against_ports_and_typed_commands(self) -> None:
         writes: list[tuple[object, ...]] = []
+        stored = SegmentReadModel(
+            segment_id="SEG-NEW",
+            demand_number="DMO-1",
+            project_number="P-1",
+            project_name="Projet",
+            resource_name=None,
+            start_date=date(2026, 8, 25),
+            end_date=date(2026, 8, 25),
+            planned_hours=8,
+            status="À assigner",
+        )
 
         class Port:
             def list(self, *, include_cancelled=True):
-                return ()
+                return (stored,)
 
             def get(self, segment_id: str):
-                return None
+                return stored if segment_id == stored.segment_id else None
 
             def create(self, values):
                 writes.append(("create", dict(values)))
@@ -136,7 +152,14 @@ class RepositoryPortTests(unittest.TestCase):
                 writes.append(("update", segment_id, dict(updates)))
 
         service = SegmentService(Port(), _Planning())
-        identifier, summary = service.create({"NoDemande": "DMO-1", "HeuresPrevues": 8})
+        identifier, summary = service.create_command(
+            SegmentCreateCommand(
+                demand_number="DMO-1",
+                start_date=date(2026, 8, 25),
+                end_date=date(2026, 8, 25),
+                planned_hours=8,
+            )
+        )
         service.cancel(identifier)
 
         self.assertEqual(identifier, "SEG-NEW")

@@ -11,18 +11,21 @@ APPLICATION = APP / "application"
 
 
 class CommandPortArchitectureTests(unittest.TestCase):
+    SERVICE_FILES = (
+        "allocation_service.py",
+        "planning_service.py",
+        "quick_shift_service.py",
+        "demand_service.py",
+        "segment_service.py",
+    )
+
     def test_core_application_services_do_not_import_ui_excel_or_v1_modules(self) -> None:
-        service_files = (
-            "allocation_service.py",
-            "planning_service.py",
-            "quick_shift_service.py",
-            "demand_service.py",
-            "segment_service.py",
-        )
         forbidden = (
             "nicegui",
             "xlwings",
             "excel_repository",
+            "fastapi",
+            "pydantic",
             ".v13",
             ".v14",
             ".v15",
@@ -37,7 +40,7 @@ class CommandPortArchitectureTests(unittest.TestCase):
             "app.v18",
         )
 
-        for filename in service_files:
+        for filename in self.SERVICE_FILES:
             source = (APPLICATION / filename).read_text(encoding="utf-8")
             tree = ast.parse(source)
             imports: list[str] = []
@@ -51,6 +54,55 @@ class CommandPortArchitectureTests(unittest.TestCase):
                     any(token in module for token in forbidden),
                     f"{filename} leaks transport/storage/V1 dependency: {module}",
                 )
+
+    def test_services_expose_typed_command_entrypoints(self) -> None:
+        expected = {
+            "planning_service.py": ("rebuild_command", "PlanningRebuildCommand"),
+            "allocation_service.py": (
+                "create_manual_command",
+                "update_manual_command",
+                "release_manual_command",
+                "delete_manual_command",
+                "assign_segment_command",
+                "ManualAllocationCreateCommand",
+            ),
+            "quick_shift_service.py": ("create_command", "QuickShiftCreateCommand"),
+            "demand_service.py": (
+                "create_command",
+                "modify_command",
+                "submit_command",
+                "approve_command",
+                "request_correction_command",
+                "cancel_command",
+                "DemandCreateCommand",
+                "DemandUpdateCommand",
+            ),
+            "segment_service.py": (
+                "create_command",
+                "update_command",
+                "cancel_command",
+                "SegmentCreateCommand",
+                "SegmentUpdateCommand",
+            ),
+        }
+        for filename, tokens in expected.items():
+            source = (APPLICATION / filename).read_text(encoding="utf-8")
+            for token in tokens:
+                self.assertIn(token, source, f"{filename} missing 6A seam {token}")
+
+    def test_services_share_one_adapter_error_translation_policy(self) -> None:
+        for filename in self.SERVICE_FILES:
+            source = (APPLICATION / filename).read_text(encoding="utf-8")
+            self.assertIn(
+                "call_application_port",
+                source,
+                f"{filename} must use the shared application-port executor",
+            )
+            self.assertNotIn(
+                "application_error_from_exception",
+                source,
+                f"{filename} must not own adapter-error translation policy",
+            )
 
     def test_runtime_services_has_no_direct_versioned_bridge_or_callback_composition(self) -> None:
         source = (APPLICATION / "runtime_services.py").read_text(encoding="utf-8")
