@@ -46,7 +46,6 @@ class OperationalPlanningHeaderFilterTests(unittest.TestCase):
         }
         state = resolve_planning_filter_state(
             owner,
-            [{"name": "Alice"}],
             [{"NumeroProjet": "P2"}, {"NumeroProjet": "P1"}],
             [{"NumeroProjet": "P3"}, {"NumeroProjet": "P2"}],
             [{"NumeroProjet": "P1"}],
@@ -72,7 +71,6 @@ class OperationalPlanningHeaderFilterTests(unittest.TestCase):
         owner = SimpleNamespace(repo=object())
         state = resolve_planning_filter_state(
             owner,
-            [],
             [],
             [],
             [],
