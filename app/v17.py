@@ -5,35 +5,10 @@ from typing import Any
 from nicegui import ui
 
 from . import ui as ui_module
-from . import v13, v15, v15_engine, v16
-from .bugfixes import schedulable_technicians
+from . import v15_engine
 from .operational_planning_cell_context_compat import operational_planning_cell_context
-from .operational_planning_drop_handler import register_operational_planning_drop_handler
-from .operational_planning_drop_handler_compat import (
-    operational_planning_drop_handler_bindings,
-)
-from .operational_planning_grid import render_operational_planning_grid
-from .operational_planning_header_filters import (
-    render_operational_planning_header_filters,
-    resolve_planning_filter_state,
-)
-from .operational_planning_header_filters_compat import (
-    operational_planning_header_filter_bindings,
-)
-from .operational_planning_resource_groups import group_operational_planning_resources
-from .operational_planning_resource_groups_compat import (
-    operational_planning_resource_group_bindings,
-)
-from .operational_planning_resource_row_compat import (
-    operational_planning_resource_row_bindings,
-)
-from .operational_planning_work_sections import (
-    render_operational_planning_work_sections,
-)
-from .operational_planning_work_sections_compat import (
-    operational_planning_work_sections_bindings,
-)
-from .services import week_days
+from .operational_planning_orchestrator import render_operational_planning
+from .operational_planning_orchestrator_compat import operational_planning_bindings
 
 
 def _render_planning(
@@ -41,79 +16,11 @@ def _render_planning(
     *,
     weekly_stats_provider: Any | None = None,
 ) -> None:
-    drop_bindings = operational_planning_drop_handler_bindings()
-    register_operational_planning_drop_handler(self, bindings=drop_bindings)
-    row_bindings = operational_planning_resource_row_bindings()
-    work_sections_bindings = operational_planning_work_sections_bindings()
-    header_filter_bindings = operational_planning_header_filter_bindings()
-    resource_group_bindings = operational_planning_resource_group_bindings()
-
-    days = week_days(self.current_week)
-    techs = schedulable_technicians(self.repo)
-    class_map = v16.resource_class_map(self.repo)
-    stats_provider = weekly_stats_provider or v16._weekly_resource_stats
-    week_stats = stats_provider(self.repo, self.current_week)
-    demands = v16._demand_lookup(self.repo)
-    segments = {
-        str(row.get("IDSegment") or ""): row
-        for row in v13.segment_records(self.repo, include_cancelled=False)
-    }
-    allocations = [
-        row
-        for row in v15_engine.allocation_records(self.repo)
-        if row.get("Date") and days[0] <= row["Date"] <= days[-1]
-    ]
-    unassigned = v15._unassigned_segments_for_week(self.repo, self.current_week)
-    pending = v15._pending_demands_for_week(self.repo, self.current_week)
-
-    filter_state = resolve_planning_filter_state(
+    """Compatibility wrapper for refinements that still call the V1.7 entry point."""
+    render_operational_planning(
         self,
-        allocations,
-        unassigned,
-        pending,
-        bindings=header_filter_bindings,
-    )
-    render_operational_planning_header_filters(
-        self,
-        days,
-        techs,
-        filter_state,
-        bindings=header_filter_bindings,
-    )
-
-    render_operational_planning_work_sections(
-        self,
-        unassigned,
-        pending,
-        demands,
-        filter_state.project_filter,
-        filter_state.confirmation_filter,
-        bindings=work_sections_bindings,
-    )
-
-    grouped = group_operational_planning_resources(
-        techs,
-        class_map,
-        week_stats,
-        filter_state.class_filter,
-        filter_state.resource_filter,
-        filter_state.only_available,
-        bindings=resource_group_bindings,
-    )
-
-    render_operational_planning_grid(
-        self,
-        days,
-        grouped,
-        allocations,
-        segments,
-        demands,
-        pending,
-        week_stats,
-        filter_state.project_filter,
-        filter_state.confirmation_filter,
-        resource_group_bindings=resource_group_bindings,
-        row_bindings=row_bindings,
+        weekly_stats_provider=weekly_stats_provider,
+        bindings=operational_planning_bindings(),
     )
 
 
