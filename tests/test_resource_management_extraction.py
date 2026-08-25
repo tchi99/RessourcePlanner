@@ -10,7 +10,7 @@ APP = ROOT / "app"
 
 
 class ResourceManagementExtractionTests(unittest.TestCase):
-    def test_resource_management_owns_v17_resource_behaviors(self) -> None:
+    def test_resource_management_owns_resource_behaviors_directly(self) -> None:
         source = (APP / "resource_management_compat.py").read_text(encoding="utf-8")
 
         for token in (
@@ -25,21 +25,15 @@ class ResourceManagementExtractionTests(unittest.TestCase):
         ):
             self.assertIn(token, source)
 
-        self.assertIn("legacy_overrides._manual_order_dialog(self)", source)
-        self.assertIn("legacy_overrides._new_resource_dialog(self)", source)
+        self.assertIn("on_click=lambda: _manual_order_dialog(self)", source)
+        self.assertIn("on_click=lambda: _new_resource_dialog(self)", source)
+        self.assertNotIn("legacy_overrides", source)
+        self.assertNotIn("v17_refinements", source)
         ast.parse(source)
 
-    def test_v17_refinements_is_only_a_temporary_shim(self) -> None:
-        source = (APP / "v17_refinements.py").read_text(encoding="utf-8")
-
-        self.assertIn("Compatibility shim", source)
-        self.assertIn("from .resource_management_compat import (", source)
-        self.assertIn("install_resource_management_compat()", source)
-        self.assertNotIn("from nicegui import ui", source)
-        self.assertNotIn("def _new_resource_dialog(", source)
-        self.assertNotIn("def _manual_order_dialog(", source)
-        self.assertNotIn("ExcelRepository.technicians =", source)
-        ast.parse(source)
+    def test_v17_resource_shims_are_physically_removed(self) -> None:
+        self.assertFalse((APP / "v17_refinements.py").exists())
+        self.assertFalse((APP / "v17_sort_fix.py").exists())
 
 
 if __name__ == "__main__":
