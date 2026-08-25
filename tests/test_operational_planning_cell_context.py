@@ -152,7 +152,9 @@ class OperationalPlanningCellContextTests(unittest.TestCase):
             encoding="utf-8"
         )
         quick_shift_source = (APP / "quick_shift_ui.py").read_text(encoding="utf-8")
-        v17_source = (APP / "v17.py").read_text(encoding="utf-8")
+        runtime_source = (APP / "operational_planning_runtime.py").read_text(
+            encoding="utf-8"
+        )
         drop_compat_source = (
             APP / "operational_planning_drop_handler_compat.py"
         ).read_text(encoding="utf-8")
@@ -161,19 +163,11 @@ class OperationalPlanningCellContextTests(unittest.TestCase):
             self.assertNotIn(f"from . import {versioned}", context_source)
             self.assertNotIn(f"from .{versioned}", context_source)
 
+        self.assertFalse((APP / "v17.py").exists())
         self.assertNotIn("from . import v15_engine, v17", quick_shift_source)
         self.assertNotIn("v17._", quick_shift_source)
-        for helper in (
-            "_segment_by_id",
-            "_actual_allocations",
-            "_locked_hours",
-            "_validate_locked_total",
-            "_skill_message",
-            "_day_standard_load",
-            "_eligible_segments_for_cell",
-        ):
-            self.assertNotIn(f"def {helper}(", v17_source)
-        self.assertIn("cell_context.validate_locked_total(", v17_source)
+        self.assertIn("cell_context.validate_locked_total(", runtime_source)
+        self.assertNotIn("from . import v15_engine", runtime_source)
         self.assertNotIn("def _skill_message(", drop_compat_source)
         self.assertNotIn("def _segment_by_id(", drop_compat_source)
 
