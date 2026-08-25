@@ -34,6 +34,13 @@ class V171AdapterExtractionTests(unittest.TestCase):
         self.assertNotIn("v17_sort_fix", source)
         ast.parse(source)
 
+    def test_sorting_compat_uses_resource_management_owner(self) -> None:
+        source = self._source("operational_planning_sorting_compat.py")
+
+        self.assertIn("resource_management._resource_order_map", source)
+        self.assertNotIn("v17_refinements", source)
+        ast.parse(source)
+
     def test_v17_v171_shims_and_bridge_are_physically_removed(self) -> None:
         for name in (
             "v17_refinements.py",
