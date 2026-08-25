@@ -51,6 +51,8 @@ class Resource(TimestampMixin, Base):
     name: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     email: Mapped[str | None] = mapped_column(String(320), nullable=True)
     resource_class: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    competencies: Mapped[str | None] = mapped_column(Text, nullable=True)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
     active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=true(), index=True)
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
 
@@ -147,8 +149,10 @@ class WorkforceRequestHistory(Base):
         String(ID_LENGTH), ForeignKey("workforce_requests.id"), nullable=False, index=True
     )
     action: Mapped[str] = mapped_column(String(64), nullable=False)
+    previous_status: Mapped[str | None] = mapped_column(String(32), nullable=True)
     status: Mapped[str | None] = mapped_column(String(32), nullable=True)
     comment: Mapped[str | None] = mapped_column(Text, nullable=True)
+    details: Mapped[str | None] = mapped_column(Text, nullable=True)
     actor_external_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
     actor_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
