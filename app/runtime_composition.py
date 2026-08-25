@@ -44,13 +44,15 @@ RUNTIME_COMPOSITION_MANIFEST: tuple[CompositionStep, ...] = (
     CompositionStep("operational_planning_sorting", "compatibility"),
     CompositionStep("runtime_performance", "compatibility"),
     CompositionStep("resource_local_preferences", "compatibility"),
-    CompositionStep("v18_features", "legacy"),
+    CompositionStep("effort_identity", "compatibility"),
     CompositionStep("effort_identity_guard", "compatibility"),
-    CompositionStep("v18_refinements", "legacy"),
+    CompositionStep("demand_cancellation", "compatibility"),
+    CompositionStep("medium_term_renderer", "compatibility"),
     CompositionStep("quick_shift_ui", "application"),
     CompositionStep("operational_planning_compat", "compatibility"),
     CompositionStep("resource_class_compat", "compatibility"),
     CompositionStep("location_projection", "compatibility"),
+    CompositionStep("medium_term_page", "application"),
     CompositionStep("operational_planning_page", "application"),
     CompositionStep("demand_editor_ui", "application"),
     CompositionStep("planning_service_ui", "application"),
@@ -76,11 +78,15 @@ def _runtime_installers() -> tuple[tuple[str, Installer], ...]:
     from .communication_outlook_ui import install_communication_outlook_ui
     from .communication_thunderbird_setup_fix import install_thunderbird_setup_fix
     from .communication_ui import install_communication_ui
+    from .demand_cancellation_compat import install_demand_cancellation_compat
     from .demand_editor_ui import install_demand_editor_ui
+    from .effort_identity_compat import install_effort_identity_compat
     from .effort_identity_guard import install_effort_identity_guard
     from .features import install_features
     from .features_runtime import apply_runtime_optimizations
     from .location_projection import install_location_projection
+    from .medium_term_page import install_medium_term_page
+    from .medium_term_renderer_compat import install_medium_term_renderer_compat
     from .operational_planning_compat import install_operational_planning_compat
     from .operational_planning_page import install_operational_planning_page
     from .operational_planning_runtime_compat import (
@@ -102,8 +108,6 @@ def _runtime_installers() -> tuple[tuple[str, Installer], ...]:
     from .v15_refinements import install_v15_refinements
     from .v16 import install_v16_features
     from .v16_refinements import install_v16_refinements
-    from .v18 import install_v18_features
-    from .v18_refinements import install_v18_refinements
 
     return (
         ("runtime_optimizations", apply_runtime_optimizations),
@@ -122,13 +126,15 @@ def _runtime_installers() -> tuple[tuple[str, Installer], ...]:
         ("operational_planning_sorting", install_operational_planning_sorting),
         ("runtime_performance", install_runtime_performance_compat),
         ("resource_local_preferences", install_resource_local_preferences),
-        ("v18_features", install_v18_features),
+        ("effort_identity", install_effort_identity_compat),
         ("effort_identity_guard", install_effort_identity_guard),
-        ("v18_refinements", install_v18_refinements),
+        ("demand_cancellation", install_demand_cancellation_compat),
+        ("medium_term_renderer", install_medium_term_renderer_compat),
         ("quick_shift_ui", install_quick_shift_ui),
         ("operational_planning_compat", install_operational_planning_compat),
         ("resource_class_compat", install_resource_class_compat),
         ("location_projection", install_location_projection),
+        ("medium_term_page", install_medium_term_page),
         ("operational_planning_page", install_operational_planning_page),
         ("demand_editor_ui", install_demand_editor_ui),
         ("planning_service_ui", install_planning_service_ui),
