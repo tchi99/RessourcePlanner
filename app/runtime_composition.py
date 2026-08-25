@@ -40,6 +40,7 @@ RUNTIME_COMPOSITION_MANIFEST: tuple[CompositionStep, ...] = (
     CompositionStep("v15_refinements", "legacy"),
     CompositionStep("v16_features", "legacy"),
     CompositionStep("v16_refinements", "legacy"),
+    CompositionStep("resource_profile_migrations", "compatibility"),
     CompositionStep("operational_planning_runtime", "compatibility"),
     CompositionStep("resource_management", "compatibility"),
     CompositionStep("operational_planning_sorting", "compatibility"),
@@ -100,6 +101,7 @@ def _runtime_installers() -> tuple[tuple[str, Installer], ...]:
     from .resource_class_compat import install_resource_class_compat
     from .resource_local_preferences import install_resource_local_preferences
     from .resource_management_compat import install_resource_management_compat
+    from .resource_profile_migration_compat import install_resource_profile_migration_compat
     from .runtime_performance_compat import install_runtime_performance_compat
     from .schema_migration_compat import install_schema_migration_compat
     from .v13 import install_v13_features
@@ -124,6 +126,7 @@ def _runtime_installers() -> tuple[tuple[str, Installer], ...]:
         ("v15_refinements", install_v15_refinements),
         ("v16_features", install_v16_features),
         ("v16_refinements", install_v16_refinements),
+        ("resource_profile_migrations", install_resource_profile_migration_compat),
         ("operational_planning_runtime", install_operational_planning_runtime_compat),
         ("resource_management", install_resource_management_compat),
         ("operational_planning_sorting", install_operational_planning_sorting),
