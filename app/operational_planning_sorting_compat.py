@@ -118,8 +118,8 @@ def register_manual_order_handler(owner: ui_module.PlannerUI) -> None:
             direction = int(args.get("direction") or 0)
         except (TypeError, ValueError):
             direction = 0
-        move_manual_resource(
-            owner,
+        mover = getattr(owner, "move_resource_manual", move_manual_resource)
+        mover(
             str(args.get("technician") or ""),
             direction,
         )
