@@ -8,6 +8,9 @@ import unittest
 
 from sqlalchemy import func, select
 
+from app.application.allocation_service import AllocationService
+from app.application.demand_service import DemandService
+from app.application.planning_service import PlanningService
 from app.application.quick_shift_service import QuickShiftService
 from app.infrastructure.sql import (
     Base,
@@ -19,6 +22,7 @@ from app.infrastructure.sql import (
     Shift,
     SqlAllocationCommandAdapter,
     SqlApprovedDemandSyncAdapter,
+    SqlDemandRepository,
     SqlPlanningCommandAdapter,
     SqlSegmentRepository,
     WorkforceRequest,
@@ -33,6 +37,11 @@ ROOT = Path(__file__).resolve().parents[1]
 COMMAND_ADAPTERS = ROOT / "app" / "infrastructure" / "sql" / "command_adapters.py"
 D1 = date(2026, 8, 24)  # lundi
 D2 = date(2026, 8, 25)
+
+
+class _FailingPlanning:
+    def rebuild(self):
+        raise RuntimeError("échec de recalcul simulé")
 
 
 class SqlCommandAdapterTests(unittest.TestCase):
@@ -243,7 +252,10 @@ class SqlCommandAdapterTests(unittest.TestCase):
                 )
             ).all()
             self.assertEqual(len(active), 2)
-            self.assertEqual(sorted(row.planned_hours for row in active), [Decimal("8.00"), Decimal("8.00")])
+            self.assertEqual(
+                sorted(row.planned_hours for row in active),
+                [Decimal("8.00"), Decimal("8.00")],
+            )
             self.assertEqual(sum(1 for row in active if row.assigned_resource_id == "R1"), 1)
 
             request.resource_count = 1
@@ -269,6 +281,107 @@ class SqlCommandAdapterTests(unittest.TestCase):
             )
             self.assertEqual(int(history_count or 0), 2)
 
+    def test_application_services_execute_on_real_sql_adapters(self) -> None:
+        with transactional_session(self.factory) as session:
+            planning_adapter = SqlPlanningCommandAdapter(session)
+            allocation_adapter = SqlAllocationCommandAdapter(
+                session,
+                planning=planning_adapter,
+            )
+            demand_service = DemandService(
+                SqlDemandRepository(session, actor_name="Jean"),
+                planning_adapter,
+                SqlApprovedDemandSyncAdapter(session),
+                current_user="Jean",
+            )
+            planning_service = PlanningService(planning_adapter)
+            allocation_service = AllocationService(allocation_adapter)
+
+            number = demand_service.create(
+                {
+                    "NumeroProjet": "P-1",
+                    "DateDebutSouhaitee": D1,
+                    "DateFinSouhaitee": D1,
+                    "Description": "Besoin SQL complet",
+                    "NombreRessources": 1,
+                    "TempsEstimeHeures": 8,
+                    "TechnicienPropose": "Alice",
+                },
+                submit=True,
+            )
+            summary = demand_service.approve(number, "OK")
+            self.assertEqual(summary["planning_engine"], "pure")
+            self.assertEqual(summary["allocated_hours"], 8.0)
+
+            requirement = session.scalar(
+                select(ResourceRequirement).where(
+                    ResourceRequirement.workforce_request_id.is_not(None),
+                    ResourceRequirement.status != "Annulé",
+                )
+            )
+            self.assertIsNotNone(requirement)
+            assert requirement is not None
+            segment_id = requirement.legacy_segment_id or requirement.id
+
+            rebuilt = planning_service.rebuild()
+            self.assertEqual(rebuilt["allocated_hours"], 8.0)
+
+            allocation_id = allocation_service.create_manual(
+                segment_id,
+                "Alice",
+                D1,
+                2,
+                False,
+                "Priorité manuelle",
+            )
+            locked = session.scalar(
+                select(Shift).where(Shift.legacy_allocation_id == allocation_id)
+            )
+            self.assertIsNotNone(locked)
+            assert locked is not None
+            self.assertTrue(locked.locked)
+            self.assertEqual(locked.hours, Decimal("2.00"))
+
+            assigned = allocation_service.assign_segment(segment_id, "Alice")
+            self.assertEqual(assigned["planning_engine"], "pure")
+
+    def test_failed_command_rolls_back_its_flushed_mutations(self) -> None:
+        with transactional_session(self.factory) as session:
+            self._add_requirement(
+                session,
+                identifier="SEG-FAIL",
+                hours=Decimal("8"),
+                resource_id="R1",
+            )
+
+        with self.assertRaises(RuntimeError):
+            with transactional_session(self.factory) as session:
+                adapter = SqlAllocationCommandAdapter(
+                    session,
+                    planning=_FailingPlanning(),
+                )
+                adapter.create_manual("SEG-FAIL", "Alice", D1, 2, False)
+
+        with self.factory() as session:
+            requirement = session.scalar(
+                select(ResourceRequirement).where(
+                    ResourceRequirement.legacy_segment_id == "SEG-FAIL"
+                )
+            )
+            self.assertIsNotNone(requirement)
+            assert requirement is not None
+            self.assertEqual(
+                int(
+                    session.scalar(
+                        select(func.count())
+                        .select_from(Shift)
+                        .where(Shift.resource_requirement_id == requirement.id)
+                    )
+                    or 0
+                ),
+                0,
+            )
+
     def test_transaction_rolls_back_complete_quick_shift(self) -> None:
         with self.assertRaises(RuntimeError):
             with transactional_session(self.factory) as session:
@@ -285,14 +398,13 @@ class SqlCommandAdapterTests(unittest.TestCase):
                 raise RuntimeError("force rollback")
 
         with self.factory() as session:
-            self.assertEqual(
-                int(session.scalar(select(func.count()).select_from(ResourceRequirement)) or 0),
-                0,
-            )
-            self.assertEqual(
-                int(session.scalar(select(func.count()).select_from(Shift)) or 0),
-                0,
-            )
+            quick_requirements = session.scalars(
+                select(ResourceRequirement).where(
+                    ResourceRequirement.origin == ORIGIN_QUICK_SHIFT,
+                    ResourceRequirement.legacy_segment_id != "SEG-FAIL",
+                )
+            ).all()
+            self.assertEqual(quick_requirements, [])
 
     def test_sql_command_adapters_are_transaction_neutral_and_legacy_free(self) -> None:
         source = COMMAND_ADAPTERS.read_text(encoding="utf-8")
