@@ -118,11 +118,12 @@ def register_manual_order_handler(owner: ui_module.PlannerUI) -> None:
             direction = int(args.get("direction") or 0)
         except (TypeError, ValueError):
             direction = 0
-        mover = getattr(owner, "move_resource_manual", move_manual_resource)
-        mover(
-            str(args.get("technician") or ""),
-            direction,
-        )
+        technician = str(args.get("technician") or "")
+        mover = getattr(owner, "move_resource_manual", None)
+        if callable(mover):
+            mover(technician, direction)
+        else:
+            move_manual_resource(owner, technician, direction)
 
     ui.on(MANUAL_ORDER_EVENT, handler)
     owner._operational_manual_order_handler_registered = True
