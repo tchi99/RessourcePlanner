@@ -6,7 +6,8 @@ from typing import Any
 
 from nicegui import ui
 
-from . import features, v14_engine, v16, v16_refinements, v17, v17_refinements, v17_sort_fix
+from . import features, v14_engine, v16, v16_refinements, v17_refinements, v17_sort_fix
+from . import operational_planning_drop_handler as drop_handler_module
 from . import ui as ui_module
 from .bugfixes import schedulable_technicians
 from .excel_repository import ExcelRepository
@@ -447,7 +448,7 @@ def _install_resource_write_optimizations() -> None:
         return
 
     original_update_profile = v16_refinements.update_resource_profile
-    original_split_allocation = v17._split_allocation
+    original_split_allocation = drop_handler_module._split_allocation
 
     def update_resource_profile_batched(
         repo: ExcelRepository,
@@ -473,6 +474,8 @@ def _install_resource_write_optimizations() -> None:
         target_technician: str,
         target_day: Any,
         hors_horaire: bool,
+        *,
+        bindings: Any,
     ) -> None:
         with self.repo.batch_update("split allocation"):
             original_split_allocation(
@@ -481,13 +484,14 @@ def _install_resource_write_optimizations() -> None:
                 target_technician,
                 target_day,
                 hors_horaire,
+                bindings=bindings,
             )
 
     v16_refinements.update_resource_profile = update_resource_profile_batched
     v17_refinements._manual_order_dialog = _manual_order_dialog_fast
     v17_sort_fix._move_manual_resource = _move_manual_resource_fast
     ui_module.PlannerUI.move_resource_manual = _move_manual_resource_fast
-    v17._split_allocation = split_allocation_batched
+    drop_handler_module._split_allocation = split_allocation_batched
     v17_refinements._v171_resource_writes_installed = True
 
 
