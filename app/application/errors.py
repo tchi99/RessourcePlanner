@@ -48,3 +48,39 @@ class ApplicationConflictError(ApplicationError):
 
 class ApplicationOperationError(ApplicationError):
     default_code = "operation_failed"
+
+
+def application_error_from_exception(
+    exc: Exception,
+    *,
+    code_prefix: str,
+    context: Mapping[str, Any] | None = None,
+) -> ApplicationError:
+    """Translate a legacy adapter failure to the stable application error contract."""
+
+    if isinstance(exc, ApplicationError):
+        return exc
+
+    message = str(exc)
+    if isinstance(exc, KeyError) and exc.args:
+        message = str(exc.args[0])
+    if not message:
+        message = "L'opération n'a pas pu être complétée."
+
+    if isinstance(exc, KeyError):
+        return ApplicationNotFoundError(
+            message,
+            code=f"{code_prefix}_not_found",
+            context=context,
+        )
+    if isinstance(exc, ValueError):
+        return ApplicationValidationError(
+            message,
+            code=f"{code_prefix}_invalid",
+            context=context,
+        )
+    return ApplicationOperationError(
+        message,
+        code=f"{code_prefix}_failed",
+        context=context,
+    )
