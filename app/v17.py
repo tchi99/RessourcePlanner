@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from datetime import date
 from typing import Any
 
@@ -11,14 +10,12 @@ from . import ui as ui_module
 from . import v13, v14_engine, v15, v15_engine, v15_refinements, v16, v16_refinements
 from .bugfixes import schedulable_technicians
 from .excel_repository import _date_from_any
-from .operational_planning_resource_row import (
-    ResourceRowBindings,
-    render_operational_planning_resource_row,
+from .operational_planning_drag_drop import DROP_EVENT, make_draggable
+from .operational_planning_resource_row import render_operational_planning_resource_row
+from .operational_planning_resource_row_compat import (
+    operational_planning_resource_row_bindings,
 )
 from .services import week_days
-
-
-DROP_EVENT = "v17-planning-drop"
 
 
 def _segment_by_id(repo: Any, segment_id: str) -> dict[str, Any] | None:
@@ -73,57 +70,6 @@ def _validate_locked_total(
             f"Les quarts verrouillés dépasseraient les {planned:g} h prévues du segment "
             f"({locked:g} h déjà verrouillées + {requested:g} h)."
         )
-
-
-def _make_draggable(element: Any, payload: str) -> Any:
-    value = json.dumps(payload)
-    element.props("draggable=true")
-    element.classes("v17-draggable")
-    element.on(
-        "dragstart",
-        js_handler=(
-            "(event) => {"
-            f"event.dataTransfer.setData('text/plain', {value});"
-            "event.dataTransfer.effectAllowed = 'move';"
-            "event.currentTarget.classList.add('v17-dragging');"
-            "}"
-        ),
-    )
-    element.on(
-        "dragend",
-        js_handler="(event) => event.currentTarget.classList.remove('v17-dragging')",
-    )
-    return element
-
-
-def _make_drop_zone(element: Any, technician: str, day: date | None = None) -> Any:
-    tech_json = json.dumps(technician)
-    day_json = json.dumps(day.isoformat() if day else "")
-    element.classes("v17-drop-zone")
-    element.on(
-        "dragover",
-        js_handler=(
-            "(event) => { event.preventDefault(); "
-            "event.dataTransfer.dropEffect = 'move'; "
-            "event.currentTarget.classList.add('v17-drop-hover'); }"
-        ),
-    )
-    element.on(
-        "dragleave",
-        js_handler="(event) => event.currentTarget.classList.remove('v17-drop-hover')",
-    )
-    element.on(
-        "drop",
-        js_handler=(
-            "(event) => { event.preventDefault(); "
-            "event.currentTarget.classList.remove('v17-drop-hover'); "
-            f"emitEvent('{DROP_EVENT}', {{"
-            "payload: event.dataTransfer.getData('text/plain'), "
-            f"technician: {tech_json}, date: {day_json}"
-            "}); }"
-        ),
-    )
-    return element
 
 
 def _skill_message(repo: Any, technician: str, segment: dict[str, Any]) -> tuple[str, bool]:
@@ -507,56 +453,13 @@ def _register_drop_handler(self: ui_module.PlannerUI) -> None:
     self._v17_drop_handler_registered = True
 
 
-def _render_resource_row(
-    self: ui_module.PlannerUI,
-    tech: dict[str, Any],
-    days: list[date],
-    allocations: list[dict[str, Any]],
-    segments: dict[str, dict[str, Any]],
-    demands: dict[str, dict[str, Any]],
-    pending: list[dict[str, Any]],
-    week_stats: dict[str, dict[str, float]],
-    project_filter: str,
-    confirmation_filter: str,
-) -> None:
-    """Compatibility wrapper while the parent V1.7 renderer is still versioned."""
-    bindings = ResourceRowBindings(
-        make_drop_zone=_make_drop_zone,
-        availability_for_day=features.availability_for_day,
-        availability_hours=v13._availability_hours,
-        all_projects=v16.ALL_PROJECTS,
-        project_number_for_allocation=v16._project_number_for_allocation,
-        all_confirmations=v16.ALL_CONFIRMATIONS,
-        demand_confirmation=v15_refinements.demand_confirmation,
-        is_missing_allocation=v15_refinements.is_missing_allocation,
-        pending_covers_day=v15._pending_covers_day,
-        number=v13._number,
-        truthy=v15_engine._truthy,
-        allocation_style=v15_refinements._allocation_style,
-        open_allocation_dialog=v15_refinements._open_allocation_dialog,
-        make_draggable=_make_draggable,
-    )
-    render_operational_planning_resource_row(
-        self,
-        tech,
-        days,
-        allocations,
-        segments,
-        demands,
-        pending,
-        week_stats,
-        project_filter,
-        confirmation_filter,
-        bindings=bindings,
-    )
-
-
 def _render_planning(
     self: ui_module.PlannerUI,
     *,
     weekly_stats_provider: Any | None = None,
 ) -> None:
     _register_drop_handler(self)
+    row_bindings = operational_planning_resource_row_bindings()
     days = week_days(self.current_week)
     techs = schedulable_technicians(self.repo)
     class_map = v16.resource_class_map(self.repo)
@@ -700,7 +603,7 @@ def _render_planning(
                     card = ui.card().classes(
                         "p-3 min-w-[280px] max-w-[370px]"
                     )
-                    _make_draggable(
+                    make_draggable(
                         card,
                         f"segment:{segment.get('IDSegment') or ''}",
                     )
@@ -839,7 +742,7 @@ def _render_planning(
                                 "text-xl font-semibold"
                             )
                     for tech in group_techs:
-                        _render_resource_row(
+                        render_operational_planning_resource_row(
                             self,
                             tech,
                             days,
@@ -850,6 +753,7 @@ def _render_planning(
                             week_stats,
                             project_filter,
                             confirmation_filter,
+                            bindings=row_bindings,
                         )
 
 
