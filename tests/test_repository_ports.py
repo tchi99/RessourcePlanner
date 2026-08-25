@@ -29,6 +29,22 @@ def imported_modules(path: Path) -> set[str]:
     return modules
 
 
+class _Planning:
+    def __init__(self, result=None) -> None:
+        self.result = result or {"engine": "pure"}
+
+    def rebuild(self):
+        return dict(self.result)
+
+
+class _Sync:
+    def __init__(self, events=None) -> None:
+        self.events = events if events is not None else []
+
+    def sync_approved(self, number):
+        self.events.append(("sync", number))
+
+
 class RepositoryPortTests(unittest.TestCase):
     def test_demand_read_model_normalizes_storage_row(self) -> None:
         model = DemandReadModel.from_mapping(
@@ -67,8 +83,9 @@ class RepositoryPortTests(unittest.TestCase):
         self.assertEqual(model.start_date, date(2026, 8, 25))
         self.assertEqual(model.origin, "QUICK_SHIFT")
 
-    def test_demand_service_composes_against_repository_port(self) -> None:
+    def test_demand_service_composes_directly_against_ports(self) -> None:
         writes: list[tuple[object, ...]] = []
+        sync_events: list[object] = []
 
         class Port:
             def list(self):
@@ -84,14 +101,11 @@ class RepositoryPortTests(unittest.TestCase):
             def update(self, number, updates, *, action, comment=""):
                 writes.append(("update", number, dict(updates), action, comment))
 
-        events: list[object] = []
-        context = object()
-        service = DemandService.from_repository_port(
-            context,
+        service = DemandService(
             Port(),
+            _Planning(),
+            _Sync(sync_events),
             current_user="coord@example.com",
-            sync_approved_demand=lambda repo, number: events.append(("sync", repo, number)),
-            rebuild_planning=lambda repo: {"engine": "pure"},
         )
 
         self.assertTrue(service.modify("DMO-1", {"Description": "révisée"}))
@@ -102,9 +116,9 @@ class RepositoryPortTests(unittest.TestCase):
         approval = writes[1]
         self.assertEqual(approval[2]["Statut"], "En planification")
         self.assertEqual(approval[2]["ApprouvePar"], "coord@example.com")
-        self.assertEqual(events, [("sync", context, "DMO-1")])
+        self.assertEqual(sync_events, [("sync", "DMO-1")])
 
-    def test_segment_service_composes_against_repository_port(self) -> None:
+    def test_segment_service_composes_directly_against_ports(self) -> None:
         writes: list[tuple[object, ...]] = []
 
         class Port:
@@ -121,11 +135,7 @@ class RepositoryPortTests(unittest.TestCase):
             def update(self, segment_id, updates):
                 writes.append(("update", segment_id, dict(updates)))
 
-        service = SegmentService.from_repository_port(
-            object(),
-            Port(),
-            rebuild_planning=lambda repo: {"engine": "pure"},
-        )
+        service = SegmentService(Port(), _Planning())
         identifier, summary = service.create({"NoDemande": "DMO-1", "HeuresPrevues": 8})
         service.cancel(identifier)
 
@@ -176,6 +186,7 @@ class RepositoryPortTests(unittest.TestCase):
         for filename in (
             "application/read_models.py",
             "application/repository_ports.py",
+            "application/command_ports.py",
             "application/demand_service.py",
             "application/segment_service.py",
         ):
@@ -195,6 +206,7 @@ class RepositoryPortTests(unittest.TestCase):
             "application/runtime_services.py",
             "infrastructure/excel/demand_repository.py",
             "infrastructure/excel/segment_repository.py",
+            "infrastructure/excel/command_adapters.py",
         ):
             imports = imported_modules(APP / filename)
             self.assertNotIn("xlwings", imports, filename)
@@ -206,13 +218,18 @@ class RepositoryPortTests(unittest.TestCase):
         self.assertIn('import_module("app.segment_repository")', segment_source)
         self.assertIn('import_module("app.v13")', segment_source)
 
-    def test_runtime_services_use_repository_ports_not_excel_rows(self) -> None:
+    def test_runtime_services_use_ports_not_excel_rows_or_callbacks(self) -> None:
         source = (APP / "application" / "runtime_services.py").read_text(encoding="utf-8")
 
         self.assertIn("ExcelDemandRepository(repository)", source)
         self.assertIn("ExcelSegmentRepository(repository)", source)
-        self.assertIn("DemandService.from_repository_port(", source)
-        self.assertIn("SegmentService.from_repository_port(", source)
+        self.assertIn("ExcelPlanningCommandAdapter(repository)", source)
+        self.assertIn("ExcelApprovedDemandSyncAdapter(repository, demands)", source)
+        self.assertIn("return DemandService(", source)
+        self.assertIn("return SegmentService(", source)
+        self.assertNotIn("from_repository_port", source)
+        self.assertNotIn("rebuild_planning=lambda", source)
+        self.assertNotIn("sync_approved_demand=lambda", source)
         self.assertNotIn("repository.update_demand(", source)
         self.assertNotIn("repository.create_demand(", source)
         self.assertNotIn("for row in repository.demands()", source)
