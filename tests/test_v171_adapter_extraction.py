@@ -44,6 +44,39 @@ class V171AdapterExtractionTests(unittest.TestCase):
         ):
             self.assertFalse((APP / name).exists(), name)
 
+    def test_no_application_module_imports_retired_v17_v171_modules(self) -> None:
+        retired = {
+            "v17",
+            "v17_refinements",
+            "v17_sort_fix",
+            "v171_performance",
+            "v171_local_preferences",
+            "resource_local_preferences_compat",
+        }
+        offenders: list[str] = []
+
+        for path in APP.rglob("*.py"):
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Import):
+                    for alias in node.names:
+                        if alias.name.split(".")[-1] in retired:
+                            offenders.append(f"{path.relative_to(APP)}: import {alias.name}")
+                elif isinstance(node, ast.ImportFrom):
+                    module = (node.module or "").split(".")[-1]
+                    if module in retired:
+                        offenders.append(
+                            f"{path.relative_to(APP)}: from {node.module} import ..."
+                        )
+                    if node.module is None:
+                        for alias in node.names:
+                            if alias.name in retired:
+                                offenders.append(
+                                    f"{path.relative_to(APP)}: from . import {alias.name}"
+                                )
+
+        self.assertEqual(offenders, [], "\n".join(offenders))
+
     def test_runtime_composition_installs_stable_adapters_directly(self) -> None:
         source = self._source("runtime_composition.py")
 
