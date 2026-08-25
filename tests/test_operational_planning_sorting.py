@@ -13,6 +13,7 @@ from app.operational_planning_sorting import (
     manual_order_script,
     rank_weekly_stats,
 )
+from app.runtime_composition import composition_manifest
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -104,6 +105,23 @@ class OperationalPlanningSortingTests(unittest.TestCase):
         for version in ("v13", "v14", "v15", "v16", "v17", "v18"):
             self.assertNotIn(f"from . import {version}", source)
             self.assertNotIn(f"from .{version}", source)
+
+    def test_runtime_manifest_uses_stable_sorting_and_not_v17_sort_fix(self) -> None:
+        manifest = composition_manifest()
+        names = [step.name for step in manifest]
+        categories = {step.name: step.category for step in manifest}
+
+        self.assertIn("operational_planning_sorting", names)
+        self.assertEqual(categories["operational_planning_sorting"], "compatibility")
+        self.assertNotIn("v17_sort_fix", names)
+        self.assertLess(
+            names.index("v17_refinements"),
+            names.index("operational_planning_sorting"),
+        )
+        self.assertLess(
+            names.index("operational_planning_sorting"),
+            names.index("v171_performance"),
+        )
 
 
 if __name__ == "__main__":
