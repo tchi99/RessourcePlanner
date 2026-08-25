@@ -1,7 +1,10 @@
 from __future__ import annotations
 
-from collections.abc import Mapping
-from typing import Any
+from collections.abc import Callable, Mapping
+from typing import Any, TypeVar
+
+
+ResultT = TypeVar("ResultT")
 
 
 class ApplicationError(Exception):
@@ -84,3 +87,23 @@ def application_error_from_exception(
         code=f"{code_prefix}_failed",
         context=context,
     )
+
+
+def call_application_port(
+    action: Callable[[], ResultT],
+    *,
+    code_prefix: str,
+    context: Mapping[str, Any] | None = None,
+) -> ResultT:
+    """Execute one port call and expose only structured application failures."""
+
+    try:
+        return action()
+    except ApplicationError:
+        raise
+    except Exception as exc:
+        raise application_error_from_exception(
+            exc,
+            code_prefix=code_prefix,
+            context=context,
+        ) from exc
