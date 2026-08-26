@@ -77,7 +77,39 @@ Le runtime refuse de démarrer si `RESOURCEPLANNER_DATABASE_URL` est absente ou 
 
 ## 5. Smoke tests
 
-Après démarrage :
+### Préflight automatisé en lecture seule
+
+Avant même de laisser Uvicorn tourner en permanence, le dépôt fournit un préflight qui construit le même backend et vérifie la connexion ainsi que plusieurs routes sans modifier les données métier :
+
+```bat
+python tools\check_server_runtime.py
+```
+
+Le préflight vérifie :
+
+- `/health`;
+- la lecture des projets actifs;
+- la lecture des ressources actives;
+- la génération OpenAPI.
+
+Sortie réussie typique :
+
+```json
+{"active_projects": 12, "active_resources": 20, "api": "v1", "database": "sqlite", "openapi_paths": 17, "status": "ok"}
+```
+
+Codes de sortie :
+
+- `0` : configuration et lectures de base fonctionnelles;
+- `2` : configuration serveur invalide ou `RESOURCEPLANNER_DATABASE_URL` absente;
+- `3` : backend joignable partiellement mais smoke test en échec, par exemple schéma non migré;
+- `4` : erreur d'infrastructure avant le smoke test, par exemple driver DBAPI/ODBC manquant.
+
+Le rapport n'inclut jamais l'URL de connexion à la base. Pour une erreur technique inattendue, seul le type d'exception est affiché afin d'éviter qu'un mot de passe contenu dans l'URL SQL ne soit divulgué.
+
+### Vérification manuelle après démarrage
+
+Après `python -m app.server` :
 
 ```bat
 curl http://127.0.0.1:8000/health
@@ -107,10 +139,11 @@ Lorsque l'environnement virtuel/serveur cible sera disponible :
 2. installer/valider le paquet Python correspondant (probablement `pyodbc`);
 3. tester une URL SQLAlchemy SQL Server sans l'inscrire dans Git;
 4. exécuter `alembic upgrade head` sur une base de développement dédiée;
-5. démarrer `python -m app.server`;
-6. valider `/health`, les routes de lecture et une transaction de commande avec rollback;
-7. épingler le driver Python retenu dans les dépendances seulement après ce test;
-8. définir ensuite le mode d'hébergement long terme (service Windows/process manager, compte de service, certificats TLS et reverse proxy si requis).
+5. exécuter `python tools\check_server_runtime.py`;
+6. démarrer `python -m app.server`;
+7. valider `/health`, les lectures et une transaction de commande avec rollback;
+8. épingler le driver Python retenu dans les dépendances seulement après ce test;
+9. définir ensuite le mode d'hébergement long terme (service Windows/process manager, compte de service, certificats TLS et reverse proxy si requis).
 
 ## 7. Limites volontaires de SQL 4 / API 1
 
@@ -134,6 +167,7 @@ Ordre recommandé le jour du cutover :
 1. geler Excel;
 2. migrer le schéma explicitement;
 3. importer et réconcilier les données;
-4. démarrer le backend SQL;
-5. exécuter les smoke tests serveur;
-6. seulement ensuite déclarer SQL autoritaire.
+4. exécuter le préflight serveur en lecture seule;
+5. démarrer le backend SQL;
+6. exécuter les smoke tests manuels;
+7. seulement ensuite déclarer SQL autoritaire.
