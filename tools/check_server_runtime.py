@@ -72,30 +72,33 @@ def check_server_runtime(settings: ServerSettings) -> dict[str, Any]:
     }
 
 
+def _print_error(status: str, message: str, **extra: str) -> None:
+    payload = {"status": status, "message": message, **extra}
+    print(json.dumps(payload, ensure_ascii=False), file=sys.stderr)
+
+
 def main() -> int:
     try:
         settings = ServerSettings.from_environment()
     except ServerConfigurationError as exc:
-        print(
-            json.dumps(
-                {"status": "configuration_error", "message": str(exc)},
-                ensure_ascii=False,
-            ),
-            file=sys.stderr,
-        )
+        _print_error("configuration_error", str(exc))
         return 2
 
     try:
         summary = check_server_runtime(settings)
     except ServerReadinessError as exc:
-        print(
-            json.dumps(
-                {"status": "readiness_error", "message": str(exc)},
-                ensure_ascii=False,
-            ),
-            file=sys.stderr,
-        )
+        _print_error("readiness_error", str(exc))
         return 3
+    except Exception as exc:
+        # A missing DBAPI/ODBC driver or another infrastructure error can occur before
+        # FastAPI is able to translate it to its stable HTTP contract. Report only the
+        # exception type here so a connection string/password can never leak to output.
+        _print_error(
+            "technical_error",
+            "Le préflight n'a pas pu initialiser ou interroger le backend.",
+            error_type=type(exc).__name__,
+        )
+        return 4
 
     print(json.dumps(summary, ensure_ascii=False, sort_keys=True))
     return 0
