@@ -53,11 +53,24 @@ class ServerArchitectureTests(unittest.TestCase):
         self.assertIn("SqlPlanningCommandAdapter", composition)
         self.assertIn("SqlAllocationCommandAdapter", composition)
         self.assertIn("SqlApprovedDemandSyncAdapter", composition)
+        self.assertIn("SqlPlannerQueryRepository", composition)
 
-        http = (SERVER / "http.py").read_text(encoding="utf-8")
-        self.assertNotIn("SqlDemandRepository", http)
-        self.assertNotIn("SqlSegmentRepository", http)
-        self.assertNotIn("SqlPlanningCommandAdapter", http)
+        for filename in ("http.py", "routes_commands.py", "routes_reads.py"):
+            source = (SERVER / filename).read_text(encoding="utf-8")
+            self.assertNotIn("SqlDemandRepository", source)
+            self.assertNotIn("SqlSegmentRepository", source)
+            self.assertNotIn("SqlPlanningCommandAdapter", source)
+            self.assertNotIn("SqlPlannerQueryRepository", source)
+            self.assertNotIn("sqlalchemy.orm", source)
+
+    def test_read_routes_depend_only_on_public_application_query_contract(self) -> None:
+        source = (SERVER / "routes_reads.py").read_text(encoding="utf-8")
+        self.assertIn("PlannerQueryPort", source)
+        self.assertIn("ProjectReadModel", source)
+        self.assertIn("ShiftReadModel", source)
+        self.assertNotIn("infrastructure.sql", source)
+        self.assertNotIn("ResourceRequirement", source)
+        self.assertNotIn("WorkforceRequest", source)
 
 
 if __name__ == "__main__":
