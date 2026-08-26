@@ -1,0 +1,136 @@
+from __future__ import annotations
+
+from contextlib import asynccontextmanager
+from collections.abc import Iterator
+from typing import Any, Callable
+
+from fastapi import Depends, FastAPI, Request
+from fastapi.responses import JSONResponse
+from sqlalchemy import text
+from sqlalchemy.orm import Session
+
+from ..application import (
+    ApplicationConflictError,
+    ApplicationError,
+    ApplicationFacade,
+    ApplicationNotFoundError,
+    ApplicationOperationError,
+    ApplicationValidationError,
+)
+from ..infrastructure.sql import (
+    SqlSessionFactory,
+    create_session_factory,
+    create_sql_engine,
+    transactional_session,
+)
+from .composition import build_sql_facade
+
+
+SessionDependency = Callable[[], Iterator[Session]]
+FacadeDependency = Callable[[], Iterator[ApplicationFacade]]
+
+
+def application_error_status(exc: ApplicationError) -> int:
+    if isinstance(exc, ApplicationValidationError):
+        return 422
+    if isinstance(exc, ApplicationNotFoundError):
+        return 404
+    if isinstance(exc, ApplicationConflictError):
+        return 409
+    if isinstance(exc, ApplicationOperationError):
+        return 500
+    return 400
+
+
+def application_error_response(exc: ApplicationError) -> JSONResponse:
+    return JSONResponse(
+        status_code=application_error_status(exc),
+        content={"error": exc.as_dict()},
+    )
+
+
+def make_session_dependency(factory: SqlSessionFactory) -> SessionDependency:
+    def dependency() -> Iterator[Session]:
+        with transactional_session(factory) as session:
+            yield session
+
+    return dependency
+
+
+def make_facade_dependency(
+    factory: SqlSessionFactory,
+    *,
+    actor_name: str = "api",
+) -> FacadeDependency:
+    session_dependency = make_session_dependency(factory)
+
+    def dependency(
+        session: Session = Depends(session_dependency),
+    ) -> Iterator[ApplicationFacade]:
+        # Yielding keeps the facade scoped to the same request transaction as Session.
+        yield build_sql_facade(session, actor_name=actor_name)
+
+    return dependency
+
+
+def create_api_app(
+    database_url: str,
+    *,
+    actor_name: str = "api",
+) -> FastAPI:
+    engine = create_sql_engine(database_url)
+    factory = create_session_factory(engine)
+    session_dependency = make_session_dependency(factory)
+
+    @asynccontextmanager
+    async def lifespan(_app: FastAPI):
+        try:
+            yield
+        finally:
+            engine.dispose()
+
+    app = FastAPI(
+        title="RessourcePlanner API",
+        version="1.0.0-dev",
+        lifespan=lifespan,
+    )
+    app.state.database_dialect = engine.dialect.name
+    app.state.session_factory = factory
+    app.state.facade_dependency = make_facade_dependency(
+        factory,
+        actor_name=actor_name,
+    )
+
+    @app.exception_handler(ApplicationError)
+    async def handle_application_error(
+        _request: Request,
+        exc: ApplicationError,
+    ) -> JSONResponse:
+        return application_error_response(exc)
+
+    @app.exception_handler(Exception)
+    async def handle_unexpected_error(
+        _request: Request,
+        _exc: Exception,
+    ) -> JSONResponse:
+        return JSONResponse(
+            status_code=500,
+            content={
+                "error": {
+                    "code": "internal_error",
+                    "message": "Une erreur interne est survenue.",
+                    "context": {},
+                }
+            },
+        )
+
+    @app.get("/health", tags=["system"])
+    def health(session: Session = Depends(session_dependency)) -> dict[str, Any]:
+        session.execute(text("SELECT 1"))
+        return {
+            "status": "ok",
+            "database": engine.dialect.name,
+            "api": "v1",
+        }
+
+    return app
