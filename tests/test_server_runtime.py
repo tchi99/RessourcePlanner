@@ -11,6 +11,7 @@ from app.server.runtime import (
     PORT_ENV,
     ServerConfigurationError,
     ServerSettings,
+    main,
     run_server,
 )
 
@@ -94,6 +95,17 @@ class ServerRuntimeTests(unittest.TestCase):
             log_level="debug",
             reload=False,
         )
+
+    def test_main_reports_configuration_error_without_starting_uvicorn(self) -> None:
+        with patch(
+            "app.server.runtime.run_server",
+            side_effect=ServerConfigurationError("base absente"),
+        ):
+            with self.assertRaises(SystemExit) as caught:
+                main()
+
+        self.assertIn("Configuration serveur invalide", str(caught.exception))
+        self.assertIn("base absente", str(caught.exception))
 
 
 if __name__ == "__main__":
