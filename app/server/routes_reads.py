@@ -10,6 +10,7 @@ from ..application import (
     ApplicationValidationError,
     DemandReadModel,
     PlannerQueryPort,
+    PlanningSnapshotReadModel,
     ProjectReadModel,
     ResourceReadModel,
     SegmentReadModel,
@@ -111,5 +112,14 @@ def build_read_router(query_dependency: QueryProvider) -> APIRouter:
                 resource_name=resource_name,
             )
         )
+
+    @router.get("/planning/snapshot")
+    def planning_snapshot(
+        start: date = Query(),
+        end: date = Query(),
+        queries: PlannerQueryPort = Depends(query_dependency),
+    ) -> PlanningSnapshotReadModel:
+        _window(start, end)
+        return queries.planning_snapshot(start=start, end=end)
 
     return router
