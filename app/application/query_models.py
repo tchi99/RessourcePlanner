@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date
 
+from .read_models import DemandReadModel, SegmentReadModel
+
 
 @dataclass(frozen=True, slots=True)
 class ProjectReadModel:
@@ -41,3 +43,15 @@ class ShiftReadModel:
     outside_standard_hours: bool = False
     confirmation: str | None = None
     note: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class PlanningSnapshotReadModel:
+    """Canonical, transaction-coherent planning window exposed to web clients."""
+
+    start: date
+    end: date
+    resources: tuple[ResourceReadModel, ...]
+    demands: tuple[DemandReadModel, ...]
+    segments: tuple[SegmentReadModel, ...]
+    shifts: tuple[ShiftReadModel, ...]
