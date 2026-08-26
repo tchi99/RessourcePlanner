@@ -17,7 +17,17 @@ def create_sql_engine(database_url: str, *, echo: bool = False) -> Engine:
     connection-pool settings can be supplied later by the server composition root.
     """
 
-    engine = create_engine(database_url, echo=echo, future=True)
+    connect_args = (
+        {"check_same_thread": False}
+        if str(database_url or "").strip().casefold().startswith("sqlite")
+        else {}
+    )
+    engine = create_engine(
+        database_url,
+        echo=echo,
+        future=True,
+        connect_args=connect_args,
+    )
     if engine.dialect.name == "sqlite":
         # SQLite does not enforce foreign keys unless explicitly enabled per
         # connection. Tests/dev must exercise the same integrity assumptions as the
