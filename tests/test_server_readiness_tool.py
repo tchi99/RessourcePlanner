@@ -73,6 +73,29 @@ class ServerReadinessToolTests(unittest.TestCase):
         self.assertIn("configuration_error", stderr.getvalue())
         self.assertIn("RESOURCEPLANNER_DATABASE_URL", stderr.getvalue())
 
+    def test_cli_hides_secret_when_infrastructure_initialization_fails(self) -> None:
+        stderr = StringIO()
+        secret = "super-secret-password"
+        with (
+            patch.dict(
+                os.environ,
+                {"RESOURCEPLANNER_DATABASE_URL": f"mssql+pyodbc://user:{secret}@server/db"},
+                clear=True,
+            ),
+            patch(
+                "tools.check_server_runtime.check_server_runtime",
+                side_effect=RuntimeError(f"driver failure near {secret}"),
+            ),
+            redirect_stderr(stderr),
+        ):
+            exit_code = main()
+
+        output = stderr.getvalue()
+        self.assertEqual(exit_code, 4)
+        self.assertIn("technical_error", output)
+        self.assertIn("RuntimeError", output)
+        self.assertNotIn(secret, output)
+
 
 if __name__ == "__main__":
     unittest.main()
