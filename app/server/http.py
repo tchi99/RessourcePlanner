@@ -5,6 +5,7 @@ from collections.abc import Iterator
 from typing import Any, Callable
 
 from fastapi import Depends, FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -24,6 +25,7 @@ from ..infrastructure.sql import (
     transactional_session,
 )
 from .composition import build_sql_facade
+from .routes_commands import build_command_router
 
 
 SessionDependency = Callable[[], Iterator[Session]]
@@ -73,6 +75,27 @@ def make_facade_dependency(
     return dependency
 
 
+def _request_validation_response(exc: RequestValidationError) -> JSONResponse:
+    details = [
+        {
+            "location": [str(item) for item in error.get("loc", ())],
+            "message": str(error.get("msg") or "Valeur invalide"),
+            "type": str(error.get("type") or "validation_error"),
+        }
+        for error in exc.errors()
+    ]
+    return JSONResponse(
+        status_code=422,
+        content={
+            "error": {
+                "code": "request_validation_error",
+                "message": "La requête HTTP est invalide.",
+                "context": {"errors": details},
+            }
+        },
+    )
+
+
 def create_api_app(
     database_url: str,
     *,
@@ -81,6 +104,7 @@ def create_api_app(
     engine = create_sql_engine(database_url)
     factory = create_session_factory(engine)
     session_dependency = make_session_dependency(factory)
+    facade_dependency = make_facade_dependency(factory, actor_name=actor_name)
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
@@ -96,10 +120,14 @@ def create_api_app(
     )
     app.state.database_dialect = engine.dialect.name
     app.state.session_factory = factory
-    app.state.facade_dependency = make_facade_dependency(
-        factory,
-        actor_name=actor_name,
-    )
+    app.state.facade_dependency = facade_dependency
+
+    @app.exception_handler(RequestValidationError)
+    async def handle_request_validation_error(
+        _request: Request,
+        exc: RequestValidationError,
+    ) -> JSONResponse:
+        return _request_validation_response(exc)
 
     @app.exception_handler(ApplicationError)
     async def handle_application_error(
@@ -133,4 +161,5 @@ def create_api_app(
             "api": "v1",
         }
 
+    app.include_router(build_command_router(facade_dependency))
     return app
