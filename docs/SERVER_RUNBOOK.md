@@ -102,9 +102,10 @@ Codes de sortie :
 
 - `0` : configuration et lectures de base fonctionnelles;
 - `2` : configuration serveur invalide ou `RESOURCEPLANNER_DATABASE_URL` absente;
-- `3` : backend joignable partiellement mais smoke test en échec, par exemple schéma non migré.
+- `3` : backend joignable partiellement mais smoke test en échec, par exemple schéma non migré;
+- `4` : erreur d'infrastructure avant le smoke test, par exemple driver DBAPI/ODBC manquant.
 
-Le rapport n'inclut jamais l'URL de connexion à la base.
+Le rapport n'inclut jamais l'URL de connexion à la base. Pour une erreur technique inattendue, seul le type d'exception est affiché afin d'éviter qu'un mot de passe contenu dans l'URL SQL ne soit divulgué.
 
 ### Vérification manuelle après démarrage
 
