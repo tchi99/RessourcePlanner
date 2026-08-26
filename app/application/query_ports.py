@@ -4,7 +4,12 @@ from collections.abc import Sequence
 from datetime import date
 from typing import Protocol
 
-from .query_models import ProjectReadModel, ResourceReadModel, ShiftReadModel
+from .query_models import (
+    PlanningSnapshotReadModel,
+    ProjectReadModel,
+    ResourceReadModel,
+    ShiftReadModel,
+)
 from .read_models import DemandReadModel, SegmentReadModel
 
 
@@ -40,3 +45,10 @@ class PlannerQueryPort(Protocol):
         end: date | None = None,
         resource_name: str | None = None,
     ) -> Sequence[ShiftReadModel]: ...
+
+    def planning_snapshot(
+        self,
+        *,
+        start: date,
+        end: date,
+    ) -> PlanningSnapshotReadModel: ...
