@@ -177,6 +177,30 @@ class ServerReadRouteTests(unittest.TestCase):
             ):
                 self.assertNotIn(legacy, serialized)
 
+    def test_planning_snapshot_is_atomic_canonical_frontend_payload(self) -> None:
+        with TemporaryDirectory() as directory:
+            app = create_api_app(self._database(directory))
+            with TestClient(app) as client:
+                response = client.get(
+                    "/api/v1/planning/snapshot?start=2026-08-24&end=2026-08-24"
+                )
+
+            self.assertEqual(response.status_code, 200)
+            payload = response.json()
+            self.assertEqual(payload["start"], "2026-08-24")
+            self.assertEqual(payload["end"], "2026-08-24")
+            self.assertEqual([row["name"] for row in payload["resources"]], ["Alice"])
+            self.assertEqual(
+                [row["number"] for row in payload["demands"]],
+                [self.demand_number],
+            )
+            self.assertEqual([row["segment_id"] for row in payload["segments"]], ["SEG-1"])
+            self.assertEqual([row["allocation_id"] for row in payload["shifts"]], ["MAN-1"])
+
+            serialized = json.dumps(payload, ensure_ascii=False)
+            for legacy in ("NoDemande", "IDSegment", "IDAllocation", "Technicien"):
+                self.assertNotIn(legacy, serialized)
+
     def test_missing_entity_and_invalid_window_use_application_error_contract(self) -> None:
         with TemporaryDirectory() as directory:
             app = create_api_app(self._database(directory))
@@ -185,12 +209,20 @@ class ServerReadRouteTests(unittest.TestCase):
                 invalid = client.get(
                     "/api/v1/segments?start=2026-08-25&end=2026-08-24"
                 )
+                invalid_snapshot = client.get(
+                    "/api/v1/planning/snapshot?start=2026-08-25&end=2026-08-24"
+                )
 
             self.assertEqual(missing.status_code, 404)
             self.assertEqual(missing.json()["error"]["code"], "demand_not_found")
             self.assertEqual(invalid.status_code, 422)
             self.assertEqual(
                 invalid.json()["error"]["code"],
+                "query_date_window_invalid",
+            )
+            self.assertEqual(invalid_snapshot.status_code, 422)
+            self.assertEqual(
+                invalid_snapshot.json()["error"]["code"],
                 "query_date_window_invalid",
             )
 
@@ -207,6 +239,7 @@ class ServerReadRouteTests(unittest.TestCase):
                 "DemandReadModel",
                 "SegmentReadModel",
                 "ShiftReadModel",
+                "PlanningSnapshotReadModel",
             ):
                 self.assertIn(expected, components)
 
