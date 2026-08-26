@@ -8,6 +8,7 @@ from tempfile import TemporaryDirectory
 import unittest
 
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 
 from app.infrastructure.sql import (
     Base,
@@ -69,7 +70,7 @@ class ServerReadRouteTests(unittest.TestCase):
                 }
             )
             request = session.scalar(
-                __import__("sqlalchemy").select(WorkforceRequest).where(
+                select(WorkforceRequest).where(
                     WorkforceRequest.legacy_demand_number == number
                 )
             )
