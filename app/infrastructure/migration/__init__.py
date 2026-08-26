@@ -7,6 +7,8 @@ from .excel_cutover import (
     RepositoryCutoverReader,
     extract_cutover_dataset,
 )
+from .openpyxl_reader import CutoverSourceError, OpenpyxlCutoverReader
+from .preflight import CutoverPreflight, build_cutover_preflight
 from .source_links import extract_demand_work_package_links
 from .sql_importer import (
     CutoverImportError,
@@ -20,7 +22,11 @@ __all__ = [
     "CutoverExtractionReport",
     "CutoverImportError",
     "CutoverImportReport",
+    "CutoverPreflight",
+    "CutoverSourceError",
+    "OpenpyxlCutoverReader",
     "RepositoryCutoverReader",
+    "build_cutover_preflight",
     "extract_cutover_dataset",
     "extract_demand_work_package_links",
     "import_cutover_dataset",

@@ -20,6 +20,10 @@ resourceplanner.db
 *.sqlite
 *.sqlite3
 
+# Local cutover reports (may contain workbook metadata/diagnostics)
+cutover_report.json
+cutover_reports/
+
 # Local confidential-term denylist used by tools/privacy_scan.py
 .privacy_terms.local
 
