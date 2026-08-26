@@ -9,6 +9,11 @@ import subprocess
 import sys
 from typing import Any
 
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
 from alembic import command
 from alembic.config import Config
 
@@ -26,7 +31,6 @@ from app.infrastructure.sql import (
 )
 
 
-ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_REPORT = ROOT / "cutover_report.json"
 DATABASE_ENV = "RESOURCEPLANNER_DATABASE_URL"
 
