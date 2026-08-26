@@ -38,7 +38,12 @@ from .errors import (
 )
 from .facade import ApplicationFacade
 from .planning_service import PlanningService
-from .query_models import ProjectReadModel, ResourceReadModel, ShiftReadModel
+from .query_models import (
+    PlanningSnapshotReadModel,
+    ProjectReadModel,
+    ResourceReadModel,
+    ShiftReadModel,
+)
 from .query_ports import PlannerQueryPort
 from .read_models import DemandReadModel, SegmentReadModel
 from .repository_ports import (
@@ -86,6 +91,7 @@ __all__ = [
     "PlanningRebuildCommand",
     "PlanningResult",
     "PlanningService",
+    "PlanningSnapshotReadModel",
     "ProjectReadModel",
     "QuickShiftCreateCommand",
     "QuickShiftCreatedResult",
