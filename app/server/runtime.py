@@ -4,6 +4,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 import os
 
+from fastapi import FastAPI
 import uvicorn
 
 from .http import create_api_app
@@ -84,7 +85,7 @@ class ServerSettings:
         )
 
 
-def create_configured_app(settings: ServerSettings | None = None):
+def create_configured_app(settings: ServerSettings | None = None) -> FastAPI:
     """Create the API app without running migrations or opening an Excel runtime."""
 
     resolved = settings or ServerSettings.from_environment()
@@ -109,4 +110,7 @@ def run_server(settings: ServerSettings | None = None) -> None:
 
 
 def main() -> None:
-    run_server()
+    try:
+        run_server()
+    except ServerConfigurationError as exc:
+        raise SystemExit(f"Configuration serveur invalide: {exc}")
