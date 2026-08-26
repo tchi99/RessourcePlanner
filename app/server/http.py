@@ -17,6 +17,7 @@ from ..application import (
     ApplicationNotFoundError,
     ApplicationOperationError,
     ApplicationValidationError,
+    PlannerQueryPort,
 )
 from ..infrastructure.sql import (
     SqlSessionFactory,
@@ -24,12 +25,14 @@ from ..infrastructure.sql import (
     create_sql_engine,
     transactional_session,
 )
-from .composition import build_sql_facade
+from .composition import build_sql_facade, build_sql_query_port
 from .routes_commands import build_command_router
+from .routes_reads import build_read_router
 
 
 SessionDependency = Callable[[], Iterator[Session]]
 FacadeDependency = Callable[[], Iterator[ApplicationFacade]]
+QueryDependency = Callable[[], Iterator[PlannerQueryPort]]
 
 
 def application_error_status(exc: ApplicationError) -> int:
@@ -75,6 +78,17 @@ def make_facade_dependency(
     return dependency
 
 
+def make_query_dependency(factory: SqlSessionFactory) -> QueryDependency:
+    session_dependency = make_session_dependency(factory)
+
+    def dependency(
+        session: Session = Depends(session_dependency),
+    ) -> Iterator[PlannerQueryPort]:
+        yield build_sql_query_port(session)
+
+    return dependency
+
+
 def _request_validation_response(exc: RequestValidationError) -> JSONResponse:
     details = [
         {
@@ -105,6 +119,7 @@ def create_api_app(
     factory = create_session_factory(engine)
     session_dependency = make_session_dependency(factory)
     facade_dependency = make_facade_dependency(factory, actor_name=actor_name)
+    query_dependency = make_query_dependency(factory)
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
@@ -121,6 +136,7 @@ def create_api_app(
     app.state.database_dialect = engine.dialect.name
     app.state.session_factory = factory
     app.state.facade_dependency = facade_dependency
+    app.state.query_dependency = query_dependency
 
     @app.exception_handler(RequestValidationError)
     async def handle_request_validation_error(
@@ -162,4 +178,5 @@ def create_api_app(
         }
 
     app.include_router(build_command_router(facade_dependency))
+    app.include_router(build_read_router(query_dependency))
     return app

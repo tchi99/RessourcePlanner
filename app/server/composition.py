@@ -2,7 +2,12 @@ from __future__ import annotations
 
 from sqlalchemy.orm import Session
 
-from ..application import AllocationService, ApplicationFacade, PlanningService
+from ..application import (
+    AllocationService,
+    ApplicationFacade,
+    PlannerQueryPort,
+    PlanningService,
+)
 from ..application.demand_service import DemandService
 from ..application.quick_shift_service import QuickShiftService
 from ..application.segment_service import SegmentService
@@ -10,6 +15,7 @@ from ..infrastructure.sql import (
     SqlAllocationCommandAdapter,
     SqlApprovedDemandSyncAdapter,
     SqlDemandRepository,
+    SqlPlannerQueryRepository,
     SqlPlanningCommandAdapter,
     SqlSegmentRepository,
 )
@@ -48,3 +54,9 @@ def build_sql_facade(
         quick_shifts=QuickShiftService(segments, allocation_commands),
         planning=PlanningService(planning_commands),
     )
+
+
+def build_sql_query_port(session: Session) -> PlannerQueryPort:
+    """Compose the canonical read-only query port for one request transaction."""
+
+    return SqlPlannerQueryRepository(session)

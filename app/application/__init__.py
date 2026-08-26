@@ -38,6 +38,13 @@ from .errors import (
 )
 from .facade import ApplicationFacade
 from .planning_service import PlanningService
+from .query_models import (
+    PlanningSnapshotReadModel,
+    ProjectReadModel,
+    ResourceReadModel,
+    ShiftReadModel,
+)
+from .query_ports import PlannerQueryPort
 from .read_models import DemandReadModel, SegmentReadModel
 from .repository_ports import (
     DemandRepositoryPort,
@@ -78,13 +85,17 @@ __all__ = [
     "ManualAllocationDeleteCommand",
     "ManualAllocationReleaseCommand",
     "ManualAllocationUpdateCommand",
+    "PlannerQueryPort",
     "PlanningCommandPort",
     "PlanningReadRepositoryPort",
     "PlanningRebuildCommand",
     "PlanningResult",
     "PlanningService",
+    "PlanningSnapshotReadModel",
+    "ProjectReadModel",
     "QuickShiftCreateCommand",
     "QuickShiftCreatedResult",
+    "ResourceReadModel",
     "SegmentAssignCommand",
     "SegmentCancelCommand",
     "SegmentCreateCommand",
@@ -92,4 +103,5 @@ __all__ = [
     "SegmentReadModel",
     "SegmentRepositoryPort",
     "SegmentUpdateCommand",
+    "ShiftReadModel",
 ]
