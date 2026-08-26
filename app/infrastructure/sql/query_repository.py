@@ -5,7 +5,12 @@ from datetime import date
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ...application.query_models import ProjectReadModel, ResourceReadModel, ShiftReadModel
+from ...application.query_models import (
+    PlanningSnapshotReadModel,
+    ProjectReadModel,
+    ResourceReadModel,
+    ShiftReadModel,
+)
 from ...application.query_ports import PlannerQueryPort
 from ...application.read_models import DemandReadModel, SegmentReadModel
 from .demand_repository import SqlDemandRepository
@@ -32,6 +37,14 @@ def _text(value: object) -> str:
 def _optional_text(value: object) -> str | None:
     value_text = _text(value)
     return value_text or None
+
+
+def _demand_overlaps(row: DemandReadModel, start: date, end: date) -> bool:
+    if row.desired_end is not None and row.desired_end < start:
+        return False
+    if row.desired_start is not None and row.desired_start > end:
+        return False
+    return True
 
 
 class SqlPlannerQueryRepository(PlannerQueryPort):
@@ -157,4 +170,24 @@ class SqlPlannerQueryRepository(PlannerQueryPort):
                 note=_optional_text(shift.note),
             )
             for shift, requirement, resource in rows
+        )
+
+    def planning_snapshot(
+        self,
+        *,
+        start: date,
+        end: date,
+    ) -> PlanningSnapshotReadModel:
+        """Read the web planning window inside the caller-owned SQL transaction."""
+
+        demands = tuple(
+            row for row in self.list_demands() if _demand_overlaps(row, start, end)
+        )
+        return PlanningSnapshotReadModel(
+            start=start,
+            end=end,
+            resources=self.list_resources(active_only=True),
+            demands=demands,
+            segments=self.list_segments(start=start, end=end, include_cancelled=False),
+            shifts=self.list_shifts(start=start, end=end),
         )
