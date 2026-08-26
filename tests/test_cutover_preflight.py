@@ -89,9 +89,7 @@ class CutoverPreflightTests(unittest.TestCase):
         rows["DemandesMO"][0]["SourceEffortID"] = "EFF-UNKNOWN"
         preflight = build_cutover_preflight(_Reader(rows))
         self.assertFalse(preflight.ok)
-        codes = {item.code for item in preflight.blocking_errors if hasattr(preflight, "blocking_errors")}
-        if not codes:
-            codes = {item.code for item in preflight.report.blocking_errors}
+        codes = {item.code for item in preflight.report.blocking_errors}
         self.assertIn("unknown_source_effort", codes)
 
     def test_project_mismatch_between_demand_and_effort_is_blocking(self) -> None:
