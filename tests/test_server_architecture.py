@@ -61,7 +61,12 @@ class ServerArchitectureTests(unittest.TestCase):
             self.assertNotIn("SqlSegmentRepository", source)
             self.assertNotIn("SqlPlanningCommandAdapter", source)
             self.assertNotIn("SqlPlannerQueryRepository", source)
-            self.assertNotIn("sqlalchemy.orm", source)
+
+        # The HTTP composition boundary owns the request-scoped SQLAlchemy Session,
+        # but route modules must remain transport/application-only.
+        for filename in ("routes_commands.py", "routes_reads.py"):
+            source = (SERVER / filename).read_text(encoding="utf-8")
+            self.assertNotIn("sqlalchemy", source.casefold())
 
     def test_read_routes_depend_only_on_public_application_query_contract(self) -> None:
         source = (SERVER / "routes_reads.py").read_text(encoding="utf-8")
