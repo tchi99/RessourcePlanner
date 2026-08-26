@@ -29,6 +29,7 @@ from .identity_constraints import (
     WORKFORCE_REQUEST_NUMBER_INDEX,
 )
 from .planning_repository import SqlPlanningReadRepository
+from .query_repository import SqlPlannerQueryRepository
 from .segment_repository import SqlSegmentRepository
 from .session import (
     SqlSessionFactory,
@@ -52,6 +53,7 @@ __all__ = [
     "SqlAllocationCommandAdapter",
     "SqlApprovedDemandSyncAdapter",
     "SqlDemandRepository",
+    "SqlPlannerQueryRepository",
     "SqlPlanningCommandAdapter",
     "SqlPlanningReadRepository",
     "SqlSegmentRepository",
