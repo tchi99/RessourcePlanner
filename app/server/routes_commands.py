@@ -43,6 +43,15 @@ def _payload(result: Any) -> dict[str, Any]:
     return result.to_dict()
 
 
+def _segment_command_values(body: SegmentCreateRequest | SegmentUpdateRequest) -> dict[str, Any]:
+    values = body.model_dump(exclude_unset=isinstance(body, SegmentUpdateRequest))
+    if "source_effort_id" in values:
+        # Compatibility command still names this slot source_effort_row, but accepts
+        # the stable IDEffort string. Keep that historical name behind the HTTP edge.
+        values["source_effort_row"] = values.pop("source_effort_id")
+    return values
+
+
 def build_command_router(facade_dependency: FacadeProvider) -> APIRouter:
     router = APIRouter(prefix="/api/v1", tags=["commands"])
 
@@ -103,7 +112,9 @@ def build_command_router(facade_dependency: FacadeProvider) -> APIRouter:
         body: SegmentCreateRequest,
         facade: ApplicationFacade = Depends(facade_dependency),
     ) -> dict[str, Any]:
-        return _payload(facade.create_segment(SegmentCreateCommand(**body.model_dump())))
+        return _payload(
+            facade.create_segment(SegmentCreateCommand(**_segment_command_values(body)))
+        )
 
     @router.patch("/segments/{segment_id}")
     def update_segment(
@@ -115,7 +126,7 @@ def build_command_router(facade_dependency: FacadeProvider) -> APIRouter:
             facade.update_segment(
                 SegmentUpdateCommand(
                     segment_id=segment_id,
-                    **body.model_dump(exclude_unset=True),
+                    **_segment_command_values(body),
                 )
             )
         )
