@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import date
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class StrictRequest(BaseModel):
@@ -69,7 +69,9 @@ class SegmentCreateRequest(StrictRequest):
     technician: str | None = None
     status: str = "À assigner"
     description: str = ""
-    source_effort_row: int | str | None = None
+    # Stable effort/work-package reference. The HTTP contract intentionally does not
+    # expose the historical Excel row-number field used by the compatibility DTO.
+    source_effort_id: str | None = None
     required_competency: str | None = None
     planning_type: str = "Flexible"
     priority: str = "Normale"
@@ -86,11 +88,20 @@ class SegmentUpdateRequest(StrictRequest):
     planned_hours: float | None = Field(default=None, gt=0)
     status: str | None = None
     description: str | None = None
-    source_effort_row: int | str | None = None
+    source_effort_id: str | None = None
     required_competency: str | None = None
     planning_type: str | None = None
     priority: str | None = None
     outside_standard_hours: bool | None = None
+
+    @field_validator("outside_standard_hours", mode="before")
+    @classmethod
+    def reject_null_outside_standard_hours(cls, value: object) -> object:
+        if value is None:
+            raise ValueError(
+                "outside_standard_hours ne peut pas être null; omets le champ pour ne pas le modifier."
+            )
+        return value
 
 
 class SegmentAssignRequest(StrictRequest):
