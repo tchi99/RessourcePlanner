@@ -143,6 +143,22 @@ class ServerCommandRouteTests(unittest.TestCase):
             finally:
                 engine.dispose()
 
+    def test_segment_patch_rejects_explicit_null_for_non_nullable_boolean(self) -> None:
+        with TemporaryDirectory() as directory:
+            database_url, _ = self._database(directory)
+            app = create_api_app(database_url)
+            with TestClient(app, raise_server_exceptions=False) as client:
+                response = client.patch(
+                    "/api/v1/segments/SEG-UNKNOWN",
+                    json={"outside_standard_hours": None},
+                )
+
+            self.assertEqual(response.status_code, 422)
+            payload = response.json()["error"]
+            self.assertEqual(payload["code"], "request_validation_error")
+            locations = [item["location"] for item in payload["context"]["errors"]]
+            self.assertTrue(any("outside_standard_hours" in location for location in locations))
+
     def test_quick_shift_route_creates_locked_shift_without_fake_request(self) -> None:
         with TemporaryDirectory() as directory:
             database_url, _ = self._database(directory)
@@ -204,12 +220,15 @@ class ServerCommandRouteTests(unittest.TestCase):
             serialized = json.dumps(response.json(), ensure_ascii=False)
             self.assertIn("project_number", serialized)
             self.assertIn("desired_start", serialized)
+            self.assertIn("source_effort_id", serialized)
             for legacy in (
                 "NumeroProjet",
                 "DateDebutSouhaitee",
                 "HeuresPrevues",
                 "IDSegment",
                 "IDAllocation",
+                "source_effort_row",
+                "SourceEffortRow",
             ):
                 self.assertNotIn(legacy, serialized)
 
