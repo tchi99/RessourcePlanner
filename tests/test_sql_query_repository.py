@@ -152,6 +152,20 @@ class SqlPlannerQueryRepositoryTests(unittest.TestCase):
 
             self.assertEqual(queries.list_shifts(resource_name="Unknown"), ())
 
+    def test_planning_snapshot_is_canonical_and_window_scoped(self) -> None:
+        with self.factory() as session:
+            snapshot = SqlPlannerQueryRepository(session).planning_snapshot(
+                start=D1,
+                end=D1,
+            )
+
+            self.assertEqual(snapshot.start, D1)
+            self.assertEqual(snapshot.end, D1)
+            self.assertEqual([row.name for row in snapshot.resources], ["Alice"])
+            self.assertEqual([row.number for row in snapshot.demands], [self.demand_number])
+            self.assertEqual([row.segment_id for row in snapshot.segments], ["SEG-1"])
+            self.assertEqual([row.allocation_id for row in snapshot.shifts], ["MAN-1"])
+
 
 if __name__ == "__main__":
     unittest.main()
