@@ -1,0 +1,50 @@
+from __future__ import annotations
+
+from sqlalchemy.orm import Session
+
+from ..application import AllocationService, ApplicationFacade, PlanningService
+from ..application.demand_service import DemandService
+from ..application.quick_shift_service import QuickShiftService
+from ..application.segment_service import SegmentService
+from ..infrastructure.sql import (
+    SqlAllocationCommandAdapter,
+    SqlApprovedDemandSyncAdapter,
+    SqlDemandRepository,
+    SqlPlanningCommandAdapter,
+    SqlSegmentRepository,
+)
+
+
+def build_sql_facade(
+    session: Session,
+    *,
+    actor_name: str = "api",
+) -> ApplicationFacade:
+    """Compose one application facade inside the caller-owned SQL transaction.
+
+    The server boundary owns concrete SQLAlchemy wiring. Application services and the
+    pure planning engine remain transport/persistence agnostic.
+    """
+
+    actor = str(actor_name or "api").strip() or "api"
+    demands = SqlDemandRepository(session, actor_name=actor)
+    segments = SqlSegmentRepository(session)
+    planning_commands = SqlPlanningCommandAdapter(session)
+    allocation_commands = SqlAllocationCommandAdapter(
+        session,
+        planning=planning_commands,
+    )
+    approved_sync = SqlApprovedDemandSyncAdapter(session)
+
+    return ApplicationFacade(
+        demands=DemandService(
+            demands,
+            planning_commands,
+            approved_sync,
+            current_user=actor,
+        ),
+        segments=SegmentService(segments, planning_commands),
+        allocations=AllocationService(allocation_commands),
+        quick_shifts=QuickShiftService(segments, allocation_commands),
+        planning=PlanningService(planning_commands),
+    )
