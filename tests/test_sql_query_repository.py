@@ -1,0 +1,157 @@
+from __future__ import annotations
+
+from datetime import date
+from decimal import Decimal
+import unittest
+
+from app.infrastructure.sql import (
+    Base,
+    Project,
+    Resource,
+    ResourceRequirement,
+    Shift,
+    SqlDemandRepository,
+    SqlPlannerQueryRepository,
+    create_session_factory,
+    create_sql_engine,
+    transactional_session,
+)
+
+
+D1 = date(2026, 8, 24)
+D2 = date(2026, 8, 25)
+
+
+class SqlPlannerQueryRepositoryTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.engine = create_sql_engine("sqlite+pysqlite:///:memory:")
+        Base.metadata.create_all(self.engine)
+        self.factory = create_session_factory(self.engine)
+        with transactional_session(self.factory) as session:
+            session.add_all(
+                [
+                    Project(id="P1", number="P-1", name="Actif", status="Actif"),
+                    Project(id="P2", number="P-2", name="Fermé", status="Terminé"),
+                    Resource(
+                        id="R1",
+                        name="Alice",
+                        resource_class="Programmation",
+                        competencies="PLC; SCADA",
+                        note="Lead",
+                        active=True,
+                        sort_order=20,
+                    ),
+                    Resource(id="R2", name="Bob", active=False, sort_order=10),
+                ]
+            )
+            session.flush()
+            demand_number = SqlDemandRepository(session, actor_name="Jean").create(
+                {
+                    "NumeroProjet": "P-1",
+                    "DateDebutSouhaitee": D1,
+                    "DateFinSouhaitee": D2,
+                    "Description": "Programmation",
+                    "NombreRessources": 1,
+                }
+            )
+            request = SqlDemandRepository(session).get(demand_number)
+            assert request is not None
+            from app.infrastructure.sql.models import WorkforceRequest
+            request_row = session.query(WorkforceRequest).filter_by(
+                legacy_demand_number=demand_number
+            ).one()
+            requirement = ResourceRequirement(
+                id="REQ1",
+                legacy_segment_id="SEG-1",
+                project_id="P1",
+                workforce_request_id=request_row.id,
+                assigned_resource_id="R1",
+                start_date=D1,
+                end_date=D2,
+                planned_hours=Decimal("8"),
+                status="Planifié",
+                planning_type="Flexible",
+                priority="Normale",
+                origin="REQUEST",
+            )
+            session.add(requirement)
+            session.flush()
+            session.add_all(
+                [
+                    Shift(
+                        id="S1",
+                        legacy_allocation_id="MAN-1",
+                        resource_requirement_id="REQ1",
+                        resource_id="R1",
+                        work_date=D1,
+                        hours=Decimal("4"),
+                        source="MANUAL",
+                        locked=True,
+                    ),
+                    Shift(
+                        id="S2",
+                        legacy_allocation_id="AUTO-1",
+                        resource_requirement_id="REQ1",
+                        resource_id="R1",
+                        work_date=D2,
+                        hours=Decimal("4"),
+                        source="AUTO",
+                        locked=False,
+                    ),
+                ]
+            )
+            self.demand_number = demand_number
+
+    def tearDown(self) -> None:
+        self.engine.dispose()
+
+    def test_projects_and_resources_apply_active_filters(self) -> None:
+        with self.factory() as session:
+            queries = SqlPlannerQueryRepository(session)
+            self.assertEqual(
+                [row.number for row in queries.list_projects(active_only=True)],
+                ["P-1"],
+            )
+            self.assertEqual(
+                [row.name for row in queries.list_resources(active_only=True)],
+                ["Alice"],
+            )
+            alice = queries.list_resources(active_only=True)[0]
+            self.assertEqual(alice.resource_class, "Programmation")
+            self.assertEqual(alice.competencies, "PLC; SCADA")
+            self.assertEqual(alice.note, "Lead")
+
+    def test_demands_and_segments_use_canonical_read_models(self) -> None:
+        with self.factory() as session:
+            queries = SqlPlannerQueryRepository(session)
+            demands = queries.list_demands()
+            self.assertEqual(len(demands), 1)
+            self.assertEqual(demands[0].number, self.demand_number)
+            self.assertEqual(demands[0].project_number, "P-1")
+
+            segments = queries.list_segments(start=D2, end=D2)
+            self.assertEqual(len(segments), 1)
+            self.assertEqual(segments[0].segment_id, "SEG-1")
+            self.assertEqual(segments[0].resource_name, "Alice")
+
+            self.assertEqual(
+                queries.list_segments(start=date(2026, 9, 1), end=date(2026, 9, 2)),
+                (),
+            )
+
+    def test_shifts_filter_by_window_and_resource(self) -> None:
+        with self.factory() as session:
+            queries = SqlPlannerQueryRepository(session)
+            rows = queries.list_shifts(start=D1, end=D1, resource_name="Alice")
+            self.assertEqual(len(rows), 1)
+            self.assertEqual(rows[0].allocation_id, "MAN-1")
+            self.assertEqual(rows[0].segment_id, "SEG-1")
+            self.assertEqual(rows[0].resource_name, "Alice")
+            self.assertTrue(rows[0].locked)
+            self.assertEqual(rows[0].hours, 4.0)
+
+            self.assertEqual(queries.list_shifts(resource_name="Unknown"), ())
+
+
+if __name__ == "__main__":
+    unittest.main()
