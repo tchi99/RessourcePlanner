@@ -44,17 +44,15 @@ class DemandEditorUIArchitectureTests(unittest.TestCase):
         self.assertNotIn("def _project_data(", features)
         self.assertNotIn("features._project_data", refinements)
         self.assertNotIn("demand_service(self.repo).modify", refinements)
-
-        # The original V1.1 form is physically retired from the base UI. The only
-        # create/edit implementation is installed by demand_editor_ui.
         self.assertNotIn("def open_new_request_dialog(", base_ui)
         self.assertNotIn("self.repo.create_demand(", base_ui)
 
-    def test_editor_is_installed_after_legacy_layers_before_application_overlays(self) -> None:
+    def test_editor_is_installed_after_compatibility_pages_before_service_overlays(self) -> None:
         names = [step.name for step in composition_manifest()]
 
-        self.assertLess(names.index("v18_refinements"), names.index("demand_editor_ui"))
+        self.assertLess(names.index("v16_refinements"), names.index("demand_editor_ui"))
         self.assertLess(names.index("location_projection"), names.index("demand_editor_ui"))
+        self.assertLess(names.index("operational_planning_page"), names.index("demand_editor_ui"))
         self.assertLess(names.index("demand_editor_ui"), names.index("planning_service_ui"))
         self.assertLess(names.index("demand_editor_ui"), names.index("allocation_service_ui"))
 
