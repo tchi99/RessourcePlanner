@@ -111,7 +111,7 @@ class RepositoryPortTests(unittest.TestCase):
             Port(),
             _Planning(),
             _Sync(sync_events),
-            current_user="coord@example.com",
+            current_user="coord-test-user",
         )
 
         self.assertTrue(
@@ -125,7 +125,7 @@ class RepositoryPortTests(unittest.TestCase):
         self.assertEqual(writes[0][2]["Statut"], "Soumise")
         approval = writes[1]
         self.assertEqual(approval[2]["Statut"], "En planification")
-        self.assertEqual(approval[2]["ApprouvePar"], "coord@example.com")
+        self.assertEqual(approval[2]["ApprouvePar"], "coord-test-user")
         self.assertEqual(sync_events, [("sync", "DMO-1")])
 
     def test_segment_service_composes_directly_against_ports_and_typed_commands(self) -> None:
