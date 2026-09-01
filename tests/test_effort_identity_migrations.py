@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 from contextlib import nullcontext
 from datetime import date
 from pathlib import Path
@@ -208,9 +209,17 @@ class EffortIdentityMigrationTests(unittest.TestCase):
     def test_read_guard_is_preserved_but_routes_through_controlled_boundary(self) -> None:
         guard_source = (APP / "effort_identity_guard.py").read_text(encoding="utf-8")
         migration_source = (APP / "effort_identity_migrations.py").read_text(encoding="utf-8")
+        tree = ast.parse(migration_source)
+        efforts_calls = [
+            node
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "efforts"
+        ]
 
         self.assertIn("ensure_effort_ids(self)", guard_source)
-        self.assertNotIn("repo.efforts(", migration_source)
+        self.assertEqual(efforts_calls, [])
         self.assertIn("_write_changed_cells", migration_source)
         self.assertIn("if report.changed:", migration_source)
 
