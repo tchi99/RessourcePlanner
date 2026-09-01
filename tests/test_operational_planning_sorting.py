@@ -40,40 +40,21 @@ class OperationalPlanningSortingTests(unittest.TestCase):
 
     def test_default_and_availability_ascending_ranks_preserve_displayed_hours(self) -> None:
         owner = self._owner()
-        ranked = rank_weekly_stats(
-            owner,
-            self._stats,
-            owner.repo,
-            object(),
-            order_map=lambda repo: {},
-        )
-
+        ranked = rank_weekly_stats(owner, self._stats, owner.repo, object(), order_map=lambda repo: {})
         self.assertEqual(float(ranked["Alice"]["prudent_free"]), 8.0)
         self.assertEqual(-ranked["Alice"]["prudent_free"], 0)
         self.assertEqual(-ranked["Bob"]["prudent_free"], 1)
         self.assertEqual(-ranked["Émile"]["prudent_free"], 2)
 
         owner.planning_resource_sort = SORT_AVAIL_ASC
-        ranked = rank_weekly_stats(
-            owner,
-            self._stats,
-            owner.repo,
-            object(),
-            order_map=lambda repo: {},
-        )
+        ranked = rank_weekly_stats(owner, self._stats, owner.repo, object(), order_map=lambda repo: {})
         self.assertEqual(-ranked["Émile"]["prudent_free"], 0)
         self.assertEqual(-ranked["Bob"]["prudent_free"], 1)
         self.assertEqual(-ranked["Alice"]["prudent_free"], 2)
 
     def test_alpha_and_manual_modes_are_deterministic(self) -> None:
         owner = self._owner(SORT_ALPHA_ASC)
-        ranked = rank_weekly_stats(
-            owner,
-            self._stats,
-            owner.repo,
-            object(),
-            order_map=lambda repo: {},
-        )
+        ranked = rank_weekly_stats(owner, self._stats, owner.repo, object(), order_map=lambda repo: {})
         self.assertEqual(-ranked["Alice"]["prudent_free"], 0)
         self.assertEqual(-ranked["Bob"]["prudent_free"], 1)
         self.assertEqual(-ranked["Émile"]["prudent_free"], 2)
@@ -93,7 +74,6 @@ class OperationalPlanningSortingTests(unittest.TestCase):
     def test_manual_order_script_preserves_browser_contract(self) -> None:
         owner = self._owner(SORT_MANUAL)
         script = manual_order_script(owner, ["Alice", "Jean Charles"])
-
         self.assertIn(MANUAL_ORDER_EVENT, script)
         self.assertIn("v17-manual-order-controls", script)
         self.assertIn("Jean Charles", script)
@@ -106,7 +86,7 @@ class OperationalPlanningSortingTests(unittest.TestCase):
             self.assertNotIn(f"from . import {version}", source)
             self.assertNotIn(f"from .{version}", source)
 
-    def test_runtime_manifest_uses_stable_sorting_and_not_v17_sort_fix(self) -> None:
+    def test_runtime_manifest_uses_stable_sorting_and_not_retired_shims(self) -> None:
         manifest = composition_manifest()
         names = [step.name for step in manifest]
         categories = {step.name: step.category for step in manifest}
@@ -114,14 +94,10 @@ class OperationalPlanningSortingTests(unittest.TestCase):
         self.assertIn("operational_planning_sorting", names)
         self.assertEqual(categories["operational_planning_sorting"], "compatibility")
         self.assertNotIn("v17_sort_fix", names)
-        self.assertLess(
-            names.index("v17_refinements"),
-            names.index("operational_planning_sorting"),
-        )
-        self.assertLess(
-            names.index("operational_planning_sorting"),
-            names.index("v171_performance"),
-        )
+        self.assertNotIn("v17_refinements", names)
+        self.assertNotIn("v171_performance", names)
+        self.assertLess(names.index("resource_management"), names.index("operational_planning_sorting"))
+        self.assertLess(names.index("operational_planning_sorting"), names.index("runtime_performance"))
 
 
 if __name__ == "__main__":
