@@ -14,8 +14,8 @@ class OperationalPlanningSortingSyntaxTests(unittest.TestCase):
         for filename in (
             "operational_planning_sorting.py",
             "operational_planning_sorting_compat.py",
+            "runtime_performance_compat.py",
             "runtime_composition.py",
-            "v17_sort_fix.py",
         ):
             source = (APP / filename).read_text(encoding="utf-8")
             ast.parse(source, filename=filename)
