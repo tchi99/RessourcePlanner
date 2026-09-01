@@ -21,23 +21,21 @@ class OperationalPlanningOrchestratorExtractionTests(unittest.TestCase):
             self.assertNotIn(f"from . import {version}", source)
             self.assertNotIn(f"from .{version}", source)
 
-    def test_v17_module_is_retired(self) -> None:
+    def test_v17_modules_are_retired(self) -> None:
         app_dir = Path(__file__).resolve().parents[1] / "app"
-        self.assertFalse((app_dir / "v17.py").exists())
+        for filename in ("v17.py", "v17_refinements.py", "v17_sort_fix.py"):
+            self.assertFalse((app_dir / filename).exists(), filename)
 
-    def test_v17_refinement_targets_stable_filter_ui_and_orchestrator(self) -> None:
+    def test_stable_base_renderer_targets_orchestrator_with_explicit_bindings(self) -> None:
         app_dir = Path(__file__).resolve().parents[1] / "app"
-        source = (app_dir / "v17_refinements.py").read_text(encoding="utf-8")
-
-        self.assertIn(
-            "from . import operational_planning_header_filters as header_filters_module",
-            source,
+        source = (app_dir / "operational_planning_base_renderer.py").read_text(
+            encoding="utf-8"
         )
-        self.assertIn("ensure_scoped_ui(\n        header_filters_module,", source)
+
         self.assertIn("render_operational_planning(", source)
-        self.assertIn("bindings=operational_planning_bindings()", source)
-        self.assertNotIn("v17._render_planning", source)
-        self.assertNotIn("v16, v16_refinements, v17", source)
+        self.assertIn("bindings=bindings", source)
+        self.assertIn("weekly_stats_provider=weekly_stats_provider", source)
+        self.assertNotIn("v17_refinements", source)
 
 
 if __name__ == "__main__":
