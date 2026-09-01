@@ -73,18 +73,19 @@ class ServerReadinessToolTests(unittest.TestCase):
         self.assertIn("configuration_error", stderr.getvalue())
         self.assertIn("RESOURCEPLANNER_DATABASE_URL", stderr.getvalue())
 
-    def test_cli_hides_secret_when_infrastructure_initialization_fails(self) -> None:
+    def test_cli_hides_sensitive_value_when_infrastructure_initialization_fails(self) -> None:
         stderr = StringIO()
-        secret = "super-secret-password"
+        marker = "sensitive-test-value"
+        connection_url = "mssql+pyodbc://user:" + marker + "@server/db"
         with (
             patch.dict(
                 os.environ,
-                {"RESOURCEPLANNER_DATABASE_URL": f"mssql+pyodbc://user:{secret}@server/db"},
+                {"RESOURCEPLANNER_DATABASE_URL": connection_url},
                 clear=True,
             ),
             patch(
                 "tools.check_server_runtime.check_server_runtime",
-                side_effect=RuntimeError(f"driver failure near {secret}"),
+                side_effect=RuntimeError("driver failure near " + marker),
             ),
             redirect_stderr(stderr),
         ):
@@ -94,7 +95,8 @@ class ServerReadinessToolTests(unittest.TestCase):
         self.assertEqual(exit_code, 4)
         self.assertIn("technical_error", output)
         self.assertIn("RuntimeError", output)
-        self.assertNotIn(secret, output)
+        self.assertNotIn(marker, output)
+        self.assertNotIn(connection_url, output)
 
 
 if __name__ == "__main__":

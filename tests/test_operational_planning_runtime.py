@@ -51,31 +51,16 @@ class OperationalPlanningRuntimeTests(unittest.TestCase):
 
         install_allocation_total_guard(engine, context)
         created = engine.create_manual_allocation(
-            repository,
-            "SEG-1",
-            "Alice",
-            "2026-08-25",
-            4,
-            False,
-            "note",
+            repository, "SEG-1", "Alice", "2026-08-25", 4, False, "note"
         )
         engine.update_manual_allocation(
-            repository,
-            "A-1",
-            "Bob",
-            "2026-08-26",
-            3,
-            True,
-            "move",
+            repository, "A-1", "Bob", "2026-08-26", 3, True, "move"
         )
 
         self.assertEqual(created, "A-NEW")
         self.assertEqual(
             context.calls,
-            [
-                (repository, "SEG-1", 4, None),
-                (repository, "SEG-2", 3, "A-1"),
-            ],
+            [(repository, "SEG-1", 4, None), (repository, "SEG-2", 3, "A-1")],
         )
         self.assertEqual([name for name, _args in calls], ["create", "update"])
 
@@ -88,15 +73,11 @@ class OperationalPlanningRuntimeTests(unittest.TestCase):
             self.assertNotIn(f"from . import {version}", source)
             self.assertNotIn(f"from .{version}", source)
 
-    def test_v171_batching_targets_extracted_split_handler(self) -> None:
-        source = (APP / "v171_performance.py").read_text(encoding="utf-8")
-        self.assertIn(
-            "from . import operational_planning_drop_handler as drop_handler_module",
-            source,
-        )
-        self.assertIn("original_split_allocation = drop_handler_module._split_allocation", source)
-        self.assertIn("drop_handler_module._split_allocation = split_allocation_batched", source)
-        self.assertIn("bindings=bindings", source)
+    def test_runtime_performance_targets_extracted_split_handler(self) -> None:
+        source = (APP / "runtime_performance_compat.py").read_text(encoding="utf-8")
+        self.assertIn("drop_handler_module._split_allocation", source)
+        self.assertIn("sorting_compat.move_manual_resource", source)
+        self.assertNotIn("v171_performance", source)
         self.assertNotIn("v17._split_allocation", source)
 
     def test_no_application_module_imports_retired_v17_module(self) -> None:

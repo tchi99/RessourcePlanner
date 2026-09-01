@@ -23,7 +23,7 @@ permissions:
 jobs:
   validate:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -31,9 +31,12 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+          cache: "pip"
+      - name: Install validated dependencies
+        run: python -m pip install -r requirements.txt
       - name: Compile Python sources
         run: python -m compileall -q app tests tools migrations main.py
-      - name: Run pure business-rule tests
+      - name: Run verification suite
         run: python -m unittest discover -s tests -v
       - name: Scan current repository tree for common PII and secrets
         run: python tools/privacy_scan.py

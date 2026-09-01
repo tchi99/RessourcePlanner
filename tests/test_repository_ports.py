@@ -93,7 +93,12 @@ class RepositoryPortTests(unittest.TestCase):
                 return ()
 
             def get(self, number: str):
-                return DemandReadModel(number=number, status="En planification")
+                return DemandReadModel(
+                    number=number,
+                    status="En planification",
+                    desired_start=date(2026, 8, 25),
+                    desired_end=date(2026, 8, 29),
+                )
 
             def create(self, values, *, submit=False):
                 writes.append(("create", dict(values), submit))
@@ -106,7 +111,7 @@ class RepositoryPortTests(unittest.TestCase):
             Port(),
             _Planning(),
             _Sync(sync_events),
-            current_user="coord@example.com",
+            current_user="coord-test-user",
         )
 
         self.assertTrue(
@@ -120,7 +125,7 @@ class RepositoryPortTests(unittest.TestCase):
         self.assertEqual(writes[0][2]["Statut"], "Soumise")
         approval = writes[1]
         self.assertEqual(approval[2]["Statut"], "En planification")
-        self.assertEqual(approval[2]["ApprouvePar"], "coord@example.com")
+        self.assertEqual(approval[2]["ApprouvePar"], "coord-test-user")
         self.assertEqual(sync_events, [("sync", "DMO-1")])
 
     def test_segment_service_composes_directly_against_ports_and_typed_commands(self) -> None:

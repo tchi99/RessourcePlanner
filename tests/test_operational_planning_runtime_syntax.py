@@ -14,8 +14,8 @@ class OperationalPlanningRuntimeSyntaxTests(unittest.TestCase):
         for filename in (
             "operational_planning_runtime.py",
             "operational_planning_runtime_compat.py",
+            "runtime_performance_compat.py",
             "runtime_composition.py",
-            "v171_performance.py",
         ):
             source = (APP / filename).read_text(encoding="utf-8")
             ast.parse(source, filename=filename)

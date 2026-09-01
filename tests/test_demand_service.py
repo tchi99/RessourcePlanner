@@ -129,7 +129,12 @@ class DemandServiceTests(unittest.TestCase):
                 events.append(("batch-exit", label))
 
         service, _demands, _ = self._service(
-            record=DemandReadModel(number="DMO-EDIT", status="En planification"),
+            record=DemandReadModel(
+                number="DMO-EDIT",
+                status="En planification",
+                desired_start=date(2026, 8, 25),
+                desired_end=date(2026, 8, 29),
+            ),
             events=events,
             batch=batch,
         )
@@ -162,7 +167,12 @@ class DemandServiceTests(unittest.TestCase):
 
     def test_modify_unapproved_demand_does_not_force_reapproval(self) -> None:
         service, _demands, events = self._service(
-            record=DemandReadModel(number="DMO-DRAFT", status="Brouillon")
+            record=DemandReadModel(
+                number="DMO-DRAFT",
+                status="Brouillon",
+                desired_start=date(2026, 8, 25),
+                desired_end=date(2026, 8, 29),
+            )
         )
 
         required = service.modify(
@@ -332,7 +342,8 @@ class DemandServiceTests(unittest.TestCase):
         self.assertIn("PlanningCommandPort", source)
         self.assertIn("ApprovedDemandSyncPort", source)
         self.assertIn("DemandUpdateCommand", source)
-        self.assertIn("ApplicationError", source)
+        self.assertIn("call_application_port", source)
+        self.assertIn("ApplicationValidationError", source)
 
 
 if __name__ == "__main__":

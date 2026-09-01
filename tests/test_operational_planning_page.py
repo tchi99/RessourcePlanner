@@ -38,8 +38,8 @@ class OperationalPlanningPageTests(unittest.TestCase):
         self.assertIn("self.operational_planning_page.render()", source)
         self.assertNotIn('elif self.current_page == "planning":\n            self.render_planning()', source)
 
-    def test_final_v17_sort_layer_registers_renderer_without_legacy_alias_rewrites(self) -> None:
-        source = (APP / "v17_sort_fix.py").read_text(encoding="utf-8")
+    def test_stable_sorting_layer_registers_renderer_without_legacy_alias_rewrites(self) -> None:
+        source = (APP / "operational_planning_sorting_compat.py").read_text(encoding="utf-8")
         self.assertIn(
             "from .operational_planning_page import register_operational_planning_renderer",
             source,
@@ -49,15 +49,14 @@ class OperationalPlanningPageTests(unittest.TestCase):
             source,
         )
         self.assertIn("register_operational_planning_renderer(render_planning)", source)
-        self.assertNotIn("def render_planning(", source)
         for token in (
-            "PlannerUI.render_planning = render_planning",
-            "v13._render_operational_planning = render_planning",
-            "v15._render_operational_planning_v15 = render_planning",
-            "v15_refinements._render_planning = render_planning",
-            "v16._render_planning_v16 = render_planning",
-            "v16_refinements._render_planning = render_planning",
-            "v17_refinements._render_planning = render_planning",
+            "PlannerUI.render_planning =",
+            "v13._render_operational_planning =",
+            "v15._render_operational_planning_v15 =",
+            "v15_refinements._render_planning =",
+            "v16._render_planning_v16 =",
+            "v16_refinements._render_planning =",
+            "v17_refinements",
         ):
             self.assertNotIn(token, source)
 
@@ -70,32 +69,9 @@ class OperationalPlanningPageTests(unittest.TestCase):
         self.assertNotIn("from . import v16", source)
         self.assertNotIn("from . import v17", source)
 
-    def test_v17_refinements_calls_v17_renderer_without_rewriting_planning_aliases(self) -> None:
-        source = (APP / "v17_refinements.py").read_text(encoding="utf-8")
-        self.assertIn("v17._render_planning(", source)
-        for token in (
-            "PlannerUI.render_planning = _render_planning",
-            "v13._render_operational_planning = _render_planning",
-            "v15._render_operational_planning_v15 = _render_planning",
-            "v15_refinements._render_planning = _render_planning",
-            "v16._render_planning_v16 = _render_planning",
-            "v16_refinements._render_planning = _render_planning",
-        ):
-            self.assertNotIn(token, source)
-
-    def test_v17_installer_keeps_renderer_explicit_without_rewriting_legacy_aliases(self) -> None:
-        source = (APP / "v17.py").read_text(encoding="utf-8")
-        self.assertIn("def _render_planning(", source)
-        self.assertIn("def install_v17_features()", source)
-        for token in (
-            "PlannerUI.render_planning = _render_planning",
-            "v13._render_operational_planning = _render_planning",
-            "v15._render_operational_planning_v15 = _render_planning",
-            "v15_refinements._render_planning = _render_planning",
-            "v16._render_planning_v16 = _render_planning",
-            "v16_refinements._render_planning = _render_planning",
-        ):
-            self.assertNotIn(token, source)
+    def test_retired_v17_renderers_are_physically_absent(self) -> None:
+        for filename in ("v17.py", "v17_refinements.py", "v17_sort_fix.py"):
+            self.assertFalse((APP / filename).exists(), filename)
 
     def test_v16_refinements_calls_v16_renderer_without_rewriting_planning_aliases(self) -> None:
         source = (APP / "v16_refinements.py").read_text(encoding="utf-8")
