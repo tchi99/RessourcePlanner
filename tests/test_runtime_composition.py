@@ -187,11 +187,18 @@ class RuntimeCompositionTests(unittest.TestCase):
         )
 
         self.assertIn("AllocationService(", source)
-        self.assertIn("v15_engine.create_manual_allocation = _create_manual_via_service", source)
-        self.assertIn("v15_engine.update_manual_allocation = _update_manual_via_service", source)
-        self.assertIn("v15_engine.release_manual_allocation = _release_manual_via_service", source)
-        self.assertIn("v15_engine.delete_manual_allocation = _delete_manual_via_service", source)
-        self.assertIn("v16._assign_segment = _assign_segment_via_service", source)
+        self.assertIn("capture_excel_allocation_commands()", source)
+        self.assertIn("install_excel_allocation_service_entrypoints(", source)
+        for callback in (
+            "create_manual=_create_manual_via_service",
+            "update_manual=_update_manual_via_service",
+            "release_manual=_release_manual_via_service",
+            "delete_manual=_delete_manual_via_service",
+            "assign_segment=_assign_segment_via_service",
+        ):
+            self.assertIn(callback, source)
+        self.assertNotIn("v15_engine.create_manual_allocation =", source)
+        self.assertNotIn("v16._assign_segment =", source)
 
     def test_pure_validation_binding_records_authoritative_engine_cycles(self) -> None:
         source = (Path(__file__).resolve().parents[1] / "app" / "pure_validation_ui.py").read_text(
