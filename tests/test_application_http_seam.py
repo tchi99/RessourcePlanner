@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 from datetime import date
 from pathlib import Path
 import unittest
@@ -90,17 +91,22 @@ class ApplicationHttpSeamTests(unittest.TestCase):
         self.assertEqual(payload["code"], "demand_not_found")
         self.assertEqual(payload["context"]["demand_number"], "DMO-MISSING")
 
-    def test_http_seam_test_itself_does_not_need_fastapi_nicegui_or_excel(self) -> None:
-        source = Path(__file__).read_text(encoding="utf-8")
-        for forbidden_import in (
-            "import fastapi",
-            "from fastapi",
-            "import nicegui",
-            "from nicegui",
-            "ExcelRepository",
-            "xlwings",
-        ):
-            self.assertNotIn(forbidden_import, source)
+    def test_http_seam_test_itself_does_not_need_transport_or_excel_imports(self) -> None:
+        tree = ast.parse(Path(__file__).read_text(encoding="utf-8"))
+        modules: set[str] = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                modules.update(alias.name for alias in node.names)
+            elif isinstance(node, ast.ImportFrom):
+                modules.add(node.module or "")
+
+        forbidden_roots = {"fastapi", "nicegui", "xlwings", "app.excel_repository"}
+        offenders = {
+            module
+            for module in modules
+            if any(module == root or module.startswith(root + ".") for root in forbidden_roots)
+        }
+        self.assertEqual(offenders, set())
 
 
 if __name__ == "__main__":
