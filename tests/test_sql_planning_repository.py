@@ -72,6 +72,7 @@ class SqlPlanningReadRepositoryTests(unittest.TestCase):
                     status="En planification",
                 )
             )
+            session.flush()
             session.add(
                 ResourceRequirement(
                     id="S-UUID",
@@ -90,6 +91,7 @@ class SqlPlanningReadRepositoryTests(unittest.TestCase):
                     origin="REQUEST",
                 )
             )
+            session.flush()
             session.add_all(
                 [
                     ResourceAvailabilityRule(
