@@ -1,7 +1,7 @@
 """request periods and exclusive alternative selections
 
-Revision ID: 0005
-Revises: 0004
+Revision ID: 0005_request_period_alternatives
+Revises: 0004_cutover_preservation_fields
 Create Date: 2026-09-03
 """
 
@@ -13,8 +13,8 @@ import sqlalchemy as sa
 from alembic import op
 
 
-revision: str = "0005"
-down_revision: Union[str, Sequence[str], None] = "0004"
+revision: str = "0005_request_period_alternatives"
+down_revision: Union[str, Sequence[str], None] = "0004_cutover_preservation_fields"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
