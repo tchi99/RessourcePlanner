@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import date
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -51,6 +52,27 @@ class DemandUpdateRequest(StrictRequest):
     estimated_days: float | None = Field(default=None, ge=0)
     proposed_technician: str | None = None
     comment: str = "Demande modifiée via API"
+
+
+class DemandPeriodRequest(StrictRequest):
+    period_id: str = Field(min_length=1)
+    start_date: date
+    end_date: date
+    hours: float = Field(gt=0)
+    kind: Literal["CUMULATIVE", "ALTERNATIVE"] = "CUMULATIVE"
+    alternative_group: str | None = None
+    confirmation: str = "Tentative"
+    proposed_resource: str | None = None
+    resource_count: int = Field(default=1, ge=1)
+    note: str = ""
+
+
+class DemandPeriodsReplaceRequest(StrictRequest):
+    periods: list[DemandPeriodRequest]
+
+
+class DemandAlternativeSelectionRequest(StrictRequest):
+    period_id: str = Field(min_length=1)
 
 
 class OptionalCommentRequest(StrictRequest):
