@@ -108,3 +108,23 @@ class WorkforceRequestPeriodSelection(Base):
     )
     selected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     selected_by_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+
+class WorkforceRequestPeriodRequirement(Base):
+    """Audit-safe link between one generated requirement and its period version."""
+
+    __tablename__ = "workforce_request_period_requirements"
+    __table_args__ = (
+        Index("ix_request_period_requirement_period", "period_id"),
+    )
+
+    resource_requirement_id: Mapped[str] = mapped_column(
+        String(ID_LENGTH),
+        ForeignKey("resource_requirements.id"),
+        primary_key=True,
+    )
+    period_id: Mapped[str] = mapped_column(
+        String(ID_LENGTH),
+        ForeignKey("workforce_request_periods.id"),
+        nullable=False,
+    )
