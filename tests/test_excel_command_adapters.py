@@ -3,7 +3,7 @@ from __future__ import annotations
 import sys
 from types import ModuleType
 import unittest
-from unittest.mock import patch
+from unittest.mock import call, patch
 
 from app.infrastructure.excel import command_adapters as adapters
 
@@ -52,6 +52,60 @@ class ExcelCommandAdapterTests(unittest.TestCase):
         self.assertEqual(identifier, "MAN-1")
         self.assertEqual(calls[0][0], "captured-create")
         self.assertIs(calls[0][1], repository)
+
+    def test_explicit_confirmation_is_persisted_without_changing_legacy_call_shape(self) -> None:
+        repository = object()
+        legacy_calls: list[tuple] = []
+
+        def create(repo, segment, tech, day, hours, overtime=False, note=""):
+            legacy_calls.append(("create", repo, segment, tech, day, hours, overtime, note))
+            return "MAN-1"
+
+        def update(repo, identifier, tech, day, hours, overtime=False, note=""):
+            legacy_calls.append(("update", repo, identifier, tech, day, hours, overtime, note))
+
+        adapter = adapters.ExcelAllocationCommandAdapter(
+            repository,
+            create_manual_record=create,
+            update_manual_record=update,
+            release_manual_record=lambda *_args: None,
+            delete_manual_record=lambda *_args: None,
+        )
+
+        with patch.object(adapters, "set_allocation_confirmation") as persist:
+            identifier = adapter.create_manual(
+                "SEG-1",
+                "Alice",
+                "2026-09-08",
+                8,
+                False,
+                "note",
+                "Tentative",
+            )
+            adapter.update_manual(
+                identifier,
+                "Alice",
+                "2026-09-09",
+                7,
+                True,
+                "modifié",
+                "Confirmée",
+            )
+
+        self.assertEqual(identifier, "MAN-1")
+        self.assertEqual(
+            legacy_calls,
+            [
+                ("create", repository, "SEG-1", "Alice", "2026-09-08", 8, False, "note"),
+                ("update", repository, "MAN-1", "Alice", "2026-09-09", 7, True, "modifié"),
+            ],
+        )
+        persist.assert_has_calls(
+            [
+                call(repository, "MAN-1", "Tentative"),
+                call(repository, "MAN-1", "Confirmée"),
+            ]
+        )
 
     def test_planning_adapter_resolves_active_engine_alias_each_call(self) -> None:
         repository = object()
