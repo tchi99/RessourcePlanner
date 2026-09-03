@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from ...application.read_models import DemandPeriodReadModel
 from ...application.repository_ports import DemandPeriodRepositoryPort
+from ...domain.confirmation import normalize_confirmation
 from ...domain.demand_periods import DemandPeriodDefinition, validate_period_definitions
 from .base import utc_now
 from .demand_period_models import (
@@ -147,7 +148,7 @@ class SqlDemandPeriodRepository(DemandPeriodRepositoryPort):
                     start_date=period.start_date,
                     end_date=period.end_date,
                     hours=Decimal(str(period.hours)),
-                    confirmation=_text(period.confirmation) or "Tentative",
+                    confirmation=normalize_confirmation(period.confirmation),
                     proposed_resource_id=resource.id if resource is not None else None,
                     resource_count=int(period.resource_count),
                     note=_text(period.note) or None,
