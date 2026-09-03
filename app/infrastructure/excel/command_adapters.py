@@ -9,6 +9,7 @@ from ...application.command_ports import (
     ApprovedDemandSyncPort,
     PlanningCommandPort,
 )
+from .allocation_confirmation import set_allocation_confirmation
 from .demand_repository import ExcelDemandRepository
 
 
@@ -62,8 +63,9 @@ class ExcelAllocationCommandAdapter(AllocationCommandPort):
         hours_value: Any,
         hors_horaire: bool = False,
         note: str = "",
+        confirmation: str | None = None,
     ) -> str:
-        return str(
+        identifier = str(
             self._create_manual_record(
                 self._repository,
                 segment_id,
@@ -74,6 +76,9 @@ class ExcelAllocationCommandAdapter(AllocationCommandPort):
                 str(note or ""),
             )
         )
+        if confirmation is not None:
+            set_allocation_confirmation(self._repository, identifier, confirmation)
+        return identifier
 
     def update_manual(
         self,
@@ -83,6 +88,7 @@ class ExcelAllocationCommandAdapter(AllocationCommandPort):
         hours_value: Any,
         hors_horaire: bool = False,
         note: str = "",
+        confirmation: str | None = None,
     ) -> None:
         self._update_manual_record(
             self._repository,
@@ -93,6 +99,8 @@ class ExcelAllocationCommandAdapter(AllocationCommandPort):
             bool(hors_horaire),
             str(note or ""),
         )
+        if confirmation is not None:
+            set_allocation_confirmation(self._repository, allocation_id, confirmation)
 
     def release_manual(self, allocation_id: str) -> None:
         self._release_manual_record(self._repository, allocation_id)
@@ -163,8 +171,8 @@ def excel_allocation_commands(repository: Any) -> ExcelAllocationCommandAdapter:
 
 def install_excel_allocation_service_entrypoints(
     *,
-    create_manual: CreateAllocationFn,
-    update_manual: UpdateAllocationFn,
+    create_manual: Callable[..., str],
+    update_manual: Callable[..., None],
     release_manual: AllocationIdFn,
     delete_manual: AllocationIdFn,
     assign_segment: Callable[[Any, dict[str, Any], str, Any], None],
