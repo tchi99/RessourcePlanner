@@ -120,6 +120,8 @@ class SegmentReadModel:
     planning_type: str | None = None
     priority: str | None = None
     outside_standard_hours: bool = False
+    confirmation: str | None = None
+    confirmation_overridden: bool = False
 
     @classmethod
     def from_mapping(cls, row: Mapping[str, Any]) -> "SegmentReadModel":
@@ -139,4 +141,6 @@ class SegmentReadModel:
             planning_type=_optional_text(row.get("TypePlanification")),
             priority=_optional_text(row.get("Priorite")),
             outside_standard_hours=bool(row.get("HorsHoraireAutorise") or False),
+            confirmation=_optional_text(row.get("Confirmation")),
+            confirmation_overridden=bool(row.get("ConfirmationOverride") or False),
         )
