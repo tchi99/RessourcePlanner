@@ -12,7 +12,8 @@ from ...application.query_models import (
     ShiftReadModel,
 )
 from ...application.query_ports import PlannerQueryPort
-from ...application.read_models import DemandReadModel, SegmentReadModel
+from ...application.read_models import DemandPeriodReadModel, DemandReadModel, SegmentReadModel
+from .demand_period_repository import SqlDemandPeriodRepository
 from .demand_repository import SqlDemandRepository
 from .models import Project, Resource, ResourceRequirement, Shift
 from .segment_repository import SqlSegmentRepository
@@ -53,6 +54,7 @@ class SqlPlannerQueryRepository(PlannerQueryPort):
     def __init__(self, session: Session) -> None:
         self._session = session
         self._demands = SqlDemandRepository(session)
+        self._periods = SqlDemandPeriodRepository(session)
         self._segments = SqlSegmentRepository(session)
 
     def list_projects(self, *, active_only: bool = False) -> tuple[ProjectReadModel, ...]:
@@ -101,6 +103,9 @@ class SqlPlannerQueryRepository(PlannerQueryPort):
 
     def get_demand(self, number: str) -> DemandReadModel | None:
         return self._demands.get(number)
+
+    def list_demand_periods(self, number: str) -> tuple[DemandPeriodReadModel, ...]:
+        return tuple(self._periods.list_for_demand(number))
 
     def list_segments(
         self,
