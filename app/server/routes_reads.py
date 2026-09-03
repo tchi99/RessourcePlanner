@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, Query
 from ..application import (
     ApplicationNotFoundError,
     ApplicationValidationError,
+    DemandPeriodReadModel,
     DemandReadModel,
     PlannerQueryPort,
     PlanningSnapshotReadModel,
@@ -67,6 +68,19 @@ def build_read_router(query_dependency: QueryProvider) -> APIRouter:
             )
         return row
 
+    @router.get("/demands/{number}/periods")
+    def list_demand_periods(
+        number: str,
+        queries: PlannerQueryPort = Depends(query_dependency),
+    ) -> list[DemandPeriodReadModel]:
+        if queries.get_demand(number) is None:
+            raise ApplicationNotFoundError(
+                f"Demande {number} introuvable",
+                code="demand_not_found",
+                context={"demand_number": number},
+            )
+        return list(queries.list_demand_periods(number))
+
     @router.get("/segments")
     def list_segments(
         start: date | None = Query(default=None),
@@ -76,11 +90,7 @@ def build_read_router(query_dependency: QueryProvider) -> APIRouter:
     ) -> list[SegmentReadModel]:
         _window(start, end)
         return list(
-            queries.list_segments(
-                start=start,
-                end=end,
-                include_cancelled=include_cancelled,
-            )
+            queries.list_segments(start=start, end=end, include_cancelled=include_cancelled)
         )
 
     @router.get("/segments/{segment_id}")
@@ -106,11 +116,7 @@ def build_read_router(query_dependency: QueryProvider) -> APIRouter:
     ) -> list[ShiftReadModel]:
         _window(start, end)
         return list(
-            queries.list_shifts(
-                start=start,
-                end=end,
-                resource_name=resource_name,
-            )
+            queries.list_shifts(start=start, end=end, resource_name=resource_name)
         )
 
     @router.get("/planning/snapshot")
