@@ -24,7 +24,12 @@ from .models import ID_LENGTH
 
 
 class WorkforceRequestPeriod(TimestampMixin, Base):
-    """Versioned requested period that may later materialize into a requirement."""
+    """Versioned requested period that may later materialize into a requirement.
+
+    ``id`` identifies the physical version row. ``period_key`` is the stable logical
+    identifier exposed to the application so editing a demand can retain old versions
+    without reusing a primary key.
+    """
 
     __tablename__ = "workforce_request_periods"
     __table_args__ = (
@@ -47,9 +52,16 @@ class WorkforceRequestPeriod(TimestampMixin, Base):
             "workforce_request_id",
             "active",
         ),
+        Index(
+            "ix_request_periods_request_key_active",
+            "workforce_request_id",
+            "period_key",
+            "active",
+        ),
     )
 
     id: Mapped[str] = mapped_column(String(ID_LENGTH), primary_key=True, default=new_id)
+    period_key: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
     workforce_request_id: Mapped[str] = mapped_column(
         String(ID_LENGTH),
         ForeignKey("workforce_requests.id"),
