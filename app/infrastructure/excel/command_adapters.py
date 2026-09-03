@@ -12,9 +12,10 @@ from ...application.command_ports import (
 from .demand_repository import ExcelDemandRepository
 
 
-CreateAllocationFn = Callable[[Any, str, str, Any, Any, bool, str], str]
-UpdateAllocationFn = Callable[[Any, str, str, Any, Any, bool, str], None]
+CreateAllocationFn = Callable[..., str]
+UpdateAllocationFn = Callable[..., None]
 AllocationIdFn = Callable[[Any, str], None]
+ALLOCATION_CONFIRMATION_FIELD = "Confirmation"
 
 _captured_allocation_functions: tuple[
     CreateAllocationFn,
@@ -22,6 +23,44 @@ _captured_allocation_functions: tuple[
     AllocationIdFn,
     AllocationIdFn,
 ] | None = None
+
+
+def _ensure_allocation_confirmation_field(repository: Any) -> None:
+    """Append the V1 shift confirmation override without relabelling old columns."""
+
+    v14_engine = import_module("app.v14_engine")
+    if ALLOCATION_CONFIRMATION_FIELD not in v14_engine.ALLOCATION_HEADERS:
+        v14_engine.ALLOCATION_HEADERS.append(ALLOCATION_CONFIRMATION_FIELD)
+    repository._ensure_sheet_table(
+        v14_engine.ALLOCATION_SHEET,
+        v14_engine.ALLOCATION_HEADERS,
+        v14_engine.ALLOCATION_TABLE,
+    )
+    repository.save()
+
+
+def _set_allocation_confirmation(
+    repository: Any,
+    allocation_id: str,
+    confirmation: str | None,
+) -> None:
+    """Persist a nullable V1 override; blank means inherit from the upper level."""
+
+    _ensure_allocation_confirmation_field(repository)
+    v14_engine = import_module("app.v14_engine")
+    v15_engine = import_module("app.v15_engine")
+    allocation = v15_engine.allocation_by_id(repository, allocation_id)
+    if allocation is None:
+        raise KeyError(f"Allocation {allocation_id} introuvable")
+    header_map = v15_engine._allocation_header_map(repository)
+    column = header_map.get(ALLOCATION_CONFIRMATION_FIELD)
+    if not column:
+        raise RuntimeError("La colonne Confirmation du quart n'a pas pu être créée.")
+    value = str(confirmation or "").strip() or None
+    with repository._lock:
+        sheet = repository._book().sheets[v14_engine.ALLOCATION_SHEET]
+        sheet.range((int(allocation["_row"]), column)).value = value
+        repository.save()
 
 
 class ExcelPlanningCommandAdapter(PlanningCommandPort):
@@ -62,8 +101,9 @@ class ExcelAllocationCommandAdapter(AllocationCommandPort):
         hours_value: Any,
         hors_horaire: bool = False,
         note: str = "",
+        confirmation: str | None = None,
     ) -> str:
-        return str(
+        identifier = str(
             self._create_manual_record(
                 self._repository,
                 segment_id,
@@ -74,6 +114,8 @@ class ExcelAllocationCommandAdapter(AllocationCommandPort):
                 str(note or ""),
             )
         )
+        _set_allocation_confirmation(self._repository, identifier, confirmation)
+        return identifier
 
     def update_manual(
         self,
@@ -83,6 +125,7 @@ class ExcelAllocationCommandAdapter(AllocationCommandPort):
         hours_value: Any,
         hors_horaire: bool = False,
         note: str = "",
+        confirmation: str | None = None,
     ) -> None:
         self._update_manual_record(
             self._repository,
@@ -93,9 +136,11 @@ class ExcelAllocationCommandAdapter(AllocationCommandPort):
             bool(hors_horaire),
             str(note or ""),
         )
+        _set_allocation_confirmation(self._repository, allocation_id, confirmation)
 
     def release_manual(self, allocation_id: str) -> None:
         self._release_manual_record(self._repository, allocation_id)
+        _set_allocation_confirmation(self._repository, allocation_id, None)
 
     def delete_manual(self, allocation_id: str) -> None:
         self._delete_manual_record(self._repository, allocation_id)
