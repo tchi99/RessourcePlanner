@@ -42,6 +42,7 @@ class ShiftReadModel:
     locked: bool = False
     outside_standard_hours: bool = False
     confirmation: str | None = None
+    confirmation_override: str | None = None
     note: str | None = None
 
 

@@ -11,6 +11,8 @@ from sqlalchemy.orm import Session
 
 from ...application.read_models import SegmentReadModel
 from ...application.repository_ports import SegmentRepositoryPort
+from ...domain.confirmation import CONFIRMATION_CONFIRMED, normalize_confirmation
+from .demand_period_models import WorkforceRequestPeriod, WorkforceRequestPeriodRequirement
 from .models import (
     ORIGIN_REQUEST,
     Project,
@@ -91,6 +93,8 @@ class SqlSegmentRepository(SegmentRepositoryPort):
             planning_type=_optional_text(requirement.planning_type),
             priority=_optional_text(requirement.priority),
             outside_standard_hours=bool(requirement.outside_standard_hours_allowed),
+            confirmation=_optional_text(requirement.confirmation),
+            confirmation_overridden=bool(requirement.confirmation_overridden),
         )
 
     def list(self, *, include_cancelled: bool = True) -> Sequence[SegmentReadModel]:
@@ -170,6 +174,26 @@ class SqlSegmentRepository(SegmentRepositoryPort):
             raise KeyError(f"Ressource {resource_name} introuvable")
         return resource
 
+    def _inherited_confirmation(
+        self,
+        requirement: ResourceRequirement,
+        request: WorkforceRequest | None,
+    ) -> str:
+        link = self._session.get(WorkforceRequestPeriodRequirement, requirement.id)
+        if link is not None:
+            period = self._session.get(WorkforceRequestPeriod, link.period_id)
+            if period is not None:
+                return normalize_confirmation(
+                    period.confirmation,
+                    default=CONFIRMATION_CONFIRMED,
+                )
+        if request is not None:
+            return normalize_confirmation(
+                request.confirmation,
+                default=CONFIRMATION_CONFIRMED,
+            )
+        return CONFIRMATION_CONFIRMED
+
     def _next_segment_id(self) -> str:
         year = date.today().year
         prefix = f"SEG-{year}-"
@@ -216,6 +240,20 @@ class SqlSegmentRepository(SegmentRepositoryPort):
         resource = self._resource(values.get("Technicien"))
         identifier = self._next_segment_id()
         origin = _text(values.get("OrigineSegment")) or ORIGIN_REQUEST
+        supplied_confirmation = _optional_text(values.get("Confirmation"))
+        if supplied_confirmation is not None:
+            confirmation = normalize_confirmation(supplied_confirmation)
+            overridden = (
+                _bool(values.get("ConfirmationOverride"))
+                if "ConfirmationOverride" in values
+                else request is not None
+            )
+        else:
+            confirmation = normalize_confirmation(
+                request.confirmation if request is not None else None,
+                default=CONFIRMATION_CONFIRMED,
+            )
+            overridden = False
 
         requirement = ResourceRequirement(
             legacy_segment_id=identifier,
@@ -234,6 +272,8 @@ class SqlSegmentRepository(SegmentRepositoryPort):
             planning_type=_text(values.get("TypePlanification")) or "Flexible",
             priority=_text(values.get("Priorite")) or "Normale",
             outside_standard_hours_allowed=_bool(values.get("HorsHoraireAutorise")),
+            confirmation=confirmation,
+            confirmation_overridden=overridden,
             origin=origin,
         )
         self._session.add(requirement)
@@ -291,5 +331,16 @@ class SqlSegmentRepository(SegmentRepositoryPort):
             )
         if "OrigineSegment" in updates:
             requirement.origin = _text(updates.get("OrigineSegment")) or ORIGIN_REQUEST
+
+        if "Confirmation" in updates:
+            supplied = _optional_text(updates.get("Confirmation"))
+            if supplied is None:
+                requirement.confirmation_overridden = False
+                requirement.confirmation = self._inherited_confirmation(requirement, request)
+            else:
+                requirement.confirmation = normalize_confirmation(supplied)
+                requirement.confirmation_overridden = True
+        elif "NoDemande" in updates and not requirement.confirmation_overridden:
+            requirement.confirmation = self._inherited_confirmation(requirement, request)
 
         self._session.flush()

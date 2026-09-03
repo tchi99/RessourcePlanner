@@ -100,6 +100,8 @@ class SegmentCreateRequest(StrictRequest):
     planning_type: str = "Flexible"
     priority: str = "Normale"
     outside_standard_hours: bool = False
+    # NULL means inherit the approved request/period snapshot.
+    confirmation: str | None = None
 
 
 class SegmentUpdateRequest(StrictRequest):
@@ -117,6 +119,8 @@ class SegmentUpdateRequest(StrictRequest):
     planning_type: str | None = None
     priority: str | None = None
     outside_standard_hours: bool | None = None
+    # Explicit NULL clears the segment override and restores inherited confirmation.
+    confirmation: str | None = None
 
     @field_validator("outside_standard_hours", mode="before")
     @classmethod
@@ -138,6 +142,8 @@ class ManualAllocationRequest(StrictRequest):
     hours: float = Field(gt=0)
     outside_standard_hours: bool = False
     note: str = ""
+    # NULL/omitted means inherit the segment confirmation.
+    confirmation: str | None = None
 
 
 class QuickShiftRequest(StrictRequest):
@@ -149,3 +155,4 @@ class QuickShiftRequest(StrictRequest):
     outside_standard_hours: bool = False
     note: str = ""
     description: str = ""
+    confirmation: str = "Confirmée"

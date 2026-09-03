@@ -68,15 +68,23 @@ class AllocationService:
         )
         day = self._day(command.day)
         hours = self._positive_hours(command.hours)
-        return call_application_port(
-            lambda: self._commands.create_manual(
+
+        def create() -> str:
+            base = (
                 segment,
                 tech,
                 day,
                 hours,
                 bool(command.outside_standard_hours),
                 str(command.note or ""),
-            ),
+            )
+            if command.confirmation is None:
+                # Keep compatibility with the V1 adapter/fakes until that runtime is retired.
+                return self._commands.create_manual(*base)
+            return self._commands.create_manual(*base, command.confirmation)
+
+        return call_application_port(
+            create,
             code_prefix="allocation_create",
             context={"segment_id": segment, "technician": tech},
         )
@@ -94,15 +102,23 @@ class AllocationService:
         )
         day = self._day(command.day)
         hours = self._positive_hours(command.hours)
-        call_application_port(
-            lambda: self._commands.update_manual(
+
+        def update() -> None:
+            base = (
                 identifier,
                 tech,
                 day,
                 hours,
                 bool(command.outside_standard_hours),
                 str(command.note or ""),
-            ),
+            )
+            if command.confirmation is None:
+                self._commands.update_manual(*base)
+            else:
+                self._commands.update_manual(*base, command.confirmation)
+
+        call_application_port(
+            update,
             code_prefix="allocation_update",
             context={"allocation_id": identifier, "technician": tech},
         )
@@ -158,6 +174,7 @@ class AllocationService:
         hours_value: Any,
         hors_horaire: bool = False,
         note: str = "",
+        confirmation: str | None = None,
     ) -> str:
         """Compatibility adapter for current NiceGUI/V1 callers."""
 
@@ -169,6 +186,7 @@ class AllocationService:
                 hours_value,
                 hors_horaire,
                 note,
+                confirmation,
             )
         )
 
@@ -180,6 +198,7 @@ class AllocationService:
         hours_value: Any,
         hors_horaire: bool = False,
         note: str = "",
+        confirmation: str | None = None,
     ) -> None:
         self.update_manual_command(
             ManualAllocationUpdateCommand.from_values(
@@ -189,6 +208,7 @@ class AllocationService:
                 hours_value,
                 hors_horaire,
                 note,
+                confirmation,
             )
         )
 
