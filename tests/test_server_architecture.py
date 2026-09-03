@@ -52,7 +52,7 @@ class ServerArchitectureTests(unittest.TestCase):
         self.assertIn("SqlSegmentRepository", composition)
         self.assertIn("SqlPlanningCommandAdapter", composition)
         self.assertIn("SqlAllocationCommandAdapter", composition)
-        self.assertIn("SqlApprovedDemandSyncAdapter", composition)
+        self.assertIn("SqlPeriodAwareApprovedDemandSyncAdapter", composition)
         self.assertIn("SqlPlannerQueryRepository", composition)
 
         for filename in ("http.py", "routes_commands.py", "routes_reads.py"):
