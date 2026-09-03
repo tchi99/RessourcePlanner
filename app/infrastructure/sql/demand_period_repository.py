@@ -14,7 +14,7 @@ from .demand_period_models import (
     WorkforceRequestPeriod,
     WorkforceRequestPeriodSelection,
 )
-from .models import Resource, WorkforceRequest
+from .models import Resource, WorkforceRequest, WorkforceRequestHistory
 
 
 def _text(value: object) -> str:
@@ -186,19 +186,42 @@ class SqlDemandPeriodRepository(DemandPeriodRepositoryPort):
                 WorkforceRequestPeriodSelection.alternative_group == group,
             )
         )
+        previous_period = (
+            self._session.get(WorkforceRequestPeriod, selection.period_id)
+            if selection is not None
+            else None
+        )
+        if selection is not None and selection.period_id == period.id:
+            return
+
+        selected_at = utc_now()
         if selection is None:
             selection = WorkforceRequestPeriodSelection(
                 workforce_request_id=request.id,
                 alternative_group=group,
                 period_id=period.id,
-                selected_at=utc_now(),
+                selected_at=selected_at,
                 selected_by_name=self._actor_name or None,
             )
             self._session.add(selection)
         else:
             selection.period_id = period.id
-            selection.selected_at = utc_now()
+            selection.selected_at = selected_at
             selection.selected_by_name = self._actor_name or None
+
+        previous_key = _text(previous_period.period_key) if previous_period is not None else ""
+        self._session.add(
+            WorkforceRequestHistory(
+                workforce_request_id=request.id,
+                action="Sélection alternative",
+                status=request.status,
+                comment=(
+                    f"Groupe {group}: {previous_key or 'aucune'} -> {period.period_key}"
+                ),
+                actor_name=self._actor_name or None,
+                occurred_at=selected_at,
+            )
+        )
         self._session.flush()
 
     def selections_for_demand(self, demand_number: str) -> Mapping[str, str]:

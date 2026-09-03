@@ -13,8 +13,8 @@ from ..application.quick_shift_service import QuickShiftService
 from ..application.segment_service import SegmentService
 from ..infrastructure.sql import (
     SqlAllocationCommandAdapter,
-    SqlApprovedDemandSyncAdapter,
     SqlDemandRepository,
+    SqlPeriodAwareApprovedDemandSyncAdapter,
     SqlPlannerQueryRepository,
     SqlPlanningCommandAdapter,
     SqlSegmentRepository,
@@ -40,7 +40,7 @@ def build_sql_facade(
         session,
         planning=planning_commands,
     )
-    approved_sync = SqlApprovedDemandSyncAdapter(session)
+    approved_sync = SqlPeriodAwareApprovedDemandSyncAdapter(session)
 
     return ApplicationFacade(
         demands=DemandService(
