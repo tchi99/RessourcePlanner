@@ -21,6 +21,8 @@ EXPECTED_TABLES = {
     "work_packages",
     "workforce_requests",
     "workforce_request_history",
+    "workforce_request_periods",
+    "workforce_request_period_selections",
     "resource_availability_rules",
     "resource_requirements",
     "shifts",
@@ -104,6 +106,8 @@ class SqlMigrationTests(unittest.TestCase):
             self.assertIn("CREATE TABLE PROJECTS", ddl, url)
             self.assertIn("CREATE TABLE RESOURCE_REQUIREMENTS", ddl, url)
             self.assertIn("CREATE TABLE SHIFTS", ddl, url)
+            self.assertIn("CREATE TABLE WORKFORCE_REQUEST_PERIODS", ddl, url)
+            self.assertIn("CREATE TABLE WORKFORCE_REQUEST_PERIOD_SELECTIONS", ddl, url)
             self.assertIn("WORKFORCE_REQUEST_ID", ddl, url)
 
 
