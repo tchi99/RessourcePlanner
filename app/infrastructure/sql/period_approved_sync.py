@@ -6,6 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ...application.command_ports import ApprovedDemandSyncPort
+from ...domain.confirmation import CONFIRMATION_CONFIRMED, normalize_confirmation
 from ...domain.demand_periods import PERIOD_KIND_CUMULATIVE
 from .base import utc_now
 from .command_adapters import SqlApprovedDemandSyncAdapter
@@ -124,6 +125,12 @@ class SqlPeriodAwareApprovedDemandSyncAdapter(ApprovedDemandSyncPort):
                 "Priorite": request.priority or "Normale",
                 "HorsHoraireAutorise": False,
                 "OrigineSegment": ORIGIN_REQUEST,
+                "Confirmation": normalize_confirmation(
+                    period.confirmation,
+                    default=CONFIRMATION_CONFIRMED,
+                ),
+                # This value is an inherited approved snapshot, not a user override.
+                "ConfirmationOverride": False,
             }
         )
         requirement = self._session.scalar(
@@ -213,6 +220,10 @@ class SqlPeriodAwareApprovedDemandSyncAdapter(ApprovedDemandSyncPort):
                         requirement.status = "Annulé"
                 rows = [row for row in ranked if row.id in keep_ids]
 
+            inherited_confirmation = normalize_confirmation(
+                period.confirmation,
+                default=CONFIRMATION_CONFIRMED,
+            )
             for requirement in rows:
                 if proposed is not None and not requirement.assigned_resource_id:
                     requirement.assigned_resource_id = proposed.id
@@ -229,6 +240,8 @@ class SqlPeriodAwareApprovedDemandSyncAdapter(ApprovedDemandSyncPort):
                 requirement.required_competency = request.required_competencies
                 requirement.priority = request.priority or "Normale"
                 requirement.origin = ORIGIN_REQUEST
+                if not requirement.confirmation_overridden:
+                    requirement.confirmation = inherited_confirmation
 
         groups = sorted(
             {
