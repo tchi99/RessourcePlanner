@@ -10,6 +10,11 @@ from .command_adapters import (
     SqlApprovedDemandSyncAdapter,
     SqlPlanningCommandAdapter,
 )
+from .demand_period_models import (
+    WorkforceRequestPeriod,
+    WorkforceRequestPeriodSelection,
+)
+from .demand_period_repository import SqlDemandPeriodRepository
 from .demand_repository import SqlDemandRepository
 from .models import (
     ORIGIN_AD_HOC,
@@ -52,6 +57,7 @@ __all__ = [
     "Shift",
     "SqlAllocationCommandAdapter",
     "SqlApprovedDemandSyncAdapter",
+    "SqlDemandPeriodRepository",
     "SqlDemandRepository",
     "SqlPlannerQueryRepository",
     "SqlPlanningCommandAdapter",
@@ -62,6 +68,8 @@ __all__ = [
     "WorkPackage",
     "WorkforceRequest",
     "WorkforceRequestHistory",
+    "WorkforceRequestPeriod",
+    "WorkforceRequestPeriodSelection",
     "create_session_factory",
     "create_sql_engine",
     "new_id",

@@ -83,6 +83,25 @@ class DemandReadModel:
 
 
 @dataclass(frozen=True, slots=True)
+class DemandPeriodReadModel:
+    """One versioned requested period/option under a workforce request."""
+
+    period_id: str
+    demand_number: str
+    sequence: int
+    kind: str
+    start_date: date
+    end_date: date
+    hours: float
+    confirmation: str
+    alternative_group: str | None = None
+    proposed_resource: str | None = None
+    resource_count: int = 1
+    note: str | None = None
+    selected: bool = False
+
+
+@dataclass(frozen=True, slots=True)
 class SegmentReadModel:
     """Storage-independent operational requirement/segment projection."""
 
