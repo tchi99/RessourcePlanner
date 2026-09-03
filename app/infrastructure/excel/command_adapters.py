@@ -146,8 +146,9 @@ class ExcelAllocationCommandAdapter(AllocationCommandPort):
             _set_allocation_confirmation(self._repository, allocation_id, confirmation)
 
     def release_manual(self, allocation_id: str) -> None:
+        # The historical release triggers a rebuild. The old locked row is disposable
+        # after that point, so there is no row left on which an override must be cleared.
         self._release_manual_record(self._repository, allocation_id)
-        _set_allocation_confirmation(self._repository, allocation_id, None)
 
     def delete_manual(self, allocation_id: str) -> None:
         self._delete_manual_record(self._repository, allocation_id)
