@@ -16,6 +16,7 @@ class DemandCreateRequest(StrictRequest):
     project_name: str = ""
     client: str = ""
     project_manager: str = ""
+    work_package_ref: str | None = None
     request_type: str = "Projet"
     priority: str = "Normale"
     confirmation: str = "Confirmée"
@@ -35,6 +36,7 @@ class DemandUpdateRequest(StrictRequest):
     project_name: str | None = None
     client: str | None = None
     project_manager: str | None = None
+    work_package_ref: str | None = None
     request_type: str | None = None
     priority: str | None = None
     confirmation: str | None = None
