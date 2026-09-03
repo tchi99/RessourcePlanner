@@ -12,7 +12,13 @@ from sqlalchemy.orm import Session
 from ...application.read_models import DemandReadModel
 from ...application.repository_ports import DemandRepositoryPort
 from .base import utc_now
-from .models import Project, Resource, WorkforceRequest, WorkforceRequestHistory
+from .models import (
+    Project,
+    Resource,
+    WorkforceRequest,
+    WorkforceRequestHistory,
+    WorkPackage,
+)
 
 
 _DEMAND_NUMBER_RE = re.compile(r"^DMO-(\d{4})-(\d+)$", re.IGNORECASE)
@@ -45,7 +51,11 @@ class SqlDemandRepository(DemandRepositoryPort):
         self._actor_name = _text(actor_name)
 
     @staticmethod
-    def _read_model(request: WorkforceRequest, project: Project) -> DemandReadModel:
+    def _read_model(
+        request: WorkforceRequest,
+        project: Project,
+        work_package: WorkPackage | None,
+    ) -> DemandReadModel:
         return DemandReadModel(
             # During the first SQL cutover the existing NoDemande is preserved in
             # legacy_demand_number. A dedicated business-number column can replace
@@ -62,11 +72,21 @@ class SqlDemandRepository(DemandRepositoryPort):
             desired_start=request.desired_start,
             desired_end=request.desired_end,
             description=_optional_text(request.description),
+            work_package_ref=(
+                _optional_text(work_package.legacy_effort_id) or work_package.id
+                if work_package is not None
+                else None
+            ),
+            work_package_name=(
+                _optional_text(work_package.name) if work_package is not None else None
+            ),
         )
 
     def _row_query(self):
-        return select(WorkforceRequest, Project).join(
-            Project, WorkforceRequest.project_id == Project.id
+        return (
+            select(WorkforceRequest, Project, WorkPackage)
+            .join(Project, WorkforceRequest.project_id == Project.id)
+            .outerjoin(WorkPackage, WorkforceRequest.work_package_id == WorkPackage.id)
         )
 
     def list(self) -> Sequence[DemandReadModel]:
@@ -77,7 +97,10 @@ class SqlDemandRepository(DemandRepositoryPort):
                 WorkforceRequest.id,
             )
         ).all()
-        return tuple(self._read_model(request, project) for request, project in rows)
+        return tuple(
+            self._read_model(request, project, work_package)
+            for request, project, work_package in rows
+        )
 
     def get(self, number: str) -> DemandReadModel | None:
         wanted = _text(number)
@@ -91,8 +114,8 @@ class SqlDemandRepository(DemandRepositoryPort):
         ).one_or_none()
         if row is None:
             return None
-        request, project = row
-        return self._read_model(request, project)
+        request, project, work_package = row
+        return self._read_model(request, project, work_package)
 
     def _request(self, number: str) -> WorkforceRequest:
         wanted = _text(number)
@@ -114,6 +137,29 @@ class SqlDemandRepository(DemandRepositoryPort):
         if project is None:
             raise KeyError(f"Projet {project_number} introuvable")
         return project
+
+    def _work_package(
+        self,
+        reference: object,
+        *,
+        project_id: str,
+    ) -> WorkPackage | None:
+        work_package_ref = _text(reference)
+        if not work_package_ref:
+            return None
+        work_package = self._session.scalar(
+            select(WorkPackage).where(
+                (WorkPackage.id == work_package_ref)
+                | (WorkPackage.legacy_effort_id == work_package_ref)
+            )
+        )
+        if work_package is None:
+            raise KeyError(f"Plage moyen terme {work_package_ref} introuvable")
+        if work_package.project_id != project_id:
+            raise ValueError(
+                f"La plage moyen terme {work_package_ref} n'appartient pas au projet sélectionné."
+            )
+        return work_package
 
     def _resource(self, name: object) -> Resource | None:
         resource_name = _text(name)
@@ -143,6 +189,10 @@ class SqlDemandRepository(DemandRepositoryPort):
 
     def create(self, values: Mapping[str, Any], *, submit: bool = False) -> str:
         project = self._project(values.get("NumeroProjet"))
+        work_package = self._work_package(
+            values.get("SourceEffortID"),
+            project_id=project.id,
+        )
         proposed_resource = self._resource(values.get("TechnicienPropose"))
         number = self._next_request_number()
         status = "Soumise" if submit else "Brouillon"
@@ -150,6 +200,7 @@ class SqlDemandRepository(DemandRepositoryPort):
         request = WorkforceRequest(
             legacy_demand_number=number,
             project_id=project.id,
+            work_package_id=work_package.id if work_package is not None else None,
             requester_name=self._actor_name or None,
             request_type=_text(values.get("TypeDemande")) or "Projet",
             priority=_text(values.get("Priorite")) or "Normale",
@@ -186,8 +237,26 @@ class SqlDemandRepository(DemandRepositoryPort):
     ) -> None:
         request = self._request(number)
 
-        if "NumeroProjet" in updates:
+        project_changed = "NumeroProjet" in updates
+        if project_changed:
             request.project_id = self._project(updates.get("NumeroProjet")).id
+
+        if "SourceEffortID" in updates:
+            work_package = self._work_package(
+                updates.get("SourceEffortID"),
+                project_id=request.project_id,
+            )
+            request.work_package_id = work_package.id if work_package is not None else None
+        elif project_changed and request.work_package_id:
+            current_work_package = self._session.get(WorkPackage, request.work_package_id)
+            if (
+                current_work_package is None
+                or current_work_package.project_id != request.project_id
+            ):
+                # A WorkPackage is project-owned. Changing project without explicitly
+                # choosing a compatible WorkPackage must not leave a cross-project link.
+                request.work_package_id = None
+
         if "TypeDemande" in updates:
             request.request_type = _text(updates.get("TypeDemande")) or "Projet"
         if "Priorite" in updates:
