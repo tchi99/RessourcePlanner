@@ -49,7 +49,7 @@ class SqlDemandPeriodRepository(DemandPeriodRepositoryPort):
             raise KeyError(f"Ressource {wanted} introuvable")
         return resource
 
-    def _selections(self, request_id: str) -> dict[str, str]:
+    def _selection_row_ids(self, request_id: str) -> dict[str, str]:
         rows = self._session.scalars(
             select(WorkforceRequestPeriodSelection).where(
                 WorkforceRequestPeriodSelection.workforce_request_id == request_id
@@ -76,7 +76,7 @@ class SqlDemandPeriodRepository(DemandPeriodRepositoryPort):
                 WorkforceRequestPeriod.id,
             )
         ).all()
-        selections = self._selections(request.id)
+        selections = self._selection_row_ids(request.id)
         resource_ids = {row.proposed_resource_id for row in periods if row.proposed_resource_id}
         resources = (
             self._session.scalars(select(Resource).where(Resource.id.in_(resource_ids))).all()
@@ -87,7 +87,7 @@ class SqlDemandPeriodRepository(DemandPeriodRepositoryPort):
         business_number = _text(request.legacy_demand_number) or request.id
         return tuple(
             DemandPeriodReadModel(
-                period_id=row.id,
+                period_id=row.period_key,
                 demand_number=business_number,
                 sequence=row.sequence,
                 kind=row.kind,
@@ -115,8 +115,8 @@ class SqlDemandPeriodRepository(DemandPeriodRepositoryPort):
         validate_period_definitions(periods)
         request = self._request(demand_number)
 
-        # Previous rows are retained for audit/history and for requirements produced
-        # by an earlier approved version. Only the active definition set is replaced.
+        # Previous physical rows are retained for audit/history. Stable period keys
+        # may therefore be reused by a newer request version without a PK collision.
         current = self._session.scalars(
             select(WorkforceRequestPeriod).where(
                 WorkforceRequestPeriod.workforce_request_id == request.id,
@@ -139,7 +139,7 @@ class SqlDemandPeriodRepository(DemandPeriodRepositoryPort):
             resource = self._resource(period.proposed_resource)
             self._session.add(
                 WorkforceRequestPeriod(
-                    id=_text(period.period_id),
+                    period_key=_text(period.period_id),
                     workforce_request_id=request.id,
                     sequence=sequence,
                     kind=_text(period.kind).upper(),
@@ -168,7 +168,7 @@ class SqlDemandPeriodRepository(DemandPeriodRepositoryPort):
         wanted = _text(period_id)
         period = self._session.scalar(
             select(WorkforceRequestPeriod).where(
-                WorkforceRequestPeriod.id == wanted,
+                WorkforceRequestPeriod.period_key == wanted,
                 WorkforceRequestPeriod.workforce_request_id == request.id,
                 WorkforceRequestPeriod.active.is_(True),
             )
@@ -203,4 +203,17 @@ class SqlDemandPeriodRepository(DemandPeriodRepositoryPort):
 
     def selections_for_demand(self, demand_number: str) -> Mapping[str, str]:
         request = self._request(demand_number)
-        return dict(self._selections(request.id))
+        rows = self._session.execute(
+            select(WorkforceRequestPeriodSelection, WorkforceRequestPeriod)
+            .join(
+                WorkforceRequestPeriod,
+                WorkforceRequestPeriodSelection.period_id == WorkforceRequestPeriod.id,
+            )
+            .where(
+                WorkforceRequestPeriodSelection.workforce_request_id == request.id
+            )
+        ).all()
+        return {
+            selection.alternative_group: period.period_key
+            for selection, period in rows
+        }
