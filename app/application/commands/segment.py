@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from datetime import date
 from typing import Any, Mapping
 
+from ...domain.confirmation import normalize_confirmation
 from ..errors import ApplicationValidationError
 from .common import (
     UNSET,
@@ -16,6 +17,19 @@ from .common import (
     text,
     validate_date_window,
 )
+
+
+def _confirmation(value: object, *, allow_none: bool = False) -> str | None:
+    if value in (None, "") and allow_none:
+        return None
+    try:
+        return normalize_confirmation(value)
+    except ValueError as exc:
+        raise ApplicationValidationError(
+            str(exc),
+            code="segment_confirmation_invalid",
+            context={"field": "confirmation", "value": value},
+        ) from exc
 
 
 @dataclass(frozen=True, slots=True)
@@ -34,6 +48,7 @@ class SegmentCreateCommand:
     planning_type: str = "Flexible"
     priority: str = "Normale"
     outside_standard_hours: bool = False
+    confirmation: str | None = None
 
     def __post_init__(self) -> None:
         required_text(
@@ -48,6 +63,8 @@ class SegmentCreateCommand:
                 code="segment_hours_invalid",
                 context={"field": "planned_hours", "value": self.planned_hours},
             )
+        if self.confirmation is not None:
+            _confirmation(self.confirmation)
 
     @classmethod
     def from_mapping(cls, values: Mapping[str, Any]) -> "SegmentCreateCommand":
@@ -78,6 +95,7 @@ class SegmentCreateCommand:
             planning_type=text(values.get("TypePlanification")) or "Flexible",
             priority=text(values.get("Priorite")) or "Normale",
             outside_standard_hours=bool_value(values.get("HorsHoraireAutorise")),
+            confirmation=_confirmation(values.get("Confirmation"), allow_none=True),
         )
 
     def to_repository_values(self) -> dict[str, Any]:
@@ -96,6 +114,9 @@ class SegmentCreateCommand:
             "TypePlanification": text(self.planning_type) or "Flexible",
             "Priorite": text(self.priority) or "Normale",
             "HorsHoraireAutorise": "Oui" if self.outside_standard_hours else "Non",
+            "Confirmation": (
+                _confirmation(self.confirmation) if self.confirmation is not None else None
+            ),
         }
 
 
@@ -116,6 +137,7 @@ class SegmentUpdateCommand:
     planning_type: str | None | UnsetType = UNSET
     priority: str | None | UnsetType = UNSET
     outside_standard_hours: bool | UnsetType = UNSET
+    confirmation: str | None | UnsetType = UNSET
 
     def __post_init__(self) -> None:
         required_text(
@@ -131,6 +153,8 @@ class SegmentUpdateCommand:
                 code="segment_hours_invalid",
                 context={"field": "planned_hours", "value": self.planned_hours},
             )
+        if self.confirmation is not UNSET and self.confirmation is not None:
+            _confirmation(self.confirmation)
 
     @classmethod
     def from_mapping(
@@ -153,6 +177,7 @@ class SegmentUpdateCommand:
             "TypePlanification",
             "Priorite",
             "HorsHoraireAutorise",
+            "Confirmation",
         }
         unknown = sorted(set(updates) - known)
         if unknown:
@@ -208,6 +233,11 @@ class SegmentUpdateCommand:
                 if "HorsHoraireAutorise" in updates
                 else UNSET
             ),
+            confirmation=(
+                _confirmation(updates["Confirmation"], allow_none=True)
+                if "Confirmation" in updates
+                else UNSET
+            ),
         )
 
     def to_repository_values(self) -> dict[str, Any]:
@@ -230,6 +260,11 @@ class SegmentUpdateCommand:
                 if self.outside_standard_hours is True
                 else "Non"
                 if self.outside_standard_hours is False
+                else UNSET
+            ),
+            "Confirmation": (
+                _confirmation(self.confirmation, allow_none=True)
+                if self.confirmation is not UNSET
                 else UNSET
             ),
         }
