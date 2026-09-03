@@ -7,10 +7,13 @@ historical implementation modules.
 
 from .allocation_service import AllocationService
 from .commands import (
+    DemandAlternativeSelectCommand,
     DemandApproveCommand,
     DemandCancelCommand,
     DemandCorrectionCommand,
     DemandCreateCommand,
+    DemandPeriodInput,
+    DemandPeriodsReplaceCommand,
     DemandSubmitCommand,
     DemandUpdateCommand,
     ManualAllocationCreateCommand,
@@ -45,8 +48,9 @@ from .query_models import (
     ShiftReadModel,
 )
 from .query_ports import PlannerQueryPort
-from .read_models import DemandReadModel, SegmentReadModel
+from .read_models import DemandPeriodReadModel, DemandReadModel, SegmentReadModel
 from .repository_ports import (
+    DemandPeriodRepositoryPort,
     DemandRepositoryPort,
     PlanningReadRepositoryPort,
     SegmentRepositoryPort,
@@ -54,7 +58,9 @@ from .repository_ports import (
 from .results import (
     AllocationMutationResult,
     ApplicationResult,
+    DemandAlternativeSelectionResult,
     DemandMutationResult,
+    DemandPeriodsMutationResult,
     PlanningResult,
     QuickShiftCreatedResult,
     SegmentMutationResult,
@@ -72,11 +78,18 @@ __all__ = [
     "ApplicationResult",
     "ApplicationValidationError",
     "ApprovedDemandSyncPort",
+    "DemandAlternativeSelectCommand",
+    "DemandAlternativeSelectionResult",
     "DemandApproveCommand",
     "DemandCancelCommand",
     "DemandCorrectionCommand",
     "DemandCreateCommand",
     "DemandMutationResult",
+    "DemandPeriodInput",
+    "DemandPeriodReadModel",
+    "DemandPeriodRepositoryPort",
+    "DemandPeriodsMutationResult",
+    "DemandPeriodsReplaceCommand",
     "DemandReadModel",
     "DemandRepositoryPort",
     "DemandSubmitCommand",
