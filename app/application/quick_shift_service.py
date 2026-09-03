@@ -108,6 +108,7 @@ class QuickShiftService:
             "SourceEffortRow": None,
             "TypePlanification": "Fixe",
             "Priorite": "Normale",
+            "Confirmation": command.confirmation,
             self.ORIGIN_FIELD: self.ORIGIN_QUICK_SHIFT,
         }
 
@@ -168,6 +169,7 @@ class QuickShiftService:
         hors_horaire: bool = False,
         note: str = "",
         description: str = "",
+        confirmation: str = "Confirmée",
     ) -> QuickShiftResult:
         """Compatibility adapter for the current NiceGUI dialog."""
 
@@ -181,5 +183,6 @@ class QuickShiftService:
                 outside_standard_hours=hors_horaire,
                 note=note,
                 description=description,
+                confirmation=confirmation,
             )
         )
