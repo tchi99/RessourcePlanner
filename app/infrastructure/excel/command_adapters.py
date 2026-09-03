@@ -28,6 +28,10 @@ _captured_allocation_functions: tuple[
 def _ensure_allocation_confirmation_field(repository: Any) -> None:
     """Append the V1 shift confirmation override without relabelling old columns."""
 
+    marker = str(getattr(repository, "path", "") or "")
+    if getattr(repository, "_shift_confirmation_ready_path", None) == marker:
+        return
+
     v14_engine = import_module("app.v14_engine")
     if ALLOCATION_CONFIRMATION_FIELD not in v14_engine.ALLOCATION_HEADERS:
         v14_engine.ALLOCATION_HEADERS.append(ALLOCATION_CONFIRMATION_FIELD)
@@ -37,6 +41,7 @@ def _ensure_allocation_confirmation_field(repository: Any) -> None:
         v14_engine.ALLOCATION_TABLE,
     )
     repository.save()
+    repository._shift_confirmation_ready_path = marker
 
 
 def _set_allocation_confirmation(
@@ -114,7 +119,8 @@ class ExcelAllocationCommandAdapter(AllocationCommandPort):
                 str(note or ""),
             )
         )
-        _set_allocation_confirmation(self._repository, identifier, confirmation)
+        if confirmation is not None:
+            _set_allocation_confirmation(self._repository, identifier, confirmation)
         return identifier
 
     def update_manual(
@@ -136,7 +142,8 @@ class ExcelAllocationCommandAdapter(AllocationCommandPort):
             bool(hors_horaire),
             str(note or ""),
         )
-        _set_allocation_confirmation(self._repository, allocation_id, confirmation)
+        if confirmation is not None:
+            _set_allocation_confirmation(self._repository, allocation_id, confirmation)
 
     def release_manual(self, allocation_id: str) -> None:
         self._release_manual_record(self._repository, allocation_id)
