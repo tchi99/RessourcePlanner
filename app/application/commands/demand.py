@@ -26,6 +26,7 @@ class DemandCreateCommand:
     project_name: str = ""
     client: str = ""
     project_manager: str = ""
+    work_package_ref: str | None = None
     request_type: str = "Projet"
     priority: str = "Normale"
     confirmation: str = "Confirmée"
@@ -84,6 +85,7 @@ class DemandCreateCommand:
             project_name=text(values.get("NomProjet")),
             client=text(values.get("Client")),
             project_manager=text(values.get("ChargeProjet")),
+            work_package_ref=optional_text(values.get("SourceEffortID")),
             request_type=text(values.get("TypeDemande")) or "Projet",
             priority=text(values.get("Priorite")) or "Normale",
             confirmation=text(values.get("Confirmation")) or "Confirmée",
@@ -120,6 +122,7 @@ class DemandCreateCommand:
             "NomProjet": text(self.project_name),
             "Client": text(self.client),
             "ChargeProjet": text(self.project_manager),
+            "SourceEffortID": self.work_package_ref,
             "TypeDemande": text(self.request_type) or "Projet",
             "Priorite": text(self.priority) or "Normale",
             "Confirmation": text(self.confirmation) or "Confirmée",
@@ -144,6 +147,7 @@ class DemandUpdateCommand:
     project_name: str | None | UnsetType = UNSET
     client: str | None | UnsetType = UNSET
     project_manager: str | None | UnsetType = UNSET
+    work_package_ref: str | None | UnsetType = UNSET
     request_type: str | None | UnsetType = UNSET
     priority: str | None | UnsetType = UNSET
     confirmation: str | None | UnsetType = UNSET
@@ -186,6 +190,7 @@ class DemandUpdateCommand:
             "NomProjet",
             "Client",
             "ChargeProjet",
+            "SourceEffortID",
             "TypeDemande",
             "Priorite",
             "Confirmation",
@@ -222,6 +227,7 @@ class DemandUpdateCommand:
             project_name=present("NomProjet", optional_text),
             client=present("Client", optional_text),
             project_manager=present("ChargeProjet", optional_text),
+            work_package_ref=present("SourceEffortID", optional_text),
             request_type=present("TypeDemande", optional_text),
             priority=present("Priorite", optional_text),
             confirmation=present("Confirmation", optional_text),
@@ -275,6 +281,7 @@ class DemandUpdateCommand:
             "NomProjet": self.project_name,
             "Client": self.client,
             "ChargeProjet": self.project_manager,
+            "SourceEffortID": self.work_package_ref,
             "TypeDemande": self.request_type,
             "Priorite": self.priority,
             "Confirmation": self.confirmation,
