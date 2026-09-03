@@ -57,6 +57,8 @@ class DemandReadModel:
     desired_start: date | None = None
     desired_end: date | None = None
     description: str | None = None
+    work_package_ref: str | None = None
+    work_package_name: str | None = None
 
     @classmethod
     def from_mapping(cls, row: Mapping[str, Any]) -> "DemandReadModel":
@@ -73,6 +75,10 @@ class DemandReadModel:
             desired_start=_date(row.get("DateDebutSouhaitee")),
             desired_end=_date(row.get("DateFinSouhaitee")),
             description=_optional_text(row.get("Description")),
+            work_package_ref=_optional_text(row.get("SourceEffortID")),
+            work_package_name=_optional_text(
+                row.get("WorkPackageName") or row.get("NomEffort")
+            ),
         )
 
 
