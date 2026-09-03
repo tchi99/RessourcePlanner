@@ -23,6 +23,7 @@ _AVAILABILITY_MIGRATION_IDS = ("availability.table.v1",)
 _SEGMENT_MIGRATION_IDS = ("segments.table.v1",)
 _V14_MIGRATION_IDS = ("segments.table.v14", "allocations.table.v14")
 _V15_MIGRATION_IDS = ("allocations.table.v15",)
+_V15_ALLOCATION_COMPAT_HEADERS = ("Confirmation",)
 
 _LEGACY_ENSURE_SHEET_TABLE = ExcelRepository._ensure_sheet_table
 
@@ -249,9 +250,9 @@ def ensure_v14_schema(repo: ExcelRepository) -> ExcelSchemaMigrationReport:
 
 
 def ensure_v15_schema(repo: ExcelRepository) -> ExcelSchemaMigrationReport:
-    """Ensure the manual-allocation columns introduced by V1.5."""
+    """Ensure the manual-allocation columns introduced by V1.5 and V1 compat."""
 
-    for header in v15_engine.ALLOCATION_EXTRA_HEADERS:
+    for header in (*v15_engine.ALLOCATION_EXTRA_HEADERS, *_V15_ALLOCATION_COMPAT_HEADERS):
         if header not in v14_engine.ALLOCATION_HEADERS:
             v14_engine.ALLOCATION_HEADERS.append(header)
     MASTER_SHEETS.add(v14_engine.ALLOCATION_SHEET)
@@ -297,7 +298,7 @@ def install_schema_migration_compat() -> None:
     for header in v14_engine.SEGMENT_EXTRA_HEADERS:
         if header not in segment_repository.SEGMENT_HEADERS:
             segment_repository.SEGMENT_HEADERS.append(header)
-    for header in v15_engine.ALLOCATION_EXTRA_HEADERS:
+    for header in (*v15_engine.ALLOCATION_EXTRA_HEADERS, *_V15_ALLOCATION_COMPAT_HEADERS):
         if header not in v14_engine.ALLOCATION_HEADERS:
             v14_engine.ALLOCATION_HEADERS.append(header)
 
