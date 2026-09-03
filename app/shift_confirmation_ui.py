@@ -15,6 +15,7 @@ from .domain.confirmation import (
 from .infrastructure.excel.command_adapters import (
     ALLOCATION_CONFIRMATION_FIELD,
     _ensure_allocation_confirmation_field,
+    _set_allocation_confirmation,
 )
 from .segment_editor_ui import open_segment_editor
 from .bugfixes import schedulable_technicians
@@ -212,17 +213,24 @@ def open_allocation_dialog(
                 ui.notify("Segment, technicien et date sont requis.", type="warning")
                 return
             try:
+                chosen_confirmation = selected_confirmation()
                 if editing:
+                    allocation_id = str(allocation.get("IDAllocation") or "")
                     v15_engine.update_manual_allocation(
                         self.repo,
-                        str(allocation.get("IDAllocation") or ""),
+                        allocation_id,
                         str(technician.value),
                         day.value,
                         hours.value,
                         bool(hors_horaire.value),
                         str(note.value or ""),
-                        selected_confirmation(),
+                        chosen_confirmation,
                     )
+                    if chosen_confirmation is None:
+                        # ``None`` remains the backwards-compatible "argument omitted"
+                        # value at the application seam. The V1 dialog is explicit:
+                        # choosing inheritance must therefore clear the persisted cell.
+                        _set_allocation_confirmation(self.repo, allocation_id, None)
                     message = "Quart verrouillé et mis à jour"
                 else:
                     v15_engine.create_manual_allocation(
@@ -233,7 +241,7 @@ def open_allocation_dialog(
                         hours.value,
                         bool(hors_horaire.value),
                         str(note.value or ""),
-                        selected_confirmation(),
+                        chosen_confirmation,
                     )
                     message = "Quart manuel créé"
                 dialog.close()
