@@ -60,6 +60,22 @@ class DemandMutationResult(ApplicationResult):
 
 
 @dataclass(frozen=True, slots=True)
+class DemandPeriodsMutationResult(ApplicationResult):
+    demand_number: str
+    period_count: int
+    status: str | None = None
+    reapproval_required: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class DemandAlternativeSelectionResult(ApplicationResult):
+    demand_number: str
+    alternative_group: str
+    period_id: str
+    planning: PlanningResult | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class SegmentMutationResult(ApplicationResult):
     segment_id: str
     action: str
