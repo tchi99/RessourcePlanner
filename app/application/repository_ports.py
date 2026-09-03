@@ -3,8 +3,9 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from typing import Any, Protocol
 
+from ..domain.demand_periods import DemandPeriodDefinition
 from ..domain.planning_snapshot import PlanningSnapshot
-from .read_models import DemandReadModel, SegmentReadModel
+from .read_models import DemandPeriodReadModel, DemandReadModel, SegmentReadModel
 
 
 class DemandRepositoryPort(Protocol):
@@ -28,6 +29,32 @@ class DemandRepositoryPort(Protocol):
         action: str,
         comment: str = "",
     ) -> None: ...
+
+
+class DemandPeriodRepositoryPort(Protocol):
+    """Persistence contract for requested periods and exclusive option selection."""
+
+    def list_for_demand(
+        self,
+        demand_number: str,
+        *,
+        include_inactive: bool = False,
+    ) -> Sequence[DemandPeriodReadModel]: ...
+
+    def replace_for_demand(
+        self,
+        demand_number: str,
+        periods: Sequence[DemandPeriodDefinition],
+    ) -> Sequence[DemandPeriodReadModel]: ...
+
+    def select_alternative(
+        self,
+        demand_number: str,
+        alternative_group: str,
+        period_id: str,
+    ) -> None: ...
+
+    def selections_for_demand(self, demand_number: str) -> Mapping[str, str]: ...
 
 
 class SegmentRepositoryPort(Protocol):
