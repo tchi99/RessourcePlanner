@@ -3,7 +3,20 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date
 
+from ...domain.confirmation import CONFIRMATION_CONFIRMED, normalize_confirmation
+from ..errors import ApplicationValidationError
 from .common import date_value, float_value, required_text, text
+
+
+def _confirmation(value: object) -> str:
+    try:
+        return normalize_confirmation(value, default=CONFIRMATION_CONFIRMED)
+    except ValueError as exc:
+        raise ApplicationValidationError(
+            str(exc),
+            code="quick_shift_confirmation_invalid",
+            context={"field": "confirmation", "value": value},
+        ) from exc
 
 
 @dataclass(frozen=True, slots=True)
@@ -16,6 +29,10 @@ class QuickShiftCreateCommand:
     outside_standard_hours: bool = False
     note: str = ""
     description: str = ""
+    confirmation: str = CONFIRMATION_CONFIRMED
+
+    def __post_init__(self) -> None:
+        _confirmation(self.confirmation)
 
     @classmethod
     def from_values(
@@ -29,6 +46,7 @@ class QuickShiftCreateCommand:
         outside_standard_hours: bool = False,
         note: str = "",
         description: str = "",
+        confirmation: object = CONFIRMATION_CONFIRMED,
     ) -> "QuickShiftCreateCommand":
         return cls(
             project_number=required_text(
@@ -52,4 +70,5 @@ class QuickShiftCreateCommand:
             outside_standard_hours=bool(outside_standard_hours),
             note=str(note or "").strip(),
             description=str(description or "").strip(),
+            confirmation=_confirmation(confirmation),
         )
