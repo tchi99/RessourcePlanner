@@ -1,0 +1,191 @@
+from __future__ import annotations
+
+from datetime import date
+import unittest
+
+from sqlalchemy import func, select
+
+from app.domain.demand_periods import PERIOD_KIND_ALTERNATIVE, DemandPeriodDefinition
+from app.infrastructure.sql import (
+    Base,
+    Project,
+    Resource,
+    SqlDemandPeriodRepository,
+    WorkforceRequest,
+    WorkforceRequestPeriod,
+    WorkforceRequestPeriodSelection,
+    create_session_factory,
+    create_sql_engine,
+    transactional_session,
+)
+
+
+DAY_1 = date(2026, 9, 7)
+DAY_2 = date(2026, 9, 8)
+
+
+class SqlDemandPeriodRepositoryTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.engine = create_sql_engine("sqlite+pysqlite:///:memory:")
+        Base.metadata.create_all(self.engine)
+        self.factory = create_session_factory(self.engine)
+        with transactional_session(self.factory) as session:
+            session.add(Project(id="P1", number="P-1", name="Projet 1"))
+            session.add_all(
+                [
+                    Resource(id="R-A", name="Technicien A"),
+                    Resource(id="R-B", name="Technicien B"),
+                ]
+            )
+            session.flush()
+            session.add_all(
+                [
+                    WorkforceRequest(
+                        id="D1",
+                        legacy_demand_number="DMO-1",
+                        project_id="P1",
+                        desired_start=DAY_1,
+                        desired_end=DAY_2,
+                    ),
+                    WorkforceRequest(
+                        id="D2",
+                        legacy_demand_number="DMO-2",
+                        project_id="P1",
+                        desired_start=DAY_1,
+                        desired_end=DAY_2,
+                    ),
+                ]
+            )
+
+    def tearDown(self) -> None:
+        self.engine.dispose()
+
+    @staticmethod
+    def alternatives(hours_b: float = 8) -> tuple[DemandPeriodDefinition, ...]:
+        return (
+            DemandPeriodDefinition(
+                period_id="OPT-A",
+                start_date=DAY_1,
+                end_date=DAY_1,
+                hours=8,
+                kind=PERIOD_KIND_ALTERNATIVE,
+                alternative_group="TECH-DAY",
+                proposed_resource="Technicien A",
+            ),
+            DemandPeriodDefinition(
+                period_id="OPT-B",
+                start_date=DAY_2,
+                end_date=DAY_2,
+                hours=hours_b,
+                kind=PERIOD_KIND_ALTERNATIVE,
+                alternative_group="TECH-DAY",
+                proposed_resource="Technicien B",
+            ),
+        )
+
+    def test_replace_persists_two_unselected_alternatives_with_distinct_resources(self) -> None:
+        with transactional_session(self.factory) as session:
+            repository = SqlDemandPeriodRepository(session)
+            rows = repository.replace_for_demand("DMO-1", self.alternatives())
+
+            self.assertEqual([row.period_id for row in rows], ["OPT-A", "OPT-B"])
+            self.assertEqual(
+                [row.proposed_resource for row in rows],
+                ["Technicien A", "Technicien B"],
+            )
+            self.assertFalse(any(row.selected for row in rows))
+            self.assertEqual(repository.selections_for_demand("DMO-1"), {})
+
+    def test_selection_is_unique_per_group_and_can_switch_options(self) -> None:
+        with transactional_session(self.factory) as session:
+            repository = SqlDemandPeriodRepository(session, actor_name="coord-test-user")
+            repository.replace_for_demand("DMO-1", self.alternatives())
+
+            repository.select_alternative("DMO-1", "TECH-DAY", "OPT-A")
+            self.assertEqual(
+                repository.selections_for_demand("DMO-1"),
+                {"TECH-DAY": "OPT-A"},
+            )
+            rows = repository.list_for_demand("DMO-1")
+            self.assertEqual(
+                [row.period_id for row in rows if row.selected],
+                ["OPT-A"],
+            )
+
+            repository.select_alternative("DMO-1", "TECH-DAY", "OPT-B")
+            self.assertEqual(
+                repository.selections_for_demand("DMO-1"),
+                {"TECH-DAY": "OPT-B"},
+            )
+            rows = repository.list_for_demand("DMO-1")
+            self.assertEqual(
+                [row.period_id for row in rows if row.selected],
+                ["OPT-B"],
+            )
+            selection_count = session.scalar(
+                select(func.count()).select_from(WorkforceRequestPeriodSelection)
+            )
+            self.assertEqual(selection_count, 1)
+
+    def test_replacing_definition_versions_rows_and_clears_old_selection(self) -> None:
+        with transactional_session(self.factory) as session:
+            repository = SqlDemandPeriodRepository(session)
+            repository.replace_for_demand("DMO-1", self.alternatives())
+            repository.select_alternative("DMO-1", "TECH-DAY", "OPT-A")
+
+            replacement = repository.replace_for_demand(
+                "DMO-1", self.alternatives(hours_b=6)
+            )
+
+            self.assertEqual(repository.selections_for_demand("DMO-1"), {})
+            self.assertFalse(any(row.selected for row in replacement))
+            self.assertEqual(
+                next(row.hours for row in replacement if row.period_id == "OPT-B"),
+                6.0,
+            )
+
+            physical_rows = session.scalars(
+                select(WorkforceRequestPeriod).where(
+                    WorkforceRequestPeriod.workforce_request_id == "D1"
+                )
+            ).all()
+            self.assertEqual(len(physical_rows), 4)
+            self.assertEqual(sum(1 for row in physical_rows if row.active), 2)
+            self.assertEqual(sum(1 for row in physical_rows if not row.active), 2)
+            self.assertEqual(
+                sorted(row.period_key for row in physical_rows),
+                ["OPT-A", "OPT-A", "OPT-B", "OPT-B"],
+            )
+
+    def test_selection_cannot_target_another_demands_period(self) -> None:
+        with transactional_session(self.factory) as session:
+            repository = SqlDemandPeriodRepository(session)
+            repository.replace_for_demand("DMO-1", self.alternatives())
+            repository.replace_for_demand(
+                "DMO-2",
+                (
+                    DemandPeriodDefinition(
+                        period_id="OTHER-A",
+                        start_date=DAY_1,
+                        end_date=DAY_1,
+                        hours=8,
+                        kind=PERIOD_KIND_ALTERNATIVE,
+                        alternative_group="OTHER-GROUP",
+                    ),
+                    DemandPeriodDefinition(
+                        period_id="OTHER-B",
+                        start_date=DAY_2,
+                        end_date=DAY_2,
+                        hours=8,
+                        kind=PERIOD_KIND_ALTERNATIVE,
+                        alternative_group="OTHER-GROUP",
+                    ),
+                ),
+            )
+
+            with self.assertRaises(KeyError):
+                repository.select_alternative("DMO-1", "OTHER-GROUP", "OTHER-A")
+
+
+if __name__ == "__main__":
+    unittest.main()
