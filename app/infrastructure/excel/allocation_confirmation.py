@@ -9,6 +9,14 @@ from ...domain.confirmation import normalize_confirmation
 ALLOCATION_CONFIRMATION_FIELD = "Confirmation"
 
 
+def register_allocation_confirmation_header() -> None:
+    """Register the optional V1 column before any allocation rebuild can rewrite rows."""
+
+    v14_engine = import_module("app.v14_engine")
+    if ALLOCATION_CONFIRMATION_FIELD not in v14_engine.ALLOCATION_HEADERS:
+        v14_engine.ALLOCATION_HEADERS.append(ALLOCATION_CONFIRMATION_FIELD)
+
+
 def normalize_optional_confirmation(value: object) -> str | None:
     text = str(value or "").strip()
     if not text:
@@ -28,12 +36,10 @@ def ensure_allocation_confirmation_field(repository: Any) -> None:
     if getattr(repository, "_allocation_confirmation_ready_path", None) == marker:
         return
 
+    register_allocation_confirmation_header()
     v14_engine = import_module("app.v14_engine")
     v15_engine = import_module("app.v15_engine")
     v15_engine.ensure_v15_sheets(repository)
-
-    if ALLOCATION_CONFIRMATION_FIELD not in v14_engine.ALLOCATION_HEADERS:
-        v14_engine.ALLOCATION_HEADERS.append(ALLOCATION_CONFIRMATION_FIELD)
 
     repository._ensure_sheet_table(
         v14_engine.ALLOCATION_SHEET,
@@ -70,3 +76,10 @@ def set_allocation_confirmation(
             raise RuntimeError("La colonne Confirmation du quart est introuvable.")
         sheet.range((int(allocation["_row"]), column)).value = value
         repository.save()
+
+
+# command_adapters imports this module while the runtime composition is assembled,
+# before the V1 planning installers are executed. Registering the header here ensures
+# a restart cannot rebuild allocation rows with a shorter schema and detach an
+# existing confirmation value from its shift.
+register_allocation_confirmation_header()
