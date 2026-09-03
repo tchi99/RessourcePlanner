@@ -1,16 +1,19 @@
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from contextlib import nullcontext
 from datetime import date, datetime
 from typing import Any, ContextManager
 
+from ..domain.demand_periods import DemandPeriodDefinition, validate_period_definitions
 from .command_ports import ApprovedDemandSyncPort, PlanningCommandPort
 from .commands import (
+    DemandAlternativeSelectCommand,
     DemandApproveCommand,
     DemandCancelCommand,
     DemandCorrectionCommand,
     DemandCreateCommand,
+    DemandPeriodsReplaceCommand,
     DemandSubmitCommand,
     DemandUpdateCommand,
 )
@@ -20,7 +23,8 @@ from .errors import (
     ApplicationValidationError,
     call_application_port,
 )
-from .repository_ports import DemandRepositoryPort
+from .read_models import DemandPeriodReadModel
+from .repository_ports import DemandPeriodRepositoryPort, DemandRepositoryPort
 
 
 BUSINESS_DEMAND_FIELDS = frozenset(
@@ -56,12 +60,14 @@ class DemandService:
         planning: PlanningCommandPort,
         approved_sync: ApprovedDemandSyncPort,
         *,
+        periods: DemandPeriodRepositoryPort | None = None,
         current_user: str = "",
         batch: Callable[[str], ContextManager[Any]] | None = None,
     ) -> None:
         self._demands = demands
         self._planning = planning
         self._approved_sync = approved_sync
+        self._periods = periods
         self._current_user = str(current_user or "")
         self._batch = batch
 
@@ -93,6 +99,58 @@ class DemandService:
                 context={"start": start.isoformat(), "end": end.isoformat()},
             )
 
+    def _period_repository(self) -> DemandPeriodRepositoryPort:
+        if self._periods is None:
+            raise ApplicationOperationError(
+                "La gestion détaillée des périodes n'est pas disponible dans ce runtime.",
+                code="demand_periods_unavailable",
+            )
+        return self._periods
+
+    @staticmethod
+    def _period_signature_from_definition(period: DemandPeriodDefinition) -> tuple[Any, ...]:
+        return (
+            period.period_id,
+            period.start_date,
+            period.end_date,
+            float(period.hours),
+            period.kind,
+            period.alternative_group,
+            period.confirmation,
+            period.proposed_resource,
+            int(period.resource_count),
+            period.note,
+        )
+
+    @staticmethod
+    def _period_signature_from_read_model(period: DemandPeriodReadModel) -> tuple[Any, ...]:
+        return (
+            period.period_id,
+            period.start_date,
+            period.end_date,
+            float(period.hours),
+            period.kind,
+            period.alternative_group,
+            period.confirmation,
+            period.proposed_resource,
+            int(period.resource_count),
+            period.note or "",
+        )
+
+    def _demand_or_not_found(self, number: str):
+        existing = call_application_port(
+            lambda: self._demands.get(number),
+            code_prefix="demand_lookup",
+            context={"demand_number": number},
+        )
+        if existing is None:
+            raise ApplicationNotFoundError(
+                f"Demande {number} introuvable",
+                code="demand_not_found",
+                context={"demand_number": number},
+            )
+        return existing
+
     def create_command(self, command: DemandCreateCommand) -> str:
         values = command.to_repository_values()
         with self._context("create demand"):
@@ -113,17 +171,7 @@ class DemandService:
 
     def modify_command(self, command: DemandUpdateCommand) -> bool:
         number = self._required_identifier(command.number, entity="demand")
-        existing = call_application_port(
-            lambda: self._demands.get(number),
-            code_prefix="demand_lookup",
-            context={"demand_number": number},
-        )
-        if existing is None:
-            raise ApplicationNotFoundError(
-                f"Demande {number} introuvable",
-                code="demand_not_found",
-                context={"demand_number": number},
-            )
+        existing = self._demand_or_not_found(number)
 
         data = command.to_repository_values()
         if "NumeroProjet" in data and not str(data["NumeroProjet"] or "").strip():
@@ -167,6 +215,112 @@ class DemandService:
                 context={"demand_number": number},
             )
         return reapproval_required
+
+    def replace_periods_command(
+        self,
+        command: DemandPeriodsReplaceCommand,
+    ) -> tuple[Sequence[DemandPeriodReadModel], bool]:
+        number = self._required_identifier(command.number, entity="demand")
+        existing = self._demand_or_not_found(number)
+        periods = self._period_repository()
+
+        try:
+            definitions = tuple(item.to_definition() for item in command.periods)
+            validate_period_definitions(definitions)
+        except ValueError as exc:
+            raise ApplicationValidationError(
+                str(exc),
+                code="demand_periods_invalid",
+                context={"demand_number": number},
+            ) from exc
+
+        current = call_application_port(
+            lambda: periods.list_for_demand(number),
+            code_prefix="demand_periods_lookup",
+            context={"demand_number": number},
+        )
+        old_signature = tuple(
+            self._period_signature_from_read_model(row) for row in current
+        )
+        new_signature = tuple(
+            self._period_signature_from_definition(row) for row in definitions
+        )
+        if old_signature == new_signature:
+            return tuple(current), False
+
+        reapproval_required = existing.status == "En planification"
+        status_update: dict[str, Any] = {}
+        comment = "Périodes détaillées de la demande modifiées"
+        if reapproval_required:
+            status_update = {
+                "Statut": "Soumise",
+                "ApprouvePar": None,
+                "DateApprobation": None,
+                "CommentaireApprobation": (
+                    "Enveloppe de périodes modifiée après approbation — nouvelle approbation requise"
+                ),
+            }
+            comment += "; nouvelle approbation requise et planification existante conservée"
+
+        with self._context("replace demand periods"):
+            updated = call_application_port(
+                lambda: periods.replace_for_demand(number, definitions),
+                code_prefix="demand_periods_replace",
+                context={"demand_number": number},
+            )
+            call_application_port(
+                lambda: self._demands.update(
+                    number,
+                    status_update,
+                    action="Modification périodes",
+                    comment=comment,
+                ),
+                code_prefix="demand_periods_audit",
+                context={"demand_number": number},
+            )
+        return tuple(updated), reapproval_required
+
+    def select_alternative_command(
+        self,
+        command: DemandAlternativeSelectCommand,
+    ) -> Mapping[str, Any] | None:
+        number = self._required_identifier(command.number, entity="demand")
+        group = self._required_identifier(command.alternative_group, entity="alternative_group")
+        period_id = self._required_identifier(command.period_id, entity="period")
+        existing = self._demand_or_not_found(number)
+        periods = self._period_repository()
+
+        selections = call_application_port(
+            lambda: periods.selections_for_demand(number),
+            code_prefix="demand_period_selection_lookup",
+            context={"demand_number": number, "alternative_group": group},
+        )
+        if str(selections.get(group) or "").strip() == period_id:
+            return None
+
+        with self._context("select demand alternative"):
+            call_application_port(
+                lambda: periods.select_alternative(number, group, period_id),
+                code_prefix="demand_period_select",
+                context={
+                    "demand_number": number,
+                    "alternative_group": group,
+                    "period_id": period_id,
+                },
+            )
+            if existing.status != "En planification":
+                return None
+            call_application_port(
+                lambda: self._approved_sync.sync_approved(number),
+                code_prefix="demand_period_selection_sync",
+                context={"demand_number": number, "alternative_group": group},
+            )
+            summary = call_application_port(
+                self._planning.rebuild,
+                code_prefix="demand_period_selection_rebuild",
+                context={"demand_number": number, "alternative_group": group},
+            )
+        return dict(summary)
 
     def submit_command(self, command: DemandSubmitCommand) -> None:
         number = self._required_identifier(command.number, entity="demand")
