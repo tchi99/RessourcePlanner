@@ -13,6 +13,7 @@ from ...application.query_models import (
 )
 from ...application.query_ports import PlannerQueryPort
 from ...application.read_models import DemandPeriodReadModel, DemandReadModel, SegmentReadModel
+from ...domain.confirmation import effective_confirmation
 from .demand_period_repository import SqlDemandPeriodRepository
 from .demand_repository import SqlDemandRepository
 from .models import Project, Resource, ResourceRequirement, Shift
@@ -171,7 +172,11 @@ class SqlPlannerQueryRepository(PlannerQueryPort):
                 source=_text(shift.source) or "AUTO",
                 locked=bool(shift.locked),
                 outside_standard_hours=bool(shift.outside_standard_hours),
-                confirmation=_optional_text(shift.confirmation),
+                confirmation=effective_confirmation(
+                    shift.confirmation,
+                    requirement.confirmation,
+                ),
+                confirmation_override=_optional_text(shift.confirmation),
                 note=_optional_text(shift.note),
             )
             for shift, requirement, resource in rows
