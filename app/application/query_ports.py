@@ -10,15 +10,11 @@ from .query_models import (
     ResourceReadModel,
     ShiftReadModel,
 )
-from .read_models import DemandReadModel, SegmentReadModel
+from .read_models import DemandPeriodReadModel, DemandReadModel, SegmentReadModel
 
 
 class PlannerQueryPort(Protocol):
-    """Read-only canonical query surface required by web clients.
-
-    Implementations may use SQL Server, SQLite or another store. The HTTP layer must
-    never inspect SQLAlchemy models or legacy Excel column names.
-    """
+    """Read-only canonical query surface required by web clients."""
 
     def list_projects(self, *, active_only: bool = False) -> Sequence[ProjectReadModel]: ...
 
@@ -27,6 +23,8 @@ class PlannerQueryPort(Protocol):
     def list_demands(self) -> Sequence[DemandReadModel]: ...
 
     def get_demand(self, number: str) -> DemandReadModel | None: ...
+
+    def list_demand_periods(self, number: str) -> Sequence[DemandPeriodReadModel]: ...
 
     def list_segments(
         self,
