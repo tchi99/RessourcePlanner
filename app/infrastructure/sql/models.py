@@ -226,6 +226,12 @@ class ResourceRequirement(TimestampMixin, Base):
     outside_standard_hours_allowed: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default=false()
     )
+    confirmation: Mapped[str] = mapped_column(
+        String(32), nullable=False, server_default=text("'Confirmée'"), index=True
+    )
+    confirmation_overridden: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=false()
+    )
     origin: Mapped[str] = mapped_column(String(32), nullable=False, server_default=text("'REQUEST'"), index=True)
     created_by_external_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
 
