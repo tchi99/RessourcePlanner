@@ -40,6 +40,34 @@ def _project_data(repo: Any) -> tuple[dict[str, str], dict[str, dict[str, Any]]]
     return options, lookup
 
 
+def _work_package_data(repo: Any) -> tuple[dict[str, str], dict[str, dict[str, Any]]]:
+    """Build stable WorkPackage choices from medium-term effort rows.
+
+    The selector carries IDEffort/SourceEffortID rather than an Excel row number so
+    the same demand link survives the SQL cutover.
+    """
+
+    options: dict[str, str] = {}
+    lookup: dict[str, dict[str, Any]] = {}
+    for effort in repo.efforts(include_closed=True):
+        identifier = str(effort.get("IDEffort") or "").strip()
+        if not identifier:
+            continue
+        project_number = str(effort.get("N° projet") or "").strip()
+        name = str(effort.get("Projet") or effort.get("Description") or "").strip()
+        start = _date_from_any(effort.get("Date de début"))
+        end = _date_from_any(effort.get("Date de fin"))
+        label_parts = [project_number or "Projet —", name or identifier]
+        if start:
+            period = start.strftime("%d/%m/%Y")
+            if end:
+                period += f" → {end.strftime('%d/%m/%Y')}"
+            label_parts.append(period)
+        options[identifier] = " — ".join(part for part in label_parts if part)
+        lookup[identifier] = effort
+    return options, lookup
+
+
 def _request_dialog(
     self: ui_module.PlannerUI,
     demand: dict[str, Any] | None = None,
@@ -52,6 +80,7 @@ def _request_dialog(
     self.interaction_lock = True
     editing = demand is not None
     project_options, project_lookup = _project_data(self.repo)
+    work_package_options, work_package_lookup = _work_package_data(self.repo)
     competencies = self.repo.competencies()
     technicians = [row["name"] for row in schedulable_technicians(self.repo)]
 
@@ -60,6 +89,11 @@ def _request_dialog(
         project_options[initial_project] = (
             f"{initial_project} — {demand.get('NomProjet') or ''}"
         )
+    initial_work_package = (
+        str(demand.get("SourceEffortID") or "").strip() if demand else ""
+    ) or None
+    if initial_work_package and initial_work_package not in work_package_options:
+        work_package_options[initial_work_package] = initial_work_package
 
     with ui.dialog() as dialog, ui.card().classes("w-[840px] max-w-full"):
         ui.label(
@@ -79,6 +113,17 @@ def _request_dialog(
             with_input=True,
             clearable=True,
         ).classes("w-full")
+
+        work_package = ui.select(
+            work_package_options,
+            label="Plage moyen terme / WorkPackage",
+            value=initial_work_package,
+            with_input=True,
+            clearable=True,
+        ).classes("w-full")
+        ui.label(
+            "Optionnel · le lien utilise l'identifiant stable de la plage moyen terme."
+        ).classes("text-xs muted -mt-2")
 
         with ui.row().classes("w-full"):
             req_type = ui.select(
@@ -178,6 +223,7 @@ def _request_dialog(
                 "ChargeProjet": selected.get("Chargé de projet")
                 or (demand.get("ChargeProjet") if demand else "")
                 or "",
+                "SourceEffortID": work_package.value,
                 "TypeDemande": req_type.value,
                 "Priorite": priority.value,
                 DEMAND_CONFIRMATION_FIELD: confirmation.value or "Confirmée",
@@ -205,6 +251,16 @@ def _request_dialog(
                     type="warning",
                 )
                 return False
+            if work_package.value:
+                selected_effort = work_package_lookup.get(str(work_package.value))
+                if selected_effort is not None:
+                    effort_project = str(selected_effort.get("N° projet") or "").strip()
+                    if effort_project and effort_project != str(project.value or "").strip():
+                        ui.notify(
+                            "La plage moyen terme sélectionnée n'appartient pas au projet choisi.",
+                            type="warning",
+                        )
+                        return False
             return True
 
         def save_edit() -> None:
