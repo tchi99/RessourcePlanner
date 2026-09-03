@@ -26,6 +26,7 @@ def upgrade() -> None:
     op.create_table(
         "workforce_request_periods",
         sa.Column("id", sa.String(length=ID_LENGTH), nullable=False),
+        sa.Column("period_key", sa.String(length=128), nullable=False),
         sa.Column("workforce_request_id", sa.String(length=ID_LENGTH), nullable=False),
         sa.Column("sequence", sa.Integer(), server_default=sa.text("0"), nullable=False),
         sa.Column("kind", sa.String(length=32), server_default=sa.text("'CUMULATIVE'"), nullable=False),
@@ -65,53 +66,23 @@ def upgrade() -> None:
         unique=False,
     )
     op.create_index(
-        "ix_workforce_request_periods_workforce_request_id",
+        "ix_request_periods_request_key_active",
         "workforce_request_periods",
-        ["workforce_request_id"],
+        ["workforce_request_id", "period_key", "active"],
         unique=False,
     )
-    op.create_index(
-        "ix_workforce_request_periods_kind",
-        "workforce_request_periods",
-        ["kind"],
-        unique=False,
-    )
-    op.create_index(
-        "ix_workforce_request_periods_alternative_group",
-        "workforce_request_periods",
-        ["alternative_group"],
-        unique=False,
-    )
-    op.create_index(
-        "ix_workforce_request_periods_start_date",
-        "workforce_request_periods",
-        ["start_date"],
-        unique=False,
-    )
-    op.create_index(
-        "ix_workforce_request_periods_end_date",
-        "workforce_request_periods",
-        ["end_date"],
-        unique=False,
-    )
-    op.create_index(
-        "ix_workforce_request_periods_confirmation",
-        "workforce_request_periods",
-        ["confirmation"],
-        unique=False,
-    )
-    op.create_index(
-        "ix_workforce_request_periods_proposed_resource_id",
-        "workforce_request_periods",
-        ["proposed_resource_id"],
-        unique=False,
-    )
-    op.create_index(
-        "ix_workforce_request_periods_active",
-        "workforce_request_periods",
-        ["active"],
-        unique=False,
-    )
+    for index_name, columns in (
+        ("ix_workforce_request_periods_period_key", ["period_key"]),
+        ("ix_workforce_request_periods_workforce_request_id", ["workforce_request_id"]),
+        ("ix_workforce_request_periods_kind", ["kind"]),
+        ("ix_workforce_request_periods_alternative_group", ["alternative_group"]),
+        ("ix_workforce_request_periods_start_date", ["start_date"]),
+        ("ix_workforce_request_periods_end_date", ["end_date"]),
+        ("ix_workforce_request_periods_confirmation", ["confirmation"]),
+        ("ix_workforce_request_periods_proposed_resource_id", ["proposed_resource_id"]),
+        ("ix_workforce_request_periods_active", ["active"]),
+    ):
+        op.create_index(index_name, "workforce_request_periods", columns, unique=False)
 
     op.create_table(
         "workforce_request_period_selections",
@@ -148,6 +119,8 @@ def downgrade() -> None:
         "ix_workforce_request_periods_alternative_group",
         "ix_workforce_request_periods_kind",
         "ix_workforce_request_periods_workforce_request_id",
+        "ix_workforce_request_periods_period_key",
+        "ix_request_periods_request_key_active",
         "ix_request_periods_request_active",
         "ix_request_periods_request_kind_group",
     ):
