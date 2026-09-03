@@ -4,6 +4,8 @@ from dataclasses import dataclass
 from datetime import date
 from typing import Mapping, Sequence
 
+from .confirmation import normalize_confirmation
+
 
 PERIOD_KIND_CUMULATIVE = "CUMULATIVE"
 PERIOD_KIND_ALTERNATIVE = "ALTERNATIVE"
@@ -54,6 +56,8 @@ def validate_period_definitions(periods: Sequence[DemandPeriodDefinition]) -> No
             raise ValueError(
                 f"Le nombre de ressources de la période {identifier} doit être au moins 1."
             )
+        # Confirmation is a business dimension independent from approval.
+        normalize_confirmation(period.confirmation)
 
         kind = _text(period.kind).upper()
         if kind not in VALID_PERIOD_KINDS:
