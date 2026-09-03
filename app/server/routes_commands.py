@@ -6,10 +6,13 @@ from fastapi import APIRouter, Depends, status
 
 from ..application import (
     ApplicationFacade,
+    DemandAlternativeSelectCommand,
     DemandApproveCommand,
     DemandCancelCommand,
     DemandCorrectionCommand,
     DemandCreateCommand,
+    DemandPeriodInput,
+    DemandPeriodsReplaceCommand,
     DemandSubmitCommand,
     DemandUpdateCommand,
     ManualAllocationCreateCommand,
@@ -24,7 +27,9 @@ from ..application import (
     SegmentUpdateCommand,
 )
 from .schemas import (
+    DemandAlternativeSelectionRequest,
     DemandCreateRequest,
+    DemandPeriodsReplaceRequest,
     DemandUpdateRequest,
     ManualAllocationRequest,
     OptionalCommentRequest,
@@ -46,8 +51,6 @@ def _payload(result: Any) -> dict[str, Any]:
 def _segment_command_values(body: SegmentCreateRequest | SegmentUpdateRequest) -> dict[str, Any]:
     values = body.model_dump(exclude_unset=isinstance(body, SegmentUpdateRequest))
     if "source_effort_id" in values:
-        # Compatibility command still names this slot source_effort_row, but accepts
-        # the stable IDEffort string. Keep that historical name behind the HTTP edge.
         values["source_effort_row"] = values.pop("source_effort_id")
     return values
 
@@ -73,6 +76,35 @@ def build_command_router(facade_dependency: FacadeProvider) -> APIRouter:
         command = DemandUpdateCommand(number=number, comment=comment, **values)
         return _payload(facade.update_demand(command))
 
+    @router.put("/demands/{number}/periods")
+    def replace_demand_periods(
+        number: str,
+        body: DemandPeriodsReplaceRequest,
+        facade: ApplicationFacade = Depends(facade_dependency),
+    ) -> dict[str, Any]:
+        command = DemandPeriodsReplaceCommand(
+            number=number,
+            periods=tuple(DemandPeriodInput(**period.model_dump()) for period in body.periods),
+        )
+        return _payload(facade.replace_demand_periods(command))
+
+    @router.put("/demands/{number}/alternative-groups/{alternative_group}/selection")
+    def select_demand_alternative(
+        number: str,
+        alternative_group: str,
+        body: DemandAlternativeSelectionRequest,
+        facade: ApplicationFacade = Depends(facade_dependency),
+    ) -> dict[str, Any]:
+        return _payload(
+            facade.select_demand_alternative(
+                DemandAlternativeSelectCommand(
+                    number=number,
+                    alternative_group=alternative_group,
+                    period_id=body.period_id,
+                )
+            )
+        )
+
     @router.post("/demands/{number}/submit")
     def submit_demand(
         number: str,
@@ -95,9 +127,7 @@ def build_command_router(facade_dependency: FacadeProvider) -> APIRouter:
         facade: ApplicationFacade = Depends(facade_dependency),
     ) -> dict[str, Any]:
         return _payload(
-            facade.request_demand_correction(
-                DemandCorrectionCommand(number, body.comment)
-            )
+            facade.request_demand_correction(DemandCorrectionCommand(number, body.comment))
         )
 
     @router.post("/demands/{number}/cancel")
@@ -124,10 +154,7 @@ def build_command_router(facade_dependency: FacadeProvider) -> APIRouter:
     ) -> dict[str, Any]:
         return _payload(
             facade.update_segment(
-                SegmentUpdateCommand(
-                    segment_id=segment_id,
-                    **_segment_command_values(body),
-                )
+                SegmentUpdateCommand(segment_id=segment_id, **_segment_command_values(body))
             )
         )
 
@@ -144,14 +171,9 @@ def build_command_router(facade_dependency: FacadeProvider) -> APIRouter:
         body: SegmentAssignRequest,
         facade: ApplicationFacade = Depends(facade_dependency),
     ) -> dict[str, Any]:
-        return _payload(
-            facade.assign_segment(SegmentAssignCommand(segment_id, body.technician))
-        )
+        return _payload(facade.assign_segment(SegmentAssignCommand(segment_id, body.technician)))
 
-    @router.post(
-        "/segments/{segment_id}/allocations",
-        status_code=status.HTTP_201_CREATED,
-    )
+    @router.post("/segments/{segment_id}/allocations", status_code=status.HTTP_201_CREATED)
     def create_allocation(
         segment_id: str,
         body: ManualAllocationRequest,
@@ -159,10 +181,7 @@ def build_command_router(facade_dependency: FacadeProvider) -> APIRouter:
     ) -> dict[str, Any]:
         return _payload(
             facade.create_allocation(
-                ManualAllocationCreateCommand(
-                    segment_id=segment_id,
-                    **body.model_dump(),
-                )
+                ManualAllocationCreateCommand(segment_id=segment_id, **body.model_dump())
             )
         )
 
@@ -174,10 +193,7 @@ def build_command_router(facade_dependency: FacadeProvider) -> APIRouter:
     ) -> dict[str, Any]:
         return _payload(
             facade.update_allocation(
-                ManualAllocationUpdateCommand(
-                    allocation_id=allocation_id,
-                    **body.model_dump(),
-                )
+                ManualAllocationUpdateCommand(allocation_id=allocation_id, **body.model_dump())
             )
         )
 
@@ -186,27 +202,21 @@ def build_command_router(facade_dependency: FacadeProvider) -> APIRouter:
         allocation_id: str,
         facade: ApplicationFacade = Depends(facade_dependency),
     ) -> dict[str, Any]:
-        return _payload(
-            facade.release_allocation(ManualAllocationReleaseCommand(allocation_id))
-        )
+        return _payload(facade.release_allocation(ManualAllocationReleaseCommand(allocation_id)))
 
     @router.delete("/allocations/{allocation_id}")
     def delete_allocation(
         allocation_id: str,
         facade: ApplicationFacade = Depends(facade_dependency),
     ) -> dict[str, Any]:
-        return _payload(
-            facade.delete_allocation(ManualAllocationDeleteCommand(allocation_id))
-        )
+        return _payload(facade.delete_allocation(ManualAllocationDeleteCommand(allocation_id)))
 
     @router.post("/quick-shifts", status_code=status.HTTP_201_CREATED)
     def create_quick_shift(
         body: QuickShiftRequest,
         facade: ApplicationFacade = Depends(facade_dependency),
     ) -> dict[str, Any]:
-        return _payload(
-            facade.create_quick_shift(QuickShiftCreateCommand(**body.model_dump()))
-        )
+        return _payload(facade.create_quick_shift(QuickShiftCreateCommand(**body.model_dump())))
 
     @router.post("/planning/rebuild")
     def rebuild_planning(

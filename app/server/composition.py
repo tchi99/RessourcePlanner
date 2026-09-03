@@ -13,6 +13,7 @@ from ..application.quick_shift_service import QuickShiftService
 from ..application.segment_service import SegmentService
 from ..infrastructure.sql import (
     SqlAllocationCommandAdapter,
+    SqlDemandPeriodRepository,
     SqlDemandRepository,
     SqlPeriodAwareApprovedDemandSyncAdapter,
     SqlPlannerQueryRepository,
@@ -26,14 +27,11 @@ def build_sql_facade(
     *,
     actor_name: str = "api",
 ) -> ApplicationFacade:
-    """Compose one application facade inside the caller-owned SQL transaction.
-
-    The server boundary owns concrete SQLAlchemy wiring. Application services and the
-    pure planning engine remain transport/persistence agnostic.
-    """
+    """Compose one application facade inside the caller-owned SQL transaction."""
 
     actor = str(actor_name or "api").strip() or "api"
     demands = SqlDemandRepository(session, actor_name=actor)
+    periods = SqlDemandPeriodRepository(session, actor_name=actor)
     segments = SqlSegmentRepository(session)
     planning_commands = SqlPlanningCommandAdapter(session)
     allocation_commands = SqlAllocationCommandAdapter(
@@ -47,6 +45,7 @@ def build_sql_facade(
             demands,
             planning_commands,
             approved_sync,
+            periods=periods,
             current_user=actor,
         ),
         segments=SegmentService(segments, planning_commands),

@@ -2,10 +2,12 @@ from __future__ import annotations
 
 from .allocation_service import AllocationService
 from .commands import (
+    DemandAlternativeSelectCommand,
     DemandApproveCommand,
     DemandCancelCommand,
     DemandCorrectionCommand,
     DemandCreateCommand,
+    DemandPeriodsReplaceCommand,
     DemandSubmitCommand,
     DemandUpdateCommand,
     ManualAllocationCreateCommand,
@@ -24,7 +26,9 @@ from .planning_service import PlanningService
 from .quick_shift_service import QuickShiftService
 from .results import (
     AllocationMutationResult,
+    DemandAlternativeSelectionResult,
     DemandMutationResult,
+    DemandPeriodsMutationResult,
     PlanningResult,
     QuickShiftCreatedResult,
     SegmentMutationResult,
@@ -37,12 +41,7 @@ def _identifier(value: object) -> str:
 
 
 class ApplicationFacade:
-    """Stable use-case surface for UI/API adapters.
-
-    The facade deliberately owns response normalization only. Business orchestration
-    remains in the underlying services, while transport adapters consume a uniform set
-    of immutable result contracts.
-    """
+    """Stable use-case surface for UI/API adapters."""
 
     def __init__(
         self,
@@ -72,6 +71,30 @@ class ApplicationFacade:
             demand_number=_identifier(command.number),
             status="Soumise" if reapproval else None,
             reapproval_required=reapproval,
+        )
+
+    def replace_demand_periods(
+        self,
+        command: DemandPeriodsReplaceCommand,
+    ) -> DemandPeriodsMutationResult:
+        periods, reapproval = self._demands.replace_periods_command(command)
+        return DemandPeriodsMutationResult(
+            demand_number=_identifier(command.number),
+            period_count=len(periods),
+            status="Soumise" if reapproval else None,
+            reapproval_required=reapproval,
+        )
+
+    def select_demand_alternative(
+        self,
+        command: DemandAlternativeSelectCommand,
+    ) -> DemandAlternativeSelectionResult:
+        summary = self._demands.select_alternative_command(command)
+        return DemandAlternativeSelectionResult(
+            demand_number=_identifier(command.number),
+            alternative_group=_identifier(command.alternative_group),
+            period_id=_identifier(command.period_id),
+            planning=PlanningResult.from_mapping(summary) if summary is not None else None,
         )
 
     def submit_demand(self, command: DemandSubmitCommand) -> DemandMutationResult:
@@ -142,30 +165,21 @@ class ApplicationFacade:
         command: ManualAllocationUpdateCommand,
     ) -> AllocationMutationResult:
         self._allocations.update_manual_command(command)
-        return AllocationMutationResult(
-            _identifier(command.allocation_id),
-            action="updated",
-        )
+        return AllocationMutationResult(_identifier(command.allocation_id), action="updated")
 
     def release_allocation(
         self,
         command: ManualAllocationReleaseCommand,
     ) -> AllocationMutationResult:
         self._allocations.release_manual_command(command)
-        return AllocationMutationResult(
-            _identifier(command.allocation_id),
-            action="released",
-        )
+        return AllocationMutationResult(_identifier(command.allocation_id), action="released")
 
     def delete_allocation(
         self,
         command: ManualAllocationDeleteCommand,
     ) -> AllocationMutationResult:
         self._allocations.delete_manual_command(command)
-        return AllocationMutationResult(
-            _identifier(command.allocation_id),
-            action="deleted",
-        )
+        return AllocationMutationResult(_identifier(command.allocation_id), action="deleted")
 
     def create_quick_shift(
         self,

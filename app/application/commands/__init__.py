@@ -13,15 +13,23 @@ from .demand import (
     DemandSubmitCommand,
     DemandUpdateCommand,
 )
+from .demand_period import (
+    DemandAlternativeSelectCommand,
+    DemandPeriodInput,
+    DemandPeriodsReplaceCommand,
+)
 from .planning import PlanningRebuildCommand
 from .quick_shift import QuickShiftCreateCommand
 from .segment import SegmentCancelCommand, SegmentCreateCommand, SegmentUpdateCommand
 
 __all__ = [
+    "DemandAlternativeSelectCommand",
     "DemandApproveCommand",
     "DemandCancelCommand",
     "DemandCorrectionCommand",
     "DemandCreateCommand",
+    "DemandPeriodInput",
+    "DemandPeriodsReplaceCommand",
     "DemandSubmitCommand",
     "DemandUpdateCommand",
     "ManualAllocationCreateCommand",
