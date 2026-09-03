@@ -25,6 +25,7 @@ class ResourceRowBindings:
     project_number_for_allocation: Callable[[dict[str, Any]], str]
     all_confirmations: str
     demand_confirmation: Callable[[dict[str, Any]], str]
+    allocation_confirmation: Callable[[dict[str, Any], dict[str, Any]], str]
     is_missing_allocation: Callable[[dict[str, Any]], bool]
     pending_covers_day: Callable[[dict[str, Any], date], bool]
     number: Callable[[Any], float]
@@ -82,8 +83,9 @@ def render_operational_planning_resource_row(
             day_allocations = [
                 row
                 for row in day_allocations
-                if bindings.demand_confirmation(
-                    demands.get(str(row.get("NoDemande") or ""), {})
+                if bindings.allocation_confirmation(
+                    row,
+                    demands.get(str(row.get("NoDemande") or ""), {}),
                 )
                 == confirmation_filter
             ]
@@ -174,10 +176,11 @@ def render_operational_planning_resource_row(
                         )
                     ).classes("text-xs")
                     suffix = " · 🔒" if bindings.truthy(allocation.get("Verrouillee")) else ""
-                    if (
-                        bindings.demand_confirmation(demand) == "Tentative"
-                        and "Tentative" not in label
-                    ):
+                    effective_confirmation = bindings.allocation_confirmation(
+                        allocation,
+                        demand,
+                    )
+                    if effective_confirmation == "Tentative" and "Tentative" not in label:
                         label = f"Tentative · {label}"
                     ui.label(
                         f"{bindings.number(allocation.get('Heures')):.1f} h · {label}{suffix}"

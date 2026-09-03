@@ -27,6 +27,7 @@ def _create_manual_via_service(
     hours_value: Any,
     hors_horaire: bool = False,
     note: str = "",
+    confirmation: str | None = None,
 ) -> str:
     return _service(repository).create_manual(
         segment_id,
@@ -35,6 +36,7 @@ def _create_manual_via_service(
         hours_value,
         hors_horaire,
         note,
+        confirmation,
     )
 
 
@@ -46,6 +48,7 @@ def _update_manual_via_service(
     hours_value: Any,
     hors_horaire: bool = False,
     note: str = "",
+    confirmation: str | None = None,
 ) -> None:
     _service(repository).update_manual(
         identifier,
@@ -54,6 +57,7 @@ def _update_manual_via_service(
         hours_value,
         hors_horaire,
         note,
+        confirmation,
     )
 
 
