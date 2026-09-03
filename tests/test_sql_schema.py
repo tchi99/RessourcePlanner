@@ -26,6 +26,7 @@ EXPECTED_TABLES = {
     "workforce_request_history",
     "workforce_request_periods",
     "workforce_request_period_selections",
+    "workforce_request_period_requirements",
     "resource_availability_rules",
     "resource_requirements",
     "shifts",
@@ -39,6 +40,7 @@ class SqlSchemaTests(unittest.TestCase):
         requirements = Base.metadata.tables["resource_requirements"].c
         requests = Base.metadata.tables["workforce_requests"].c
         periods = Base.metadata.tables["workforce_request_periods"].c
+        period_requirements = Base.metadata.tables["workforce_request_period_requirements"].c
         availability = Base.metadata.tables["resource_availability_rules"].c
 
         self.assertFalse(requirements.project_id.nullable)
@@ -48,6 +50,8 @@ class SqlSchemaTests(unittest.TestCase):
         self.assertFalse(periods.workforce_request_id.nullable)
         self.assertFalse(periods.start_date.nullable)
         self.assertFalse(periods.end_date.nullable)
+        self.assertFalse(period_requirements.resource_requirement_id.nullable)
+        self.assertFalse(period_requirements.period_id.nullable)
         self.assertTrue(availability.resource_id.nullable)
 
     def test_metadata_creates_all_tables_on_sqlite_memory(self) -> None:
