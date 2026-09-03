@@ -12,6 +12,7 @@ from .command_adapters import (
 )
 from .demand_period_models import (
     WorkforceRequestPeriod,
+    WorkforceRequestPeriodRequirement,
     WorkforceRequestPeriodSelection,
 )
 from .demand_period_repository import SqlDemandPeriodRepository
@@ -33,6 +34,7 @@ from .identity_constraints import (
     RESOURCE_REQUIREMENT_NUMBER_INDEX,
     WORKFORCE_REQUEST_NUMBER_INDEX,
 )
+from .period_approved_sync import SqlPeriodAwareApprovedDemandSyncAdapter
 from .planning_repository import SqlPlanningReadRepository
 from .query_repository import SqlPlannerQueryRepository
 from .segment_repository import SqlSegmentRepository
@@ -59,6 +61,7 @@ __all__ = [
     "SqlApprovedDemandSyncAdapter",
     "SqlDemandPeriodRepository",
     "SqlDemandRepository",
+    "SqlPeriodAwareApprovedDemandSyncAdapter",
     "SqlPlannerQueryRepository",
     "SqlPlanningCommandAdapter",
     "SqlPlanningReadRepository",
@@ -69,6 +72,7 @@ __all__ = [
     "WorkforceRequest",
     "WorkforceRequestHistory",
     "WorkforceRequestPeriod",
+    "WorkforceRequestPeriodRequirement",
     "WorkforceRequestPeriodSelection",
     "create_session_factory",
     "create_sql_engine",
