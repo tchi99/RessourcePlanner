@@ -13,6 +13,7 @@ from ...application.command_ports import (
     PlanningCommandPort,
 )
 from ...domain.availability_rules import availability_hours_for_day
+from ...domain.confirmation import CONFIRMATION_CONFIRMED, normalize_confirmation
 from ...domain.planning_engine import build_allocation_plan
 from ...domain.planning_projection import project_planning_snapshot
 from ...domain.value_coercion import date_from_value
@@ -131,6 +132,8 @@ class SqlPlanningCommandAdapter(PlanningCommandPort):
                     source="AUTO",
                     locked=False,
                     outside_standard_hours=bool(allocation.outside_schedule),
+                    # NULL is intentional: automatic shifts inherit their requirement.
+                    confirmation=None,
                     note=(
                         "Capacité standard insuffisante — quart hors horaire à confirmer"
                         if missing
@@ -269,6 +272,7 @@ class SqlAllocationCommandAdapter(AllocationCommandPort):
         hours_value: Any,
         hors_horaire: bool = False,
         note: str = "",
+        confirmation: str | None = None,
     ) -> str:
         requirement = self._requirement(segment_id)
         resource = self._resource(technician)
@@ -295,6 +299,9 @@ class SqlAllocationCommandAdapter(AllocationCommandPort):
             source="MANUAL",
             locked=True,
             outside_standard_hours=bool(hors_horaire),
+            confirmation=(
+                normalize_confirmation(confirmation) if _text(confirmation) else None
+            ),
             note=_text(note) or None,
         )
         self._session.add(shift)
@@ -310,6 +317,7 @@ class SqlAllocationCommandAdapter(AllocationCommandPort):
         hours_value: Any,
         hors_horaire: bool = False,
         note: str = "",
+        confirmation: str | None = None,
     ) -> None:
         shift = self._shift(allocation_id)
         if shift is None:
@@ -335,6 +343,8 @@ class SqlAllocationCommandAdapter(AllocationCommandPort):
         shift.source = "MANUAL"
         shift.locked = True
         shift.outside_standard_hours = bool(hors_horaire)
+        if confirmation is not None:
+            shift.confirmation = normalize_confirmation(confirmation)
         shift.note = _text(note) or None
         self._session.flush()
         self._planning.rebuild()
@@ -463,6 +473,10 @@ class SqlApprovedDemandSyncAdapter(ApprovedDemandSyncPort):
         per_resource = self._hours_per_resource(request, desired, current)
         if per_resource <= 0:
             raise ValueError("Les heures prévues par ressource doivent être supérieures à zéro.")
+        inherited_confirmation = normalize_confirmation(
+            request.confirmation,
+            default=CONFIRMATION_CONFIRMED,
+        )
 
         while len(current) < desired:
             identifier = self._segments.create(
@@ -480,6 +494,8 @@ class SqlApprovedDemandSyncAdapter(ApprovedDemandSyncPort):
                     "Priorite": request.priority or "Normale",
                     "HorsHoraireAutorise": False,
                     "OrigineSegment": ORIGIN_REQUEST,
+                    "Confirmation": inherited_confirmation,
+                    "ConfirmationOverride": False,
                 }
             )
             created = self._session.scalar(
@@ -528,6 +544,8 @@ class SqlApprovedDemandSyncAdapter(ApprovedDemandSyncPort):
             requirement.required_competency = request.required_competencies
             requirement.priority = request.priority or "Normale"
             requirement.origin = ORIGIN_REQUEST
+            if not requirement.confirmation_overridden:
+                requirement.confirmation = inherited_confirmation
 
         self._session.add(
             WorkforceRequestHistory(
