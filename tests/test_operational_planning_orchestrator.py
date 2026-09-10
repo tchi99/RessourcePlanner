@@ -21,6 +21,18 @@ class OperationalPlanningOrchestratorExtractionTests(unittest.TestCase):
             self.assertNotIn(f"from . import {version}", source)
             self.assertNotIn(f"from .{version}", source)
 
+    def test_schedulable_resources_are_scoped_to_displayed_week(self) -> None:
+        app_dir = Path(__file__).resolve().parents[1] / "app"
+        source = (app_dir / "operational_planning_orchestrator.py").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn("days = bindings.week_days(owner.current_week)", source)
+        self.assertIn(
+            "bindings.schedulable_technicians(owner.repo, days[0], days[-1])",
+            source,
+        )
+
     def test_v17_modules_are_retired(self) -> None:
         app_dir = Path(__file__).resolve().parents[1] / "app"
         for filename in ("v17.py", "v17_refinements.py", "v17_sort_fix.py"):
