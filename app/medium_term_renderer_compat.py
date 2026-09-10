@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from nicegui import ui
 
+from .medium_term_capacity import render_medium_term_with_projected_capacity
 from .medium_term_page import register_medium_term_renderer
-from .v18_refinements import _render_medium_term_refined
 
 
 MEDIUM_TERM_CSS = """
@@ -40,7 +40,7 @@ MEDIUM_TERM_CSS = """
 
 
 def install_medium_term_renderer_compat() -> None:
-    """Publish the validated V1.8 renderer without installing V1.8 page monkey-patches."""
+    """Publish the projected-capacity V1 renderer behind the explicit page boundary."""
 
-    register_medium_term_renderer(_render_medium_term_refined)
+    register_medium_term_renderer(render_medium_term_with_projected_capacity)
     ui.add_css(MEDIUM_TERM_CSS)
