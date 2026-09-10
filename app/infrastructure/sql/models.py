@@ -234,6 +234,7 @@ class ResourceRequirement(TimestampMixin, Base):
     )
     origin: Mapped[str] = mapped_column(String(32), nullable=False, server_default=text("'REQUEST'"), index=True)
     created_by_external_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    created_by_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
 
 class Shift(TimestampMixin, Base):
