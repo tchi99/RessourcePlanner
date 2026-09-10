@@ -12,12 +12,12 @@ LOAD_POTENTIAL = "POTENTIAL"
 def workload_kind(confirmation: object | None) -> str:
     """Classify workload without coupling capacity semantics to a UI or storage layer.
 
-    Confirmed work is firm. Every other valid confirmation state is potential. The
-    confirmation policy currently normalizes the supported business values and keeps
-    approval as a separate workflow dimension.
+    Confirmed work is firm. Every other valid confirmation state is potential. A blank
+    value remains backward-compatible and is treated as the historical confirmed
+    default; callers that support inheritance should resolve it before classification.
     """
 
-    normalized = normalize_confirmation(confirmation)
+    normalized = normalize_confirmation(confirmation, default=CONFIRMATION_CONFIRMED)
     return LOAD_FIRM if normalized == CONFIRMATION_CONFIRMED else LOAD_POTENTIAL
 
 
