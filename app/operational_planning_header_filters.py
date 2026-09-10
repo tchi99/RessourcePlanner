@@ -107,12 +107,12 @@ def render_operational_planning_header_filters(
                 "Glisser un quart sur une autre journée pour le verrouiller; glisser sur une autre ressource permet de réaffecter ou fractionner."
             ).classes("muted")
         ui.space()
-        ui.button(
+        owner._planning_manual_allocation_action = ui.button(
             "Quart manuel",
             icon="add_task",
             on_click=lambda: bindings.open_manual_allocation(owner),
         ).props("outline no-caps")
-        ui.button(
+        owner._planning_recalculate_action = ui.button(
             "Recalculer",
             icon="calculate",
             on_click=lambda: bindings.recalculate(owner),
