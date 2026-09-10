@@ -103,11 +103,11 @@ class SqlWorkloadProjectionTests(unittest.TestCase):
                 end=self.day,
             )
 
-        self.assertEqual([row.load_kind for row in shifts], [LOAD_POTENTIAL, LOAD_FIRM])
-        self.assertEqual(
-            [row.confirmation for row in shifts],
-            [CONFIRMATION_TENTATIVE, CONFIRMATION_CONFIRMED],
-        )
+        by_source = {row.source: row for row in shifts}
+        self.assertEqual(by_source["AUTO"].load_kind, LOAD_POTENTIAL)
+        self.assertEqual(by_source["AUTO"].confirmation, CONFIRMATION_TENTATIVE)
+        self.assertEqual(by_source["MANUAL"].load_kind, LOAD_FIRM)
+        self.assertEqual(by_source["MANUAL"].confirmation, CONFIRMATION_CONFIRMED)
 
     def test_planning_snapshot_splits_firm_and_potential_hours(self) -> None:
         with self.factory() as session:
