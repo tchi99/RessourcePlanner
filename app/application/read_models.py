@@ -119,7 +119,12 @@ class DemandPeriodReadModel:
 
 @dataclass(frozen=True, slots=True)
 class SegmentReadModel:
-    """Storage-independent operational requirement/segment projection."""
+    """Storage-independent operational requirement/segment projection.
+
+    Project manager and requester are projections from the owning project/request. They
+    are intentionally not authoritative segment fields, which keeps ownership aligned
+    with the future Acumatica + WorkforceRequest sources of truth.
+    """
 
     segment_id: str
     demand_number: str | None
@@ -138,6 +143,8 @@ class SegmentReadModel:
     outside_standard_hours: bool = False
     confirmation: str | None = None
     confirmation_overridden: bool = False
+    project_manager: str | None = None
+    requester: str | None = None
 
     @classmethod
     def from_mapping(cls, row: Mapping[str, Any]) -> "SegmentReadModel":
@@ -159,4 +166,10 @@ class SegmentReadModel:
             outside_standard_hours=bool(row.get("HorsHoraireAutorise") or False),
             confirmation=_optional_text(row.get("Confirmation")),
             confirmation_overridden=bool(row.get("ConfirmationOverride") or False),
+            project_manager=_optional_text(
+                row.get("ProjectManager") or row.get("ChargeProjet")
+            ),
+            requester=_optional_text(
+                row.get("Requester") or row.get("Demandeur") or row.get("CreePar")
+            ),
         )

@@ -320,12 +320,17 @@ class SqlPlannerQueryRepository(PlannerQueryPort):
         resource_name: str | None = None,
     ) -> tuple[ShiftReadModel, ...]:
         statement = (
-            select(Shift, ResourceRequirement, Resource)
+            select(Shift, ResourceRequirement, Resource, Project, WorkforceRequest)
             .join(
                 ResourceRequirement,
                 Shift.resource_requirement_id == ResourceRequirement.id,
             )
             .join(Resource, Shift.resource_id == Resource.id)
+            .join(Project, ResourceRequirement.project_id == Project.id)
+            .outerjoin(
+                WorkforceRequest,
+                ResourceRequirement.workforce_request_id == WorkforceRequest.id,
+            )
         )
         if start is not None:
             statement = statement.where(Shift.work_date >= start)
@@ -345,7 +350,7 @@ class SqlPlannerQueryRepository(PlannerQueryPort):
             )
         ).all()
         result: list[ShiftReadModel] = []
-        for shift, requirement, resource in rows:
+        for shift, requirement, resource, project, request in rows:
             confirmation = effective_confirmation(
                 shift.confirmation,
                 requirement.confirmation,
@@ -366,6 +371,19 @@ class SqlPlannerQueryRepository(PlannerQueryPort):
                     confirmation_override=_optional_text(shift.confirmation),
                     load_kind=workload_kind(confirmation),
                     note=_optional_text(shift.note),
+                    demand_number=(
+                        _text(request.legacy_demand_number) or request.id
+                        if request is not None
+                        else None
+                    ),
+                    project_number=_optional_text(project.number),
+                    project_name=_optional_text(project.name),
+                    project_manager=_optional_text(project.project_manager_name),
+                    requester=(
+                        _optional_text(request.requester_name)
+                        if request is not None
+                        else None
+                    ),
                 )
             )
         return tuple(result)

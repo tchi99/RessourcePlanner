@@ -26,6 +26,7 @@ class DemandCreateCommand:
     project_name: str = ""
     client: str = ""
     project_manager: str = ""
+    requester: str | None = None
     work_package_ref: str | None = None
     request_type: str = "Projet"
     priority: str = "Normale"
@@ -85,6 +86,7 @@ class DemandCreateCommand:
             project_name=text(values.get("NomProjet")),
             client=text(values.get("Client")),
             project_manager=text(values.get("ChargeProjet")),
+            requester=optional_text(values.get("Demandeur")),
             work_package_ref=optional_text(values.get("SourceEffortID")),
             request_type=text(values.get("TypeDemande")) or "Projet",
             priority=text(values.get("Priorite")) or "Normale",
@@ -122,6 +124,7 @@ class DemandCreateCommand:
             "NomProjet": text(self.project_name),
             "Client": text(self.client),
             "ChargeProjet": text(self.project_manager),
+            "Demandeur": self.requester,
             "SourceEffortID": self.work_package_ref,
             "TypeDemande": text(self.request_type) or "Projet",
             "Priorite": text(self.priority) or "Normale",
@@ -147,6 +150,7 @@ class DemandUpdateCommand:
     project_name: str | None | UnsetType = UNSET
     client: str | None | UnsetType = UNSET
     project_manager: str | None | UnsetType = UNSET
+    requester: str | None | UnsetType = UNSET
     work_package_ref: str | None | UnsetType = UNSET
     request_type: str | None | UnsetType = UNSET
     priority: str | None | UnsetType = UNSET
@@ -190,6 +194,7 @@ class DemandUpdateCommand:
             "NomProjet",
             "Client",
             "ChargeProjet",
+            "Demandeur",
             "SourceEffortID",
             "TypeDemande",
             "Priorite",
@@ -227,6 +232,7 @@ class DemandUpdateCommand:
             project_name=present("NomProjet", optional_text),
             client=present("Client", optional_text),
             project_manager=present("ChargeProjet", optional_text),
+            requester=present("Demandeur", optional_text),
             work_package_ref=present("SourceEffortID", optional_text),
             request_type=present("TypeDemande", optional_text),
             priority=present("Priorite", optional_text),
@@ -281,6 +287,7 @@ class DemandUpdateCommand:
             "NomProjet": self.project_name,
             "Client": self.client,
             "ChargeProjet": self.project_manager,
+            "Demandeur": self.requester,
             "SourceEffortID": self.work_package_ref,
             "TypeDemande": self.request_type,
             "Priorite": self.priority,

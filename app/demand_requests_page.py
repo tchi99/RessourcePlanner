@@ -32,6 +32,8 @@ class DemandRequestsPage:
             },
             {"headerName": "Projet", "field": "Projet", "minWidth": 210},
             {"headerName": "Client", "field": "Client", "minWidth": 150},
+            {"headerName": "Responsable projet", "field": "ChargeProjet", "minWidth": 165},
+            {"headerName": "Demandeur", "field": "Demandeur", "minWidth": 150},
             {"headerName": "Priorité", "field": "Priorite", "minWidth": 110},
             {
                 "headerName": "Début souhaité",
@@ -44,7 +46,6 @@ class DemandRequestsPage:
                 "minWidth": 135,
             },
             {"headerName": "Statut", "field": "Statut", "minWidth": 145},
-            {"headerName": "Demandeur", "field": "Demandeur", "minWidth": 150},
         ]
 
         with ui.row().classes("w-full items-center"):
@@ -119,6 +120,10 @@ class DemandRequestsPage:
                         f"{demand.get('NumeroProjet') or '—'} · "
                         f"{demand.get('NomProjet') or ''}"
                     ).classes("text-sm")
+                    ui.label(
+                        f"Responsable projet : {demand.get('ChargeProjet') or '—'} · "
+                        f"Demandeur : {demand.get('Demandeur') or '—'}"
+                    ).classes("text-xs muted")
                     ui.label(str(demand.get("Description") or "")).classes(
                         "text-sm muted"
                     )
@@ -275,9 +280,10 @@ class DemandRequestsPage:
                 f"{demand.get('NomProjet') or ''}"
             ),
             "Client": demand.get("Client") or "",
+            "ChargeProjet": demand.get("ChargeProjet") or "",
+            "Demandeur": demand.get("Demandeur") or "",
             "Priorite": demand.get("Priorite") or "",
             "Debut": self.owner._date_text(demand.get("DateDebutSouhaitee")),
             "Fin": self.owner._date_text(demand.get("DateFinSouhaitee")),
             "Statut": demand.get("Statut") or "",
-            "Demandeur": demand.get("Demandeur") or "",
         }

@@ -224,7 +224,9 @@ class SqlDemandRepository(DemandRepositoryPort):
             legacy_demand_number=number,
             project_id=project.id,
             work_package_id=work_package.id if work_package is not None else None,
-            requester_name=self._actor_name or None,
+            # An authorized caller may explicitly name the requester. When omitted,
+            # preserve the historical behavior and default to the authenticated actor.
+            requester_name=_optional_text(values.get("Demandeur")) or self._actor_name or None,
             request_type=_text(values.get("TypeDemande")) or "Projet",
             priority=_text(values.get("Priorite")) or "Normale",
             confirmation=_text(values.get("Confirmation")) or "Confirmée",
@@ -280,6 +282,8 @@ class SqlDemandRepository(DemandRepositoryPort):
                 # choosing a compatible WorkPackage must not leave a cross-project link.
                 request.work_package_id = None
 
+        if "Demandeur" in updates:
+            request.requester_name = _optional_text(updates.get("Demandeur"))
         if "TypeDemande" in updates:
             request.request_type = _text(updates.get("TypeDemande")) or "Projet"
         if "Priorite" in updates:
