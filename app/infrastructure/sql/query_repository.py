@@ -382,7 +382,7 @@ class SqlPlannerQueryRepository(PlannerQueryPort):
                     requester=(
                         _optional_text(request.requester_name)
                         if request is not None
-                        else None
+                        else _optional_text(requirement.created_by_name)
                     ),
                 )
             )
