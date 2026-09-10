@@ -6,6 +6,7 @@ from datetime import date
 from app.domain.availability_rules import (
     availability_hours_for_day,
     has_standard_schedule,
+    has_standard_schedule_in_window,
     outside_schedule_eligible_for_day,
 )
 
@@ -15,10 +16,19 @@ TUESDAY = date(2026, 8, 18)
 SATURDAY = date(2026, 8, 22)
 
 
-def standard(resource: str = "R1", start: object = "08:00", end: object = "16:00") -> dict[str, object]:
+def standard(
+    resource: str = "R1",
+    start: object = "08:00",
+    end: object = "16:00",
+    *,
+    date_start: object = None,
+    date_end: object = None,
+) -> dict[str, object]:
     return {
         "Technicien": resource,
         "Type": "Horaire standard",
+        "DateDebut": date_start,
+        "DateFin": date_end,
         "JoursSemaine": "Lun,Mar,Mer,Jeu,Ven",
         "HeureDebut": start,
         "HeureFin": end,
@@ -35,6 +45,33 @@ class AvailabilityRulesTests(unittest.TestCase):
     def test_standard_schedule_returns_daily_hours(self) -> None:
         self.assertEqual(availability_hours_for_day([standard()], "R1", MONDAY), 8)
         self.assertEqual(availability_hours_for_day([standard()], "R1", SATURDAY), 0)
+
+    def test_schedule_that_ended_before_window_is_not_schedulable(self) -> None:
+        rows = [standard(date_start=date(2026, 1, 1), date_end=date(2026, 8, 16))]
+
+        self.assertTrue(has_standard_schedule(rows, "R1"))
+        self.assertFalse(
+            has_standard_schedule_in_window(rows, "R1", MONDAY, SATURDAY)
+        )
+        self.assertEqual(availability_hours_for_day(rows, "R1", MONDAY), 0)
+        self.assertFalse(outside_schedule_eligible_for_day(rows, "R1", SATURDAY))
+
+    def test_schedule_overlapping_display_window_is_schedulable(self) -> None:
+        rows = [standard(date_start=TUESDAY, date_end=date(2026, 9, 30))]
+
+        self.assertTrue(
+            has_standard_schedule_in_window(rows, "R1", MONDAY, SATURDAY)
+        )
+        self.assertFalse(
+            has_standard_schedule_in_window(
+                rows,
+                "R1",
+                date(2026, 8, 10),
+                date(2026, 8, 16),
+            )
+        )
+        self.assertEqual(availability_hours_for_day(rows, "R1", MONDAY), 0)
+        self.assertEqual(availability_hours_for_day(rows, "R1", TUESDAY), 8)
 
     def test_excel_fraction_times_are_supported(self) -> None:
         rows = [standard(start=8 / 24, end=16 / 24)]
