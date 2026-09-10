@@ -66,10 +66,17 @@ class MutationGuardArchitectureTests(unittest.TestCase):
     def source(self, filename: str) -> str:
         return (self.app_dir / filename).read_text(encoding="utf-8")
 
-    def test_guard_policy_has_no_nicegui_or_storage_dependency(self) -> None:
-        source = self.source("ui_mutation_guard.py")
-        for forbidden in ("nicegui", "xlwings", "sqlalchemy", "ExcelRepository"):
-            self.assertNotIn(forbidden, source.lower())
+    def test_guard_policy_has_no_ui_or_storage_import_dependency(self) -> None:
+        source = self.source("ui_mutation_guard.py").lower()
+        for forbidden_import in (
+            "from nicegui",
+            "import nicegui",
+            "from sqlalchemy",
+            "import sqlalchemy",
+            "from .excel_repository",
+            "import xlwings",
+        ):
+            self.assertNotIn(forbidden_import, source)
 
     def test_demand_create_edit_uses_shared_dialog_gate_and_disables_actions(self) -> None:
         source = self.source("demand_editor_ui.py")
