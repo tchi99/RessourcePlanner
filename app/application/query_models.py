@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date
 
-from .read_models import DemandReadModel, SegmentReadModel
+from .read_models import DemandPeriodReadModel, DemandReadModel, SegmentReadModel
 
 
 @dataclass(frozen=True, slots=True)
@@ -48,6 +48,34 @@ class ShiftReadModel:
 
 
 @dataclass(frozen=True, slots=True)
+class PendingDemandLoadReadModel:
+    """Read-only workload proposed by a submitted, not-yet-approved request.
+
+    ``mode=ADDITIVE`` is concurrent potential load and may be added to the current
+    capacity exposure. ``mode=REPLACEMENT`` is a scenario that would replace the
+    currently approved plan and is intentionally kept out of additive totals.
+    """
+
+    demand_number: str
+    project_number: str | None
+    project_name: str | None
+    start_date: date
+    end_date: date
+    projected_hours: float | None
+    window_hours: float
+    mode: str
+    load_kind: str = "POTENTIAL"
+    current_plan_hours: float = 0.0
+    delta_hours: float | None = None
+    resource_count: int = 1
+    required_competencies: str | None = None
+    proposed_resource: str | None = None
+    work_package_ref: str | None = None
+    confirmation: str | None = None
+    periods: tuple[DemandPeriodReadModel, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
 class PlanningSnapshotReadModel:
     """Canonical, transaction-coherent planning window exposed to web clients."""
 
@@ -57,5 +85,7 @@ class PlanningSnapshotReadModel:
     demands: tuple[DemandReadModel, ...]
     segments: tuple[SegmentReadModel, ...]
     shifts: tuple[ShiftReadModel, ...]
+    pending_loads: tuple[PendingDemandLoadReadModel, ...] = ()
     firm_hours: float = 0.0
     potential_hours: float = 0.0
+    replacement_proposal_hours: float = 0.0

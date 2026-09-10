@@ -7,7 +7,7 @@ import re
 from typing import Any
 
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, aliased
 
 from ...application.read_models import DemandReadModel
 from ...application.repository_ports import DemandRepositoryPort
@@ -55,6 +55,7 @@ class SqlDemandRepository(DemandRepositoryPort):
         request: WorkforceRequest,
         project: Project,
         work_package: WorkPackage | None,
+        proposed_resource: Resource | None,
     ) -> DemandReadModel:
         return DemandReadModel(
             # During the first SQL cutover the existing NoDemande is preserved in
@@ -80,13 +81,35 @@ class SqlDemandRepository(DemandRepositoryPort):
             work_package_name=(
                 _optional_text(work_package.name) if work_package is not None else None
             ),
+            resource_count=max(int(request.resource_count or 1), 1),
+            required_competencies=_optional_text(request.required_competencies),
+            estimated_hours=(
+                float(request.estimated_hours)
+                if request.estimated_hours is not None
+                else None
+            ),
+            estimated_days=(
+                float(request.estimated_days)
+                if request.estimated_days is not None
+                else None
+            ),
+            proposed_resource=(
+                _optional_text(proposed_resource.name)
+                if proposed_resource is not None
+                else None
+            ),
         )
 
     def _row_query(self):
+        proposed_resource = aliased(Resource)
         return (
-            select(WorkforceRequest, Project, WorkPackage)
+            select(WorkforceRequest, Project, WorkPackage, proposed_resource)
             .join(Project, WorkforceRequest.project_id == Project.id)
             .outerjoin(WorkPackage, WorkforceRequest.work_package_id == WorkPackage.id)
+            .outerjoin(
+                proposed_resource,
+                WorkforceRequest.proposed_resource_id == proposed_resource.id,
+            )
         )
 
     def list(self) -> Sequence[DemandReadModel]:
@@ -98,8 +121,8 @@ class SqlDemandRepository(DemandRepositoryPort):
             )
         ).all()
         return tuple(
-            self._read_model(request, project, work_package)
-            for request, project, work_package in rows
+            self._read_model(request, project, work_package, proposed_resource)
+            for request, project, work_package, proposed_resource in rows
         )
 
     def get(self, number: str) -> DemandReadModel | None:
@@ -114,8 +137,8 @@ class SqlDemandRepository(DemandRepositoryPort):
         ).one_or_none()
         if row is None:
             return None
-        request, project, work_package = row
-        return self._read_model(request, project, work_package)
+        request, project, work_package, proposed_resource = row
+        return self._read_model(request, project, work_package, proposed_resource)
 
     def _request(self, number: str) -> WorkforceRequest:
         wanted = _text(number)

@@ -7,6 +7,8 @@ from .confirmation import CONFIRMATION_CONFIRMED, normalize_confirmation
 
 LOAD_FIRM = "FIRM"
 LOAD_POTENTIAL = "POTENTIAL"
+PENDING_LOAD_ADDITIVE = "ADDITIVE"
+PENDING_LOAD_REPLACEMENT = "REPLACEMENT"
 
 
 def workload_kind(confirmation: object | None) -> str:
@@ -19,6 +21,12 @@ def workload_kind(confirmation: object | None) -> str:
 
     normalized = normalize_confirmation(confirmation, default=CONFIRMATION_CONFIRMED)
     return LOAD_FIRM if normalized == CONFIRMATION_CONFIRMED else LOAD_POTENTIAL
+
+
+def pending_load_mode(*, has_current_plan: bool) -> str:
+    """Describe whether a submitted proposal adds load or replaces an approved plan."""
+
+    return PENDING_LOAD_REPLACEMENT if has_current_plan else PENDING_LOAD_ADDITIVE
 
 
 @dataclass(frozen=True, slots=True)

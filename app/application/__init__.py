@@ -42,6 +42,7 @@ from .errors import (
 from .facade import ApplicationFacade
 from .planning_service import PlanningService
 from .query_models import (
+    PendingDemandLoadReadModel,
     PlanningSnapshotReadModel,
     ProjectReadModel,
     ResourceReadModel,
@@ -98,6 +99,7 @@ __all__ = [
     "ManualAllocationDeleteCommand",
     "ManualAllocationReleaseCommand",
     "ManualAllocationUpdateCommand",
+    "PendingDemandLoadReadModel",
     "PlannerQueryPort",
     "PlanningCommandPort",
     "PlanningReadRepositoryPort",
