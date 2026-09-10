@@ -14,6 +14,7 @@ from app.infrastructure.sql import (
     Base,
     Project,
     Resource,
+    ResourceAvailabilityRule,
     ResourceRequirement,
     Shift,
     SqlDemandRepository,
@@ -60,6 +61,17 @@ class ServerReadRouteTests(unittest.TestCase):
                 ]
             )
             session.flush()
+            session.add(
+                ResourceAvailabilityRule(
+                    id="SCH-R1",
+                    resource_id="R1",
+                    availability_type="Horaire standard",
+                    start_date=D1,
+                    end_date=date(2026, 12, 31),
+                    weekdays="Lun,Mar,Mer,Jeu,Ven",
+                    active=True,
+                )
+            )
             number = SqlDemandRepository(session, actor_name="Jean").create(
                 {
                     "NumeroProjet": "P-1",
