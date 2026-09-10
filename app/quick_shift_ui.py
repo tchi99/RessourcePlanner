@@ -7,6 +7,11 @@ from nicegui import ui
 
 from .application.allocation_service import AllocationService
 from .application.quick_shift_service import QuickShiftService
+from .domain.confirmation import (
+    CONFIRMATION_CONFIRMED,
+    CONFIRMATION_TENTATIVE,
+    effective_confirmation,
+)
 from .infrastructure.excel import ExcelSegmentRepository, excel_allocation_commands
 from .operational_planning_cell_action import (
     register_operational_planning_cell_shift_opener,
@@ -17,6 +22,8 @@ from .segment_repository import SEGMENT_ORIGIN_FIELD, ensure_segment_fields, num
 
 MODE_QUICK = "quick"
 MODE_SEGMENT = "segment"
+SEGMENT_CONFIRMATION_FIELD = "Confirmation"
+INHERIT_CONFIRMATION = "__inherit__"
 _installed = False
 
 
@@ -64,7 +71,7 @@ def _allocation_service(repo: Any) -> AllocationService:
 
 
 def _quick_shift_service(repo: Any) -> QuickShiftService:
-    ensure_segment_fields(repo, [SEGMENT_ORIGIN_FIELD])
+    ensure_segment_fields(repo, [SEGMENT_ORIGIN_FIELD, SEGMENT_CONFIRMATION_FIELD])
     return QuickShiftService(
         ExcelSegmentRepository(repo),
         excel_allocation_commands(repo),
@@ -86,6 +93,11 @@ def open_cell_shift_dialog(owner: Any, technician: str, day: date) -> None:
             f"{row.get('NomProjet') or ''} · {number(row.get('HeuresPrevues')):g} h"
         )
         for identifier, row in segment_lookup.items()
+    }
+    demands = {
+        str(row.get("NoDemande") or ""): row
+        for row in owner.repo.demands()
+        if row.get("NoDemande")
     }
     project_options, project_names = _project_options(owner.repo)
     capacity, used, free = cell_context.day_standard_load(
@@ -145,6 +157,11 @@ def open_cell_shift_dialog(owner: Any, technician: str, day: date) -> None:
                 min=0.25,
                 step=0.25,
             ).classes("w-full")
+            quick_confirmation = ui.select(
+                [CONFIRMATION_TENTATIVE, CONFIRMATION_CONFIRMED],
+                label="Confirmation du quart rapide",
+                value=CONFIRMATION_CONFIRMED,
+            ).classes("w-full")
             quick_description = ui.input(
                 "Description",
                 value="Quart rapide",
@@ -183,6 +200,16 @@ def open_cell_shift_dialog(owner: Any, technician: str, day: date) -> None:
                     min=0.25,
                     step=0.25,
                 ).classes("w-full")
+                segment_confirmation = ui.select(
+                    {
+                        INHERIT_CONFIRMATION: "Héritée du segment / de la demande",
+                        CONFIRMATION_TENTATIVE: CONFIRMATION_TENTATIVE,
+                        CONFIRMATION_CONFIRMED: CONFIRMATION_CONFIRMED,
+                    },
+                    label="Confirmation du quart",
+                    value=INHERIT_CONFIRMATION,
+                ).classes("w-full")
+                confirmation_hint = ui.label().classes("text-xs muted")
                 segment_overtime = ui.checkbox(
                     "Hors horaire standard",
                     value=capacity <= 0,
@@ -206,6 +233,15 @@ def open_cell_shift_dialog(owner: Any, technician: str, day: date) -> None:
                             min(8.0, lockable, free if free > 0 else 8.0),
                             0.25,
                         )
+                    demand = demands.get(str(segment.get("NoDemande") or ""), {})
+                    inherited_confirmation = effective_confirmation(
+                        segment.get(SEGMENT_CONFIRMATION_FIELD),
+                        demand.get(SEGMENT_CONFIRMATION_FIELD),
+                        default=CONFIRMATION_CONFIRMED,
+                    )
+                    confirmation_hint.text = (
+                        f"Confirmation héritée actuelle : {inherited_confirmation}"
+                    )
                     message, match = cell_context.skill_message(
                         owner.repo,
                         technician,
@@ -222,6 +258,7 @@ def open_cell_shift_dialog(owner: Any, technician: str, day: date) -> None:
             else:
                 segment_select = None
                 segment_hours = None
+                segment_confirmation = None
                 segment_overtime = None
                 segment_note = None
                 ui.label(
@@ -253,6 +290,9 @@ def open_cell_shift_dialog(owner: Any, technician: str, day: date) -> None:
                         hors_horaire=bool(quick_overtime.value),
                         note=str(quick_note.value or ""),
                         description=str(quick_description.value or ""),
+                        confirmation=str(
+                            quick_confirmation.value or CONFIRMATION_CONFIRMED
+                        ),
                     )
                     dialog.close()
                     owner._after_write(
@@ -276,6 +316,13 @@ def open_cell_shift_dialog(owner: Any, technician: str, day: date) -> None:
                     segment_id,
                     segment_hours.value,
                 )
+                confirmation_override = None
+                if segment_confirmation is not None:
+                    selected_confirmation = str(
+                        segment_confirmation.value or INHERIT_CONFIRMATION
+                    )
+                    if selected_confirmation != INHERIT_CONFIRMATION:
+                        confirmation_override = selected_confirmation
                 _allocation_service(owner.repo).create_manual(
                     segment_id,
                     technician,
@@ -287,6 +334,7 @@ def open_cell_shift_dialog(owner: Any, technician: str, day: date) -> None:
                     str(segment_note.value or "")
                     if segment_note is not None
                     else "",
+                    confirmation_override,
                 )
                 dialog.close()
                 owner._after_write(
