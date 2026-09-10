@@ -13,6 +13,7 @@ from .domain.confirmation import (
 )
 from .excel_repository import _date_from_any
 from .segment_repository import SEGMENT_STATUSES, ensure_segment_fields, number
+from .ui_mutation_guard import MutationGate
 
 
 PLAN_TYPES = ["Flexible", "Fixe"]
@@ -117,6 +118,8 @@ def open_segment_editor(
     _ensure_segment_confirmation_field(owner.repo)
     owner.interaction_lock = True
     editing = segment is not None
+    mutation_gate = MutationGate()
+    mutation_actions: list[Any] = []
     demands = {
         str(row.get("NoDemande") or ""): row
         for row in owner.repo.demands()
@@ -371,7 +374,7 @@ def open_segment_editor(
             }
 
         def save() -> None:
-            if not validate():
+            if not validate() or not mutation_gate.begin(mutation_actions):
                 return
             try:
                 service = segment_service(owner.repo)
@@ -382,6 +385,7 @@ def open_segment_editor(
                 else:
                     identifier, summary = service.create(data)
                     message = f"{identifier} créé"
+                mutation_gate.succeed()
                 dialog.close()
                 if summary.get("unallocated_hours", 0) > 0:
                     message += (
@@ -389,27 +393,36 @@ def open_segment_editor(
                     )
                 owner._after_write(message)
             except Exception as exc:
+                mutation_gate.retry(mutation_actions)
                 ui.notify(str(exc), type="negative")
 
         def cancel_segment() -> None:
+            if not mutation_gate.begin(mutation_actions):
+                return
             try:
                 service = segment_service(owner.repo)
                 service.cancel(str(segment["IDSegment"]))
+                mutation_gate.succeed()
                 dialog.close()
                 owner._after_write(f"{segment['IDSegment']} annulé")
             except Exception as exc:
+                mutation_gate.retry(mutation_actions)
                 ui.notify(str(exc), type="negative")
 
         with ui.row().classes("w-full justify-end"):
             ui.button("Annuler", on_click=dialog.close).props("flat no-caps")
             if editing and str(segment.get("Statut") or "") != "Annulé":
-                ui.button(
-                    "Annuler le segment",
-                    icon="cancel",
-                    on_click=cancel_segment,
-                ).props("flat no-caps color=negative")
-            ui.button("Enregistrer", icon="save", on_click=save).props(
-                "unelevated no-caps color=primary"
+                mutation_actions.append(
+                    ui.button(
+                        "Annuler le segment",
+                        icon="cancel",
+                        on_click=cancel_segment,
+                    ).props("flat no-caps color=negative")
+                )
+            mutation_actions.append(
+                ui.button("Enregistrer", icon="save", on_click=save).props(
+                    "unelevated no-caps color=primary"
+                )
             )
 
     dialog.on("hide", lambda _: owner._unlock())
