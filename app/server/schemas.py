@@ -16,7 +16,8 @@ class DemandCreateRequest(StrictRequest):
     submit: bool = False
     project_name: str = ""
     client: str = ""
-    project_manager: str = ""
+    # Project manager is intentionally read-only here: it is projected from Project
+    # and will be mastered by Acumatica rather than copied into WorkforceRequest.
     requester: str | None = None
     work_package_ref: str | None = None
     request_type: str = "Projet"
@@ -37,7 +38,7 @@ class DemandUpdateRequest(StrictRequest):
     project_number: str | None = None
     project_name: str | None = None
     client: str | None = None
-    project_manager: str | None = None
+    # Project manager is read-only in the web/API contract.
     requester: str | None = None
     work_package_ref: str | None = None
     request_type: str | None = None
