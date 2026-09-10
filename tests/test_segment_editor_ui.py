@@ -23,6 +23,18 @@ class SegmentEditorUIArchitectureTests(unittest.TestCase):
         self.assertNotIn("v15_refinements", source)
         self.assertNotIn("rebuild_allocations_refined", source)
 
+    def test_editor_exposes_nullable_segment_confirmation_override(self) -> None:
+        source = (APP / "segment_editor_ui.py").read_text(encoding="utf-8")
+
+        self.assertIn('SEGMENT_CONFIRMATION_FIELD = "Confirmation"', source)
+        self.assertIn("_ensure_segment_confirmation_field(owner.repo)", source)
+        self.assertIn('label="Confirmation du segment"', source)
+        self.assertIn("Héritée de la demande", source)
+        self.assertIn("CONFIRMATION_TENTATIVE", source)
+        self.assertIn("CONFIRMATION_CONFIRMED", source)
+        self.assertIn("def selected_confirmation() -> str | None:", source)
+        self.assertIn("SEGMENT_CONFIRMATION_FIELD: selected_confirmation()", source)
+
     def test_v15_refinements_no_longer_defines_segment_dialog(self) -> None:
         source = (APP / "v15_refinements.py").read_text(encoding="utf-8")
 
