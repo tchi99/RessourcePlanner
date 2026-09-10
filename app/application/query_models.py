@@ -43,6 +43,7 @@ class ShiftReadModel:
     outside_standard_hours: bool = False
     confirmation: str | None = None
     confirmation_override: str | None = None
+    load_kind: str = "FIRM"
     note: str | None = None
 
 
@@ -56,3 +57,5 @@ class PlanningSnapshotReadModel:
     demands: tuple[DemandReadModel, ...]
     segments: tuple[SegmentReadModel, ...]
     shifts: tuple[ShiftReadModel, ...]
+    firm_hours: float = 0.0
+    potential_hours: float = 0.0
