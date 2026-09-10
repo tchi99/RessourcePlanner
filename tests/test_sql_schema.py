@@ -19,6 +19,7 @@ DOMAIN_ENGINE = ROOT / "app" / "domain" / "planning_engine.py"
 DAY = date(2026, 8, 26)
 
 EXPECTED_TABLES = {
+    "command_idempotency_receipts",
     "projects",
     "resources",
     "work_packages",
@@ -42,6 +43,7 @@ class SqlSchemaTests(unittest.TestCase):
         periods = Base.metadata.tables["workforce_request_periods"].c
         period_requirements = Base.metadata.tables["workforce_request_period_requirements"].c
         availability = Base.metadata.tables["resource_availability_rules"].c
+        idempotency = Base.metadata.tables["command_idempotency_receipts"].c
 
         self.assertFalse(requirements.project_id.nullable)
         self.assertTrue(requirements.workforce_request_id.nullable)
@@ -53,6 +55,11 @@ class SqlSchemaTests(unittest.TestCase):
         self.assertFalse(period_requirements.resource_requirement_id.nullable)
         self.assertFalse(period_requirements.period_id.nullable)
         self.assertTrue(availability.resource_id.nullable)
+        self.assertFalse(idempotency.actor_name.nullable)
+        self.assertFalse(idempotency.command_scope.nullable)
+        self.assertFalse(idempotency.idempotency_key.nullable)
+        self.assertFalse(idempotency.request_fingerprint.nullable)
+        self.assertFalse(idempotency.response_json.nullable)
 
     def test_metadata_creates_all_tables_on_sqlite_memory(self) -> None:
         engine = create_engine("sqlite+pysqlite:///:memory:")
@@ -110,6 +117,35 @@ class SqlSchemaTests(unittest.TestCase):
                         origin="REQUEST",
                     )
                 )
+
+    def test_idempotency_key_is_unique_per_actor_and_command_scope(self) -> None:
+        engine = create_engine("sqlite+pysqlite:///:memory:")
+        Base.metadata.create_all(engine)
+        receipts = Base.metadata.tables["command_idempotency_receipts"]
+        base = {
+            "id": "I1",
+            "actor_name": "Jean",
+            "command_scope": "demand.create",
+            "idempotency_key": "same-key",
+            "request_fingerprint": "a" * 64,
+            "response_json": "{}",
+        }
+        with engine.begin() as connection:
+            connection.execute(receipts.insert().values(**base))
+            connection.execute(
+                receipts.insert().values(
+                    **{**base, "id": "I2", "command_scope": "segment.create"}
+                )
+            )
+            connection.execute(
+                receipts.insert().values(
+                    **{**base, "id": "I3", "actor_name": "Other"}
+                )
+            )
+
+        with self.assertRaises(IntegrityError):
+            with engine.begin() as connection:
+                connection.execute(receipts.insert().values(**{**base, "id": "I4"}))
 
     def test_only_holiday_rule_may_be_global(self) -> None:
         engine = create_engine("sqlite+pysqlite:///:memory:")
