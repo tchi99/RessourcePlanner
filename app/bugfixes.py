@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-from datetime import datetime, time as dt_time
+from datetime import date, datetime, time as dt_time, timedelta
 from typing import Any, Callable
 
 from . import features
 from . import ui as ui_module
+from .domain.availability_rules import has_standard_schedule_in_window
 
 
 def _format_excel_time(value: Any) -> str:
@@ -33,30 +34,41 @@ def _format_excel_time(value: Any) -> str:
         minutes = int(round(numeric * 24 * 60)) % (24 * 60)
         return f"{minutes // 60:02d}:{minutes % 60:02d}"
 
-    # Normalize common HH:MM:SS strings without altering unexpected text.
     if len(text) >= 5 and text[2] == ":" and text[:2].isdigit() and text[3:5].isdigit():
         return text[:5]
     return text
 
 
-def _has_active_standard_schedule(repo: Any, technician: str) -> bool:
+def _has_active_standard_schedule(
+    repo: Any,
+    technician: str,
+    start: date | None = None,
+    end: date | None = None,
+) -> bool:
     name = str(technician or "").strip()
     if not name:
         return False
+    records = features.availability_records(repo)
+    if start is not None:
+        return has_standard_schedule_in_window(records, name, start, end or start)
     return any(
         str(row.get("Type") or "").strip() == "Horaire standard"
         and features._is_active(row.get("Actif"))
         and str(row.get("Technicien") or "").strip() == name
-        for row in features.availability_records(repo)
+        for row in records
     )
 
 
-def schedulable_technicians(repo: Any) -> list[dict[str, Any]]:
-    """Return only employees with an explicitly configured active standard schedule."""
+def schedulable_technicians(
+    repo: Any,
+    start: date | None = None,
+    end: date | None = None,
+) -> list[dict[str, Any]]:
+    """Return employees whose standard schedule covers the requested display window."""
     return [
         tech
         for tech in repo.technicians()
-        if _has_active_standard_schedule(repo, tech.get("name", ""))
+        if _has_active_standard_schedule(repo, tech.get("name", ""), start, end)
     ]
 
 
@@ -64,18 +76,14 @@ def _run_with_schedulable_technicians(
     planner: ui_module.PlannerUI,
     callback: Callable[..., Any],
     *args: Any,
+    start: date | None = None,
+    end: date | None = None,
     **kwargs: Any,
 ) -> Any:
-    """Temporarily filter repo.technicians while a legacy planning dialog is built.
-
-    The availability editor deliberately keeps the full technician list, otherwise an
-    employee without a schedule could never be assigned their first standard schedule.
-    Newer explicit UI adapters should call ``schedulable_technicians`` directly instead
-    of relying on this compatibility wrapper.
-    """
+    """Temporarily filter repo.technicians while a legacy planning dialog is built."""
     repo = planner.repo
     original = repo.technicians
-    filtered = schedulable_technicians(repo)
+    filtered = schedulable_technicians(repo, start, end)
     repo.technicians = lambda: filtered
     try:
         return callback(*args, **kwargs)
@@ -87,8 +95,6 @@ def install_bugfixes() -> None:
     if getattr(features, "_v12_bugfixes_installed", False):
         return
 
-    # Normalize Excel time fractions once when availability rows are read. This fixes both
-    # the Disponibilités grid and the green hour labels in the planning calendar.
     original_records = features.availability_records
 
     def normalized_records(repo: Any) -> list[dict[str, Any]]:
@@ -100,12 +106,20 @@ def install_bugfixes() -> None:
 
     features.availability_records = normalized_records
 
-    # No implicit 08:00-16:00 fallback. An employee must have an explicit active standard
-    # schedule before they are considered available/schedulable.
     original_availability_for_day = features.availability_for_day
 
     def availability_for_day(repo: Any, technician: str, day: Any) -> dict[str, Any]:
-        if not _has_active_standard_schedule(repo, technician):
+        target_day = day if isinstance(day, date) else None
+        if target_day is not None and not _has_active_standard_schedule(
+            repo, technician, target_day, target_day
+        ):
+            return {
+                "available": False,
+                "reason": "Aucun horaire standard pour cette date",
+                "hours": "",
+                "type": "Non planifiable",
+            }
+        if target_day is None and not _has_active_standard_schedule(repo, technician):
             return {
                 "available": False,
                 "reason": "Aucun horaire standard",
@@ -116,20 +130,22 @@ def install_bugfixes() -> None:
 
     features.availability_for_day = availability_for_day
 
-    # Legacy planning/effort dialogs still read repo.technicians() directly. The explicit
-    # demand editor does not: it calls schedulable_technicians() itself and is installed
-    # later by the composition root, so it must not be wrapped here.
     original_render_planning = ui_module.PlannerUI.render_planning
     original_effort_dialog = ui_module.PlannerUI.open_effort_dialog
 
     def render_planning(self: ui_module.PlannerUI) -> Any:
-        return _run_with_schedulable_technicians(self, lambda: original_render_planning(self))
+        start = self.current_week
+        return _run_with_schedulable_technicians(
+            self,
+            lambda: original_render_planning(self),
+            start=start,
+            end=start + timedelta(days=6),
+        )
 
     def open_effort_dialog(self: ui_module.PlannerUI, effort: dict[str, Any]) -> Any:
         return _run_with_schedulable_technicians(
             self, lambda: original_effort_dialog(self, effort)
         )
-
 
     ui_module.PlannerUI.render_planning = render_planning
     ui_module.PlannerUI.open_effort_dialog = open_effort_dialog

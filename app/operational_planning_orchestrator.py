@@ -29,7 +29,7 @@ class OperationalPlanningBindings:
     """All dependencies needed to orchestrate one operational-planning render."""
 
     week_days: Callable[[Any], list[Any]]
-    schedulable_technicians: Callable[[Any], list[dict[str, Any]]]
+    schedulable_technicians: Callable[[Any, Any, Any], list[dict[str, Any]]]
     resource_class_map: Callable[[Any], dict[str, str]]
     weekly_resource_stats: Callable[[Any, Any], dict[str, dict[str, Any]]]
     demand_lookup: Callable[[Any], dict[str, dict[str, Any]]]
@@ -55,7 +55,7 @@ def render_operational_planning(
     register_operational_planning_drop_handler(owner, bindings=bindings.drop_bindings)
 
     days = bindings.week_days(owner.current_week)
-    techs = bindings.schedulable_technicians(owner.repo)
+    techs = bindings.schedulable_technicians(owner.repo, days[0], days[-1])
     class_map = bindings.resource_class_map(owner.repo)
     stats_provider = weekly_stats_provider or bindings.weekly_resource_stats
     week_stats = stats_provider(owner.repo, owner.current_week)

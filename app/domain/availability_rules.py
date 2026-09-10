@@ -35,6 +35,16 @@ def _record_applies(record: dict[str, Any], day: date) -> bool:
     return not ((start and day < start) or (end and day > end))
 
 
+def _record_overlaps(
+    record: dict[str, Any],
+    window_start: date,
+    window_end: date,
+) -> bool:
+    start = _date_from_value(record.get("DateDebut"))
+    end = _date_from_value(record.get("DateFin"))
+    return not ((end and end < window_start) or (start and start > window_end))
+
+
 def _weekday_matches(record: dict[str, Any], day: date) -> bool:
     raw = str(record.get("JoursSemaine") or "").strip()
     if not raw:
@@ -83,6 +93,33 @@ def has_standard_schedule(records: Iterable[dict[str, Any]], resource_id: str) -
     )
 
 
+def has_standard_schedule_in_window(
+    records: Iterable[dict[str, Any]],
+    resource_id: str,
+    window_start: date,
+    window_end: date,
+) -> bool:
+    """Return whether a resource has an active employment schedule in the window.
+
+    This deliberately checks the standard-schedule date envelope, not vacation/holiday
+    exceptions and not weekday capacity. A resource whose standard schedule ended before
+    the displayed week is therefore hidden, while history and past shifts remain intact.
+    """
+
+    resource_id = str(resource_id or "").strip()
+    if not resource_id:
+        return False
+    if window_end < window_start:
+        window_start, window_end = window_end, window_start
+    return any(
+        str(row.get("Type") or "").strip() == "Horaire standard"
+        and is_active(row.get("Actif"))
+        and str(row.get("Technicien") or "").strip() == resource_id
+        and _record_overlaps(row, window_start, window_end)
+        for row in records
+    )
+
+
 def availability_hours_for_day(
     records: Iterable[dict[str, Any]],
     resource_id: str,
@@ -91,7 +128,7 @@ def availability_hours_for_day(
     """Return historical schedulable hours using an in-memory availability snapshot."""
     rows = [row for row in records if is_active(row.get("Actif"))]
     resource_id = str(resource_id or "").strip()
-    if not has_standard_schedule(rows, resource_id):
+    if not has_standard_schedule_in_window(rows, resource_id, day, day):
         return 0.0
 
     for row in rows:
@@ -137,12 +174,12 @@ def outside_schedule_eligible_for_day(
     """Return whether refined V1.5 may suggest outside-schedule work that day.
 
     The production fallback excludes vacation, but allows weekends, holidays and
-    evenings on normal workdays. Resources still require an explicit active standard
-    schedule before they are schedulable at all.
+    evenings on normal workdays. The resource must still be inside the date envelope
+    of an explicit active standard schedule on the requested day.
     """
     rows = [row for row in records if is_active(row.get("Actif"))]
     resource_id = str(resource_id or "").strip()
-    if not has_standard_schedule(rows, resource_id):
+    if not has_standard_schedule_in_window(rows, resource_id, day, day):
         return False
     for row in rows:
         if str(row.get("Type") or "").strip() != "Vacances":

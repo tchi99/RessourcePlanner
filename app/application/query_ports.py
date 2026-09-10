@@ -21,6 +21,13 @@ class PlannerQueryPort(Protocol):
 
     def list_resources(self, *, active_only: bool = True) -> Sequence[ResourceReadModel]: ...
 
+    def list_schedulable_resources(
+        self,
+        *,
+        start: date,
+        end: date,
+    ) -> Sequence[ResourceReadModel]: ...
+
     def list_demands(self) -> Sequence[DemandReadModel]: ...
 
     def get_demand(self, number: str) -> DemandReadModel | None: ...
