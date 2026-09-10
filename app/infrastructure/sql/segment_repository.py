@@ -47,8 +47,9 @@ def _bool(value: object) -> bool:
 class SqlSegmentRepository(SegmentRepositoryPort):
     """SQLAlchemy implementation of the ResourceRequirement/segment port."""
 
-    def __init__(self, session: Session) -> None:
+    def __init__(self, session: Session, *, actor_name: str = "") -> None:
         self._session = session
+        self._actor_name = _text(actor_name)
 
     def _row_query(self):
         return (
@@ -95,10 +96,12 @@ class SqlSegmentRepository(SegmentRepositoryPort):
             outside_standard_hours=bool(requirement.outside_standard_hours_allowed),
             confirmation=_optional_text(requirement.confirmation),
             confirmation_overridden=bool(requirement.confirmation_overridden),
-            # Ownership is projected, never duplicated on the requirement itself.
+            # Request ownership is projected; ad-hoc work falls back to its creator.
             project_manager=_optional_text(project.project_manager_name),
             requester=(
-                _optional_text(request.requester_name) if request is not None else None
+                _optional_text(request.requester_name)
+                if request is not None
+                else _optional_text(requirement.created_by_name)
             ),
         )
 
@@ -280,6 +283,7 @@ class SqlSegmentRepository(SegmentRepositoryPort):
             confirmation=confirmation,
             confirmation_overridden=overridden,
             origin=origin,
+            created_by_name=_optional_text(values.get("CreePar")) or self._actor_name or None,
         )
         self._session.add(requirement)
         self._session.flush()
