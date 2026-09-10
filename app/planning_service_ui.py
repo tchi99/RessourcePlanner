@@ -7,17 +7,35 @@ from nicegui import ui
 from . import v15_refinements
 from .application.runtime_services import planning_service
 from . import ui as ui_module
+from .ui_mutation_guard import MutationGate
+
+
+RECALCULATE_REOPEN_SECONDS = 0.75
+
+
+def _recalculate_gate(owner: ui_module.PlannerUI) -> MutationGate:
+    gate = getattr(owner, "_planning_recalculate_gate", None)
+    if not isinstance(gate, MutationGate):
+        gate = MutationGate()
+        owner._planning_recalculate_gate = gate
+    return gate
 
 
 def _recalculate_via_service(self: ui_module.PlannerUI) -> None:
     """UI adapter for the explicit planning application service.
 
     Presentation remains a NiceGUI concern; recalculation/orchestration crosses the
-    application-service boundary. The runtime service resolves the engine selected by
-    planning_cutover when the user clicks Recalculer.
+    application-service boundary. A completed gate remains closed briefly after a
+    successful rebuild so queued double-click events are discarded, then reopens for a
+    later deliberate recalculation.
     """
+    gate = _recalculate_gate(self)
+    if not gate.begin():
+        return
     try:
         summary = planning_service(self.repo).rebuild()
+        gate.succeed()
+        ui.timer(RECALCULATE_REOPEN_SECONDS, gate.reset, once=True)
         self._after_write(
             f"Allocations recalculées : {summary['allocated_hours']:g} h allouées"
             + (
@@ -32,6 +50,7 @@ def _recalculate_via_service(self: ui_module.PlannerUI) -> None:
             )
         )
     except Exception as exc:
+        gate.reset()
         ui.notify(str(exc), type="negative")
 
 
@@ -39,9 +58,8 @@ def install_planning_service_ui() -> None:
     """Bind the historical Recalculer entry point to PlanningService.
 
     This is a transitional composition binding while the V1.x operational renderer
-    still lives in ``v15_refinements``/``v17``. It is installed once at composition
-    time, never during a render. Tranche 4 can delete this binding when the planning
-    page becomes an explicit UI module that calls PlanningService directly.
+    still owns the button. It is installed once at composition time and keeps duplicate
+    recalculation events out of the application service during the V1 cutover period.
     """
     if getattr(v15_refinements, "_planning_service_ui_installed", False):
         return
