@@ -14,6 +14,7 @@ from ...application.query_models import (
 from ...application.query_ports import PlannerQueryPort
 from ...application.read_models import DemandPeriodReadModel, DemandReadModel, SegmentReadModel
 from ...domain.confirmation import effective_confirmation
+from ...domain.workload import WorkloadTotals, workload_kind
 from .demand_period_repository import SqlDemandPeriodRepository
 from .demand_repository import SqlDemandRepository
 from .models import Project, Resource, ResourceRequirement, Shift
@@ -160,27 +161,31 @@ class SqlPlannerQueryRepository(PlannerQueryPort):
                 Shift.id,
             )
         ).all()
-        return tuple(
-            ShiftReadModel(
-                allocation_id=_text(shift.legacy_allocation_id) or shift.id,
-                segment_id=_text(requirement.legacy_segment_id) or requirement.id,
-                resource_id=resource.id,
-                resource_name=resource.name,
-                work_date=shift.work_date,
-                hours=float(shift.hours),
-                allocation_type=_optional_text(shift.allocation_type),
-                source=_text(shift.source) or "AUTO",
-                locked=bool(shift.locked),
-                outside_standard_hours=bool(shift.outside_standard_hours),
-                confirmation=effective_confirmation(
-                    shift.confirmation,
-                    requirement.confirmation,
-                ),
-                confirmation_override=_optional_text(shift.confirmation),
-                note=_optional_text(shift.note),
+        result: list[ShiftReadModel] = []
+        for shift, requirement, resource in rows:
+            confirmation = effective_confirmation(
+                shift.confirmation,
+                requirement.confirmation,
             )
-            for shift, requirement, resource in rows
-        )
+            result.append(
+                ShiftReadModel(
+                    allocation_id=_text(shift.legacy_allocation_id) or shift.id,
+                    segment_id=_text(requirement.legacy_segment_id) or requirement.id,
+                    resource_id=resource.id,
+                    resource_name=resource.name,
+                    work_date=shift.work_date,
+                    hours=float(shift.hours),
+                    allocation_type=_optional_text(shift.allocation_type),
+                    source=_text(shift.source) or "AUTO",
+                    locked=bool(shift.locked),
+                    outside_standard_hours=bool(shift.outside_standard_hours),
+                    confirmation=confirmation,
+                    confirmation_override=_optional_text(shift.confirmation),
+                    load_kind=workload_kind(confirmation),
+                    note=_optional_text(shift.note),
+                )
+            )
+        return tuple(result)
 
     def planning_snapshot(
         self,
@@ -193,11 +198,17 @@ class SqlPlannerQueryRepository(PlannerQueryPort):
         demands = tuple(
             row for row in self.list_demands() if _demand_overlaps(row, start, end)
         )
+        shifts = self.list_shifts(start=start, end=end)
+        totals = WorkloadTotals()
+        for shift in shifts:
+            totals = totals.add(shift.hours, shift.confirmation)
         return PlanningSnapshotReadModel(
             start=start,
             end=end,
             resources=self.list_resources(active_only=True),
             demands=demands,
             segments=self.list_segments(start=start, end=end, include_cancelled=False),
-            shifts=self.list_shifts(start=start, end=end),
+            shifts=shifts,
+            firm_hours=totals.firm_hours,
+            potential_hours=totals.potential_hours,
         )
