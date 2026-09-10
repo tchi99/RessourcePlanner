@@ -6,6 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ...application.query_models import (
+    PendingDemandLoadReadModel,
     PlanningSnapshotReadModel,
     ProjectReadModel,
     ResourceReadModel,
@@ -14,10 +15,21 @@ from ...application.query_models import (
 from ...application.query_ports import PlannerQueryPort
 from ...application.read_models import DemandPeriodReadModel, DemandReadModel, SegmentReadModel
 from ...domain.confirmation import effective_confirmation
-from ...domain.workload import WorkloadTotals, workload_kind
+from ...domain.demand_periods import (
+    DemandPeriodDefinition,
+    projected_hours_in_window,
+    projected_hours_without_double_counting,
+    projected_period_hours_in_window_without_double_counting,
+)
+from ...domain.workload import (
+    PENDING_LOAD_ADDITIVE,
+    WorkloadTotals,
+    pending_load_mode,
+    workload_kind,
+)
 from .demand_period_repository import SqlDemandPeriodRepository
 from .demand_repository import SqlDemandRepository
-from .models import Project, Resource, ResourceRequirement, Shift
+from .models import Project, Resource, ResourceRequirement, Shift, WorkforceRequest
 from .segment_repository import SqlSegmentRepository
 
 
@@ -48,6 +60,21 @@ def _demand_overlaps(row: DemandReadModel, start: date, end: date) -> bool:
     if row.desired_start is not None and row.desired_start > end:
         return False
     return True
+
+
+def _period_definition(row: DemandPeriodReadModel) -> DemandPeriodDefinition:
+    return DemandPeriodDefinition(
+        period_id=row.period_id,
+        start_date=row.start_date,
+        end_date=row.end_date,
+        hours=row.hours,
+        kind=row.kind,
+        alternative_group=row.alternative_group,
+        confirmation=row.confirmation,
+        proposed_resource=row.proposed_resource,
+        resource_count=row.resource_count,
+        note=row.note,
+    )
 
 
 class SqlPlannerQueryRepository(PlannerQueryPort):
@@ -108,6 +135,121 @@ class SqlPlannerQueryRepository(PlannerQueryPort):
 
     def list_demand_periods(self, number: str) -> tuple[DemandPeriodReadModel, ...]:
         return tuple(self._periods.list_for_demand(number))
+
+    def list_pending_loads(
+        self,
+        *,
+        start: date,
+        end: date,
+    ) -> tuple[PendingDemandLoadReadModel, ...]:
+        """Project submitted requests without mutating or double-counting approved work."""
+
+        requests = self._session.scalars(
+            select(WorkforceRequest)
+            .where(WorkforceRequest.status == "Soumise")
+            .order_by(
+                WorkforceRequest.desired_start,
+                WorkforceRequest.legacy_demand_number,
+                WorkforceRequest.id,
+            )
+        ).all()
+        result: list[PendingDemandLoadReadModel] = []
+
+        for request in requests:
+            number = _text(request.legacy_demand_number) or request.id
+            demand = self._demands.get(number)
+            if demand is None:
+                continue
+
+            periods = tuple(self._periods.list_for_demand(number))
+            if periods:
+                definitions = tuple(_period_definition(row) for row in periods)
+                selections = {
+                    _text(row.alternative_group): row.period_id
+                    for row in periods
+                    if row.selected and _text(row.alternative_group)
+                }
+                proposal_start = min(row.start_date for row in periods)
+                proposal_end = max(row.end_date for row in periods)
+                if proposal_end < start or proposal_start > end:
+                    continue
+                projected_hours = projected_hours_without_double_counting(
+                    definitions,
+                    selections,
+                )
+                window_hours = projected_period_hours_in_window_without_double_counting(
+                    definitions,
+                    start,
+                    end,
+                    selections,
+                )
+            else:
+                proposal_start = demand.desired_start
+                if proposal_start is None:
+                    continue
+                proposal_end = demand.desired_end or proposal_start
+                if proposal_end < start or proposal_start > end:
+                    continue
+                projected_hours = demand.estimated_hours
+                window_hours = (
+                    projected_hours_in_window(
+                        projected_hours,
+                        proposal_start,
+                        proposal_end,
+                        start,
+                        end,
+                    )
+                    if projected_hours is not None
+                    else 0.0
+                )
+
+            current = self._session.scalars(
+                select(ResourceRequirement).where(
+                    ResourceRequirement.workforce_request_id == request.id,
+                    ResourceRequirement.status != "Annulé",
+                )
+            ).all()
+            current_plan_hours = round(
+                sum(
+                    projected_hours_in_window(
+                        float(requirement.planned_hours),
+                        requirement.start_date,
+                        requirement.end_date,
+                        start,
+                        end,
+                    )
+                    for requirement in current
+                ),
+                2,
+            )
+            mode = pending_load_mode(has_current_plan=bool(current))
+            delta_hours = (
+                round(window_hours - current_plan_hours, 2)
+                if projected_hours is not None
+                else None
+            )
+            result.append(
+                PendingDemandLoadReadModel(
+                    demand_number=number,
+                    project_number=demand.project_number,
+                    project_name=demand.project_name,
+                    start_date=proposal_start,
+                    end_date=proposal_end,
+                    projected_hours=projected_hours,
+                    window_hours=window_hours,
+                    mode=mode,
+                    current_plan_hours=current_plan_hours,
+                    delta_hours=delta_hours,
+                    resource_count=demand.resource_count,
+                    required_competencies=demand.required_competencies,
+                    proposed_resource=demand.proposed_resource,
+                    work_package_ref=demand.work_package_ref,
+                    confirmation=demand.confirmation,
+                    periods=periods,
+                )
+            )
+
+        return tuple(result)
 
     def list_segments(
         self,
@@ -199,9 +341,26 @@ class SqlPlannerQueryRepository(PlannerQueryPort):
             row for row in self.list_demands() if _demand_overlaps(row, start, end)
         )
         shifts = self.list_shifts(start=start, end=end)
+        pending_loads = self.list_pending_loads(start=start, end=end)
         totals = WorkloadTotals()
         for shift in shifts:
             totals = totals.add(shift.hours, shift.confirmation)
+        additive_pending = round(
+            sum(
+                row.window_hours
+                for row in pending_loads
+                if row.mode == PENDING_LOAD_ADDITIVE
+            ),
+            2,
+        )
+        replacement_proposals = round(
+            sum(
+                row.window_hours
+                for row in pending_loads
+                if row.mode != PENDING_LOAD_ADDITIVE
+            ),
+            2,
+        )
         return PlanningSnapshotReadModel(
             start=start,
             end=end,
@@ -209,6 +368,8 @@ class SqlPlannerQueryRepository(PlannerQueryPort):
             demands=demands,
             segments=self.list_segments(start=start, end=end, include_cancelled=False),
             shifts=shifts,
+            pending_loads=pending_loads,
             firm_hours=totals.firm_hours,
-            potential_hours=totals.potential_hours,
+            potential_hours=round(totals.potential_hours + additive_pending, 2),
+            replacement_proposal_hours=replacement_proposals,
         )
