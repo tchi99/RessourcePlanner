@@ -81,6 +81,7 @@ def _request_dialog(
     self.interaction_lock = True
     editing = demand is not None
     mutation_gate = MutationGate()
+    mutation_actions: list[Any] = []
     project_options, project_lookup = _project_data(self.repo)
     work_package_options, work_package_lookup = _work_package_data(self.repo)
     competencies = self.repo.competencies()
@@ -266,7 +267,7 @@ def _request_dialog(
             return True
 
         def save_edit() -> None:
-            if not validate() or not mutation_gate.begin():
+            if not validate() or not mutation_gate.begin(mutation_actions):
                 return
             try:
                 reapproval_required = demand_service(self.repo).modify(
@@ -281,11 +282,11 @@ def _request_dialog(
                     message += " · nouvelle approbation requise"
                 self._after_write(message)
             except Exception as exc:
-                mutation_gate.retry()
+                mutation_gate.retry(mutation_actions)
                 ui.notify(str(exc), type="negative")
 
         def save_draft() -> None:
-            if not validate() or not mutation_gate.begin():
+            if not validate() or not mutation_gate.begin(mutation_actions):
                 return
             try:
                 number = demand_service(self.repo).create(payload(), submit=False)
@@ -293,11 +294,11 @@ def _request_dialog(
                 dialog.close()
                 self._after_write(f"{number} enregistré comme brouillon")
             except Exception as exc:
-                mutation_gate.retry()
+                mutation_gate.retry(mutation_actions)
                 ui.notify(str(exc), type="negative")
 
         def submit_new() -> None:
-            if not validate() or not mutation_gate.begin():
+            if not validate() or not mutation_gate.begin(mutation_actions):
                 return
             try:
                 number = demand_service(self.repo).create(payload(), submit=True)
@@ -305,21 +306,27 @@ def _request_dialog(
                 dialog.close()
                 self._after_write(f"{number} soumise pour approbation")
             except Exception as exc:
-                mutation_gate.retry()
+                mutation_gate.retry(mutation_actions)
                 ui.notify(str(exc), type="negative")
 
         with ui.row().classes("w-full justify-end"):
             ui.button("Annuler", on_click=dialog.close).props("flat no-caps")
             if editing:
-                ui.button("Enregistrer", icon="save", on_click=save_edit).props(
-                    "unelevated no-caps color=primary"
+                mutation_actions.append(
+                    ui.button("Enregistrer", icon="save", on_click=save_edit).props(
+                        "unelevated no-caps color=primary"
+                    )
                 )
             else:
-                ui.button("Brouillon", icon="save", on_click=save_draft).props(
-                    "outline no-caps"
+                mutation_actions.append(
+                    ui.button("Brouillon", icon="save", on_click=save_draft).props(
+                        "outline no-caps"
+                    )
                 )
-                ui.button("Soumettre", icon="send", on_click=submit_new).props(
-                    "unelevated no-caps color=primary"
+                mutation_actions.append(
+                    ui.button("Soumettre", icon="send", on_click=submit_new).props(
+                        "unelevated no-caps color=primary"
+                    )
                 )
 
     dialog.on("hide", lambda _: self._unlock())
