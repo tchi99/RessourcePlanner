@@ -30,12 +30,17 @@ def _recalculate_via_service(self: ui_module.PlannerUI) -> None:
     later deliberate recalculation.
     """
     gate = _recalculate_gate(self)
-    if not gate.begin():
+    actions = [getattr(self, "_planning_recalculate_action", None)]
+    if not gate.begin(actions):
         return
     try:
         summary = planning_service(self.repo).rebuild()
         gate.succeed()
-        ui.timer(RECALCULATE_REOPEN_SECONDS, gate.reset, once=True)
+        ui.timer(
+            RECALCULATE_REOPEN_SECONDS,
+            lambda: gate.reset(actions),
+            once=True,
+        )
         self._after_write(
             f"Allocations recalculées : {summary['allocated_hours']:g} h allouées"
             + (
@@ -50,7 +55,7 @@ def _recalculate_via_service(self: ui_module.PlannerUI) -> None:
             )
         )
     except Exception as exc:
-        gate.reset()
+        gate.reset(actions)
         ui.notify(str(exc), type="negative")
 
 
