@@ -16,6 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 MIGRATIONS = ROOT / "migrations"
 INITIAL_REVISION = MIGRATIONS / "versions" / "0001_initial_planning_schema.py"
 EXPECTED_TABLES = {
+    "command_idempotency_receipts",
     "projects",
     "resources",
     "work_packages",
@@ -110,6 +111,8 @@ class SqlMigrationTests(unittest.TestCase):
             self.assertIn("CREATE TABLE WORKFORCE_REQUEST_PERIODS", ddl, url)
             self.assertIn("CREATE TABLE WORKFORCE_REQUEST_PERIOD_SELECTIONS", ddl, url)
             self.assertIn("CREATE TABLE WORKFORCE_REQUEST_PERIOD_REQUIREMENTS", ddl, url)
+            self.assertIn("CREATE TABLE COMMAND_IDEMPOTENCY_RECEIPTS", ddl, url)
+            self.assertIn("UQ_COMMAND_IDEMPOTENCY_ACTOR_SCOPE_KEY", ddl, url)
             self.assertIn("WORKFORCE_REQUEST_ID", ddl, url)
 
 
