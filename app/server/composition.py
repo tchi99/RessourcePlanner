@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from ..application import (
     AllocationService,
     ApplicationFacade,
+    IdempotentCommandExecutor,
     PlannerQueryPort,
     PlanningService,
 )
@@ -13,6 +14,7 @@ from ..application.quick_shift_service import QuickShiftService
 from ..application.segment_service import SegmentService
 from ..infrastructure.sql import (
     SqlAllocationCommandAdapter,
+    SqlCommandIdempotencyAdapter,
     SqlDemandPeriodRepository,
     SqlDemandRepository,
     SqlPeriodAwareApprovedDemandSyncAdapter,
@@ -52,6 +54,19 @@ def build_sql_facade(
         allocations=AllocationService(allocation_commands),
         quick_shifts=QuickShiftService(segments, allocation_commands),
         planning=PlanningService(planning_commands),
+    )
+
+
+def build_sql_idempotency_executor(
+    session: Session,
+    *,
+    actor_name: str = "api",
+) -> IdempotentCommandExecutor:
+    """Compose durable command replay inside the same transaction as the facade."""
+
+    actor = str(actor_name or "api").strip() or "api"
+    return IdempotentCommandExecutor(
+        SqlCommandIdempotencyAdapter(session, actor_name=actor)
     )
 
 
