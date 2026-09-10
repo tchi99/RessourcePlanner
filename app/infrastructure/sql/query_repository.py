@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import date
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from ...application.query_models import (
@@ -29,7 +29,14 @@ from ...domain.workload import (
 )
 from .demand_period_repository import SqlDemandPeriodRepository
 from .demand_repository import SqlDemandRepository
-from .models import Project, Resource, ResourceRequirement, Shift, WorkforceRequest
+from .models import (
+    Project,
+    Resource,
+    ResourceAvailabilityRule,
+    ResourceRequirement,
+    Shift,
+    WorkforceRequest,
+)
 from .segment_repository import SqlSegmentRepository
 
 
@@ -77,6 +84,19 @@ def _period_definition(row: DemandPeriodReadModel) -> DemandPeriodDefinition:
     )
 
 
+def _resource_read_model(resource: Resource) -> ResourceReadModel:
+    return ResourceReadModel(
+        id=resource.id,
+        name=resource.name,
+        resource_class=_optional_text(resource.resource_class),
+        competencies=_optional_text(resource.competencies),
+        note=_optional_text(resource.note),
+        active=bool(resource.active),
+        sort_order=int(resource.sort_order or 0),
+        external_id=_optional_text(resource.external_id),
+    )
+
+
 class SqlPlannerQueryRepository(PlannerQueryPort):
     """Read-only SQL projection for the future web frontend."""
 
@@ -113,19 +133,40 @@ class SqlPlannerQueryRepository(PlannerQueryPort):
         rows = self._session.scalars(
             statement.order_by(Resource.sort_order, Resource.name)
         ).all()
-        return tuple(
-            ResourceReadModel(
-                id=resource.id,
-                name=resource.name,
-                resource_class=_optional_text(resource.resource_class),
-                competencies=_optional_text(resource.competencies),
-                note=_optional_text(resource.note),
-                active=bool(resource.active),
-                sort_order=int(resource.sort_order or 0),
-                external_id=_optional_text(resource.external_id),
-            )
-            for resource in rows
+        return tuple(_resource_read_model(resource) for resource in rows)
+
+    def list_schedulable_resources(
+        self,
+        *,
+        start: date,
+        end: date,
+    ) -> tuple[ResourceReadModel, ...]:
+        """Return active resources whose standard-schedule envelope overlaps the window."""
+
+        if end < start:
+            start, end = end, start
+        scheduled_ids = select(ResourceAvailabilityRule.resource_id).where(
+            ResourceAvailabilityRule.availability_type == "Horaire standard",
+            ResourceAvailabilityRule.active.is_(True),
+            ResourceAvailabilityRule.resource_id.is_not(None),
+            or_(
+                ResourceAvailabilityRule.start_date.is_(None),
+                ResourceAvailabilityRule.start_date <= end,
+            ),
+            or_(
+                ResourceAvailabilityRule.end_date.is_(None),
+                ResourceAvailabilityRule.end_date >= start,
+            ),
         )
+        rows = self._session.scalars(
+            select(Resource)
+            .where(
+                Resource.active.is_(True),
+                Resource.id.in_(scheduled_ids),
+            )
+            .order_by(Resource.sort_order, Resource.name)
+        ).all()
+        return tuple(_resource_read_model(resource) for resource in rows)
 
     def list_demands(self) -> tuple[DemandReadModel, ...]:
         return tuple(self._demands.list())
@@ -364,7 +405,7 @@ class SqlPlannerQueryRepository(PlannerQueryPort):
         return PlanningSnapshotReadModel(
             start=start,
             end=end,
-            resources=self.list_resources(active_only=True),
+            resources=self.list_schedulable_resources(start=start, end=end),
             demands=demands,
             segments=self.list_segments(start=start, end=end, include_cancelled=False),
             shifts=shifts,
