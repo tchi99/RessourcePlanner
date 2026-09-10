@@ -6,10 +6,7 @@ from nicegui import ui
 
 from .application.runtime_services import demand_service
 from .segment_repository import number, segment_records
-
-
-
-
+from .ui_mutation_guard import MutationGate
 
 
 class DemandRequestsPage:
@@ -188,6 +185,8 @@ class DemandRequestsPage:
 
     def _open_approval_dialog(self, demand: dict[str, Any]) -> None:
         self.owner.interaction_lock = True
+        mutation_gate = MutationGate()
+        mutation_actions: list[Any] = []
 
         with ui.dialog() as dialog, ui.card().classes("w-[560px] max-w-full"):
             ui.label(f"Approuver {demand.get('NoDemande')}").classes(
@@ -200,20 +199,26 @@ class DemandRequestsPage:
             comment = ui.textarea("Commentaire d'approbation").classes("w-full")
 
             def approve() -> None:
+                if not mutation_gate.begin(mutation_actions):
+                    return
                 try:
                     demand_service(self.owner.repo).approve(
                         str(demand["NoDemande"]),
                         str(comment.value or ""),
                     )
+                    mutation_gate.succeed()
                     dialog.close()
                     self.owner._after_write("Demande approuvée")
                 except Exception as exc:
+                    mutation_gate.retry(mutation_actions)
                     ui.notify(str(exc), type="negative")
 
             with ui.row().classes("w-full justify-end"):
                 ui.button("Annuler", on_click=dialog.close).props("flat no-caps")
-                ui.button("Approuver", icon="check", on_click=approve).props(
-                    "unelevated no-caps color=positive"
+                mutation_actions.append(
+                    ui.button("Approuver", icon="check", on_click=approve).props(
+                        "unelevated no-caps color=positive"
+                    )
                 )
 
         dialog.on("hide", lambda _: self.owner._unlock())
@@ -221,6 +226,8 @@ class DemandRequestsPage:
 
     def _open_correction_dialog(self, demand: dict[str, Any]) -> None:
         self.owner.interaction_lock = True
+        mutation_gate = MutationGate()
+        mutation_actions: list[Any] = []
 
         with ui.dialog() as dialog, ui.card().classes("w-[560px] max-w-full"):
             ui.label(
@@ -229,22 +236,29 @@ class DemandRequestsPage:
             comment = ui.textarea("Correction demandée").classes("w-full")
 
             def send_back() -> None:
+                if not mutation_gate.begin(mutation_actions):
+                    return
                 try:
                     demand_service(self.owner.repo).request_correction(
                         str(demand["NoDemande"]),
                         str(comment.value or ""),
                     )
+                    mutation_gate.succeed()
                     dialog.close()
                     self.owner._after_write("Demande retournée pour correction")
                 except ValueError as exc:
+                    mutation_gate.retry(mutation_actions)
                     ui.notify(str(exc), type="warning")
                 except Exception as exc:
+                    mutation_gate.retry(mutation_actions)
                     ui.notify(str(exc), type="negative")
 
             with ui.row().classes("w-full justify-end"):
                 ui.button("Annuler", on_click=dialog.close).props("flat no-caps")
-                ui.button("Envoyer", icon="reply", on_click=send_back).props(
-                    "unelevated no-caps color=warning"
+                mutation_actions.append(
+                    ui.button("Envoyer", icon="reply", on_click=send_back).props(
+                        "unelevated no-caps color=warning"
+                    )
                 )
 
         dialog.on("hide", lambda _: self.owner._unlock())
