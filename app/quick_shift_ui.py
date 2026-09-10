@@ -110,6 +110,7 @@ def open_cell_shift_dialog(owner: Any, technician: str, day: date) -> None:
 
     owner.interaction_lock = True
     mutation_gate = MutationGate()
+    mutation_actions: list[Any] = []
     with ui.dialog() as dialog, ui.card().classes("w-[780px] max-w-full"):
         ui.label("Planifier un quart").classes("text-xl font-bold")
         ui.label(f"{technician} · {day.strftime('%d/%m/%Y')}").classes(
@@ -277,13 +278,13 @@ def open_cell_shift_dialog(owner: Any, technician: str, day: date) -> None:
         refresh_mode()
 
         def save() -> None:
-            if not mutation_gate.begin():
+            if not mutation_gate.begin(mutation_actions):
                 return
             try:
                 if str(mode.value or MODE_QUICK) == MODE_QUICK:
                     project_number = str(project_select.value or "").strip()
                     if not project_number:
-                        mutation_gate.retry()
+                        mutation_gate.retry(mutation_actions)
                         ui.notify("Sélectionne un projet.", type="warning")
                         return
                     result = _quick_shift_service(owner.repo).create(
@@ -308,7 +309,7 @@ def open_cell_shift_dialog(owner: Any, technician: str, day: date) -> None:
                     return
 
                 if segment_select is None or segment_hours is None:
-                    mutation_gate.retry()
+                    mutation_gate.retry(mutation_actions)
                     ui.notify(
                         "Aucun segment compatible n'est disponible.",
                         type="warning",
@@ -316,7 +317,7 @@ def open_cell_shift_dialog(owner: Any, technician: str, day: date) -> None:
                     return
                 segment_id = str(segment_select.value or "")
                 if not segment_id:
-                    mutation_gate.retry()
+                    mutation_gate.retry(mutation_actions)
                     ui.notify("Sélectionne un segment.", type="warning")
                     return
                 cell_context.validate_locked_total(
@@ -350,13 +351,15 @@ def open_cell_shift_dialog(owner: Any, technician: str, day: date) -> None:
                     f"Quart de {number(segment_hours.value):g} h planifié pour {technician}"
                 )
             except Exception as exc:
-                mutation_gate.retry()
+                mutation_gate.retry(mutation_actions)
                 ui.notify(str(exc), type="negative")
 
         with ui.row().classes("w-full justify-end"):
             ui.button("Annuler", on_click=dialog.close).props("flat no-caps")
-            ui.button("Enregistrer", icon="save", on_click=save).props(
-                "unelevated no-caps color=primary"
+            mutation_actions.append(
+                ui.button("Enregistrer", icon="save", on_click=save).props(
+                    "unelevated no-caps color=primary"
+                )
             )
 
     dialog.on("hide", lambda _: owner._unlock())
