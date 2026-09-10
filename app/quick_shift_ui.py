@@ -18,6 +18,7 @@ from .operational_planning_cell_action import (
 )
 from .operational_planning_cell_context_compat import operational_planning_cell_context
 from .segment_repository import SEGMENT_ORIGIN_FIELD, ensure_segment_fields, number
+from .ui_mutation_guard import MutationGate
 
 
 MODE_QUICK = "quick"
@@ -108,6 +109,7 @@ def open_cell_shift_dialog(owner: Any, technician: str, day: date) -> None:
     suggested_quick_hours = max(min(8.0, free if free > 0 else 8.0), 0.25)
 
     owner.interaction_lock = True
+    mutation_gate = MutationGate()
     with ui.dialog() as dialog, ui.card().classes("w-[780px] max-w-full"):
         ui.label("Planifier un quart").classes("text-xl font-bold")
         ui.label(f"{technician} · {day.strftime('%d/%m/%Y')}").classes(
@@ -275,10 +277,13 @@ def open_cell_shift_dialog(owner: Any, technician: str, day: date) -> None:
         refresh_mode()
 
         def save() -> None:
+            if not mutation_gate.begin():
+                return
             try:
                 if str(mode.value or MODE_QUICK) == MODE_QUICK:
                     project_number = str(project_select.value or "").strip()
                     if not project_number:
+                        mutation_gate.retry()
                         ui.notify("Sélectionne un projet.", type="warning")
                         return
                     result = _quick_shift_service(owner.repo).create(
@@ -294,6 +299,7 @@ def open_cell_shift_dialog(owner: Any, technician: str, day: date) -> None:
                             quick_confirmation.value or CONFIRMATION_CONFIRMED
                         ),
                     )
+                    mutation_gate.succeed()
                     dialog.close()
                     owner._after_write(
                         f"Quart rapide de {number(quick_hours.value):g} h créé pour "
@@ -302,6 +308,7 @@ def open_cell_shift_dialog(owner: Any, technician: str, day: date) -> None:
                     return
 
                 if segment_select is None or segment_hours is None:
+                    mutation_gate.retry()
                     ui.notify(
                         "Aucun segment compatible n'est disponible.",
                         type="warning",
@@ -309,6 +316,7 @@ def open_cell_shift_dialog(owner: Any, technician: str, day: date) -> None:
                     return
                 segment_id = str(segment_select.value or "")
                 if not segment_id:
+                    mutation_gate.retry()
                     ui.notify("Sélectionne un segment.", type="warning")
                     return
                 cell_context.validate_locked_total(
@@ -336,11 +344,13 @@ def open_cell_shift_dialog(owner: Any, technician: str, day: date) -> None:
                     else "",
                     confirmation_override,
                 )
+                mutation_gate.succeed()
                 dialog.close()
                 owner._after_write(
                     f"Quart de {number(segment_hours.value):g} h planifié pour {technician}"
                 )
             except Exception as exc:
+                mutation_gate.retry()
                 ui.notify(str(exc), type="negative")
 
         with ui.row().classes("w-full justify-end"):
