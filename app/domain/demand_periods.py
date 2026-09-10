@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, timedelta
 from typing import Mapping, Sequence
 
 from .confirmation import normalize_confirmation
@@ -149,4 +149,91 @@ def projected_hours_without_double_counting(
             total += float(selected.hours) * selected.resource_count
         else:
             total += max(float(period.hours) * period.resource_count for period in options)
+    return round(total, 2)
+
+
+def projected_hours_in_window(
+    total_hours: float,
+    start_date: date,
+    end_date: date,
+    window_start: date,
+    window_end: date,
+) -> float:
+    """Spread a macro workload over its date range and return the window share.
+
+    Medium-term ranges do not contain daily shifts yet. Their hours are therefore
+    spread proportionally over weekdays. Weekend-only ranges fall back to calendar
+    days so a legitimate weekend request is never projected as zero.
+    """
+
+    if end_date < start_date:
+        raise ValueError("La date de fin de la charge ne peut pas précéder son début.")
+    if window_end < window_start:
+        raise ValueError("La fenêtre de projection est invalide.")
+    hours = max(float(total_hours or 0.0), 0.0)
+    if hours <= 0 or end_date < window_start or start_date > window_end:
+        return 0.0
+
+    clipped_start = max(start_date, window_start)
+    clipped_end = min(end_date, window_end)
+
+    def day_count(start: date, end: date, *, weekdays_only: bool) -> int:
+        count = 0
+        cursor = start
+        while cursor <= end:
+            if not weekdays_only or cursor.weekday() < 5:
+                count += 1
+            cursor += timedelta(days=1)
+        return count
+
+    total_days = day_count(start_date, end_date, weekdays_only=True)
+    overlap_days = day_count(clipped_start, clipped_end, weekdays_only=True)
+    if total_days == 0:
+        total_days = day_count(start_date, end_date, weekdays_only=False)
+        overlap_days = day_count(clipped_start, clipped_end, weekdays_only=False)
+    return round(hours * overlap_days / total_days, 2) if total_days else 0.0
+
+
+def projected_period_hours_in_window_without_double_counting(
+    periods: Sequence[DemandPeriodDefinition],
+    window_start: date,
+    window_end: date,
+    selections: Mapping[str, str] | None = None,
+) -> float:
+    """Project period workload into one window without summing exclusive options.
+
+    Cumulative periods add normally. A resolved alternative group contributes only its
+    selected option. An unresolved group contributes the largest possible overlap in
+    the requested window, which is conservative while still counting that group once.
+    """
+
+    validate_period_definitions(periods)
+    chosen = dict(selections or {})
+    if chosen:
+        effective_period_ids(periods, chosen)
+
+    def contribution(period: DemandPeriodDefinition) -> float:
+        return projected_hours_in_window(
+            float(period.hours) * period.resource_count,
+            period.start_date,
+            period.end_date,
+            window_start,
+            window_end,
+        )
+
+    total = 0.0
+    alternatives: dict[str, list[DemandPeriodDefinition]] = {}
+    for period in periods:
+        if period.kind.upper() == PERIOD_KIND_CUMULATIVE:
+            total += contribution(period)
+        else:
+            alternatives.setdefault(_text(period.alternative_group), []).append(period)
+
+    for group, options in alternatives.items():
+        selected_id = chosen.get(group)
+        if selected_id:
+            selected = next(period for period in options if period.period_id == selected_id)
+            total += contribution(selected)
+        else:
+            total += max(contribution(period) for period in options)
     return round(total, 2)
