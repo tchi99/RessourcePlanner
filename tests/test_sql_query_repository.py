@@ -8,6 +8,7 @@ from app.infrastructure.sql import (
     Base,
     Project,
     Resource,
+    ResourceAvailabilityRule,
     ResourceRequirement,
     Shift,
     SqlDemandRepository,
@@ -45,6 +46,17 @@ class SqlPlannerQueryRepositoryTests(unittest.TestCase):
                 ]
             )
             session.flush()
+            session.add(
+                ResourceAvailabilityRule(
+                    id="SCH-R1",
+                    resource_id="R1",
+                    availability_type="Horaire standard",
+                    start_date=D1,
+                    end_date=date(2026, 12, 31),
+                    weekdays="Lun,Mar,Mer,Jeu,Ven",
+                    active=True,
+                )
+            )
             demand_number = SqlDemandRepository(session, actor_name="Jean").create(
                 {
                     "NumeroProjet": "P-1",
@@ -120,6 +132,49 @@ class SqlPlannerQueryRepositoryTests(unittest.TestCase):
             self.assertEqual(alice.resource_class, "Programmation")
             self.assertEqual(alice.competencies, "PLC; SCADA")
             self.assertEqual(alice.note, "Lead")
+
+    def test_schedulable_resources_follow_standard_schedule_window(self) -> None:
+        with transactional_session(self.factory) as session:
+            session.add_all(
+                [
+                    Resource(id="R3", name="Ancien", active=True, sort_order=30),
+                    Resource(id="R4", name="Futur", active=True, sort_order=40),
+                ]
+            )
+            session.flush()
+            session.add_all(
+                [
+                    ResourceAvailabilityRule(
+                        id="SCH-R3",
+                        resource_id="R3",
+                        availability_type="Horaire standard",
+                        start_date=date(2026, 1, 1),
+                        end_date=date(2026, 8, 23),
+                        active=True,
+                    ),
+                    ResourceAvailabilityRule(
+                        id="SCH-R4",
+                        resource_id="R4",
+                        availability_type="Horaire standard",
+                        start_date=date(2026, 8, 31),
+                        end_date=None,
+                        active=True,
+                    ),
+                ]
+            )
+
+        with self.factory() as session:
+            queries = SqlPlannerQueryRepository(session)
+            active_master = {row.name for row in queries.list_resources(active_only=True)}
+            displayed = queries.list_schedulable_resources(start=D1, end=D2)
+            historic = queries.list_schedulable_resources(
+                start=date(2026, 8, 17),
+                end=date(2026, 8, 23),
+            )
+
+        self.assertEqual(active_master, {"Alice", "Ancien", "Futur"})
+        self.assertEqual([row.name for row in displayed], ["Alice"])
+        self.assertEqual([row.name for row in historic], ["Ancien"])
 
     def test_demands_and_segments_use_canonical_read_models(self) -> None:
         with self.factory() as session:
