@@ -21,6 +21,19 @@ def _open_segment_editor(owner: Any, **kwargs: Any) -> None:
     open_segment_editor(owner, **kwargs)
 
 
+def _business_key(value: object) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    try:
+        value_number = float(text.replace(",", "."))
+        if value_number.is_integer():
+            return str(int(value_number))
+    except (TypeError, ValueError):
+        pass
+    return text
+
+
 class SegmentsPage:
     """Explicit SegmentsMO page.
 
@@ -33,6 +46,25 @@ class SegmentsPage:
         self.owner = owner
         self.request_filter: str | None = None
 
+    def _ownership_lookups(self) -> tuple[dict[str, dict[str, Any]], dict[str, str]]:
+        demands = {
+            str(row.get("NoDemande") or "").strip(): row
+            for row in self.owner.repo.demands()
+            if str(row.get("NoDemande") or "").strip()
+        }
+        project_managers: dict[str, str] = {}
+        try:
+            projects = self.owner.repo.projects(active_only=False)
+        except Exception:
+            projects = []
+        for row in projects:
+            project_number = _business_key(row.get("Numéro de Projet"))
+            if project_number:
+                project_managers[project_number] = str(
+                    row.get("Chargé de projet") or ""
+                ).strip()
+        return demands, project_managers
+
     def render(self) -> None:
         rows = segment_records(self.owner.repo)
         if self.request_filter:
@@ -41,6 +73,7 @@ class SegmentsPage:
                 for row in rows
                 if str(row.get("NoDemande") or "") == self.request_filter
             ]
+        demands, project_managers = self._ownership_lookups()
 
         with ui.row().classes("w-full items-center"):
             with ui.column().classes("gap-0"):
@@ -77,23 +110,34 @@ class SegmentsPage:
             ui.label(f"{total_hours:g} h planifiées").classes("text-sm muted")
             ui.label("Clique une ligne pour la modifier.").classes("text-sm muted")
 
-        grid_rows = [
-            {
-                "IDSegment": row.get("IDSegment"),
-                "NoDemande": row.get("NoDemande"),
-                "Projet": (
-                    f"{row.get('NumeroProjet') or '—'} · "
-                    f"{row.get('NomProjet') or ''}"
-                ),
-                "Technicien": row.get("Technicien") or "",
-                "Début": self.owner._date_text(row.get("DateDebut")),
-                "Fin": self.owner._date_text(row.get("DateFin")),
-                "Heures": number(row.get("HeuresPrevues")),
-                "Statut": row.get("Statut") or "",
-                "Description": row.get("Description") or "",
-            }
-            for row in rows
-        ]
+        grid_rows = []
+        for row in rows:
+            demand = demands.get(str(row.get("NoDemande") or "").strip(), {})
+            project_manager = project_managers.get(
+                _business_key(row.get("NumeroProjet")),
+                "",
+            ) or str(demand.get("ChargeProjet") or "").strip()
+            requester = str(
+                demand.get("Demandeur") or row.get("CreePar") or ""
+            ).strip()
+            grid_rows.append(
+                {
+                    "IDSegment": row.get("IDSegment"),
+                    "NoDemande": row.get("NoDemande"),
+                    "Projet": (
+                        f"{row.get('NumeroProjet') or '—'} · "
+                        f"{row.get('NomProjet') or ''}"
+                    ),
+                    "ChargeProjet": project_manager,
+                    "Demandeur": requester,
+                    "Technicien": row.get("Technicien") or "",
+                    "Début": self.owner._date_text(row.get("DateDebut")),
+                    "Fin": self.owner._date_text(row.get("DateFin")),
+                    "Heures": number(row.get("HeuresPrevues")),
+                    "Statut": row.get("Statut") or "",
+                    "Description": row.get("Description") or "",
+                }
+            )
         grid = ui.aggrid(
             {
                 "columnDefs": [
@@ -105,6 +149,16 @@ class SegmentsPage:
                     },
                     {"headerName": "Demande", "field": "NoDemande", "minWidth": 145},
                     {"headerName": "Projet", "field": "Projet", "minWidth": 230},
+                    {
+                        "headerName": "Responsable projet",
+                        "field": "ChargeProjet",
+                        "minWidth": 165,
+                    },
+                    {
+                        "headerName": "Demandeur",
+                        "field": "Demandeur",
+                        "minWidth": 150,
+                    },
                     {
                         "headerName": "Technicien",
                         "field": "Technicien",
