@@ -97,6 +97,11 @@ def _request_dialog(
     ) or None
     if initial_work_package and initial_work_package not in work_package_options:
         work_package_options[initial_work_package] = initial_work_package
+    initial_requester = (
+        str(demand.get("Demandeur") or "").strip()
+        if demand
+        else str(getattr(self.repo, "current_user", "") or "").strip()
+    )
 
     with ui.dialog() as dialog, ui.card().classes("w-[840px] max-w-full"):
         ui.label(
@@ -126,6 +131,14 @@ def _request_dialog(
         ).classes("w-full")
         ui.label(
             "Optionnel · le lien utilise l'identifiant stable de la plage moyen terme."
+        ).classes("text-xs muted -mt-2")
+
+        requester = ui.input(
+            "Demandeur",
+            value=initial_requester,
+        ).classes("w-full")
+        ui.label(
+            "Le responsable de projet provient du projet; le demandeur demeure un champ opérationnel modifiable."
         ).classes("text-xs muted -mt-2")
 
         with ui.row().classes("w-full"):
@@ -226,6 +239,7 @@ def _request_dialog(
                 "ChargeProjet": selected.get("Chargé de projet")
                 or (demand.get("ChargeProjet") if demand else "")
                 or "",
+                "Demandeur": requester.value,
                 "SourceEffortID": work_package.value,
                 "TypeDemande": req_type.value,
                 "Priorite": priority.value,
