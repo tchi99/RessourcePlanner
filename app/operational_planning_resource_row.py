@@ -33,6 +33,34 @@ class ResourceRowBindings:
     allocation_style: Callable[[dict[str, Any], dict[str, Any], bool], tuple[str, str]]
     open_allocation_dialog: Callable[..., None]
     make_draggable: Callable[[Any, str], Any]
+    project_manager_for_project: Callable[[Any, str], str]
+
+
+def _ownership_text(
+    owner: Any,
+    *,
+    project_number: object,
+    demand: dict[str, Any],
+    segment: dict[str, Any] | None = None,
+    bindings: ResourceRowBindings,
+) -> str:
+    manager = str(demand.get("ChargeProjet") or "").strip()
+    if not manager:
+        manager = bindings.project_manager_for_project(
+            owner.repo,
+            str(project_number or ""),
+        )
+    requester = str(
+        demand.get("Demandeur")
+        or ((segment or {}).get("CreePar"))
+        or ""
+    ).strip()
+    parts = []
+    if manager:
+        parts.append(f"Resp. : {manager}")
+    if requester:
+        parts.append(f"Demandeur : {requester}")
+    return " · ".join(parts)
 
 
 def render_operational_planning_resource_row(
@@ -175,6 +203,15 @@ def render_operational_planning_resource_row(
                             or "Allocation"
                         )
                     ).classes("text-xs")
+                    ownership = _ownership_text(
+                        owner,
+                        project_number=allocation.get("NumeroProjet"),
+                        demand=demand,
+                        segment=segment,
+                        bindings=bindings,
+                    )
+                    if ownership:
+                        ui.label(ownership).classes("text-[9px] muted")
                     suffix = " · 🔒" if bindings.truthy(allocation.get("Verrouillee")) else ""
                     effective_confirmation = bindings.allocation_confirmation(
                         allocation,
@@ -203,6 +240,14 @@ def render_operational_planning_resource_row(
                         f"{demand.get('NumeroProjet') or '—'} · {demand.get('NomProjet') or ''}"
                     ).classes("text-xs font-semibold")
                     ui.label(str(demand.get("Description") or "")).classes("text-xs")
+                    ownership = _ownership_text(
+                        owner,
+                        project_number=demand.get("NumeroProjet"),
+                        demand=demand,
+                        bindings=bindings,
+                    )
+                    if ownership:
+                        ui.label(ownership).classes("text-[9px] muted")
                     ui.label(
                         f"{bindings.demand_confirmation(demand)} · "
                         "en attente d'approbation · 0 h"
