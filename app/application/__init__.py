@@ -40,6 +40,12 @@ from .errors import (
     ApplicationValidationError,
 )
 from .facade import ApplicationFacade
+from .idempotency import (
+    CommandIdempotencyPort,
+    IdempotentCommandExecutor,
+    normalize_idempotency_key,
+    request_fingerprint,
+)
 from .planning_service import PlanningService
 from .query_models import (
     PendingDemandLoadReadModel,
@@ -79,6 +85,7 @@ __all__ = [
     "ApplicationResult",
     "ApplicationValidationError",
     "ApprovedDemandSyncPort",
+    "CommandIdempotencyPort",
     "DemandAlternativeSelectCommand",
     "DemandAlternativeSelectionResult",
     "DemandApproveCommand",
@@ -95,6 +102,7 @@ __all__ = [
     "DemandRepositoryPort",
     "DemandSubmitCommand",
     "DemandUpdateCommand",
+    "IdempotentCommandExecutor",
     "ManualAllocationCreateCommand",
     "ManualAllocationDeleteCommand",
     "ManualAllocationReleaseCommand",
@@ -119,4 +127,6 @@ __all__ = [
     "SegmentRepositoryPort",
     "SegmentUpdateCommand",
     "ShiftReadModel",
+    "normalize_idempotency_key",
+    "request_fingerprint",
 ]

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Header, status
 
 from ..application import (
     ApplicationFacade,
@@ -15,6 +15,7 @@ from ..application import (
     DemandPeriodsReplaceCommand,
     DemandSubmitCommand,
     DemandUpdateCommand,
+    IdempotentCommandExecutor,
     ManualAllocationCreateCommand,
     ManualAllocationDeleteCommand,
     ManualAllocationReleaseCommand,
@@ -42,10 +43,15 @@ from .schemas import (
 
 
 FacadeProvider = Callable[..., Any]
+IdempotencyProvider = Callable[..., Any]
 
 
 def _payload(result: Any) -> dict[str, Any]:
     return result.to_dict()
+
+
+def _json_body(body: Any) -> dict[str, Any]:
+    return body.model_dump(mode="json")
 
 
 def _segment_command_values(body: SegmentCreateRequest | SegmentUpdateRequest) -> dict[str, Any]:
@@ -55,15 +61,27 @@ def _segment_command_values(body: SegmentCreateRequest | SegmentUpdateRequest) -
     return values
 
 
-def build_command_router(facade_dependency: FacadeProvider) -> APIRouter:
+def build_command_router(
+    facade_dependency: FacadeProvider,
+    idempotency_dependency: IdempotencyProvider,
+) -> APIRouter:
     router = APIRouter(prefix="/api/v1", tags=["commands"])
 
     @router.post("/demands", status_code=status.HTTP_201_CREATED)
     def create_demand(
         body: DemandCreateRequest,
+        idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
         facade: ApplicationFacade = Depends(facade_dependency),
+        idempotency: IdempotentCommandExecutor = Depends(idempotency_dependency),
     ) -> dict[str, Any]:
-        return _payload(facade.create_demand(DemandCreateCommand(**body.model_dump())))
+        return idempotency.execute(
+            scope="demand.create",
+            key=idempotency_key,
+            request_payload=_json_body(body),
+            action=lambda: _payload(
+                facade.create_demand(DemandCreateCommand(**body.model_dump()))
+            ),
+        )
 
     @router.patch("/demands/{number}")
     def update_demand(
@@ -140,10 +158,19 @@ def build_command_router(facade_dependency: FacadeProvider) -> APIRouter:
     @router.post("/segments", status_code=status.HTTP_201_CREATED)
     def create_segment(
         body: SegmentCreateRequest,
+        idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
         facade: ApplicationFacade = Depends(facade_dependency),
+        idempotency: IdempotentCommandExecutor = Depends(idempotency_dependency),
     ) -> dict[str, Any]:
-        return _payload(
-            facade.create_segment(SegmentCreateCommand(**_segment_command_values(body)))
+        return idempotency.execute(
+            scope="segment.create",
+            key=idempotency_key,
+            request_payload=_json_body(body),
+            action=lambda: _payload(
+                facade.create_segment(
+                    SegmentCreateCommand(**_segment_command_values(body))
+                )
+            ),
         )
 
     @router.patch("/segments/{segment_id}")
@@ -177,12 +204,26 @@ def build_command_router(facade_dependency: FacadeProvider) -> APIRouter:
     def create_allocation(
         segment_id: str,
         body: ManualAllocationRequest,
+        idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
         facade: ApplicationFacade = Depends(facade_dependency),
+        idempotency: IdempotentCommandExecutor = Depends(idempotency_dependency),
     ) -> dict[str, Any]:
-        return _payload(
-            facade.create_allocation(
-                ManualAllocationCreateCommand(segment_id=segment_id, **body.model_dump())
-            )
+        request_payload = {
+            "segment_id": segment_id,
+            "body": _json_body(body),
+        }
+        return idempotency.execute(
+            scope="manual_allocation.create",
+            key=idempotency_key,
+            request_payload=request_payload,
+            action=lambda: _payload(
+                facade.create_allocation(
+                    ManualAllocationCreateCommand(
+                        segment_id=segment_id,
+                        **body.model_dump(),
+                    )
+                )
+            ),
         )
 
     @router.put("/allocations/{allocation_id}")
@@ -214,9 +255,20 @@ def build_command_router(facade_dependency: FacadeProvider) -> APIRouter:
     @router.post("/quick-shifts", status_code=status.HTTP_201_CREATED)
     def create_quick_shift(
         body: QuickShiftRequest,
+        idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
         facade: ApplicationFacade = Depends(facade_dependency),
+        idempotency: IdempotentCommandExecutor = Depends(idempotency_dependency),
     ) -> dict[str, Any]:
-        return _payload(facade.create_quick_shift(QuickShiftCreateCommand(**body.model_dump())))
+        return idempotency.execute(
+            scope="quick_shift.create",
+            key=idempotency_key,
+            request_payload=_json_body(body),
+            action=lambda: _payload(
+                facade.create_quick_shift(
+                    QuickShiftCreateCommand(**body.model_dump())
+                )
+            ),
+        )
 
     @router.post("/planning/rebuild")
     def rebuild_planning(

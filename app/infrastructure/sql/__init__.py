@@ -17,6 +17,7 @@ from .demand_period_models import (
 )
 from .demand_period_repository import SqlDemandPeriodRepository
 from .demand_repository import SqlDemandRepository
+from .idempotency import CommandIdempotencyReceipt, SqlCommandIdempotencyAdapter
 from .models import (
     ORIGIN_AD_HOC,
     ORIGIN_QUICK_SHIFT,
@@ -47,6 +48,7 @@ from .session import (
 
 __all__ = [
     "Base",
+    "CommandIdempotencyReceipt",
     "NAMING_CONVENTION",
     "ORIGIN_AD_HOC",
     "ORIGIN_QUICK_SHIFT",
@@ -59,6 +61,7 @@ __all__ = [
     "Shift",
     "SqlAllocationCommandAdapter",
     "SqlApprovedDemandSyncAdapter",
+    "SqlCommandIdempotencyAdapter",
     "SqlDemandPeriodRepository",
     "SqlDemandRepository",
     "SqlPeriodAwareApprovedDemandSyncAdapter",

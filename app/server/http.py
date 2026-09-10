@@ -17,6 +17,7 @@ from ..application import (
     ApplicationNotFoundError,
     ApplicationOperationError,
     ApplicationValidationError,
+    IdempotentCommandExecutor,
     PlannerQueryPort,
 )
 from ..infrastructure.sql import (
@@ -25,13 +26,18 @@ from ..infrastructure.sql import (
     create_sql_engine,
     transactional_session,
 )
-from .composition import build_sql_facade, build_sql_query_port
+from .composition import (
+    build_sql_facade,
+    build_sql_idempotency_executor,
+    build_sql_query_port,
+)
 from .routes_commands import build_command_router
 from .routes_reads import build_read_router
 
 
 SessionDependency = Callable[[], Iterator[Session]]
 FacadeDependency = Callable[[], Iterator[ApplicationFacade]]
+IdempotencyDependency = Callable[[], Iterator[IdempotentCommandExecutor]]
 QueryDependency = Callable[[], Iterator[PlannerQueryPort]]
 
 
@@ -66,11 +72,12 @@ def make_facade_dependency(
     factory: SqlSessionFactory,
     *,
     actor_name: str = "api",
+    session_dependency: SessionDependency | None = None,
 ) -> FacadeDependency:
-    session_dependency = make_session_dependency(factory)
+    request_session = session_dependency or make_session_dependency(factory)
 
     def dependency(
-        session: Session = Depends(session_dependency),
+        session: Session = Depends(request_session),
     ) -> Iterator[ApplicationFacade]:
         # Yielding keeps the facade scoped to the same request transaction as Session.
         yield build_sql_facade(session, actor_name=actor_name)
@@ -78,11 +85,31 @@ def make_facade_dependency(
     return dependency
 
 
-def make_query_dependency(factory: SqlSessionFactory) -> QueryDependency:
-    session_dependency = make_session_dependency(factory)
+def make_idempotency_dependency(
+    factory: SqlSessionFactory,
+    *,
+    actor_name: str = "api",
+    session_dependency: SessionDependency | None = None,
+) -> IdempotencyDependency:
+    request_session = session_dependency or make_session_dependency(factory)
 
     def dependency(
-        session: Session = Depends(session_dependency),
+        session: Session = Depends(request_session),
+    ) -> Iterator[IdempotentCommandExecutor]:
+        yield build_sql_idempotency_executor(session, actor_name=actor_name)
+
+    return dependency
+
+
+def make_query_dependency(
+    factory: SqlSessionFactory,
+    *,
+    session_dependency: SessionDependency | None = None,
+) -> QueryDependency:
+    request_session = session_dependency or make_session_dependency(factory)
+
+    def dependency(
+        session: Session = Depends(request_session),
     ) -> Iterator[PlannerQueryPort]:
         yield build_sql_query_port(session)
 
@@ -118,8 +145,20 @@ def create_api_app(
     engine = create_sql_engine(database_url)
     factory = create_session_factory(engine)
     session_dependency = make_session_dependency(factory)
-    facade_dependency = make_facade_dependency(factory, actor_name=actor_name)
-    query_dependency = make_query_dependency(factory)
+    facade_dependency = make_facade_dependency(
+        factory,
+        actor_name=actor_name,
+        session_dependency=session_dependency,
+    )
+    idempotency_dependency = make_idempotency_dependency(
+        factory,
+        actor_name=actor_name,
+        session_dependency=session_dependency,
+    )
+    query_dependency = make_query_dependency(
+        factory,
+        session_dependency=session_dependency,
+    )
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
@@ -136,6 +175,7 @@ def create_api_app(
     app.state.database_dialect = engine.dialect.name
     app.state.session_factory = factory
     app.state.facade_dependency = facade_dependency
+    app.state.idempotency_dependency = idempotency_dependency
     app.state.query_dependency = query_dependency
 
     @app.exception_handler(RequestValidationError)
@@ -177,6 +217,6 @@ def create_api_app(
             "api": "v1",
         }
 
-    app.include_router(build_command_router(facade_dependency))
+    app.include_router(build_command_router(facade_dependency, idempotency_dependency))
     app.include_router(build_read_router(query_dependency))
     return app
