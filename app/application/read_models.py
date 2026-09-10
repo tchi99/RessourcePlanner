@@ -41,6 +41,12 @@ def _number(value: Any) -> float:
         return 0.0
 
 
+def _optional_number(value: Any) -> float | None:
+    if value in (None, ""):
+        return None
+    return _number(value)
+
+
 @dataclass(frozen=True, slots=True)
 class DemandReadModel:
     """Storage-independent demand projection consumed by application/UI code."""
@@ -59,6 +65,11 @@ class DemandReadModel:
     description: str | None = None
     work_package_ref: str | None = None
     work_package_name: str | None = None
+    resource_count: int = 1
+    required_competencies: str | None = None
+    estimated_hours: float | None = None
+    estimated_days: float | None = None
+    proposed_resource: str | None = None
 
     @classmethod
     def from_mapping(cls, row: Mapping[str, Any]) -> "DemandReadModel":
@@ -79,6 +90,11 @@ class DemandReadModel:
             work_package_name=_optional_text(
                 row.get("WorkPackageName") or row.get("NomEffort")
             ),
+            resource_count=max(int(_number(row.get("NombreRessources")) or 1), 1),
+            required_competencies=_optional_text(row.get("CompetencesRequises")),
+            estimated_hours=_optional_number(row.get("TempsEstimeHeures")),
+            estimated_days=_optional_number(row.get("TempsEstimeJours")),
+            proposed_resource=_optional_text(row.get("TechnicienPropose")),
         )
 
 
