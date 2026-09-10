@@ -6,14 +6,21 @@ from nicegui import ui
 
 from .application.runtime_services import segment_service
 from .bugfixes import schedulable_technicians
+from .domain.confirmation import (
+    CONFIRMATION_CONFIRMED,
+    CONFIRMATION_TENTATIVE,
+    effective_confirmation,
+)
 from .excel_repository import _date_from_any
-from .segment_repository import SEGMENT_STATUSES, number
+from .segment_repository import SEGMENT_STATUSES, ensure_segment_fields, number
 
 
 PLAN_TYPES = ["Flexible", "Fixe"]
 PRIORITIES = ["Urgent", "Élevée", "Normale", "Basse"]
 SEGMENT_OVERTIME_FIELD = "HorsHoraireAutorise"
+SEGMENT_CONFIRMATION_FIELD = "Confirmation"
 SOURCE_EFFORT_FIELD = "SourceEffortRow"
+INHERIT_CONFIRMATION = "__inherit__"
 
 
 def _truthy(value: Any) -> bool:
@@ -23,6 +30,16 @@ def _truthy(value: Any) -> bool:
 def _segment_plan_type(segment: dict[str, Any] | None) -> str:
     value = str((segment or {}).get("TypePlanification") or "Flexible").strip()
     return value if value in PLAN_TYPES else "Flexible"
+
+
+def _ensure_segment_confirmation_field(repo: Any) -> None:
+    """Ensure the V1 compatibility column once per opened workbook."""
+
+    marker = str(getattr(repo, "path", "") or "")
+    if getattr(repo, "_segment_confirmation_ready_path", None) == marker:
+        return
+    ensure_segment_fields(repo, [SEGMENT_CONFIRMATION_FIELD])
+    repo._segment_confirmation_ready_path = marker
 
 
 def _norm_project(value: Any) -> str:
@@ -97,6 +114,7 @@ def open_segment_editor(
     demand_number: str | None = None,
 ) -> None:
     """Open the authoritative V1.8 segment editor through SegmentService."""
+    _ensure_segment_confirmation_field(owner.repo)
     owner.interaction_lock = True
     editing = segment is not None
     demands = {
@@ -116,6 +134,19 @@ def open_segment_editor(
             f"{selected.get('NomProjet') or ''}"
         )
     current_demand = demands.get(selected_number, {})
+    inherited_confirmation = effective_confirmation(
+        None,
+        current_demand.get(SEGMENT_CONFIRMATION_FIELD),
+        default=CONFIRMATION_CONFIRMED,
+    )
+    current_confirmation = str(
+        (segment or {}).get(SEGMENT_CONFIRMATION_FIELD) or ""
+    ).strip()
+    confirmation_value = (
+        current_confirmation
+        if current_confirmation in {CONFIRMATION_TENTATIVE, CONFIRMATION_CONFIRMED}
+        else INHERIT_CONFIRMATION
+    )
 
     tech_options = [row["name"] for row in schedulable_technicians(owner.repo)]
     competence_options = list(owner.repo.competencies())
@@ -220,6 +251,20 @@ def open_segment_editor(
                 or "À assigner",
             ).classes("flex-1")
 
+        confirmation = ui.select(
+            {
+                INHERIT_CONFIRMATION: f"Héritée de la demande ({inherited_confirmation})",
+                CONFIRMATION_TENTATIVE: CONFIRMATION_TENTATIVE,
+                CONFIRMATION_CONFIRMED: CONFIRMATION_CONFIRMED,
+            },
+            label="Confirmation du segment",
+            value=confirmation_value,
+        ).classes("w-full")
+        ui.label(
+            "Laisser le segment en héritage pour suivre la confirmation de la demande; "
+            "un choix explicite remplace cette valeur uniquement pour ce segment."
+        ).classes("text-xs muted")
+
         with ui.row().classes("w-full"):
             start = ui.input(
                 "Début",
@@ -289,6 +334,10 @@ def open_segment_editor(
                 return False
             return True
 
+        def selected_confirmation() -> str | None:
+            value = str(confirmation.value or INHERIT_CONFIRMATION)
+            return None if value == INHERIT_CONFIRMATION else value
+
         def build_payload() -> dict[str, Any]:
             demand = demands.get(str(demand_select.value or ""), {})
             source_row: Any = source.value
@@ -318,6 +367,7 @@ def open_segment_editor(
                 "TypePlanification": planning_type.value or "Flexible",
                 "Priorite": priority.value or "Normale",
                 SEGMENT_OVERTIME_FIELD: "Oui" if overtime_allowed.value else "Non",
+                SEGMENT_CONFIRMATION_FIELD: selected_confirmation(),
             }
 
         def save() -> None:
