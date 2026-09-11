@@ -58,11 +58,14 @@ class DemandReadModel:
     client: str | None = None
     project_manager: str | None = None
     requester: str | None = None
+    request_type: str | None = None
     priority: str | None = None
     confirmation: str | None = None
     desired_start: date | None = None
     desired_end: date | None = None
     description: str | None = None
+    site_client: str | None = None
+    location: str | None = None
     work_package_ref: str | None = None
     work_package_name: str | None = None
     resource_count: int = 1
@@ -81,11 +84,14 @@ class DemandReadModel:
             client=_optional_text(row.get("Client")),
             project_manager=_optional_text(row.get("ChargeProjet")),
             requester=_optional_text(row.get("Demandeur")),
+            request_type=_optional_text(row.get("TypeDemande")),
             priority=_optional_text(row.get("Priorite")),
             confirmation=_optional_text(row.get("Confirmation")),
             desired_start=_date(row.get("DateDebutSouhaitee")),
             desired_end=_date(row.get("DateFinSouhaitee")),
             description=_optional_text(row.get("Description")),
+            site_client=_optional_text(row.get("SiteClient")),
+            location=_optional_text(row.get("Lieu")),
             work_package_ref=_optional_text(row.get("SourceEffortID")),
             work_package_name=_optional_text(
                 row.get("WorkPackageName") or row.get("NomEffort")
