@@ -8,6 +8,7 @@ on:
       - "tests/**"
       - "tools/**"
       - "migrations/**"
+      - "frontend/**"
       - "alembic.ini"
       - "requirements*.txt"
       - "constraints*.txt"
@@ -38,5 +39,15 @@ jobs:
         run: python -m compileall -q app tests tools migrations main.py
       - name: Run verification suite
         run: python -m unittest discover -s tests -v
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm install --no-audit --no-fund
+      - name: Build React V2 frontend
+        working-directory: frontend
+        run: npm run build
       - name: Scan current repository tree for common PII and secrets
         run: python tools/privacy_scan.py
