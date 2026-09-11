@@ -18,6 +18,20 @@ class ProjectReadModel:
 
 
 @dataclass(frozen=True, slots=True)
+class WorkPackageReadModel:
+    id: str
+    reference: str
+    project_number: str
+    code: str | None
+    name: str
+    description: str | None = None
+    start_date: date | None = None
+    end_date: date | None = None
+    planned_hours: float | None = None
+    status: str = "planned"
+
+
+@dataclass(frozen=True, slots=True)
 class ResourceReadModel:
     id: str
     name: str
