@@ -10,6 +10,7 @@ from .query_models import (
     ProjectReadModel,
     ResourceReadModel,
     ShiftReadModel,
+    WorkPackageReadModel,
 )
 from .read_models import DemandPeriodReadModel, DemandReadModel, SegmentReadModel
 
@@ -18,6 +19,13 @@ class PlannerQueryPort(Protocol):
     """Read-only canonical query surface required by web clients."""
 
     def list_projects(self, *, active_only: bool = False) -> Sequence[ProjectReadModel]: ...
+
+    def list_work_packages(
+        self,
+        *,
+        project_number: str | None = None,
+        active_only: bool = True,
+    ) -> Sequence[WorkPackageReadModel]: ...
 
     def list_resources(self, *, active_only: bool = True) -> Sequence[ResourceReadModel]: ...
 
