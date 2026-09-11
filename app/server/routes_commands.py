@@ -232,9 +232,16 @@ def build_command_router(
         body: ManualAllocationRequest,
         facade: ApplicationFacade = Depends(facade_dependency),
     ) -> dict[str, Any]:
+        values = body.model_dump()
+        confirmation = values.pop("confirmation")
         return _payload(
             facade.update_allocation(
-                ManualAllocationUpdateCommand(allocation_id=allocation_id, **body.model_dump())
+                ManualAllocationUpdateCommand(
+                    allocation_id=allocation_id,
+                    confirmation=confirmation,
+                    clear_confirmation_override=confirmation is None,
+                    **values,
+                )
             )
         )
 
