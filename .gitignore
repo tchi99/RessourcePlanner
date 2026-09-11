@@ -20,6 +20,12 @@ resourceplanner.db
 *.sqlite
 *.sqlite3
 
+# React/Vite local artifacts
+frontend/node_modules/
+frontend/dist/
+frontend/.env
+frontend/.env.local
+
 # Local cutover reports (may contain workbook metadata/diagnostics)
 cutover_report.json
 cutover_reports/
