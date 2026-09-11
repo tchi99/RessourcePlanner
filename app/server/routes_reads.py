@@ -16,6 +16,7 @@ from ..application import (
     ResourceReadModel,
     SegmentReadModel,
     ShiftReadModel,
+    WorkPackageReadModel,
 )
 
 
@@ -40,6 +41,19 @@ def build_read_router(query_dependency: QueryProvider) -> APIRouter:
         queries: PlannerQueryPort = Depends(query_dependency),
     ) -> list[ProjectReadModel]:
         return list(queries.list_projects(active_only=active_only))
+
+    @router.get("/work-packages")
+    def list_work_packages(
+        project_number: str | None = Query(default=None),
+        active_only: bool = True,
+        queries: PlannerQueryPort = Depends(query_dependency),
+    ) -> list[WorkPackageReadModel]:
+        return list(
+            queries.list_work_packages(
+                project_number=project_number,
+                active_only=active_only,
+            )
+        )
 
     @router.get("/resources")
     def list_resources(
