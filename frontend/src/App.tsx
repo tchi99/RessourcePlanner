@@ -1,6 +1,6 @@
 import { useState } from "react";
 
-import DemandsPage from "./DemandsPage";
+import DemandsWorkspace from "./DemandsWorkspace";
 import PlanningPage from "./PlanningPage";
 
 type View = "planning" | "medium-term" | "demands" | "projects" | "communications";
@@ -98,7 +98,7 @@ export default function App() {
           {view === "planning" ? (
             <PlanningPage />
           ) : view === "demands" ? (
-            <DemandsPage />
+            <DemandsWorkspace />
           ) : (
             <Placeholder view={view} />
           )}
