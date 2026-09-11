@@ -306,10 +306,13 @@ export function createDemand(payload: DemandWrite, idempotencyKey: string) {
 }
 
 export function updateDemand(number: string, payload: DemandWrite, comment: string) {
+  // request_type is not edited in tranche 3A. Do not write a fallback value back over
+  // historical requests until the field has an explicit UI and canonical SQL read.
+  const { request_type: _requestType, ...editablePayload } = payload;
   return sendJson<DemandMutationResult>(
     `/api/v1/demands/${encodeURIComponent(number)}`,
     "PATCH",
-    { ...payload, comment },
+    { ...editablePayload, comment },
   );
 }
 
