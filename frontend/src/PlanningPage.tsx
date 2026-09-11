@@ -18,6 +18,7 @@ import {
   toIsoDate,
   weekDays,
 } from "./dates";
+import ShiftEditor from "./ShiftEditor";
 
 type ConfirmationFilter = "all" | "confirmed" | "tentative";
 
@@ -77,7 +78,7 @@ function ProjectLabel({ number, name }: { number: string | null; name: string | 
   );
 }
 
-function ShiftCard({ shift }: { shift: ShiftReadModel }) {
+function ShiftCard({ shift, onEdit }: { shift: ShiftReadModel; onEdit: (shift: ShiftReadModel) => void }) {
   const confirmation = confirmationKind(shift.confirmation);
   const meta = [
     shift.allocation_type,
@@ -87,9 +88,13 @@ function ShiftCard({ shift }: { shift: ShiftReadModel }) {
   ].filter(Boolean);
 
   return (
-    <article
+    <button
+      type="button"
       className={`shift-card shift-${confirmation} ${shift.outside_standard_hours ? "shift-outside" : ""}`}
+      onClick={() => onEdit(shift)}
+      aria-label={`Modifier le quart ${shift.project_number || shift.project_name || shift.allocation_id}, ${hours(shift.hours)} heures`}
       title={[
+        "Cliquer pour modifier",
         shift.project_name,
         shift.demand_number ? `Demande ${shift.demand_number}` : null,
         shift.project_manager ? `Responsable: ${shift.project_manager}` : null,
@@ -110,7 +115,7 @@ function ShiftCard({ shift }: { shift: ShiftReadModel }) {
         {shift.demand_number && <span>#{shift.demand_number}</span>}
       </div>
       {meta.length > 0 && <small>{meta.join(" · ")}</small>}
-    </article>
+    </button>
   );
 }
 
@@ -156,10 +161,12 @@ function ResourceRow({
   resource,
   days,
   shifts,
+  onEditShift,
 }: {
   resource: ResourceReadModel;
   days: Date[];
   shifts: ShiftReadModel[];
+  onEditShift: (shift: ShiftReadModel) => void;
 }) {
   const total = shifts.reduce((sum, shift) => sum + Number(shift.hours || 0), 0);
 
@@ -175,7 +182,7 @@ function ResourceRow({
         return (
           <div className={`resource-cell planning-day-cell ${isToday(day) ? "today-column" : ""}`} key={toIsoDate(day)}>
             {dayShifts.length > 0
-              ? dayShifts.map((shift) => <ShiftCard shift={shift} key={shift.allocation_id} />)
+              ? dayShifts.map((shift) => <ShiftCard shift={shift} onEdit={onEditShift} key={shift.allocation_id} />)
               : <span className="empty-day">—</span>}
           </div>
         );
@@ -192,6 +199,8 @@ export default function PlanningPage() {
   const [search, setSearch] = useState("");
   const [project, setProject] = useState("all");
   const [confirmation, setConfirmation] = useState<ConfirmationFilter>("all");
+  const [editingShift, setEditingShift] = useState<ShiftReadModel | null>(null);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   const days = useMemo(() => weekDays(weekStart), [weekStart]);
   const start = toIsoDate(weekStart);
@@ -215,7 +224,7 @@ export default function PlanningPage() {
         if (!controller.signal.aborted) setLoading(false);
       });
     return () => controller.abort();
-  }, [start, end]);
+  }, [start, end, refreshKey]);
 
   const projectOptions = useMemo(() => {
     if (!snapshot) return [];
@@ -287,7 +296,7 @@ export default function PlanningPage() {
         <div>
           <span className="eyebrow">Planification opérationnelle</span>
           <h1>Semaine du {formatWeekRange(weekStart)}</h1>
-          <p>Vue Web V2 en lecture seule, alimentée directement par le snapshot canonique FastAPI.</p>
+          <p>Planning Web V2 alimenté directement par le snapshot canonique FastAPI. Clique sur un quart pour le modifier.</p>
         </div>
         <div className="week-navigation" role="group" aria-label="Navigation par semaine">
           <button type="button" onClick={() => setWeekStart((value) => addDays(value, -7))}>← Précédente</button>
@@ -388,7 +397,13 @@ export default function PlanningPage() {
                     <span>{rows.length} ressource(s)</span>
                   </div>
                   {rows.map(({ resource, shifts }) => (
-                    <ResourceRow resource={resource} days={days} shifts={shifts} key={resource.id} />
+                    <ResourceRow
+                      resource={resource}
+                      days={days}
+                      shifts={shifts}
+                      onEditShift={setEditingShift}
+                      key={resource.id}
+                    />
                   ))}
                 </div>
               ))}
@@ -417,6 +432,18 @@ export default function PlanningPage() {
           )}
         </aside>
       </div>
+
+      {editingShift && snapshot && (
+        <ShiftEditor
+          shift={editingShift}
+          resources={snapshot.resources}
+          onClose={() => setEditingShift(null)}
+          onSaved={() => {
+            setEditingShift(null);
+            setRefreshKey((value) => value + 1);
+          }}
+        />
+      )}
     </section>
   );
 }
