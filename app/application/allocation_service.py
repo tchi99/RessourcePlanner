@@ -104,18 +104,23 @@ class AllocationService:
         hours = self._positive_hours(command.hours)
 
         def update() -> None:
-            # PUT is a full replacement of the editable shift state. Passing None here
-            # is intentional: SQL interprets it as "inherit confirmation" while the
-            # Excel compatibility adapter keeps its historical nullable semantics.
-            self._commands.update_manual(
+            base = (
                 identifier,
                 tech,
                 day,
                 hours,
                 bool(command.outside_standard_hours),
                 str(command.note or ""),
-                command.confirmation,
             )
+            if command.clear_confirmation_override:
+                # Canonical Web/API intent: explicitly clear the nullable shift override.
+                self._commands.update_manual(*base, None)
+                return
+            if command.confirmation is None:
+                # V1 compatibility intent: omitted/None historically means preserve it.
+                self._commands.update_manual(*base)
+                return
+            self._commands.update_manual(*base, command.confirmation)
 
         call_application_port(
             update,
