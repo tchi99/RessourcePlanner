@@ -22,7 +22,7 @@ class ReactDemandsContractTests(unittest.TestCase):
 
         self.assertIn('"/api/v1/demands"', source)
         self.assertIn('/api/v1/demands/${encodeURIComponent(number)}', source)
-        self.assertIn('"/api/v1/work-packages?', source)
+        self.assertIn("/api/v1/work-packages?", source)
         self.assertIn('"Idempotency-Key"', source)
         self.assertIn("work_package_ref", source)
 
