@@ -8,6 +8,7 @@ import "./styles.css";
 import "./shift-editor.css";
 import "./quick-shift.css";
 import "./demands.css";
+import "./demand-periods.css";
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
