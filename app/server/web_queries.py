@@ -1,0 +1,84 @@
+from __future__ import annotations
+
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from ..application import WorkPackageReadModel
+from ..infrastructure.sql.models import Project, WorkPackage
+from ..infrastructure.sql.query_repository import SqlPlannerQueryRepository
+
+
+INACTIVE_WORK_PACKAGE_STATUSES = {
+    "annulé",
+    "annule",
+    "fermé",
+    "ferme",
+    "terminé",
+    "termine",
+    "closed",
+    "cancelled",
+}
+
+
+def _text(value: object) -> str:
+    return str(value or "").strip()
+
+
+def _optional_text(value: object) -> str | None:
+    normalized = _text(value)
+    return normalized or None
+
+
+class SqlWebPlannerQueryRepository(SqlPlannerQueryRepository):
+    """Web-specific extension of the canonical SQL planning read surface.
+
+    Work packages become a first-class read contract here because React needs to bind
+    a workforce request directly to a medium-term range. All existing planning queries
+    remain delegated to the established SQL repository.
+    """
+
+    def __init__(self, session: Session) -> None:
+        super().__init__(session)
+        self._web_session = session
+
+    def list_work_packages(
+        self,
+        *,
+        project_number: str | None = None,
+        active_only: bool = True,
+    ) -> tuple[WorkPackageReadModel, ...]:
+        statement = (
+            select(WorkPackage, Project)
+            .join(Project, WorkPackage.project_id == Project.id)
+            .order_by(Project.number, WorkPackage.start_date, WorkPackage.name, WorkPackage.id)
+        )
+        wanted_project = _text(project_number)
+        if wanted_project:
+            statement = statement.where(Project.number == wanted_project)
+
+        rows = self._web_session.execute(statement).all()
+        result: list[WorkPackageReadModel] = []
+        for work_package, project in rows:
+            status = _text(work_package.status) or "planned"
+            if active_only and status.casefold() in INACTIVE_WORK_PACKAGE_STATUSES:
+                continue
+            reference = _optional_text(work_package.legacy_effort_id) or work_package.id
+            result.append(
+                WorkPackageReadModel(
+                    id=work_package.id,
+                    reference=reference,
+                    project_number=project.number,
+                    code=_optional_text(work_package.code),
+                    name=work_package.name,
+                    description=_optional_text(work_package.description),
+                    start_date=work_package.start_date,
+                    end_date=work_package.end_date,
+                    planned_hours=(
+                        float(work_package.planned_hours)
+                        if work_package.planned_hours is not None
+                        else None
+                    ),
+                    status=status,
+                )
+            )
+        return tuple(result)
