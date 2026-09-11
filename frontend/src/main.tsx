@@ -7,6 +7,7 @@ import App from "./App";
 import "./styles.css";
 import "./shift-editor.css";
 import "./quick-shift.css";
+import "./demands.css";
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
