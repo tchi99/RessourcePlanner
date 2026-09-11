@@ -1,0 +1,49 @@
+.page-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: .55rem;
+  flex-wrap: wrap;
+}
+
+.quick-shift-button {
+  min-height: 38px;
+  border: 1px solid var(--accent);
+  border-radius: 9px;
+  background: var(--accent);
+  color: white;
+  padding: .45rem .8rem;
+  font-weight: 800;
+}
+
+.quick-shift-button:hover {
+  filter: brightness(.96);
+}
+
+.quick-shift-button:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--accent) 28%, transparent);
+  outline-offset: 2px;
+}
+
+.quick-shift-dialog {
+  width: min(760px, 100%);
+}
+
+.quick-shift-context {
+  margin-top: .1rem;
+}
+
+@media (max-width: 860px) {
+  .page-actions {
+    align-items: stretch;
+    justify-content: flex-start;
+  }
+
+  .quick-shift-button {
+    flex: 1 1 150px;
+  }
+
+  .page-actions .week-navigation {
+    flex: 1 1 100%;
+  }
+}

@@ -1,3 +1,13 @@
+export type ProjectReadModel = {
+  id: string;
+  number: string;
+  name: string;
+  client: string | null;
+  project_manager: string | null;
+  status: string;
+  erp_external_id: string | null;
+};
+
 export type ResourceReadModel = {
   id: string;
   name: string;
@@ -133,6 +143,23 @@ export type ManualAllocationUpdate = {
   confirmation: string | null;
 };
 
+export type QuickShiftCreate = {
+  project_number: string;
+  technician: string;
+  day: string;
+  hours: number;
+  project_name: string;
+  outside_standard_hours: boolean;
+  note: string;
+  description: string;
+  confirmation: "Tentative" | "Confirmée";
+};
+
+export type QuickShiftCreated = {
+  segment_id: string;
+  allocation_id: string;
+};
+
 type ApiErrorPayload = {
   error?: {
     code?: string;
@@ -178,12 +205,18 @@ async function getJson<T>(path: string, signal?: AbortSignal): Promise<T> {
   return response.json() as Promise<T>;
 }
 
-async function sendJson<T>(path: string, method: string, body: unknown): Promise<T> {
+async function sendJson<T>(
+  path: string,
+  method: string,
+  body: unknown,
+  headers: Record<string, string> = {},
+): Promise<T> {
   const response = await fetch(`${API_BASE}${path}`, {
     method,
     headers: {
       Accept: "application/json",
       "Content-Type": "application/json",
+      ...headers,
     },
     body: JSON.stringify(body),
   });
@@ -196,10 +229,29 @@ export function getPlanningSnapshot(start: string, end: string, signal?: AbortSi
   return getJson<PlanningSnapshotReadModel>(`/api/v1/planning/snapshot?${params.toString()}`, signal);
 }
 
+export function getProjects(activeOnly = true, signal?: AbortSignal) {
+  const params = new URLSearchParams({ active_only: String(activeOnly) });
+  return getJson<ProjectReadModel[]>(`/api/v1/projects?${params.toString()}`, signal);
+}
+
+export function getResources(activeOnly = true, signal?: AbortSignal) {
+  const params = new URLSearchParams({ active_only: String(activeOnly) });
+  return getJson<ResourceReadModel[]>(`/api/v1/resources?${params.toString()}`, signal);
+}
+
 export function updateAllocation(allocationId: string, payload: ManualAllocationUpdate) {
   return sendJson<Record<string, unknown>>(
     `/api/v1/allocations/${encodeURIComponent(allocationId)}`,
     "PUT",
     payload,
+  );
+}
+
+export function createQuickShift(payload: QuickShiftCreate, idempotencyKey: string) {
+  return sendJson<QuickShiftCreated>(
+    "/api/v1/quick-shifts",
+    "POST",
+    payload,
+    { "Idempotency-Key": idempotencyKey },
   );
 }

@@ -1,0 +1,351 @@
+import { FormEvent, MouseEvent, useEffect, useMemo, useRef, useState } from "react";
+
+import {
+  ApiError,
+  ProjectReadModel,
+  QuickShiftCreate,
+  ResourceReadModel,
+  createQuickShift,
+  getProjects,
+  getResources,
+} from "./api";
+
+type Props = {
+  open: boolean;
+  weekStart: string;
+  weekEnd: string;
+  defaultDay: string;
+  initialProjectNumber?: string | null;
+  onClose: () => void;
+  onSaved: () => void;
+};
+
+type RetryReceipt = {
+  fingerprint: string;
+  key: string;
+};
+
+function newIdempotencyKey() {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return `web-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function errorMessage(reason: unknown) {
+  if (reason instanceof ApiError) {
+    return `${reason.message}${reason.code ? ` (${reason.code})` : ""}`;
+  }
+  return reason instanceof Error ? reason.message : "Impossible de créer le Quick Shift.";
+}
+
+export default function QuickShiftEditor({
+  open,
+  weekStart,
+  weekEnd,
+  defaultDay,
+  initialProjectNumber,
+  onClose,
+  onSaved,
+}: Props) {
+  const [projects, setProjects] = useState<ProjectReadModel[]>([]);
+  const [resources, setResources] = useState<ResourceReadModel[]>([]);
+  const [loadingChoices, setLoadingChoices] = useState(false);
+  const [projectNumber, setProjectNumber] = useState("");
+  const [technician, setTechnician] = useState("");
+  const [day, setDay] = useState(defaultDay);
+  const [hours, setHours] = useState("8");
+  const [confirmation, setConfirmation] = useState<"Tentative" | "Confirmée">("Confirmée");
+  const [outsideStandardHours, setOutsideStandardHours] = useState(false);
+  const [description, setDescription] = useState("");
+  const [note, setNote] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const retryReceipt = useRef<RetryReceipt | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const controller = new AbortController();
+    setLoadingChoices(true);
+    setError(null);
+    setProjectNumber(initialProjectNumber ?? "");
+    setTechnician("");
+    setDay(defaultDay);
+    setHours("8");
+    setConfirmation("Confirmée");
+    setOutsideStandardHours(false);
+    setDescription("");
+    setNote("");
+    retryReceipt.current = null;
+
+    Promise.all([
+      getProjects(true, controller.signal),
+      getResources(true, controller.signal),
+    ])
+      .then(([projectRows, resourceRows]) => {
+        const sortedProjects = [...projectRows].sort((left, right) =>
+          `${left.number} ${left.name}`.localeCompare(`${right.number} ${right.name}`, "fr-CA"),
+        );
+        const sortedResources = [...resourceRows].sort((left, right) =>
+          left.sort_order - right.sort_order || left.name.localeCompare(right.name, "fr-CA"),
+        );
+        setProjects(sortedProjects);
+        setResources(sortedResources);
+        setProjectNumber((current) =>
+          sortedProjects.some((row) => row.number === current) ? current : "",
+        );
+      })
+      .catch((reason: unknown) => {
+        if (reason instanceof DOMException && reason.name === "AbortError") return;
+        setError(errorMessage(reason));
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoadingChoices(false);
+      });
+
+    return () => controller.abort();
+  }, [open, defaultDay, initialProjectNumber]);
+
+  useEffect(() => {
+    if (!open) return;
+    const listener = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !saving) onClose();
+    };
+    window.addEventListener("keydown", listener);
+    return () => window.removeEventListener("keydown", listener);
+  }, [open, saving, onClose]);
+
+  const selectedProject = useMemo(
+    () => projects.find((row) => row.number === projectNumber) ?? null,
+    [projects, projectNumber],
+  );
+
+  const selectedResource = useMemo(
+    () => resources.find((row) => row.name === technician) ?? null,
+    [resources, technician],
+  );
+
+  if (!open) return null;
+
+  function closeFromBackdrop(event: MouseEvent<HTMLDivElement>) {
+    if (!saving && event.target === event.currentTarget) onClose();
+  }
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (saving) return;
+    setError(null);
+
+    const numericHours = Number(hours);
+    if (!selectedProject) {
+      setError("Sélectionne un projet actif.");
+      return;
+    }
+    if (!selectedResource) {
+      setError("Sélectionne un technicien actif.");
+      return;
+    }
+    if (!day || day < weekStart || day > weekEnd) {
+      setError("La date doit être comprise dans la semaine affichée.");
+      return;
+    }
+    if (!Number.isFinite(numericHours) || numericHours <= 0) {
+      setError("Les heures doivent être supérieures à zéro.");
+      return;
+    }
+
+    const payload: QuickShiftCreate = {
+      project_number: selectedProject.number,
+      project_name: selectedProject.name,
+      technician: selectedResource.name,
+      day,
+      hours: numericHours,
+      confirmation,
+      outside_standard_hours: outsideStandardHours,
+      description: description.trim(),
+      note: note.trim(),
+    };
+    const fingerprint = JSON.stringify(payload);
+    const previous = retryReceipt.current;
+    const idempotencyKey = previous?.fingerprint === fingerprint
+      ? previous.key
+      : newIdempotencyKey();
+    retryReceipt.current = { fingerprint, key: idempotencyKey };
+
+    setSaving(true);
+    try {
+      await createQuickShift(payload, idempotencyKey);
+      retryReceipt.current = null;
+      onSaved();
+    } catch (reason: unknown) {
+      setError(errorMessage(reason));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="dialog-backdrop" role="presentation" onMouseDown={closeFromBackdrop}>
+      <section className="shift-dialog quick-shift-dialog" role="dialog" aria-modal="true" aria-labelledby="quick-shift-title">
+        <div className="dialog-heading">
+          <div>
+            <span className="eyebrow">Ajout opérationnel</span>
+            <h2 id="quick-shift-title">Créer un Quick Shift</h2>
+            <p>Ajoute directement un besoin ad hoc et un quart verrouillé, sans créer de demande fictive.</p>
+          </div>
+          <button className="icon-button" type="button" onClick={onClose} disabled={saving} aria-label="Fermer">×</button>
+        </div>
+
+        <form className="shift-edit-form" onSubmit={submit}>
+          <div className="info-banner">
+            Le projet et la ressource sont lus depuis les référentiels FastAPI. Le backend reste autoritaire pour la disponibilité, les heures et le hors horaire. Une reprise réseau réutilise la même clé d’idempotence pour éviter un doublon.
+          </div>
+
+          {error && <div className="dialog-error" role="alert">{error}</div>}
+
+          {selectedProject && (
+            <div className="dialog-context-grid quick-shift-context">
+              <div>
+                <span>Projet</span>
+                <strong>{selectedProject.number}</strong>
+              </div>
+              <div>
+                <span>Nom</span>
+                <strong>{selectedProject.name || "—"}</strong>
+              </div>
+              <div>
+                <span>Client</span>
+                <strong>{selectedProject.client || "—"}</strong>
+              </div>
+              <div>
+                <span>Responsable</span>
+                <strong>{selectedProject.project_manager || "—"}</strong>
+              </div>
+            </div>
+          )}
+
+          <div className="dialog-form-grid">
+            <label>
+              <span>Projet</span>
+              <select
+                value={projectNumber}
+                onChange={(event) => setProjectNumber(event.target.value)}
+                disabled={saving || loadingChoices}
+                required
+                autoFocus
+              >
+                <option value="">Sélectionner un projet…</option>
+                {projects.map((row) => (
+                  <option value={row.number} key={row.id}>{row.number} — {row.name}</option>
+                ))}
+              </select>
+            </label>
+
+            <label>
+              <span>Technicien</span>
+              <select
+                value={technician}
+                onChange={(event) => setTechnician(event.target.value)}
+                disabled={saving || loadingChoices}
+                required
+              >
+                <option value="">Sélectionner une ressource…</option>
+                {resources.map((row) => (
+                  <option value={row.name} key={row.id}>
+                    {row.name}{row.resource_class ? ` — ${row.resource_class}` : ""}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label>
+              <span>Date</span>
+              <input
+                type="date"
+                min={weekStart}
+                max={weekEnd}
+                value={day}
+                onChange={(event) => setDay(event.target.value)}
+                disabled={saving}
+                required
+              />
+            </label>
+
+            <label>
+              <span>Heures</span>
+              <input
+                type="number"
+                min="0.25"
+                step="0.25"
+                value={hours}
+                onChange={(event) => setHours(event.target.value)}
+                disabled={saving}
+                required
+              />
+            </label>
+
+            <label>
+              <span>Confirmation</span>
+              <select
+                value={confirmation}
+                onChange={(event) => setConfirmation(event.target.value as "Tentative" | "Confirmée")}
+                disabled={saving}
+              >
+                <option value="Confirmée">Confirmée</option>
+                <option value="Tentative">Tentative</option>
+              </select>
+            </label>
+
+            <label className="checkbox-field">
+              <input
+                type="checkbox"
+                checked={outsideStandardHours}
+                onChange={(event) => setOutsideStandardHours(event.target.checked)}
+                disabled={saving}
+              />
+              <span>Autoriser ce quart en dehors de l’horaire standard</span>
+            </label>
+
+            <label className="span-2">
+              <span>Description</span>
+              <textarea
+                value={description}
+                onChange={(event) => setDescription(event.target.value)}
+                disabled={saving}
+                rows={2}
+                placeholder="Travail à effectuer…"
+              />
+            </label>
+
+            <label className="span-2">
+              <span>Note</span>
+              <textarea
+                value={note}
+                onChange={(event) => setNote(event.target.value)}
+                disabled={saving}
+                rows={2}
+                placeholder="Note opérationnelle facultative…"
+              />
+            </label>
+          </div>
+
+          {selectedResource && (
+            <div className="confirmation-help">
+              <strong>{selectedResource.name}</strong>
+              <span>
+                {[selectedResource.resource_class, selectedResource.competencies].filter(Boolean).join(" · ") || "Ressource active"}
+              </span>
+            </div>
+          )}
+
+          <div className="dialog-actions">
+            <button className="secondary-button" type="button" onClick={onClose} disabled={saving}>Annuler</button>
+            <button className="primary-button" type="submit" disabled={saving || loadingChoices}>
+              {saving ? "Création…" : loadingChoices ? "Chargement…" : "Créer le Quick Shift"}
+            </button>
+          </div>
+        </form>
+      </section>
+    </div>
+  );
+}

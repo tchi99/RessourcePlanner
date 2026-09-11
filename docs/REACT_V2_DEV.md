@@ -1,6 +1,6 @@
 # Développement Web V2 — React + FastAPI + SQLite
 
-Cette tranche permet de développer le frontend React V2 sans attendre l'accès au SQL Server cible. Le navigateur ne connaît ni Excel ni SQL : il consomme uniquement FastAPI.
+Le frontend React V2 peut être développé et validé sans attendre l'accès au SQL Server cible. Le navigateur ne connaît ni Excel ni SQL : il consomme uniquement FastAPI.
 
 ## Architecture locale
 
@@ -76,17 +76,22 @@ Le build exécute d'abord TypeScript en mode strict puis Vite. GitHub Actions ex
 
 ## 5. Portée actuelle
 
-La première tranche est volontairement read-only :
+Le planning opérationnel Web V2 supporte maintenant :
 
-- shell/navigation V2;
-- planning hebdomadaire;
+- navigation hebdomadaire;
 - ressources groupées par classe;
 - quarts confirmés/tentatifs, verrouillés et hors horaire;
-- charge ferme/potentielle;
-- propositions de remplacement;
+- charge ferme/potentielle et propositions de remplacement;
 - demandes potentielles en attente;
-- filtres projet, confirmation et recherche.
+- filtres projet, confirmation et recherche;
+- édition d'un quart existant depuis sa carte;
+- passage d'un quart automatique vers une décision manuelle/verrouillée lors d'une modification;
+- override de confirmation du quart ou retour à l'héritage du segment;
+- création d'un Quick Shift ad hoc directement sous un projet, sans WorkforceRequest fictif;
+- chargement des projets et ressources actifs depuis les read models FastAPI;
+- `Idempotency-Key` sur les Quick Shifts : un retry du même payload réutilise la même clé afin d'éviter les doublons;
+- rechargement du snapshot après chaque mutation réussie.
 
-Les commandes (édition de quart, Quick Shift, demandes et approbations) seront branchées ensuite sur les endpoints FastAPI idempotents existants.
+Les prochaines commandes Web seront ajoutées progressivement. L'écran demandes doit conserver FastAPI comme frontière métier pour la création/modification, les périodes alternatives, la soumission, l'approbation et les corrections. L'OIDC/RBAC, Acumatica et l'hébergement de production restent hors de cette tranche de développement local.
 
-Refs : #187, #55, #162.
+Refs : #187, #189, #95, #55, #162.
