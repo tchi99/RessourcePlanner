@@ -8,6 +8,19 @@ export type ProjectReadModel = {
   erp_external_id: string | null;
 };
 
+export type WorkPackageReadModel = {
+  id: string;
+  reference: string;
+  project_number: string;
+  code: string | null;
+  name: string;
+  description: string | null;
+  start_date: string | null;
+  end_date: string | null;
+  planned_hours: number | null;
+  status: string;
+};
+
 export type ResourceReadModel = {
   id: string;
   name: string;
@@ -27,11 +40,14 @@ export type DemandReadModel = {
   client: string | null;
   project_manager: string | null;
   requester: string | null;
+  request_type: string | null;
   priority: string | null;
   confirmation: string | null;
   desired_start: string | null;
   desired_end: string | null;
   description: string | null;
+  site_client: string | null;
+  location: string | null;
   work_package_ref: string | null;
   work_package_name: string | null;
   resource_count: number;
@@ -134,6 +150,31 @@ export type PlanningSnapshotReadModel = {
   replacement_proposal_hours: number;
 };
 
+export type DemandWrite = {
+  project_number: string;
+  project_name?: string;
+  client?: string;
+  requester: string | null;
+  work_package_ref: string | null;
+  request_type?: string;
+  priority: string;
+  confirmation: "Tentative" | "Confirmée";
+  desired_start: string;
+  desired_end: string | null;
+  description: string;
+  resource_count: number;
+  required_competencies: string | null;
+  estimated_hours: number | null;
+  estimated_days: number | null;
+  proposed_technician: string | null;
+};
+
+export type DemandMutationResult = {
+  demand_number: string;
+  status: string | null;
+  reapproval_required: boolean;
+};
+
 export type ManualAllocationUpdate = {
   technician: string;
   day: string;
@@ -234,9 +275,45 @@ export function getProjects(activeOnly = true, signal?: AbortSignal) {
   return getJson<ProjectReadModel[]>(`/api/v1/projects?${params.toString()}`, signal);
 }
 
+export function getWorkPackages(projectNumber: string, activeOnly = true, signal?: AbortSignal) {
+  const params = new URLSearchParams({
+    project_number: projectNumber,
+    active_only: String(activeOnly),
+  });
+  return getJson<WorkPackageReadModel[]>(`/api/v1/work-packages?${params.toString()}`, signal);
+}
+
 export function getResources(activeOnly = true, signal?: AbortSignal) {
   const params = new URLSearchParams({ active_only: String(activeOnly) });
   return getJson<ResourceReadModel[]>(`/api/v1/resources?${params.toString()}`, signal);
+}
+
+export function getDemands(signal?: AbortSignal) {
+  return getJson<DemandReadModel[]>("/api/v1/demands", signal);
+}
+
+export function getDemand(number: string, signal?: AbortSignal) {
+  return getJson<DemandReadModel>(`/api/v1/demands/${encodeURIComponent(number)}`, signal);
+}
+
+export function createDemand(payload: DemandWrite, idempotencyKey: string) {
+  return sendJson<DemandMutationResult>(
+    "/api/v1/demands",
+    "POST",
+    { ...payload, submit: false },
+    { "Idempotency-Key": idempotencyKey },
+  );
+}
+
+export function updateDemand(number: string, payload: DemandWrite, comment: string) {
+  // request_type is not edited in tranche 3A. Do not write a fallback value back over
+  // historical requests until the field has an explicit UI and canonical SQL read.
+  const { request_type: _requestType, ...editablePayload } = payload;
+  return sendJson<DemandMutationResult>(
+    `/api/v1/demands/${encodeURIComponent(number)}`,
+    "PATCH",
+    { ...editablePayload, comment },
+  );
 }
 
 export function updateAllocation(allocationId: string, payload: ManualAllocationUpdate) {

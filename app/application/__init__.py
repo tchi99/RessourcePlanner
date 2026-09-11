@@ -53,6 +53,7 @@ from .query_models import (
     ProjectReadModel,
     ResourceReadModel,
     ShiftReadModel,
+    WorkPackageReadModel,
 )
 from .query_ports import PlannerQueryPort
 from .read_models import DemandPeriodReadModel, DemandReadModel, SegmentReadModel
@@ -127,6 +128,7 @@ __all__ = [
     "SegmentRepositoryPort",
     "SegmentUpdateCommand",
     "ShiftReadModel",
+    "WorkPackageReadModel",
     "normalize_idempotency_key",
     "request_fingerprint",
 ]

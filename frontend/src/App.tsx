@@ -1,5 +1,6 @@
 import { useState } from "react";
 
+import DemandsPage from "./DemandsPage";
 import PlanningPage from "./PlanningPage";
 
 type View = "planning" | "medium-term" | "demands" | "projects" | "communications";
@@ -94,7 +95,13 @@ export default function App() {
         </header>
 
         <main className="main-content">
-          {view === "planning" ? <PlanningPage /> : <Placeholder view={view} />}
+          {view === "planning" ? (
+            <PlanningPage />
+          ) : view === "demands" ? (
+            <DemandsPage />
+          ) : (
+            <Placeholder view={view} />
+          )}
         </main>
       </div>
     </div>

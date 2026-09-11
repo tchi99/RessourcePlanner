@@ -18,10 +18,10 @@ from ..infrastructure.sql import (
     SqlDemandPeriodRepository,
     SqlDemandRepository,
     SqlPeriodAwareApprovedDemandSyncAdapter,
-    SqlPlannerQueryRepository,
     SqlPlanningCommandAdapter,
     SqlSegmentRepository,
 )
+from ..infrastructure.sql.web_query_repository import SqlPlannerQueryRepositoryWeb
 
 
 def build_sql_facade(
@@ -73,4 +73,4 @@ def build_sql_idempotency_executor(
 def build_sql_query_port(session: Session) -> PlannerQueryPort:
     """Compose the canonical read-only query port for one request transaction."""
 
-    return SqlPlannerQueryRepository(session)
+    return SqlPlannerQueryRepositoryWeb(session)
