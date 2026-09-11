@@ -18,6 +18,7 @@ import {
   toIsoDate,
   weekDays,
 } from "./dates";
+import QuickShiftEditor from "./QuickShiftEditor";
 import ShiftEditor from "./ShiftEditor";
 
 type ConfirmationFilter = "all" | "confirmed" | "tentative";
@@ -200,11 +201,14 @@ export default function PlanningPage() {
   const [project, setProject] = useState("all");
   const [confirmation, setConfirmation] = useState<ConfirmationFilter>("all");
   const [editingShift, setEditingShift] = useState<ShiftReadModel | null>(null);
+  const [quickShiftOpen, setQuickShiftOpen] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
 
   const days = useMemo(() => weekDays(weekStart), [weekStart]);
   const start = toIsoDate(weekStart);
   const end = toIsoDate(addDays(weekStart, 6));
+  const today = toIsoDate(new Date());
+  const quickShiftDefaultDay = today >= start && today <= end ? today : start;
 
   useEffect(() => {
     const controller = new AbortController();
@@ -296,12 +300,17 @@ export default function PlanningPage() {
         <div>
           <span className="eyebrow">Planification opérationnelle</span>
           <h1>Semaine du {formatWeekRange(weekStart)}</h1>
-          <p>Planning Web V2 alimenté directement par le snapshot canonique FastAPI. Clique sur un quart pour le modifier.</p>
+          <p>Planning Web V2 alimenté directement par FastAPI. Clique sur un quart pour le modifier ou ajoute un Quick Shift ad hoc.</p>
         </div>
-        <div className="week-navigation" role="group" aria-label="Navigation par semaine">
-          <button type="button" onClick={() => setWeekStart((value) => addDays(value, -7))}>← Précédente</button>
-          <button type="button" onClick={() => setWeekStart(startOfWeek(new Date()))}>Aujourd’hui</button>
-          <button type="button" onClick={() => setWeekStart((value) => addDays(value, 7))}>Suivante →</button>
+        <div className="page-actions">
+          <button className="quick-shift-button" type="button" onClick={() => setQuickShiftOpen(true)}>
+            + Quick Shift
+          </button>
+          <div className="week-navigation" role="group" aria-label="Navigation par semaine">
+            <button type="button" onClick={() => setWeekStart((value) => addDays(value, -7))}>← Précédente</button>
+            <button type="button" onClick={() => setWeekStart(startOfWeek(new Date()))}>Aujourd’hui</button>
+            <button type="button" onClick={() => setWeekStart((value) => addDays(value, 7))}>Suivante →</button>
+          </div>
         </div>
       </div>
 
@@ -444,6 +453,19 @@ export default function PlanningPage() {
           }}
         />
       )}
+
+      <QuickShiftEditor
+        open={quickShiftOpen}
+        weekStart={start}
+        weekEnd={end}
+        defaultDay={quickShiftDefaultDay}
+        initialProjectNumber={project === "all" ? null : project}
+        onClose={() => setQuickShiftOpen(false)}
+        onSaved={() => {
+          setQuickShiftOpen(false);
+          setRefreshKey((value) => value + 1);
+        }}
+      />
     </section>
   );
 }
