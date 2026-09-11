@@ -10,13 +10,17 @@ from .excel_cutover import (
     CutoverReader,
     extract_cutover_dataset,
 )
-from .source_links import extract_demand_work_package_links
+from .source_links import (
+    extract_demand_work_package_links,
+    extract_requirement_creator_names,
+)
 
 
 @dataclass(frozen=True, slots=True)
 class CutoverPreflight:
     report: CutoverExtractionReport
     demand_work_package_links: Mapping[str, str]
+    requirement_creator_names: Mapping[str, str]
 
     @property
     def ok(self) -> bool:
@@ -25,6 +29,7 @@ class CutoverPreflight:
     def as_dict(self) -> dict[str, Any]:
         payload = self.report.as_dict()
         payload["demand_work_package_link_count"] = len(self.demand_work_package_links)
+        payload["requirement_creator_count"] = len(self.requirement_creator_names)
         return payload
 
 
@@ -177,6 +182,7 @@ def _extra_diagnostics(
 def build_cutover_preflight(reader: CutoverReader) -> CutoverPreflight:
     base = extract_cutover_dataset(reader)
     links = extract_demand_work_package_links(reader)
+    creators = extract_requirement_creator_names(reader)
     extras = _extra_diagnostics(base, links)
 
     # The extractor reports a missing history timestamp as a warning because extraction
@@ -193,4 +199,8 @@ def build_cutover_preflight(reader: CutoverReader) -> CutoverPreflight:
         counts=base.counts,
         hours=base.hours,
     )
-    return CutoverPreflight(report=report, demand_work_package_links=dict(links))
+    return CutoverPreflight(
+        report=report,
+        demand_work_package_links=dict(links),
+        requirement_creator_names=dict(creators),
+    )

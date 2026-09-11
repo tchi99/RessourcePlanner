@@ -176,6 +176,7 @@ def run_cutover(
                     session,
                     preflight.report,
                     demand_work_package_links=preflight.demand_work_package_links,
+                    requirement_creator_names=preflight.requirement_creator_names,
                 )
                 # Fail closed if someone modified the source after extraction but before
                 # the SQL transaction would commit.

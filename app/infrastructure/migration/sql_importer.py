@@ -179,6 +179,7 @@ def import_cutover_dataset(
     source: CutoverExtractionReport,
     *,
     demand_work_package_links: Mapping[str, str] | None = None,
+    requirement_creator_names: Mapping[str, str] | None = None,
     require_empty: bool = True,
 ) -> CutoverImportReport:
     """Import one validated V1 snapshot into the caller-owned SQL transaction.
@@ -197,6 +198,7 @@ def import_cutover_dataset(
 
     dataset = source.dataset
     demand_work_package_links = dict(demand_work_package_links or {})
+    requirement_creator_names = dict(requirement_creator_names or {})
 
     projects: dict[str, Project] = {}
     for row in dataset.projects:
@@ -385,6 +387,7 @@ def import_cutover_dataset(
                 row.get("outside_standard_hours_allowed", False)
             ),
             origin=_text(row.get("origin")) or "REQUEST",
+            created_by_name=_text(requirement_creator_names.get(identifier)) or None,
         )
         created_at = _timestamp(row.get("created_at"))
         updated_at = _timestamp(row.get("updated_at"))

@@ -39,3 +39,20 @@ def extract_demand_work_package_links(reader: CutoverReader) -> Mapping[str, str
         if reference:
             result[number] = reference
     return result
+
+
+def extract_requirement_creator_names(reader: CutoverReader) -> Mapping[str, str]:
+    """Return legacy segment id -> creator display name for cutover preservation.
+
+    ``CreePar`` is operational audit data in the Excel model. Keeping it in a small
+    side-channel avoids coupling the normalized cutover dataset to a V1-only column
+    while still preserving the author of ad-hoc/Quick Shift requirements in SQL.
+    """
+
+    result: dict[str, str] = {}
+    for row in reader.records("SegmentsMO", "IDSegment"):
+        identifier = _text(row.get("IDSegment"))
+        creator = _text(row.get("CreePar"))
+        if identifier and creator:
+            result[identifier] = creator
+    return result

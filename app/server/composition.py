@@ -34,7 +34,7 @@ def build_sql_facade(
     actor = str(actor_name or "api").strip() or "api"
     demands = SqlDemandRepository(session, actor_name=actor)
     periods = SqlDemandPeriodRepository(session, actor_name=actor)
-    segments = SqlSegmentRepository(session)
+    segments = SqlSegmentRepository(session, actor_name=actor)
     planning_commands = SqlPlanningCommandAdapter(session)
     allocation_commands = SqlAllocationCommandAdapter(
         session,
