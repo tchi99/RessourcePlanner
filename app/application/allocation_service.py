@@ -112,10 +112,15 @@ class AllocationService:
                 bool(command.outside_standard_hours),
                 str(command.note or ""),
             )
+            if command.clear_confirmation_override:
+                # Canonical Web/API intent: explicitly clear the nullable shift override.
+                self._commands.update_manual(*base, None)
+                return
             if command.confirmation is None:
+                # V1 compatibility intent: omitted/None historically means preserve it.
                 self._commands.update_manual(*base)
-            else:
-                self._commands.update_manual(*base, command.confirmation)
+                return
+            self._commands.update_manual(*base, command.confirmation)
 
         call_application_port(
             update,

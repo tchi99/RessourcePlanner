@@ -79,10 +79,17 @@ class ManualAllocationUpdateCommand:
     outside_standard_hours: bool = False
     note: str = ""
     confirmation: str | None = None
+    clear_confirmation_override: bool = False
 
     def __post_init__(self) -> None:
         if self.confirmation is not None:
             _confirmation(self.confirmation)
+        if self.clear_confirmation_override and self.confirmation is not None:
+            raise ApplicationValidationError(
+                "Impossible de définir et supprimer l'override de confirmation simultanément.",
+                code="allocation_confirmation_conflict",
+                context={"field": "confirmation"},
+            )
 
     @classmethod
     def from_values(
@@ -116,6 +123,8 @@ class ManualAllocationUpdateCommand:
             outside_standard_hours=bool(outside_standard_hours),
             note=str(note or ""),
             confirmation=_confirmation(confirmation),
+            # Compatibility callers historically use None to mean "do not touch".
+            clear_confirmation_override=False,
         )
 
 

@@ -1,0 +1,230 @@
+.shift-card {
+  width: 100%;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: transform 110ms ease, box-shadow 110ms ease;
+}
+
+.shift-card:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 3px 10px rgb(16 24 40 / 10%);
+}
+
+.shift-card:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--accent) 28%, transparent);
+  outline-offset: 2px;
+}
+
+.dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: rgb(15 23 42 / 48%);
+  backdrop-filter: blur(2px);
+}
+
+.shift-dialog {
+  width: min(720px, 100%);
+  max-height: min(90vh, 820px);
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 15px;
+  background: var(--panel);
+  box-shadow: 0 24px 70px rgb(15 23 42 / 28%);
+}
+
+.dialog-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem 1.1rem .85rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.dialog-heading h2 {
+  margin: .1rem 0 0;
+  font-size: 1.25rem;
+}
+
+.dialog-heading p {
+  margin: .22rem 0 0;
+  color: var(--muted);
+  font-size: .75rem;
+}
+
+.icon-button {
+  width: 34px;
+  height: 34px;
+  flex: 0 0 auto;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: white;
+  color: #5b6472;
+  font-size: 1.2rem;
+  line-height: 1;
+}
+
+.icon-button:disabled { cursor: default; opacity: .5; }
+
+.shift-edit-form { padding: .9rem 1.1rem 1.05rem; }
+
+.info-banner,
+.dialog-error {
+  margin-bottom: .75rem;
+  padding: .7rem .75rem;
+  border-radius: 9px;
+  font-size: .72rem;
+  line-height: 1.4;
+}
+
+.info-banner {
+  border: 1px solid #c5d4ee;
+  background: #f0f5ff;
+  color: #38557c;
+}
+
+.dialog-error {
+  border: 1px solid #efbbbb;
+  background: #fff1f1;
+  color: #8e2e2e;
+}
+
+.dialog-context-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: .5rem;
+  margin-bottom: .85rem;
+}
+
+.dialog-context-grid > div {
+  min-width: 0;
+  padding: .55rem .6rem;
+  border: 1px solid #e4e9f0;
+  border-radius: 9px;
+  background: #f8fafc;
+}
+
+.dialog-context-grid span,
+.dialog-context-grid strong {
+  display: block;
+}
+
+.dialog-context-grid span {
+  color: var(--muted);
+  font-size: .58rem;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+
+.dialog-context-grid strong {
+  margin-top: .12rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: .7rem;
+}
+
+.dialog-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: .65rem;
+}
+
+.dialog-form-grid label:not(.checkbox-field) {
+  display: grid;
+  gap: .25rem;
+}
+
+.dialog-form-grid label > span {
+  color: var(--muted);
+  font-size: .64rem;
+  font-weight: 700;
+}
+
+.dialog-form-grid input,
+.dialog-form-grid select,
+.dialog-form-grid textarea {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: white;
+  color: var(--ink);
+  padding: .5rem .58rem;
+  font: inherit;
+  font-size: .76rem;
+}
+
+.dialog-form-grid textarea { resize: vertical; min-height: 74px; }
+
+.dialog-form-grid .span-2 { grid-column: 1 / -1; }
+
+.checkbox-field {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: .45rem;
+  min-height: 38px;
+  padding: .4rem .5rem;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: #fbfcfe;
+}
+
+.checkbox-field input { width: auto; margin: 0; }
+.checkbox-field span { color: var(--ink) !important; font-weight: 500 !important; }
+
+.confirmation-help {
+  display: grid;
+  gap: .12rem;
+  margin-top: .75rem;
+  padding: .65rem .7rem;
+  border-left: 3px solid #8597b4;
+  background: #f8fafc;
+}
+
+.confirmation-help strong { font-size: .68rem; }
+.confirmation-help span { color: var(--muted); font-size: .64rem; line-height: 1.35; }
+
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: .45rem;
+  margin-top: 1rem;
+}
+
+.primary-button,
+.secondary-button {
+  min-height: 38px;
+  border-radius: 9px;
+  padding: .48rem .75rem;
+  font-weight: 700;
+}
+
+.primary-button {
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: white;
+}
+
+.secondary-button {
+  border: 1px solid var(--border);
+  background: white;
+  color: var(--ink);
+}
+
+.primary-button:disabled,
+.secondary-button:disabled { cursor: default; opacity: .55; }
+
+@media (max-width: 680px) {
+  .dialog-backdrop { align-items: end; padding: 0; }
+  .shift-dialog { width: 100%; max-height: 94vh; border-radius: 15px 15px 0 0; }
+  .dialog-context-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .dialog-form-grid { grid-template-columns: 1fr; }
+  .dialog-form-grid .span-2, .checkbox-field { grid-column: auto; }
+}

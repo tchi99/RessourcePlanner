@@ -343,8 +343,11 @@ class SqlAllocationCommandAdapter(AllocationCommandPort):
         shift.source = "MANUAL"
         shift.locked = True
         shift.outside_standard_hours = bool(hors_horaire)
-        if confirmation is not None:
-            shift.confirmation = normalize_confirmation(confirmation)
+        # Allocation update is exposed as PUT: null is the explicit persisted state
+        # meaning "inherit the requirement confirmation", not "leave unchanged".
+        shift.confirmation = (
+            normalize_confirmation(confirmation) if _text(confirmation) else None
+        )
         shift.note = _text(note) or None
         self._session.flush()
         self._planning.rebuild()

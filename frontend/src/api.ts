@@ -124,6 +124,15 @@ export type PlanningSnapshotReadModel = {
   replacement_proposal_hours: number;
 };
 
+export type ManualAllocationUpdate = {
+  technician: string;
+  day: string;
+  hours: number;
+  outside_standard_hours: boolean;
+  note: string;
+  confirmation: string | null;
+};
+
 type ApiErrorPayload = {
   error?: {
     code?: string;
@@ -146,28 +155,51 @@ export class ApiError extends Error {
   }
 }
 
+async function responseError(response: Response): Promise<ApiError> {
+  let payload: ApiErrorPayload | null = null;
+  try {
+    payload = (await response.json()) as ApiErrorPayload;
+  } catch {
+    // Keep the stable fallback below when a proxy/server returns non-JSON content.
+  }
+  return new ApiError(
+    payload?.error?.message || `Erreur HTTP ${response.status}`,
+    response.status,
+    payload?.error?.code ?? null,
+  );
+}
+
 async function getJson<T>(path: string, signal?: AbortSignal): Promise<T> {
   const response = await fetch(`${API_BASE}${path}`, {
     headers: { Accept: "application/json" },
     signal,
   });
-  if (!response.ok) {
-    let payload: ApiErrorPayload | null = null;
-    try {
-      payload = (await response.json()) as ApiErrorPayload;
-    } catch {
-      // Keep the stable fallback below when a proxy/server returns non-JSON content.
-    }
-    throw new ApiError(
-      payload?.error?.message || `Erreur HTTP ${response.status}`,
-      response.status,
-      payload?.error?.code ?? null,
-    );
-  }
+  if (!response.ok) throw await responseError(response);
+  return response.json() as Promise<T>;
+}
+
+async function sendJson<T>(path: string, method: string, body: unknown): Promise<T> {
+  const response = await fetch(`${API_BASE}${path}`, {
+    method,
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) throw await responseError(response);
   return response.json() as Promise<T>;
 }
 
 export function getPlanningSnapshot(start: string, end: string, signal?: AbortSignal) {
   const params = new URLSearchParams({ start, end });
   return getJson<PlanningSnapshotReadModel>(`/api/v1/planning/snapshot?${params.toString()}`, signal);
+}
+
+export function updateAllocation(allocationId: string, payload: ManualAllocationUpdate) {
+  return sendJson<Record<string, unknown>>(
+    `/api/v1/allocations/${encodeURIComponent(allocationId)}`,
+    "PUT",
+    payload,
+  );
 }
