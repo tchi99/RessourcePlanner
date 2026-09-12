@@ -42,6 +42,14 @@ function hours(value: number | null | undefined) {
   return `${new Intl.NumberFormat("fr-CA", { maximumFractionDigits: 1 }).format(value)} h`;
 }
 
+function isoWeekNumber(value: Date) {
+  const date = new Date(Date.UTC(value.getFullYear(), value.getMonth(), value.getDate()));
+  const day = date.getUTCDay() || 7;
+  date.setUTCDate(date.getUTCDate() + 4 - day);
+  const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1));
+  return Math.ceil(((date.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
+}
+
 function overlapsWindow(workPackage: WorkPackageReadModel, start: Date, end: Date) {
   if (!workPackage.start_date && !workPackage.end_date) return true;
   const packageStart = workPackage.start_date ? parseIsoDate(workPackage.start_date) : start;
@@ -115,7 +123,7 @@ function WorkPackageRow({
 }) {
   const grid = placement(workPackage, horizonStart, horizonWeeks);
   const template = `250px repeat(${horizonWeeks}, minmax(96px, 1fr))`;
-  const pendingNumbers = new Set(pendingLoads.map((load) => load.demand_number));
+  const pendingByDemand = new Map(pendingLoads.map((load) => [load.demand_number, load]));
   const plannedNumbers = new Set(
     snapshot.segments
       .map((segment) => segment.demand_number)
@@ -157,19 +165,23 @@ function WorkPackageRow({
           {demands.length === 0 ? (
             <span className="mt-demand-empty">Aucune demande dans l’horizon</span>
           ) : demands.map((demand) => {
-            const pending = pendingNumbers.has(demand.number);
+            const pendingLoad = pendingByDemand.get(demand.number);
             const planned = plannedNumbers.has(demand.number);
-            const tone = demandTone(demand, pending, planned);
+            const replacement = normalize(pendingLoad?.mode) === "replacement";
+            const tone = demandTone(demand, Boolean(pendingLoad), planned);
+            const label = pendingLoad
+              ? replacement ? "Modification en attente" : "Charge potentielle"
+              : planned ? "Plan approuvé" : demand.status;
             return (
               <button
                 type="button"
                 className={`mt-demand-chip ${tone}`}
                 key={demand.number}
                 onClick={onOpenDemands}
-                title={`${demand.number} · ${demand.status}${pending ? " · charge potentielle" : planned ? " · plan approuvé présent" : ""}`}
+                title={`${demand.number} · ${demand.status} · ${label}`}
               >
                 <strong>{demand.number}</strong>
-                <span>{pending ? "Potentielle" : planned ? "Plan approuvé" : demand.status}</span>
+                <span>{label}</span>
               </button>
             );
           })}
@@ -204,7 +216,7 @@ export default function MediumTermPage({ onOpenDemands }: { onOpenDemands: () =>
     setError(null);
     Promise.all([
       getProjects(true, controller.signal),
-      getWorkPackages(undefined, true, controller.signal),
+      getWorkPackages("", true, controller.signal),
       getPlanningSnapshot(start, end, controller.signal),
     ])
       .then(([projectRows, packageRows, planning]) => {
@@ -285,7 +297,6 @@ export default function MediumTermPage({ onOpenDemands }: { onOpenDemands: () =>
         ));
 
       if (query && !projectMatches && packages.length === 0) return;
-      if (packages.length === 0 && query && !projectMatches) return;
 
       const rows = groups.get(manager) ?? [];
       rows.push({ project, workPackages: packages });
@@ -330,7 +341,7 @@ export default function MediumTermPage({ onOpenDemands }: { onOpenDemands: () =>
       <div className="page-heading">
         <div>
           <span className="eyebrow">Planification moyen terme</span>
-          <h1>{formatWeekRange(horizonStart)} → {formatWeekRange(addDays(horizonEnd, -6))}</h1>
+          <h1>{start} → {end}</h1>
           <p>
             Vue read-only des WorkPackages et des demandes dans l’horizon. Les états de charge potentielle et de plan approuvé proviennent des read models FastAPI.
           </p>
@@ -395,7 +406,7 @@ export default function MediumTermPage({ onOpenDemands }: { onOpenDemands: () =>
             <div className="mt-project-header">Projet / WorkPackage</div>
             {weeks.map((week, index) => (
               <div className="mt-week-header" key={toIsoDate(week)} style={{ gridColumn: index + 2 }}>
-                <strong>S{new Intl.NumberFormat("fr-CA", { minimumIntegerDigits: 2 }).format(Number(new Intl.DateTimeFormat("fr-CA", { week: "numeric" } as Intl.DateTimeFormatOptions).format(week)) || index + 1)}</strong>
+                <strong>S{String(isoWeekNumber(week)).padStart(2, "0")}</strong>
                 <span>{formatWeekRange(week)}</span>
               </div>
             ))}
@@ -410,7 +421,7 @@ export default function MediumTermPage({ onOpenDemands }: { onOpenDemands: () =>
               <header><strong>{manager}</strong><span>{rows.length} projet(s)</span></header>
               {rows.map(({ project, workPackages: projectPackages }) => (
                 <div className="mt-project-block" key={project.id}>
-                  <div className="mt-project-summary">
+                  <div className="mt-project-strip">
                     <strong>{project.number}</strong>
                     <span>{project.name}</span>
                     <small>{project.client || "Client non précisé"}</small>
@@ -439,7 +450,7 @@ export default function MediumTermPage({ onOpenDemands }: { onOpenDemands: () =>
 
       <div className="mt-legend">
         <span><i className="planned" /> Plan approuvé présent</span>
-        <span><i className="pending" /> Demande soumise / charge potentielle</span>
+        <span><i className="pending" /> Soumise / modification en attente</span>
         <span><i className="draft" /> Brouillon / autre état</span>
         <small>Les calculs de capacité moyen terme seront ajoutés en 4C; 4A affiche seulement les projections canoniques déjà fournies par FastAPI.</small>
       </div>
