@@ -10,11 +10,15 @@ ROOT = Path(__file__).resolve().parents[1]
 class ReactDemandsContractTests(unittest.TestCase):
     def test_shell_routes_demands_view_to_real_workspace(self) -> None:
         app = (ROOT / "frontend" / "src" / "App.tsx").read_text(encoding="utf-8")
+        workspace = (ROOT / "frontend" / "src" / "DemandsWorkspace.tsx").read_text(
+            encoding="utf-8"
+        )
         main = (ROOT / "frontend" / "src" / "main.tsx").read_text(encoding="utf-8")
 
-        self.assertIn('import DemandsPage from "./DemandsPage"', app)
+        self.assertIn('import DemandsWorkspace from "./DemandsWorkspace"', app)
         self.assertIn('view === "demands"', app)
-        self.assertIn("<DemandsPage />", app)
+        self.assertIn("<DemandsWorkspace />", app)
+        self.assertIn("<DemandsPage />", workspace)
         self.assertIn('import "./demands.css"', main)
 
     def test_api_client_uses_canonical_demand_and_work_package_endpoints(self) -> None:
