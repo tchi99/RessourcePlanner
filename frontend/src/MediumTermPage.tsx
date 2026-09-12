@@ -19,6 +19,7 @@ import {
   startOfWeek,
   toIsoDate,
 } from "./dates";
+import MediumTermCapacityPanel from "./MediumTermCapacityPanel";
 import WorkPackageEditor from "./WorkPackageEditor";
 
 const HORIZONS = [4, 8, 12] as const;
@@ -380,6 +381,11 @@ export default function MediumTermPage({ onOpenDemands }: { onOpenDemands: () =>
         <article><span>Charges potentielles</span><strong>{loading ? "—" : visiblePending}</strong><small>Calculées par le backend</small></article>
       </div>
 
+      <MediumTermCapacityPanel
+        buckets={snapshot?.capacity_buckets ?? []}
+        loading={loading}
+      />
+
       <div className="filter-bar mt-filters">
         <label className="search-field">
           <span>Recherche</span>
@@ -468,7 +474,7 @@ export default function MediumTermPage({ onOpenDemands }: { onOpenDemands: () =>
         <span><i className="planned" /> Plan approuvé présent</span>
         <span><i className="pending" /> Soumise / modification en attente</span>
         <span><i className="draft" /> Brouillon / autre état</span>
-        <small>Les agrégations de capacité moyen terme seront ajoutées en 4C; les mutations WorkPackage passent maintenant par FastAPI.</small>
+        <small>Capacité, exposition et résiduel proviennent du snapshot FastAPI; React ne recalcule ni la projection ni le non-double-comptage.</small>
       </div>
 
       {editor !== undefined && (
