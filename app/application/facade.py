@@ -20,8 +20,11 @@ from .commands import (
     SegmentCancelCommand,
     SegmentCreateCommand,
     SegmentUpdateCommand,
+    WorkPackageCreateCommand,
+    WorkPackageUpdateCommand,
 )
 from .demand_service import DemandService
+from .errors import ApplicationOperationError
 from .planning_service import PlanningService
 from .quick_shift_service import QuickShiftService
 from .results import (
@@ -32,8 +35,10 @@ from .results import (
     PlanningResult,
     QuickShiftCreatedResult,
     SegmentMutationResult,
+    WorkPackageMutationResult,
 )
 from .segment_service import SegmentService
+from .work_package_service import WorkPackageService
 
 
 def _identifier(value: object) -> str:
@@ -51,12 +56,34 @@ class ApplicationFacade:
         allocations: AllocationService,
         quick_shifts: QuickShiftService,
         planning: PlanningService,
+        work_packages: WorkPackageService | None = None,
     ) -> None:
         self._demands = demands
         self._segments = segments
         self._allocations = allocations
         self._quick_shifts = quick_shifts
         self._planning = planning
+        self._work_packages = work_packages
+
+    def _work_package_service(self) -> WorkPackageService:
+        if self._work_packages is None:
+            raise ApplicationOperationError(
+                "Les commandes WorkPackage ne sont pas configurées dans cet adaptateur.",
+                code="work_package_commands_unavailable",
+            )
+        return self._work_packages
+
+    def create_work_package(
+        self,
+        command: WorkPackageCreateCommand,
+    ) -> WorkPackageMutationResult:
+        return self._work_package_service().create_command(command)
+
+    def update_work_package(
+        self,
+        command: WorkPackageUpdateCommand,
+    ) -> WorkPackageMutationResult:
+        return self._work_package_service().update_command(command)
 
     def create_demand(self, command: DemandCreateCommand) -> DemandMutationResult:
         number = self._demands.create_command(command)
