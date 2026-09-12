@@ -49,6 +49,13 @@ from .idempotency import (
     request_fingerprint,
 )
 from .planning_service import PlanningService
+from .project_sync import (
+    ExternalProjectRecord,
+    ProjectSourcePort,
+    ProjectSyncRepositoryPort,
+    ProjectSyncResult,
+    ProjectSyncService,
+)
 from .query_models import (
     PendingDemandLoadReadModel,
     PlanningSnapshotReadModel,
@@ -108,6 +115,7 @@ __all__ = [
     "DemandRepositoryPort",
     "DemandSubmitCommand",
     "DemandUpdateCommand",
+    "ExternalProjectRecord",
     "IdempotentCommandExecutor",
     "ManualAllocationCreateCommand",
     "ManualAllocationDeleteCommand",
@@ -122,6 +130,10 @@ __all__ = [
     "PlanningService",
     "PlanningSnapshotReadModel",
     "ProjectReadModel",
+    "ProjectSourcePort",
+    "ProjectSyncRepositoryPort",
+    "ProjectSyncResult",
+    "ProjectSyncService",
     "QuickShiftCreateCommand",
     "QuickShiftCreatedResult",
     "ResourceReadModel",
