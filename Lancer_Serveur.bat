@@ -9,6 +9,25 @@ if not exist ".venv\Scripts\python.exe" (
     exit /b 1
 )
 
+set "LOCAL_SQLITE_MODE=0"
+if not defined RESOURCEPLANNER_DATABASE_URL (
+    set "RESOURCEPLANNER_DATABASE_URL=sqlite:///./resourceplanner_server.db"
+    set "LOCAL_SQLITE_MODE=1"
+    echo Aucune URL de base de donnees definie.
+    echo Utilisation de la base SQLite locale : resourceplanner_server.db
+)
+
+if "%LOCAL_SQLITE_MODE%"=="1" (
+    echo Verification des migrations de la base locale...
+    ".venv\Scripts\python.exe" -m alembic upgrade head
+    if errorlevel 1 (
+        echo.
+        echo Echec des migrations Alembic.
+        pause
+        exit /b 1
+    )
+)
+
 echo Demarrage du backend RessourcePlanner...
 ".venv\Scripts\python.exe" -m app.server
 set EXIT_CODE=%errorlevel%
