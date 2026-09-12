@@ -77,17 +77,17 @@ def _acumatica_settings(
     values: Mapping[str, str],
 ) -> AcumaticaProjectSourceSettings | None:
     base_url = _text(values.get(ACUMATICA_BASE_URL_ENV))
-    access_token = _text(values.get(ACUMATICA_ACCESS_TOKEN_ENV))
+    bearer_token = _text(values.get(ACUMATICA_ACCESS_TOKEN_ENV))
     version = _text(values.get(ACUMATICA_VERSION_ENV))
 
-    if not any((base_url, access_token, version)):
+    if not any((base_url, bearer_token, version)):
         return None
 
     missing = [
         name
         for name, value in (
             (ACUMATICA_BASE_URL_ENV, base_url),
-            (ACUMATICA_ACCESS_TOKEN_ENV, access_token),
+            (ACUMATICA_ACCESS_TOKEN_ENV, bearer_token),
             (ACUMATICA_VERSION_ENV, version),
         )
         if not value
@@ -99,7 +99,7 @@ def _acumatica_settings(
 
     return AcumaticaProjectSourceSettings(
         base_url=base_url,
-        access_token=access_token,
+        bearer_token=bearer_token,
         endpoint=_text(values.get(ACUMATICA_ENDPOINT_ENV)) or "Default",
         version=version,
         entity=_text(values.get(ACUMATICA_ENTITY_ENV)) or "Project",
