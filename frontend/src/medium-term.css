@@ -46,7 +46,7 @@
 .mt-demand-chip strong { color: #344258; }
 .mt-demand-chip.planned { border-color: #abd1b8; background: #eaf6ee; }
 .mt-demand-chip.pending { border-color: #e8cc85; background: #fff4d5; }
-.mt-demand-chip.correction { border-color: #e8b2b2; background: #fdecec; }
+.mt-demand-chip.correction { border-color: #efbbbb; background: #fdecec; }
 .mt-demand-chip.draft { background: #f2f4f7; }
 .mt-demand-chip:hover { filter: brightness(.98); }
 .mt-demand-empty { color: #748094; font-size: .5rem; font-style: italic; }
