@@ -40,9 +40,10 @@ class ReactMediumTermContractTests(unittest.TestCase):
         self.assertIn("Chargé de projet", source)
         self.assertIn("Horizon", source)
         self.assertIn("WorkPackages", source)
-        self.assertIn("Modification en attente", source)
-        self.assertIn("Charge potentielle", source)
-        self.assertIn("Plan approuvé", source)
+        self.assertIn("Soumise · modification en attente", source)
+        self.assertIn("Soumise · charge potentielle", source)
+        self.assertIn("Plan approuvé · tentative", source)
+        self.assertIn("Plan approuvé · confirmée", source)
         self.assertIn("Ouvrir les demandes", source)
         self.assertIn("+ WorkPackage", source)
         self.assertIn("<WorkPackageEditor", source)
@@ -50,6 +51,23 @@ class ReactMediumTermContractTests(unittest.TestCase):
         self.assertIn("setRefreshKey((value) => value + 1)", source)
         self.assertIn("<MediumTermCapacityPanel", source)
         self.assertIn("React ne recalcule ni la projection ni le non-double-comptage", source)
+
+    def test_demand_signals_expose_issue_34_details_without_new_business_rules(self) -> None:
+        source = (ROOT / "frontend" / "src" / "MediumTermPage.tsx").read_text(
+            encoding="utf-8"
+        )
+        css = (ROOT / "frontend" / "src" / "medium-term.css").read_text(encoding="utf-8")
+
+        self.assertIn("demand.desired_start", source)
+        self.assertIn("demand.desired_end", source)
+        self.assertIn("demand.estimated_hours", source)
+        self.assertIn("demand.resource_count", source)
+        self.assertIn("demand.required_competencies", source)
+        self.assertIn("aria-label={demandDetails(demand, label)}", source)
+        self.assertIn('return normalize(demand.confirmation).includes("tentative")', source)
+        self.assertIn('return "tentative"', source)
+        self.assertIn(".mt-demand-chip.tentative", css)
+        self.assertIn(".mt-legend i.tentative", css)
 
     def test_capacity_panel_displays_backend_fields_without_recalculating_exposure(self) -> None:
         panel = (ROOT / "frontend" / "src" / "MediumTermCapacityPanel.tsx").read_text(
