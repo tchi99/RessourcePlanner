@@ -14,6 +14,7 @@ class ProjectReadModel:
     client: str | None = None
     project_manager: str | None = None
     status: str = "active"
+    active: bool = True
     erp_external_id: str | None = None
 
 

@@ -3,6 +3,7 @@ import { useState } from "react";
 import DemandsWorkspace from "./DemandsWorkspace";
 import MediumTermPage from "./MediumTermPage";
 import PlanningPage from "./PlanningPage";
+import ProjectsPage from "./ProjectsPage";
 
 type View = "planning" | "medium-term" | "demands" | "projects" | "communications";
 
@@ -102,6 +103,8 @@ export default function App() {
             <MediumTermPage onOpenDemands={() => setView("demands")} />
           ) : view === "demands" ? (
             <DemandsWorkspace />
+          ) : view === "projects" ? (
+            <ProjectsPage />
           ) : (
             <Placeholder view={view} />
           )}

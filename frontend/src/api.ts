@@ -5,7 +5,23 @@ export type ProjectReadModel = {
   client: string | null;
   project_manager: string | null;
   status: string;
+  active: boolean;
   erp_external_id: string | null;
+};
+
+export type AcumaticaIntegrationStatus = {
+  configured: boolean;
+  endpoint?: string;
+  version?: string;
+  entity?: string;
+  page_size?: number;
+};
+
+export type ProjectSyncResult = {
+  received: number;
+  created: number;
+  updated: number;
+  unchanged: number;
 };
 
 export type WorkPackageReadModel = {
@@ -307,6 +323,15 @@ async function getJson<T>(path: string, signal?: AbortSignal): Promise<T> {
   return response.json() as Promise<T>;
 }
 
+async function postJson<T>(path: string): Promise<T> {
+  const response = await fetch(`${API_BASE}${path}`, {
+    method: "POST",
+    headers: { Accept: "application/json" },
+  });
+  if (!response.ok) throw await responseError(response);
+  return response.json() as Promise<T>;
+}
+
 async function sendJson<T>(
   path: string,
   method: string,
@@ -334,6 +359,14 @@ export function getPlanningSnapshot(start: string, end: string, signal?: AbortSi
 export function getProjects(activeOnly = true, signal?: AbortSignal) {
   const params = new URLSearchParams({ active_only: String(activeOnly) });
   return getJson<ProjectReadModel[]>(`/api/v1/projects?${params.toString()}`, signal);
+}
+
+export function getAcumaticaIntegrationStatus(signal?: AbortSignal) {
+  return getJson<AcumaticaIntegrationStatus>("/api/v1/integrations/acumatica", signal);
+}
+
+export function syncAcumaticaProjects() {
+  return postJson<ProjectSyncResult>("/api/v1/integrations/acumatica/projects/sync");
 }
 
 export function getWorkPackages(projectNumber: string, activeOnly = true, signal?: AbortSignal) {
