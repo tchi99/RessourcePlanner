@@ -38,6 +38,7 @@ from .identity_constraints import (
 from .period_approved_sync import SqlPeriodAwareApprovedDemandSyncAdapter
 from .planning_repository import SqlPlanningReadRepository
 from .capacity_query_repository import SqlPlannerQueryRepository
+from .project_sync_repository import SqlProjectSyncRepository
 from .segment_repository import SqlSegmentRepository
 from .session import (
     SqlSessionFactory,
@@ -69,6 +70,7 @@ __all__ = [
     "SqlPlannerQueryRepository",
     "SqlPlanningCommandAdapter",
     "SqlPlanningReadRepository",
+    "SqlProjectSyncRepository",
     "SqlSegmentRepository",
     "SqlSessionFactory",
     "SqlWorkPackageRepository",
