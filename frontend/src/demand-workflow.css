@@ -1,0 +1,124 @@
+.demand-workflow-page {
+  display: grid;
+  gap: 1rem;
+}
+
+.workflow-layout {
+  display: grid;
+  grid-template-columns: minmax(260px, 0.7fr) minmax(0, 1.5fr);
+  gap: 1rem;
+  align-items: start;
+}
+
+.workflow-list-panel,
+.workflow-detail-panel {
+  border: 1px solid var(--border-color, #d8dee8);
+  border-radius: 14px;
+  background: var(--panel-background, #fff);
+  padding: 1rem;
+}
+
+.workflow-list-panel {
+  display: grid;
+  gap: 1rem;
+}
+
+.workflow-list-panel label,
+.workflow-comment-field {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.workflow-list-panel label > span,
+.workflow-comment-field > span {
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.workflow-list-panel select,
+.workflow-comment-field textarea {
+  width: 100%;
+}
+
+.workflow-summary-card {
+  display: grid;
+  gap: 0.35rem;
+  padding: 0.9rem;
+  border-radius: 12px;
+  background: rgba(91, 110, 230, 0.07);
+}
+
+.workflow-summary-card > span {
+  font-size: 0.88rem;
+}
+
+.workflow-detail-panel {
+  display: grid;
+  gap: 1rem;
+}
+
+.workflow-state-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.8rem;
+}
+
+.workflow-state-card {
+  display: grid;
+  gap: 0.35rem;
+  padding: 1rem;
+  border: 1px solid var(--border-color, #d8dee8);
+  border-radius: 12px;
+}
+
+.workflow-state-card > span {
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  opacity: 0.72;
+}
+
+.workflow-state-card > strong {
+  font-size: 1.08rem;
+}
+
+.workflow-state-card > small,
+.workflow-authority-note {
+  line-height: 1.4;
+  opacity: 0.72;
+}
+
+.workflow-separation-note {
+  display: flex;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+  padding: 0.85rem 1rem;
+  border-radius: 10px;
+  background: rgba(226, 157, 30, 0.1);
+}
+
+.workflow-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  align-items: center;
+}
+
+.workflow-cancel {
+  margin-left: auto;
+}
+
+.workflow-terminal-state {
+  opacity: 0.7;
+}
+
+@media (max-width: 900px) {
+  .workflow-layout,
+  .workflow-state-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .workflow-cancel {
+    margin-left: 0;
+  }
+}
