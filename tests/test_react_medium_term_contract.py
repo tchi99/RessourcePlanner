@@ -27,10 +27,11 @@ class ReactMediumTermContractTests(unittest.TestCase):
         self.assertIn("getPlanningSnapshot(start, end, controller.signal)", source)
         self.assertIn("snapshot.pending_loads", source)
         self.assertIn("snapshot.segments", source)
+        self.assertIn("snapshot?.capacity_buckets ?? []", source)
         self.assertNotIn("projected_hours_without_double_counting", source)
         self.assertNotIn("projected_period_hours", source)
 
-    def test_page_exposes_work_packages_filters_backend_statuses_and_editor(self) -> None:
+    def test_page_exposes_work_packages_filters_backend_statuses_editor_and_capacity(self) -> None:
         source = (ROOT / "frontend" / "src" / "MediumTermPage.tsx").read_text(
             encoding="utf-8"
         )
@@ -47,7 +48,24 @@ class ReactMediumTermContractTests(unittest.TestCase):
         self.assertIn("<WorkPackageEditor", source)
         self.assertIn("onEdit={setEditor}", source)
         self.assertIn("setRefreshKey((value) => value + 1)", source)
-        self.assertIn("Les agrégations de capacité moyen terme seront ajoutées en 4C", source)
+        self.assertIn("<MediumTermCapacityPanel", source)
+        self.assertIn("React ne recalcule ni la projection ni le non-double-comptage", source)
+
+    def test_capacity_panel_displays_backend_fields_without_recalculating_exposure(self) -> None:
+        panel = (ROOT / "frontend" / "src" / "MediumTermCapacityPanel.tsx").read_text(
+            encoding="utf-8"
+        )
+        api = (ROOT / "frontend" / "src" / "api.ts").read_text(encoding="utf-8")
+
+        self.assertIn("bucket.exposure_hours", panel)
+        self.assertIn("bucket.capacity_hours", panel)
+        self.assertIn("bucket.residual_hours", panel)
+        self.assertIn("bucket.replacement_proposal_hours", panel)
+        self.assertIn("bucket.replacement_delta_hours", panel)
+        self.assertIn("bucket.state", panel)
+        self.assertNotIn("firm_hours +", panel)
+        self.assertNotIn("submitted_hours +", panel)
+        self.assertIn("capacity_buckets: MediumTermCapacityBucketReadModel[]", api)
 
     def test_editor_uses_backend_mutations_and_reuses_creation_idempotency_key(self) -> None:
         editor = (ROOT / "frontend" / "src" / "WorkPackageEditor.tsx").read_text(

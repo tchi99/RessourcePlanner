@@ -95,6 +95,31 @@ class PendingDemandLoadReadModel:
 
 
 @dataclass(frozen=True, slots=True)
+class MediumTermCapacityBucketReadModel:
+    """One backend-authoritative weekly capacity bucket.
+
+    ``resource_class=None`` is the all-resources total. Replacement proposals are
+    reported separately and are never added to ``exposure_hours``.
+    """
+
+    week_start: date
+    week_end: date
+    resource_class: str | None
+    resource_count: int
+    capacity_hours: float
+    firm_hours: float
+    current_potential_hours: float
+    submitted_hours: float
+    replacement_proposal_hours: float
+    replacement_delta_hours: float
+    exposure_hours: float
+    firm_residual_hours: float
+    residual_hours: float
+    utilization_pct: float | None
+    state: str
+
+
+@dataclass(frozen=True, slots=True)
 class PlanningSnapshotReadModel:
     """Canonical, transaction-coherent planning window exposed to web clients."""
 
@@ -105,6 +130,7 @@ class PlanningSnapshotReadModel:
     segments: tuple[SegmentReadModel, ...]
     shifts: tuple[ShiftReadModel, ...]
     pending_loads: tuple[PendingDemandLoadReadModel, ...] = ()
+    capacity_buckets: tuple[MediumTermCapacityBucketReadModel, ...] = ()
     firm_hours: float = 0.0
     potential_hours: float = 0.0
     replacement_proposal_hours: float = 0.0

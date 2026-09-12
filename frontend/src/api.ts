@@ -179,6 +179,24 @@ export type PendingDemandLoadReadModel = {
   periods: DemandPeriodReadModel[];
 };
 
+export type MediumTermCapacityBucketReadModel = {
+  week_start: string;
+  week_end: string;
+  resource_class: string | null;
+  resource_count: number;
+  capacity_hours: number;
+  firm_hours: number;
+  current_potential_hours: number;
+  submitted_hours: number;
+  replacement_proposal_hours: number;
+  replacement_delta_hours: number;
+  exposure_hours: number;
+  firm_residual_hours: number;
+  residual_hours: number;
+  utilization_pct: number | null;
+  state: "available" | "warning" | "overloaded" | "unavailable";
+};
+
 export type PlanningSnapshotReadModel = {
   start: string;
   end: string;
@@ -187,6 +205,7 @@ export type PlanningSnapshotReadModel = {
   segments: SegmentReadModel[];
   shifts: ShiftReadModel[];
   pending_loads: PendingDemandLoadReadModel[];
+  capacity_buckets: MediumTermCapacityBucketReadModel[];
   firm_hours: number;
   potential_hours: number;
   replacement_proposal_hours: number;
