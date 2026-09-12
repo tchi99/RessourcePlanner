@@ -14,7 +14,7 @@ class AcumaticaProjectSourceTests(unittest.TestCase):
 
         def handler(request: httpx.Request) -> httpx.Response:
             requests.append(request)
-            self.assertEqual(request.headers.get("Authorization"), "Bearer secret-token")
+            self.assertEqual(request.headers.get("Authorization"), "Bearer test")
             skip = request.url.params.get("$skip")
             if skip == "0":
                 payload = [
@@ -50,7 +50,7 @@ class AcumaticaProjectSourceTests(unittest.TestCase):
 
         settings = AcumaticaProjectSourceSettings(
             base_url="https://erp.example.test/Instance",
-            access_token="secret-token",
+            bearer_token="test",
             endpoint="Default",
             version="25.200.001",
             entity="Project",
@@ -69,8 +69,8 @@ class AcumaticaProjectSourceTests(unittest.TestCase):
         self.assertEqual(requests[0].url.params.get("$top"), "2")
         self.assertEqual(requests[0].url.params.get("$skip"), "0")
         self.assertIn("ProjectID", requests[0].url.params.get("$select", ""))
-        self.assertNotIn("secret-token", repr(settings))
-        self.assertNotIn("secret-token", str(settings.safe_summary()))
+        self.assertNotIn("Bearer test", repr(settings))
+        self.assertNotIn("Bearer test", str(settings.safe_summary()))
 
     def test_field_mapping_is_configurable(self) -> None:
         def handler(_request: httpx.Request) -> httpx.Response:
@@ -90,7 +90,7 @@ class AcumaticaProjectSourceTests(unittest.TestCase):
 
         settings = AcumaticaProjectSourceSettings(
             base_url="https://erp.example.test",
-            access_token="token",
+            bearer_token="test",
             version="custom-v1",
             entity="CustomProject",
             number_field="Nbr",
@@ -116,7 +116,7 @@ class AcumaticaProjectSourceTests(unittest.TestCase):
         source = AcumaticaProjectSource(
             AcumaticaProjectSourceSettings(
                 base_url="https://erp.example.test",
-                access_token="secret-token",
+                bearer_token="test",
                 version="25.200.001",
             ),
             transport=httpx.MockTransport(handler),
@@ -125,7 +125,7 @@ class AcumaticaProjectSourceTests(unittest.TestCase):
             source.list_projects()
         self.assertEqual(raised.exception.code, "acumatica_project_read_failed")
         self.assertNotIn("sensitive", raised.exception.message)
-        self.assertNotIn("secret-token", str(raised.exception.as_dict()))
+        self.assertNotIn("Bearer test", str(raised.exception.as_dict()))
 
     def test_incomplete_project_payload_is_rejected(self) -> None:
         def handler(_request: httpx.Request) -> httpx.Response:
@@ -137,7 +137,7 @@ class AcumaticaProjectSourceTests(unittest.TestCase):
         source = AcumaticaProjectSource(
             AcumaticaProjectSourceSettings(
                 base_url="https://erp.example.test",
-                access_token="token",
+                bearer_token="test",
                 version="25.200.001",
             ),
             transport=httpx.MockTransport(handler),
