@@ -105,16 +105,42 @@ export type DemandPeriodReadModel = {
   period_id: string;
   demand_number: string;
   sequence: number;
-  kind: string;
+  kind: "CUMULATIVE" | "ALTERNATIVE";
   start_date: string;
   end_date: string;
   hours: number;
-  confirmation: string;
+  confirmation: "Tentative" | "Confirmée";
   alternative_group: string | null;
   proposed_resource: string | null;
   resource_count: number;
   note: string | null;
   selected: boolean;
+};
+
+export type DemandPeriodWrite = {
+  period_id: string;
+  start_date: string;
+  end_date: string;
+  hours: number;
+  kind: "CUMULATIVE" | "ALTERNATIVE";
+  alternative_group: string | null;
+  confirmation: "Tentative" | "Confirmée";
+  proposed_resource: string | null;
+  resource_count: number;
+  note: string;
+};
+
+export type DemandPeriodsMutationResult = {
+  demand_number: string;
+  period_count: number;
+  status: string | null;
+  reapproval_required: boolean;
+};
+
+export type DemandAlternativeSelectionResult = {
+  demand_number: string;
+  alternative_group: string;
+  period_id: string;
 };
 
 export type PendingDemandLoadReadModel = {
@@ -296,6 +322,13 @@ export function getDemand(number: string, signal?: AbortSignal) {
   return getJson<DemandReadModel>(`/api/v1/demands/${encodeURIComponent(number)}`, signal);
 }
 
+export function getDemandPeriods(number: string, signal?: AbortSignal) {
+  return getJson<DemandPeriodReadModel[]>(
+    `/api/v1/demands/${encodeURIComponent(number)}/periods`,
+    signal,
+  );
+}
+
 export function createDemand(payload: DemandWrite, idempotencyKey: string) {
   return sendJson<DemandMutationResult>(
     "/api/v1/demands",
@@ -313,6 +346,26 @@ export function updateDemand(number: string, payload: DemandWrite, comment: stri
     `/api/v1/demands/${encodeURIComponent(number)}`,
     "PATCH",
     { ...editablePayload, comment },
+  );
+}
+
+export function replaceDemandPeriods(number: string, periods: DemandPeriodWrite[]) {
+  return sendJson<DemandPeriodsMutationResult>(
+    `/api/v1/demands/${encodeURIComponent(number)}/periods`,
+    "PUT",
+    { periods },
+  );
+}
+
+export function selectDemandAlternative(
+  number: string,
+  alternativeGroup: string,
+  periodId: string,
+) {
+  return sendJson<DemandAlternativeSelectionResult>(
+    `/api/v1/demands/${encodeURIComponent(number)}/alternative-groups/${encodeURIComponent(alternativeGroup)}/selection`,
+    "PUT",
+    { period_id: periodId },
   );
 }
 

@@ -1,0 +1,494 @@
+import { useEffect, useMemo, useState } from "react";
+
+import {
+  ApiError,
+  type DemandPeriodReadModel,
+  type DemandPeriodWrite,
+  type DemandReadModel,
+  type ResourceReadModel,
+  getDemandPeriods,
+  getDemands,
+  getResources,
+  replaceDemandPeriods,
+  selectDemandAlternative,
+} from "./api";
+
+type PeriodDraft = DemandPeriodWrite & {
+  selected: boolean;
+};
+
+function errorMessage(reason: unknown): string {
+  if (reason instanceof ApiError) return reason.message;
+  if (reason instanceof Error) return reason.message;
+  return "Une erreur inattendue est survenue.";
+}
+
+function newPeriodId(): string {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return `PER-WEB-${crypto.randomUUID()}`;
+  }
+  return `PER-WEB-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function fromRead(row: DemandPeriodReadModel): PeriodDraft {
+  return {
+    period_id: row.period_id,
+    start_date: row.start_date,
+    end_date: row.end_date,
+    hours: row.hours,
+    kind: row.kind,
+    alternative_group: row.alternative_group,
+    confirmation: row.confirmation,
+    proposed_resource: row.proposed_resource,
+    resource_count: row.resource_count,
+    note: row.note ?? "",
+    selected: row.selected,
+  };
+}
+
+function baseDates(demand: DemandReadModel | null): { start: string; end: string } {
+  const start = demand?.desired_start ?? new Date().toISOString().slice(0, 10);
+  return { start, end: demand?.desired_end ?? start };
+}
+
+function nextAlternativeGroup(periods: PeriodDraft[]): string {
+  const existing = new Set(
+    periods
+      .map((row) => row.alternative_group?.trim())
+      .filter((value): value is string => Boolean(value)),
+  );
+  let sequence = 1;
+  while (existing.has(`ALT-${sequence}`)) sequence += 1;
+  return `ALT-${sequence}`;
+}
+
+function validatePeriods(periods: PeriodDraft[]): string | null {
+  const groupCounts = new Map<string, number>();
+  for (const period of periods) {
+    if (!period.period_id.trim()) return "Chaque période doit avoir un identifiant stable.";
+    if (!period.start_date || !period.end_date) return "Chaque période doit avoir une date de début et de fin.";
+    if (period.end_date < period.start_date) return "La fin d'une période ne peut pas précéder son début.";
+    if (!Number.isFinite(period.hours) || period.hours <= 0) return "Les heures de chaque période doivent être supérieures à zéro.";
+    if (!Number.isInteger(period.resource_count) || period.resource_count < 1) return "Le nombre de ressources doit être un entier supérieur ou égal à 1.";
+    if (period.kind === "ALTERNATIVE") {
+      const group = period.alternative_group?.trim();
+      if (!group) return "Chaque option alternative doit appartenir à un groupe.";
+      groupCounts.set(group, (groupCounts.get(group) ?? 0) + 1);
+    }
+  }
+  for (const [group, count] of groupCounts) {
+    if (count < 2) return `Le groupe ${group} doit contenir au moins deux options.`;
+  }
+  return null;
+}
+
+function PeriodFields({
+  period,
+  resources,
+  disabled,
+  onChange,
+  onRemove,
+}: {
+  period: PeriodDraft;
+  resources: ResourceReadModel[];
+  disabled: boolean;
+  onChange: (next: PeriodDraft) => void;
+  onRemove: () => void;
+}) {
+  const change = <K extends keyof PeriodDraft>(field: K, value: PeriodDraft[K]) => {
+    onChange({ ...period, [field]: value });
+  };
+
+  return (
+    <div className={`period-card ${period.kind === "ALTERNATIVE" ? "alternative" : "cumulative"}`}>
+      <div className="period-card-heading">
+        <div>
+          <strong>{period.kind === "ALTERNATIVE" ? "Option alternative" : "Période cumulative"}</strong>
+          <span>{period.period_id}</span>
+        </div>
+        <button type="button" className="period-remove" onClick={onRemove} disabled={disabled}>
+          Retirer
+        </button>
+      </div>
+
+      <div className="period-form-grid">
+        <label>
+          <span>Début</span>
+          <input type="date" value={period.start_date} disabled={disabled} onChange={(event) => change("start_date", event.target.value)} />
+        </label>
+        <label>
+          <span>Fin</span>
+          <input type="date" min={period.start_date} value={period.end_date} disabled={disabled} onChange={(event) => change("end_date", event.target.value)} />
+        </label>
+        <label>
+          <span>Heures</span>
+          <input type="number" min="0.25" step="0.25" value={period.hours} disabled={disabled} onChange={(event) => change("hours", Number(event.target.value))} />
+        </label>
+        <label>
+          <span>Ressources</span>
+          <input type="number" min="1" step="1" value={period.resource_count} disabled={disabled} onChange={(event) => change("resource_count", Number(event.target.value))} />
+        </label>
+        <label>
+          <span>Confirmation</span>
+          <select value={period.confirmation} disabled={disabled} onChange={(event) => change("confirmation", event.target.value as PeriodDraft["confirmation"])}>
+            <option value="Tentative">Tentative</option>
+            <option value="Confirmée">Confirmée</option>
+          </select>
+        </label>
+        <label>
+          <span>Ressource proposée</span>
+          <select value={period.proposed_resource ?? ""} disabled={disabled} onChange={(event) => change("proposed_resource", event.target.value || null)}>
+            <option value="">Aucune</option>
+            {resources.map((resource) => (
+              <option value={resource.name} key={resource.id}>{resource.name}{resource.resource_class ? ` — ${resource.resource_class}` : ""}</option>
+            ))}
+          </select>
+        </label>
+        {period.kind === "ALTERNATIVE" && (
+          <label className="span-2">
+            <span>Groupe alternatif</span>
+            <input value={period.alternative_group ?? ""} disabled={disabled} onChange={(event) => change("alternative_group", event.target.value)} placeholder="Ex. ALT-1" />
+          </label>
+        )}
+        <label className="span-2">
+          <span>Note</span>
+          <input value={period.note} disabled={disabled} onChange={(event) => change("note", event.target.value)} placeholder="Contrainte, préférence ou contexte de cette période" />
+        </label>
+      </div>
+    </div>
+  );
+}
+
+export default function DemandPeriodsPage() {
+  const [demands, setDemands] = useState<DemandReadModel[]>([]);
+  const [resources, setResources] = useState<ResourceReadModel[]>([]);
+  const [selectedNumber, setSelectedNumber] = useState("");
+  const [periods, setPeriods] = useState<PeriodDraft[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [periodLoading, setPeriodLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [dirty, setDirty] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+
+  const selectedDemand = useMemo(
+    () => demands.find((row) => row.number === selectedNumber) ?? null,
+    [demands, selectedNumber],
+  );
+
+  useEffect(() => {
+    const controller = new AbortController();
+    Promise.all([getDemands(controller.signal), getResources(true, controller.signal)])
+      .then(([demandRows, resourceRows]) => {
+        setDemands(demandRows);
+        setResources(resourceRows);
+        setSelectedNumber((current) => current || demandRows[0]?.number || "");
+      })
+      .catch((reason: unknown) => {
+        if (!controller.signal.aborted) setError(errorMessage(reason));
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoading(false);
+      });
+    return () => controller.abort();
+  }, []);
+
+  useEffect(() => {
+    if (!selectedNumber) {
+      setPeriods([]);
+      return;
+    }
+    const controller = new AbortController();
+    setPeriodLoading(true);
+    setError(null);
+    setNotice(null);
+    getDemandPeriods(selectedNumber, controller.signal)
+      .then((rows) => {
+        setPeriods(rows.map(fromRead));
+        setDirty(false);
+      })
+      .catch((reason: unknown) => {
+        if (!controller.signal.aborted) setError(errorMessage(reason));
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setPeriodLoading(false);
+      });
+    return () => controller.abort();
+  }, [selectedNumber]);
+
+  const cumulative = periods.filter((row) => row.kind === "CUMULATIVE");
+  const alternativeGroups = useMemo(() => {
+    const grouped = new Map<string, PeriodDraft[]>();
+    for (const period of periods) {
+      if (period.kind !== "ALTERNATIVE") continue;
+      const group = period.alternative_group?.trim() || "Sans groupe";
+      const rows = grouped.get(group) ?? [];
+      rows.push(period);
+      grouped.set(group, rows);
+    }
+    return [...grouped.entries()];
+  }, [periods]);
+
+  function replacePeriod(index: number, next: PeriodDraft) {
+    setPeriods((current) => current.map((row, position) => (position === index ? next : row)));
+    setDirty(true);
+    setNotice(null);
+  }
+
+  function removePeriod(periodId: string) {
+    setPeriods((current) => current.filter((row) => row.period_id !== periodId));
+    setDirty(true);
+    setNotice(null);
+  }
+
+  function addCumulative() {
+    const { start, end } = baseDates(selectedDemand);
+    setPeriods((current) => [
+      ...current,
+      {
+        period_id: newPeriodId(),
+        start_date: start,
+        end_date: end,
+        hours: 8,
+        kind: "CUMULATIVE",
+        alternative_group: null,
+        confirmation: (selectedDemand?.confirmation === "Confirmée" ? "Confirmée" : "Tentative"),
+        proposed_resource: selectedDemand?.proposed_resource ?? null,
+        resource_count: selectedDemand?.resource_count ?? 1,
+        note: "",
+        selected: false,
+      },
+    ]);
+    setDirty(true);
+    setNotice(null);
+  }
+
+  function addAlternativeGroup() {
+    const { start, end } = baseDates(selectedDemand);
+    const group = nextAlternativeGroup(periods);
+    const base: Omit<PeriodDraft, "period_id"> = {
+      start_date: start,
+      end_date: end,
+      hours: 8,
+      kind: "ALTERNATIVE",
+      alternative_group: group,
+      confirmation: (selectedDemand?.confirmation === "Confirmée" ? "Confirmée" : "Tentative"),
+      proposed_resource: selectedDemand?.proposed_resource ?? null,
+      resource_count: selectedDemand?.resource_count ?? 1,
+      note: "",
+      selected: false,
+    };
+    setPeriods((current) => [
+      ...current,
+      { ...base, period_id: newPeriodId() },
+      { ...base, period_id: newPeriodId() },
+    ]);
+    setDirty(true);
+    setNotice(null);
+  }
+
+  function addAlternativeOption(group: string) {
+    const existing = periods.find((row) => row.kind === "ALTERNATIVE" && row.alternative_group === group);
+    const { start, end } = baseDates(selectedDemand);
+    setPeriods((current) => [
+      ...current,
+      {
+        period_id: newPeriodId(),
+        start_date: existing?.start_date ?? start,
+        end_date: existing?.end_date ?? end,
+        hours: existing?.hours ?? 8,
+        kind: "ALTERNATIVE",
+        alternative_group: group,
+        confirmation: existing?.confirmation ?? "Tentative",
+        proposed_resource: existing?.proposed_resource ?? null,
+        resource_count: existing?.resource_count ?? 1,
+        note: "",
+        selected: false,
+      },
+    ]);
+    setDirty(true);
+    setNotice(null);
+  }
+
+  async function savePeriods() {
+    if (!selectedDemand || saving) return;
+    const validation = validatePeriods(periods);
+    if (validation) {
+      setError(validation);
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const payload: DemandPeriodWrite[] = periods.map(({ selected: _selected, ...row }) => ({
+        ...row,
+        alternative_group: row.kind === "ALTERNATIVE" ? row.alternative_group?.trim() || null : null,
+        note: row.note.trim(),
+      }));
+      const result = await replaceDemandPeriods(selectedDemand.number, payload);
+      const refreshed = await getDemandPeriods(selectedDemand.number);
+      setPeriods(refreshed.map(fromRead));
+      setDirty(false);
+      setNotice(
+        result.reapproval_required
+          ? "Périodes enregistrées. L'enveloppe ayant changé, la demande doit être approuvée de nouveau; le plan approuvé précédent reste inchangé jusque-là."
+          : "Périodes enregistrées.",
+      );
+      const demandRows = await getDemands();
+      setDemands(demandRows);
+    } catch (reason: unknown) {
+      setError(errorMessage(reason));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function chooseAlternative(group: string, periodId: string) {
+    if (!selectedDemand || saving || dirty) return;
+    setSaving(true);
+    setError(null);
+    setNotice(null);
+    try {
+      await selectDemandAlternative(selectedDemand.number, group, periodId);
+      const refreshed = await getDemandPeriods(selectedDemand.number);
+      setPeriods(refreshed.map(fromRead));
+      setNotice(`Option ${periodId} retenue pour ${group}. Les autres options du groupe restent alternatives et ne sont pas matérialisées en parallèle.`);
+    } catch (reason: unknown) {
+      setError(errorMessage(reason));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <section className="demand-periods-page">
+      <div className="page-heading periods-heading">
+        <div>
+          <span className="eyebrow">Demandes · 3B</span>
+          <h1>Périodes & alternatives</h1>
+          <p>Décompose une demande en périodes cumulatives ou en options mutuellement exclusives avant l'approbation.</p>
+        </div>
+      </div>
+
+      {error && <div className="error-panel"><strong>Action impossible.</strong><span>{error}</span></div>}
+      {notice && <div className="demand-notice" role="status">{notice}</div>}
+
+      <div className="period-demand-picker">
+        <label>
+          <span>Demande</span>
+          <select value={selectedNumber} disabled={loading || saving || dirty} onChange={(event) => setSelectedNumber(event.target.value)}>
+            <option value="">Sélectionner une demande…</option>
+            {demands.map((demand) => (
+              <option value={demand.number} key={demand.number}>{demand.number} — {demand.project_number || "Projet"} — {demand.status}</option>
+            ))}
+          </select>
+        </label>
+        {dirty && <span className="period-dirty-warning">Enregistre ou recharge avant de changer de demande.</span>}
+      </div>
+
+      {selectedDemand && (
+        <div className="period-demand-summary">
+          <div><span>Projet</span><strong>{selectedDemand.project_number} — {selectedDemand.project_name || "Projet"}</strong></div>
+          <div><span>Statut</span><strong>{selectedDemand.status}</strong></div>
+          <div><span>Confirmation demande</span><strong>{selectedDemand.confirmation || "Confirmée"}</strong></div>
+          <div><span>Plage moyen terme</span><strong>{selectedDemand.work_package_name || selectedDemand.work_package_ref || "Aucune"}</strong></div>
+        </div>
+      )}
+
+      {selectedDemand && (
+        <div className="period-toolbar">
+          <div>
+            <button type="button" className="secondary-button" onClick={addCumulative} disabled={saving || periodLoading}>+ Période cumulative</button>
+            <button type="button" className="secondary-button" onClick={addAlternativeGroup} disabled={saving || periodLoading}>+ Groupe alternatif</button>
+          </div>
+          <button type="button" className="primary-button" onClick={savePeriods} disabled={saving || periodLoading || !dirty}>
+            {saving ? "Enregistrement…" : "Enregistrer les périodes"}
+          </button>
+        </div>
+      )}
+
+      {periodLoading && <div className="period-empty">Chargement des périodes…</div>}
+
+      {!periodLoading && selectedDemand && periods.length === 0 && (
+        <div className="period-empty">
+          <strong>Aucune période détaillée.</strong>
+          <span>La demande utilise encore son enveloppe générale. Ajoute une période cumulative ou un groupe alternatif pour la détailler.</span>
+        </div>
+      )}
+
+      {!periodLoading && cumulative.length > 0 && (
+        <section className="period-section">
+          <div className="period-section-heading">
+            <div><span className="eyebrow">Additionnées</span><h2>Périodes cumulatives</h2></div>
+            <p>Ces périodes représentent du travail distinct et peuvent donc toutes contribuer au besoin.</p>
+          </div>
+          <div className="period-card-grid">
+            {cumulative.map((period) => {
+              const index = periods.findIndex((row) => row.period_id === period.period_id);
+              return (
+                <PeriodFields
+                  key={period.period_id}
+                  period={period}
+                  resources={resources}
+                  disabled={saving}
+                  onChange={(next) => replacePeriod(index, next)}
+                  onRemove={() => removePeriod(period.period_id)}
+                />
+              );
+            })}
+          </div>
+        </section>
+      )}
+
+      {!periodLoading && alternativeGroups.length > 0 && (
+        <section className="period-section">
+          <div className="period-section-heading">
+            <div><span className="eyebrow">Exclusives</span><h2>Groupes alternatifs</h2></div>
+            <p>Une seule option d'un même groupe est retenue. Elles ne sont jamais additionnées ni matérialisées en parallèle.</p>
+          </div>
+          <div className="alternative-groups">
+            {alternativeGroups.map(([group, rows]) => (
+              <article className="alternative-group" key={group}>
+                <div className="alternative-group-heading">
+                  <div>
+                    <strong>{group}</strong>
+                    <span>{rows.length} option(s) · {rows.some((row) => row.selected) ? "option sélectionnée" : "aucune option sélectionnée"}</span>
+                  </div>
+                  <button type="button" className="secondary-button" onClick={() => addAlternativeOption(group)} disabled={saving}>+ Option</button>
+                </div>
+                {dirty && <div className="alternative-selection-note">Enregistre les définitions avant de sélectionner l'option à matérialiser.</div>}
+                <div className="period-card-grid">
+                  {rows.map((period) => {
+                    const index = periods.findIndex((row) => row.period_id === period.period_id);
+                    return (
+                      <div className={`alternative-option ${period.selected ? "selected" : ""}`} key={period.period_id}>
+                        <PeriodFields
+                          period={period}
+                          resources={resources}
+                          disabled={saving}
+                          onChange={(next) => replacePeriod(index, next)}
+                          onRemove={() => removePeriod(period.period_id)}
+                        />
+                        <button
+                          type="button"
+                          className={period.selected ? "selected-option-button" : "secondary-button"}
+                          disabled={saving || dirty || period.selected}
+                          onClick={() => chooseAlternative(group, period.period_id)}
+                        >
+                          {period.selected ? "Option retenue" : "Retenir cette option"}
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </article>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {!selectedDemand && !loading && <div className="period-empty">Aucune demande disponible.</div>}
+    </section>
+  );
+}
