@@ -14,6 +14,7 @@ class ProjectReadModel:
     client: str | None = None
     project_manager: str | None = None
     status: str = "active"
+    active: bool = True
     erp_external_id: str | None = None
 
 
@@ -96,10 +97,12 @@ class PendingDemandLoadReadModel:
 
 @dataclass(frozen=True, slots=True)
 class MediumTermCapacityBucketReadModel:
-    """One backend-authoritative weekly capacity bucket.
+    """Canonical weekly capacity/load bucket for medium-term planning.
 
-    ``resource_class=None`` is the all-resources total. Replacement proposals are
-    reported separately and are never added to ``exposure_hours``.
+    ``exposure_hours`` is the additive workload that competes for current capacity.
+    Replacement proposals are intentionally exposed separately and never folded into
+    this value, so React cannot accidentally double-count an approved plan and its
+    pending replacement.
     """
 
     week_start: date
@@ -108,14 +111,13 @@ class MediumTermCapacityBucketReadModel:
     resource_count: int
     capacity_hours: float
     firm_hours: float
-    current_potential_hours: float
+    tentative_hours: float
     submitted_hours: float
     replacement_proposal_hours: float
     replacement_delta_hours: float
     exposure_hours: float
-    firm_residual_hours: float
     residual_hours: float
-    utilization_pct: float | None
+    utilization_percent: float | None
     state: str
 
 
