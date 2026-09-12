@@ -19,7 +19,9 @@ from ..application import (
     ApplicationValidationError,
     IdempotentCommandExecutor,
     PlannerQueryPort,
+    ProjectSourcePort,
 )
+from ..application.errors import ApplicationUnavailableError
 from ..infrastructure.sql import (
     SqlSessionFactory,
     create_session_factory,
@@ -32,6 +34,7 @@ from .composition import (
     build_sql_query_port,
 )
 from .routes_commands import build_command_router
+from .routes_integrations import build_integration_router
 from .routes_reads import build_read_router
 
 
@@ -48,6 +51,8 @@ def application_error_status(exc: ApplicationError) -> int:
         return 404
     if isinstance(exc, ApplicationConflictError):
         return 409
+    if isinstance(exc, ApplicationUnavailableError):
+        return 503
     if isinstance(exc, ApplicationOperationError):
         return 500
     return 400
@@ -141,6 +146,8 @@ def create_api_app(
     database_url: str,
     *,
     actor_name: str = "api",
+    project_source: ProjectSourcePort | None = None,
+    acumatica_info: dict[str, Any] | None = None,
 ) -> FastAPI:
     engine = create_sql_engine(database_url)
     factory = create_session_factory(engine)
@@ -219,4 +226,11 @@ def create_api_app(
 
     app.include_router(build_command_router(facade_dependency, idempotency_dependency))
     app.include_router(build_read_router(query_dependency))
+    app.include_router(
+        build_integration_router(
+            session_dependency,
+            project_source=project_source,
+            acumatica_info=acumatica_info,
+        )
+    )
     return app
