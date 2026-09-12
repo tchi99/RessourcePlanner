@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - "main.py"
+      - "Lancer_Serveur.bat"
       - "app/**"
       - "tests/**"
       - "tools/**"
