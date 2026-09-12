@@ -8,6 +8,7 @@ from ..application import (
     IdempotentCommandExecutor,
     PlannerQueryPort,
     PlanningService,
+    WorkPackageService,
 )
 from ..application.demand_service import DemandService
 from ..application.quick_shift_service import QuickShiftService
@@ -20,6 +21,7 @@ from ..infrastructure.sql import (
     SqlPeriodAwareApprovedDemandSyncAdapter,
     SqlPlanningCommandAdapter,
     SqlSegmentRepository,
+    SqlWorkPackageRepository,
 )
 from ..infrastructure.sql.web_query_repository import SqlPlannerQueryRepositoryWeb
 
@@ -35,6 +37,7 @@ def build_sql_facade(
     demands = SqlDemandRepository(session, actor_name=actor)
     periods = SqlDemandPeriodRepository(session, actor_name=actor)
     segments = SqlSegmentRepository(session, actor_name=actor)
+    work_packages = SqlWorkPackageRepository(session)
     planning_commands = SqlPlanningCommandAdapter(session)
     allocation_commands = SqlAllocationCommandAdapter(
         session,
@@ -54,6 +57,7 @@ def build_sql_facade(
         allocations=AllocationService(allocation_commands),
         quick_shifts=QuickShiftService(segments, allocation_commands),
         planning=PlanningService(planning_commands),
+        work_packages=WorkPackageService(work_packages),
     )
 
 
