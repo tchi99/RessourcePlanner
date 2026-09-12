@@ -111,7 +111,8 @@ class SqlPlannerQueryRepository(PlannerQueryPort):
         result: list[ProjectReadModel] = []
         for project in rows:
             status = _text(project.status) or "active"
-            if active_only and status.casefold() in INACTIVE_PROJECT_STATUSES:
+            active = status.casefold() not in INACTIVE_PROJECT_STATUSES
+            if active_only and not active:
                 continue
             result.append(
                 ProjectReadModel(
@@ -121,6 +122,7 @@ class SqlPlannerQueryRepository(PlannerQueryPort):
                     client=_optional_text(project.client),
                     project_manager=_optional_text(project.project_manager_name),
                     status=status,
+                    active=active,
                     erp_external_id=_optional_text(project.erp_external_id),
                 )
             )
