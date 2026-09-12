@@ -21,6 +21,7 @@ from .demand_period import (
 from .planning import PlanningRebuildCommand
 from .quick_shift import QuickShiftCreateCommand
 from .segment import SegmentCancelCommand, SegmentCreateCommand, SegmentUpdateCommand
+from .work_package import WorkPackageCreateCommand, WorkPackageUpdateCommand
 
 __all__ = [
     "DemandAlternativeSelectCommand",
@@ -42,4 +43,6 @@ __all__ = [
     "SegmentCancelCommand",
     "SegmentCreateCommand",
     "SegmentUpdateCommand",
+    "WorkPackageCreateCommand",
+    "WorkPackageUpdateCommand",
 ]

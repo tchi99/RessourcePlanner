@@ -21,6 +21,22 @@ export type WorkPackageReadModel = {
   status: string;
 };
 
+export type WorkPackageWrite = {
+  project_number: string;
+  code: string | null;
+  name: string;
+  description: string | null;
+  start_date: string | null;
+  end_date: string | null;
+  planned_hours: number | null;
+  status: string;
+};
+
+export type WorkPackageMutationResult = {
+  reference: string;
+  action: string;
+};
+
 export type ResourceReadModel = {
   id: string;
   name: string;
@@ -307,6 +323,23 @@ export function getWorkPackages(projectNumber: string, activeOnly = true, signal
     active_only: String(activeOnly),
   });
   return getJson<WorkPackageReadModel[]>(`/api/v1/work-packages?${params.toString()}`, signal);
+}
+
+export function createWorkPackage(payload: WorkPackageWrite, idempotencyKey: string) {
+  return sendJson<WorkPackageMutationResult>(
+    "/api/v1/work-packages",
+    "POST",
+    payload,
+    { "Idempotency-Key": idempotencyKey },
+  );
+}
+
+export function updateWorkPackage(reference: string, payload: WorkPackageWrite) {
+  return sendJson<WorkPackageMutationResult>(
+    `/api/v1/work-packages/${encodeURIComponent(reference)}`,
+    "PATCH",
+    payload,
+  );
 }
 
 export function getResources(activeOnly = true, signal?: AbortSignal) {

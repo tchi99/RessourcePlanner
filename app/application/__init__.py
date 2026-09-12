@@ -26,6 +26,8 @@ from .commands import (
     SegmentCancelCommand,
     SegmentCreateCommand,
     SegmentUpdateCommand,
+    WorkPackageCreateCommand,
+    WorkPackageUpdateCommand,
 )
 from .command_ports import (
     AllocationCommandPort,
@@ -62,6 +64,7 @@ from .repository_ports import (
     DemandRepositoryPort,
     PlanningReadRepositoryPort,
     SegmentRepositoryPort,
+    WorkPackageRepositoryPort,
 )
 from .results import (
     AllocationMutationResult,
@@ -72,7 +75,9 @@ from .results import (
     PlanningResult,
     QuickShiftCreatedResult,
     SegmentMutationResult,
+    WorkPackageMutationResult,
 )
+from .work_package_service import WorkPackageService
 
 __all__ = [
     "AllocationCommandPort",
@@ -128,7 +133,12 @@ __all__ = [
     "SegmentRepositoryPort",
     "SegmentUpdateCommand",
     "ShiftReadModel",
+    "WorkPackageCreateCommand",
+    "WorkPackageMutationResult",
     "WorkPackageReadModel",
+    "WorkPackageRepositoryPort",
+    "WorkPackageService",
+    "WorkPackageUpdateCommand",
     "normalize_idempotency_key",
     "request_fingerprint",
 ]

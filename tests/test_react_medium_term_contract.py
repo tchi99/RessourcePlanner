@@ -30,7 +30,7 @@ class ReactMediumTermContractTests(unittest.TestCase):
         self.assertNotIn("projected_hours_without_double_counting", source)
         self.assertNotIn("projected_period_hours", source)
 
-    def test_page_exposes_work_packages_filters_and_backend_statuses(self) -> None:
+    def test_page_exposes_work_packages_filters_backend_statuses_and_editor(self) -> None:
         source = (ROOT / "frontend" / "src" / "MediumTermPage.tsx").read_text(
             encoding="utf-8"
         )
@@ -43,7 +43,27 @@ class ReactMediumTermContractTests(unittest.TestCase):
         self.assertIn("Charge potentielle", source)
         self.assertIn("Plan approuvé", source)
         self.assertIn("Ouvrir les demandes", source)
-        self.assertIn("Les calculs de capacité moyen terme seront ajoutés en 4C", source)
+        self.assertIn("+ WorkPackage", source)
+        self.assertIn("<WorkPackageEditor", source)
+        self.assertIn("onEdit={setEditor}", source)
+        self.assertIn("setRefreshKey((value) => value + 1)", source)
+        self.assertIn("Les agrégations de capacité moyen terme seront ajoutées en 4C", source)
+
+    def test_editor_uses_backend_mutations_and_reuses_creation_idempotency_key(self) -> None:
+        editor = (ROOT / "frontend" / "src" / "WorkPackageEditor.tsx").read_text(
+            encoding="utf-8"
+        )
+        api = (ROOT / "frontend" / "src" / "api.ts").read_text(encoding="utf-8")
+
+        self.assertIn("await createWorkPackage(payload, key)", editor)
+        self.assertIn("await updateWorkPackage(workPackage.reference, payload)", editor)
+        self.assertIn("previous?.fingerprint === fingerprint", editor)
+        self.assertIn("createRetry.current = { fingerprint, key }", editor)
+        self.assertIn("if (saving) return", editor)
+        self.assertIn("aucune demande n’est déjà liée", editor)
+        self.assertIn('"/api/v1/work-packages"', api)
+        self.assertIn('/api/v1/work-packages/${encodeURIComponent(reference)}', api)
+        self.assertIn('"Idempotency-Key"', api)
 
 
 if __name__ == "__main__":

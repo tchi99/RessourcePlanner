@@ -45,6 +45,7 @@ from .session import (
     create_sql_engine,
     transactional_session,
 )
+from .work_package_repository import SqlWorkPackageRepository
 
 __all__ = [
     "Base",
@@ -70,6 +71,7 @@ __all__ = [
     "SqlPlanningReadRepository",
     "SqlSegmentRepository",
     "SqlSessionFactory",
+    "SqlWorkPackageRepository",
     "WORKFORCE_REQUEST_NUMBER_INDEX",
     "WorkPackage",
     "WorkforceRequest",

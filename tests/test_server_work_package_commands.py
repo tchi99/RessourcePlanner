@@ -1,0 +1,229 @@
+from __future__ import annotations
+
+from datetime import date
+from pathlib import Path
+from tempfile import TemporaryDirectory
+import unittest
+
+from fastapi.testclient import TestClient
+from sqlalchemy import func, select
+
+from app.infrastructure.sql import (
+    Base,
+    CommandIdempotencyReceipt,
+    Project,
+    WorkforceRequest,
+    WorkPackage,
+    create_session_factory,
+    create_sql_engine,
+    transactional_session,
+)
+from app.server import create_api_app
+
+
+class ServerWorkPackageCommandTests(unittest.TestCase):
+    def _database(self, directory: str) -> str:
+        path = Path(directory) / "work-package-commands.db"
+        url = f"sqlite:///{path.as_posix()}"
+        engine = create_sql_engine(url)
+        Base.metadata.create_all(engine)
+        factory = create_session_factory(engine)
+        with transactional_session(factory) as session:
+            session.add_all(
+                [
+                    Project(id="P1", number="P-1", name="Projet 1", status="Actif"),
+                    Project(id="P2", number="P-2", name="Projet 2", status="Actif"),
+                ]
+            )
+            session.flush()
+            session.add_all(
+                [
+                    WorkPackage(
+                        id="WP-LINKED",
+                        project_id="P1",
+                        code="DEV",
+                        name="Développement",
+                        start_date=date(2026, 9, 14),
+                        end_date=date(2026, 9, 25),
+                        status="planned",
+                        legacy_effort_id="EFF-LINKED",
+                    ),
+                    WorkPackage(
+                        id="WP-FREE",
+                        project_id="P1",
+                        code="PREP",
+                        name="Préparation",
+                        status="planned",
+                        legacy_effort_id="EFF-FREE",
+                    ),
+                ]
+            )
+            session.flush()
+            session.add(
+                WorkforceRequest(
+                    id="REQ-1",
+                    legacy_demand_number="DMO-2026-0001",
+                    project_id="P1",
+                    work_package_id="WP-LINKED",
+                    desired_start=date(2026, 9, 14),
+                    status="Brouillon",
+                )
+            )
+        engine.dispose()
+        return url
+
+    @staticmethod
+    def _count(database_url: str, model) -> int:
+        engine = create_sql_engine(database_url)
+        factory = create_session_factory(engine)
+        try:
+            with factory() as session:
+                value = session.scalar(select(func.count()).select_from(model))
+                return int(value or 0)
+        finally:
+            engine.dispose()
+
+    def test_create_is_idempotent_and_read_model_reflects_result(self) -> None:
+        with TemporaryDirectory() as directory:
+            database_url = self._database(directory)
+            app = create_api_app(database_url)
+            body = {
+                "project_number": "P-2",
+                "code": "MES",
+                "name": "Architecture MES",
+                "description": "Interfaces et modèle de données",
+                "start_date": "2026-09-21",
+                "end_date": "2026-10-02",
+                "planned_hours": 40,
+                "status": "planned",
+            }
+            headers = {"Idempotency-Key": "wp-create-1"}
+
+            with TestClient(app, raise_server_exceptions=False) as client:
+                first = client.post("/api/v1/work-packages", json=body, headers=headers)
+                second = client.post("/api/v1/work-packages", json=body, headers=headers)
+                rows = client.get(
+                    "/api/v1/work-packages?project_number=P-2&active_only=false"
+                )
+
+            self.assertEqual(first.status_code, 201, first.text)
+            self.assertEqual(second.status_code, 201, second.text)
+            self.assertEqual(second.json(), first.json())
+            reference = first.json()["reference"]
+            created = [row for row in rows.json() if row["reference"] == reference]
+            self.assertEqual(len(created), 1, rows.text)
+            self.assertEqual(created[0]["name"], "Architecture MES")
+            self.assertEqual(created[0]["planned_hours"], 40.0)
+            self.assertEqual(self._count(database_url, WorkPackage), 3)
+            self.assertEqual(self._count(database_url, CommandIdempotencyReceipt), 1)
+
+    def test_patch_updates_editable_fields_and_can_clear_optional_values(self) -> None:
+        with TemporaryDirectory() as directory:
+            database_url = self._database(directory)
+            app = create_api_app(database_url)
+
+            with TestClient(app, raise_server_exceptions=False) as client:
+                response = client.patch(
+                    "/api/v1/work-packages/EFF-FREE",
+                    json={
+                        "code": None,
+                        "name": "Préparation révisée",
+                        "description": "Nouvelle portée",
+                        "start_date": "2026-09-28",
+                        "end_date": "2026-10-09",
+                        "planned_hours": 24,
+                        "status": "active",
+                    },
+                )
+                rows = client.get(
+                    "/api/v1/work-packages?project_number=P-1&active_only=false"
+                )
+
+            self.assertEqual(response.status_code, 200, response.text)
+            self.assertEqual(response.json(), {"reference": "EFF-FREE", "action": "updated"})
+            edited = next(row for row in rows.json() if row["reference"] == "EFF-FREE")
+            self.assertIsNone(edited["code"])
+            self.assertEqual(edited["name"], "Préparation révisée")
+            self.assertEqual(edited["description"], "Nouvelle portée")
+            self.assertEqual(edited["start_date"], "2026-09-28")
+            self.assertEqual(edited["end_date"], "2026-10-09")
+            self.assertEqual(edited["planned_hours"], 24.0)
+            self.assertEqual(edited["status"], "active")
+
+    def test_date_window_is_validated_by_application_layer(self) -> None:
+        with TemporaryDirectory() as directory:
+            app = create_api_app(self._database(directory))
+
+            with TestClient(app, raise_server_exceptions=False) as client:
+                response = client.post(
+                    "/api/v1/work-packages",
+                    json={
+                        "project_number": "P-1",
+                        "name": "Fenêtre invalide",
+                        "start_date": "2026-10-10",
+                        "end_date": "2026-10-01",
+                    },
+                )
+
+            self.assertEqual(response.status_code, 422, response.text)
+            self.assertEqual(
+                response.json()["error"]["code"],
+                "work_package_date_window_invalid",
+            )
+
+    def test_linked_work_package_cannot_move_to_another_project(self) -> None:
+        with TemporaryDirectory() as directory:
+            app = create_api_app(self._database(directory))
+
+            with TestClient(app, raise_server_exceptions=False) as client:
+                response = client.patch(
+                    "/api/v1/work-packages/EFF-LINKED",
+                    json={"project_number": "P-2"},
+                )
+
+            self.assertEqual(response.status_code, 409, response.text)
+            self.assertEqual(
+                response.json()["error"]["code"],
+                "work_package_project_change_linked_demands",
+            )
+
+    def test_unlinked_work_package_can_move_to_another_project(self) -> None:
+        with TemporaryDirectory() as directory:
+            app = create_api_app(self._database(directory))
+
+            with TestClient(app, raise_server_exceptions=False) as client:
+                response = client.patch(
+                    "/api/v1/work-packages/EFF-FREE",
+                    json={"project_number": "P-2"},
+                )
+                rows = client.get(
+                    "/api/v1/work-packages?project_number=P-2&active_only=false"
+                )
+
+            self.assertEqual(response.status_code, 200, response.text)
+            moved = [row for row in rows.json() if row["reference"] == "EFF-FREE"]
+            self.assertEqual(len(moved), 1, rows.text)
+            self.assertEqual(moved[0]["project_number"], "P-2")
+
+    def test_openapi_exposes_create_patch_and_idempotency_header(self) -> None:
+        with TemporaryDirectory() as directory:
+            app = create_api_app(self._database(directory))
+            with TestClient(app) as client:
+                schema = client.get("/openapi.json").json()
+
+            self.assertIn("post", schema["paths"]["/api/v1/work-packages"])
+            self.assertIn("/api/v1/work-packages/{reference}", schema["paths"])
+            parameters = schema["paths"]["/api/v1/work-packages"]["post"].get(
+                "parameters", []
+            )
+            self.assertTrue(
+                any(
+                    parameter.get("name") == "Idempotency-Key"
+                    and parameter.get("in") == "header"
+                    for parameter in parameters
+                )
+            )
+
+
+if __name__ == "__main__":
+    unittest.main()
