@@ -26,10 +26,10 @@ def _unwrap(value: Any) -> Any:
 
 @dataclass(frozen=True, slots=True)
 class AcumaticaProjectSourceSettings:
-    """Contract-based REST configuration without storing it in SQL."""
+    """Contract-based REST configuration without storing credentials in SQL."""
 
     base_url: str
-    access_token: str = field(repr=False)
+    bearer_token: str = field(repr=False)
     endpoint: str = "Default"
     version: str = ""
     entity: str = "Project"
@@ -115,7 +115,7 @@ class AcumaticaProjectSource(ProjectSourcePort):
         settings = self._settings
         headers = {
             "Accept": "application/json",
-            "Authorization": f"Bearer {settings.access_token}",
+            "Authorization": f"Bearer {settings.bearer_token}",
         }
         page_size = max(int(settings.page_size or 0), 1)
         skip = 0
