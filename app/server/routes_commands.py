@@ -26,6 +26,8 @@ from ..application import (
     SegmentCancelCommand,
     SegmentCreateCommand,
     SegmentUpdateCommand,
+    WorkPackageCreateCommand,
+    WorkPackageUpdateCommand,
 )
 from .schemas import (
     DemandAlternativeSelectionRequest,
@@ -39,6 +41,8 @@ from .schemas import (
     SegmentAssignRequest,
     SegmentCreateRequest,
     SegmentUpdateRequest,
+    WorkPackageCreateRequest,
+    WorkPackageUpdateRequest,
 )
 
 
@@ -66,6 +70,37 @@ def build_command_router(
     idempotency_dependency: IdempotencyProvider,
 ) -> APIRouter:
     router = APIRouter(prefix="/api/v1", tags=["commands"])
+
+    @router.post("/work-packages", status_code=status.HTTP_201_CREATED)
+    def create_work_package(
+        body: WorkPackageCreateRequest,
+        idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+        facade: ApplicationFacade = Depends(facade_dependency),
+        idempotency: IdempotentCommandExecutor = Depends(idempotency_dependency),
+    ) -> dict[str, Any]:
+        return idempotency.execute(
+            scope="work_package.create",
+            key=idempotency_key,
+            request_payload=_json_body(body),
+            action=lambda: _payload(
+                facade.create_work_package(WorkPackageCreateCommand(**body.model_dump()))
+            ),
+        )
+
+    @router.patch("/work-packages/{reference}")
+    def update_work_package(
+        reference: str,
+        body: WorkPackageUpdateRequest,
+        facade: ApplicationFacade = Depends(facade_dependency),
+    ) -> dict[str, Any]:
+        return _payload(
+            facade.update_work_package(
+                WorkPackageUpdateCommand(
+                    reference=reference,
+                    **body.model_dump(exclude_unset=True),
+                )
+            )
+        )
 
     @router.post("/demands", status_code=status.HTTP_201_CREATED)
     def create_demand(
