@@ -11,31 +11,63 @@ React / Vite :5173
 FastAPI :8000
        │
        ▼
-SQLite de développement
+resourceplanner_server.db
 ```
 
 Le remplacement ultérieur de SQLite par SQL Server ne doit nécessiter aucune modification métier du frontend.
 
 ## 1. Préparer le backend local
 
-Depuis la racine du dépôt :
+Depuis la racine du dépôt, `Lancer_Serveur.bat` est maintenant le chemin normal de développement :
 
 ```bat
-python -m venv .venv
-.venv\Scripts\activate
-python -m pip install -r requirements.txt
-set RESOURCEPLANNER_DATABASE_URL=sqlite:///C:/Temp/resourceplanner_web.db
-alembic upgrade head
-python -m app.server
+Lancer_Serveur.bat
 ```
 
-Le serveur FastAPI doit répondre sur `http://127.0.0.1:8000/health`.
+Si `RESOURCEPLANNER_DATABASE_URL` n'est pas déjà définie, le lanceur utilise automatiquement :
 
-Pour obtenir des données réalistes, on peut aussi importer une copie du classeur V1 dans une base SQLite vide avec le CLI de cutover, en respectant `docs/SQL_CUTOVER_RUNBOOK.md`.
+```text
+sqlite:///./resourceplanner_server.db
+```
 
-## 2. Démarrer React
+Dans ce mode local SQLite, il applique aussi `alembic upgrade head` avant de démarrer FastAPI. Si une URL explicite est configurée plus tard pour SQL Server, elle est conservée et le lanceur n'exécute pas les migrations automatiquement.
 
-Dans un deuxième terminal :
+Le serveur FastAPI doit répondre sur `http://127.0.0.1:8000/health`. La documentation interactive est disponible à `http://127.0.0.1:8000/docs`.
+
+## 2. Charger un jeu de données de démonstration
+
+Pour essayer l'interface React sans importer de données réelles, fermer le serveur puis lancer :
+
+```bat
+Charger_Donnees_Demo.bat
+```
+
+Le chargeur :
+
+- utilise uniquement `resourceplanner_server.db` dans le dossier du projet;
+- applique les migrations Alembic avant le chargement;
+- refuse de fonctionner contre un moteur autre que SQLite;
+- crée des projets, ressources, horaires standards, WorkPackages, demandes, périodes alternatives, besoins et quarts;
+- replace les dates autour de la semaine courante à chaque exécution;
+- remplace uniquement les données rattachées aux projets `DEMO-*`, afin d'éviter les doublons tout en laissant les autres données locales intactes.
+
+Le jeu couvre notamment :
+
+- plusieurs classes de ressources;
+- quarts automatiques et manuels/verrouillés;
+- confirmation ferme et tentative;
+- Quick Shift hors horaire;
+- demande `Soumise` visible comme charge potentielle;
+- demande `Brouillon`;
+- demande `À corriger`;
+- période cumulative + deux dates alternatives exclusives dont une sélectionnée;
+- plusieurs WorkPackages et chargés de projet.
+
+Pour un test avec une copie de données V1 réelles, utiliser plutôt le CLI de cutover décrit dans `docs/SQL_CUTOVER_RUNBOOK.md`.
+
+## 3. Démarrer React
+
+Garder `Lancer_Serveur.bat` ouvert. Dans un deuxième terminal :
 
 ```bat
 cd frontend
@@ -43,11 +75,11 @@ npm install
 npm run dev
 ```
 
-Ouvrir ensuite `http://127.0.0.1:5173`.
+`npm install` est requis la première fois et après un changement de dépendances. Ouvrir ensuite `http://127.0.0.1:5173`.
 
 Vite relaie automatiquement `/api` et `/health` vers `http://127.0.0.1:8000`. On évite ainsi d'ajouter une politique CORS uniquement pour le développement local.
 
-## 3. API distante optionnelle
+## 4. API distante optionnelle
 
 En dehors du proxy Vite, le frontend accepte `VITE_API_BASE_URL`. Exemple :
 
@@ -64,7 +96,7 @@ https://resourceplanner/
   └─ /api/*       → FastAPI
 ```
 
-## 4. Build vérifié
+## 5. Build vérifié
 
 ```bat
 cd frontend
@@ -74,7 +106,7 @@ npm run build
 
 Le build exécute d'abord TypeScript en mode strict puis Vite. GitHub Actions exécute aussi ce build pour les PR touchant le frontend.
 
-## 5. Portée actuelle
+## 6. Portée actuelle
 
 Le planning opérationnel Web V2 supporte maintenant :
 
@@ -92,6 +124,8 @@ Le planning opérationnel Web V2 supporte maintenant :
 - `Idempotency-Key` sur les Quick Shifts : un retry du même payload réutilise la même clé afin d'éviter les doublons;
 - rechargement du snapshot après chaque mutation réussie.
 
-Les prochaines commandes Web seront ajoutées progressivement. L'écran demandes doit conserver FastAPI comme frontière métier pour la création/modification, les périodes alternatives, la soumission, l'approbation et les corrections. L'OIDC/RBAC, Acumatica et l'hébergement de production restent hors de cette tranche de développement local.
+L'espace Demandes React V2 supporte aussi la liste, le détail, la création/modification, les périodes cumulatives/alternatives et le workflow de soumission/approbation/correction/annulation. FastAPI reste la frontière métier autoritaire.
 
-Refs : #187, #189, #95, #55, #162.
+L'OIDC/RBAC, Acumatica, le SQL Server réel et l'hébergement de production restent hors de cette tranche de développement local.
+
+Refs : #187, #189, #192, #95, #55, #162.

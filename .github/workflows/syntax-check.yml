@@ -5,6 +5,7 @@ on:
     paths:
       - "main.py"
       - "Lancer_Serveur.bat"
+      - "Charger_Donnees_Demo.bat"
       - "app/**"
       - "tests/**"
       - "tools/**"
