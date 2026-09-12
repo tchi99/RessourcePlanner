@@ -11,6 +11,7 @@ import "./demands.css";
 import "./demand-periods.css";
 import "./demand-workflow.css";
 import "./medium-term.css";
+import "./projects.css";
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
