@@ -1,6 +1,7 @@
 import { useState } from "react";
 
 import DemandsWorkspace from "./DemandsWorkspace";
+import MediumTermPage from "./MediumTermPage";
 import PlanningPage from "./PlanningPage";
 
 type View = "planning" | "medium-term" | "demands" | "projects" | "communications";
@@ -97,6 +98,8 @@ export default function App() {
         <main className="main-content">
           {view === "planning" ? (
             <PlanningPage />
+          ) : view === "medium-term" ? (
+            <MediumTermPage onOpenDemands={() => setView("demands")} />
           ) : view === "demands" ? (
             <DemandsWorkspace />
           ) : (
