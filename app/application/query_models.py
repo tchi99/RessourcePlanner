@@ -97,12 +97,10 @@ class PendingDemandLoadReadModel:
 
 @dataclass(frozen=True, slots=True)
 class MediumTermCapacityBucketReadModel:
-    """Canonical weekly capacity/load bucket for medium-term planning.
+    """One backend-authoritative weekly capacity bucket.
 
-    ``exposure_hours`` is the additive workload that competes for current capacity.
-    Replacement proposals are intentionally exposed separately and never folded into
-    this value, so React cannot accidentally double-count an approved plan and its
-    pending replacement.
+    ``resource_class=None`` is the all-resources total. Replacement proposals are
+    reported separately and are never added to ``exposure_hours``.
     """
 
     week_start: date
@@ -111,13 +109,14 @@ class MediumTermCapacityBucketReadModel:
     resource_count: int
     capacity_hours: float
     firm_hours: float
-    tentative_hours: float
+    current_potential_hours: float
     submitted_hours: float
     replacement_proposal_hours: float
     replacement_delta_hours: float
     exposure_hours: float
+    firm_residual_hours: float
     residual_hours: float
-    utilization_percent: float | None
+    utilization_pct: float | None
     state: str
 
 
