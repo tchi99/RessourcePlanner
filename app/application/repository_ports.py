@@ -5,7 +5,18 @@ from typing import Any, Protocol
 
 from ..domain.demand_periods import DemandPeriodDefinition
 from ..domain.planning_snapshot import PlanningSnapshot
+from .query_models import WorkPackageReadModel
 from .read_models import DemandPeriodReadModel, DemandReadModel, SegmentReadModel
+
+
+class WorkPackageRepositoryPort(Protocol):
+    """Persistence contract for WorkPackage creation and editing."""
+
+    def get(self, reference: str) -> WorkPackageReadModel | None: ...
+
+    def create(self, values: Mapping[str, Any]) -> str: ...
+
+    def update(self, reference: str, updates: Mapping[str, Any]) -> str: ...
 
 
 class DemandRepositoryPort(Protocol):
