@@ -19,6 +19,7 @@ import {
   startOfWeek,
   toIsoDate,
 } from "./dates";
+import WorkPackageEditor from "./WorkPackageEditor";
 
 const HORIZONS = [4, 8, 12] as const;
 
@@ -111,6 +112,7 @@ function WorkPackageRow({
   horizonStart,
   horizonWeeks,
   onOpenDemands,
+  onEdit,
 }: {
   project: ProjectReadModel;
   workPackage: WorkPackageReadModel;
@@ -120,6 +122,7 @@ function WorkPackageRow({
   horizonStart: Date;
   horizonWeeks: number;
   onOpenDemands: () => void;
+  onEdit: (workPackage: WorkPackageReadModel) => void;
 }) {
   const grid = placement(workPackage, horizonStart, horizonWeeks);
   const template = `250px repeat(${horizonWeeks}, minmax(96px, 1fr))`;
@@ -143,6 +146,9 @@ function WorkPackageRow({
           {workPackage.end_date ? ` → ${workPackage.end_date}` : ""}
           {workPackage.planned_hours != null ? ` · ${hours(workPackage.planned_hours)}` : ""}
         </small>
+        <button className="mt-edit-package" type="button" onClick={() => onEdit(workPackage)}>
+          Modifier
+        </button>
       </div>
 
       {Array.from({ length: horizonWeeks }, (_, index) => (
@@ -202,6 +208,8 @@ export default function MediumTermPage({ onOpenDemands }: { onOpenDemands: () =>
   const [search, setSearch] = useState("");
   const [projectFilter, setProjectFilter] = useState("all");
   const [managerFilter, setManagerFilter] = useState("all");
+  const [editor, setEditor] = useState<WorkPackageReadModel | null | undefined>(undefined);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   const horizonEnd = useMemo(
     () => addDays(horizonStart, horizonWeeks * 7 - 1),
@@ -236,7 +244,7 @@ export default function MediumTermPage({ onOpenDemands }: { onOpenDemands: () =>
         if (!controller.signal.aborted) setLoading(false);
       });
     return () => controller.abort();
-  }, [start, end]);
+  }, [start, end, refreshKey]);
 
   const weeks = useMemo(
     () => Array.from({ length: horizonWeeks }, (_, index) => addDays(horizonStart, index * 7)),
@@ -336,6 +344,10 @@ export default function MediumTermPage({ onOpenDemands }: { onOpenDemands: () =>
     gridTemplateColumns: `250px repeat(${horizonWeeks}, minmax(96px, 1fr))`,
   };
 
+  const defaultProject = projectFilter !== "all"
+    ? projectFilter
+    : projectOptions[0]?.number || "";
+
   return (
     <section className="medium-term-page">
       <div className="page-heading">
@@ -343,10 +355,13 @@ export default function MediumTermPage({ onOpenDemands }: { onOpenDemands: () =>
           <span className="eyebrow">Planification moyen terme</span>
           <h1>{start} → {end}</h1>
           <p>
-            Vue read-only des WorkPackages et des demandes dans l’horizon. Les états de charge potentielle et de plan approuvé proviennent des read models FastAPI.
+            WorkPackages, demandes et échéancier moyen terme. Les calculs de charge restent autoritaires côté FastAPI.
           </p>
         </div>
         <div className="page-actions">
+          <button className="mt-create-package" type="button" onClick={() => setEditor(null)}>
+            + WorkPackage
+          </button>
           <button className="mt-demands-button" type="button" onClick={onOpenDemands}>
             Ouvrir les demandes
           </button>
@@ -439,6 +454,7 @@ export default function MediumTermPage({ onOpenDemands }: { onOpenDemands: () =>
                       horizonStart={horizonStart}
                       horizonWeeks={horizonWeeks}
                       onOpenDemands={onOpenDemands}
+                      onEdit={setEditor}
                     />
                   ))}
                 </div>
@@ -452,8 +468,21 @@ export default function MediumTermPage({ onOpenDemands }: { onOpenDemands: () =>
         <span><i className="planned" /> Plan approuvé présent</span>
         <span><i className="pending" /> Soumise / modification en attente</span>
         <span><i className="draft" /> Brouillon / autre état</span>
-        <small>Les calculs de capacité moyen terme seront ajoutés en 4C; 4A affiche seulement les projections canoniques déjà fournies par FastAPI.</small>
+        <small>Les agrégations de capacité moyen terme seront ajoutées en 4C; les mutations WorkPackage passent maintenant par FastAPI.</small>
       </div>
+
+      {editor !== undefined && (
+        <WorkPackageEditor
+          projects={projects}
+          workPackage={editor}
+          defaultProjectNumber={editor?.project_number || defaultProject}
+          onClose={() => setEditor(undefined)}
+          onSaved={() => {
+            setEditor(undefined);
+            setRefreshKey((value) => value + 1);
+          }}
+        />
+      )}
     </section>
   );
 }
