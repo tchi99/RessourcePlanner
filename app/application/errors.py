@@ -49,6 +49,10 @@ class ApplicationConflictError(ApplicationError):
     default_code = "conflict"
 
 
+class ApplicationUnavailableError(ApplicationError):
+    default_code = "unavailable"
+
+
 class ApplicationOperationError(ApplicationError):
     default_code = "operation_failed"
 
