@@ -10,6 +10,28 @@ class StrictRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class WorkPackageCreateRequest(StrictRequest):
+    project_number: str = Field(min_length=1)
+    name: str = Field(min_length=1)
+    code: str | None = None
+    description: str | None = None
+    start_date: date | None = None
+    end_date: date | None = None
+    planned_hours: float | None = Field(default=None, ge=0)
+    status: str = Field(default="planned", min_length=1)
+
+
+class WorkPackageUpdateRequest(StrictRequest):
+    project_number: str | None = None
+    code: str | None = None
+    name: str | None = None
+    description: str | None = None
+    start_date: date | None = None
+    end_date: date | None = None
+    planned_hours: float | None = Field(default=None, ge=0)
+    status: str | None = None
+
+
 class DemandCreateRequest(StrictRequest):
     project_number: str
     desired_start: date
