@@ -52,6 +52,12 @@ class PlanningResult(ApplicationResult):
 
 
 @dataclass(frozen=True, slots=True)
+class WorkPackageMutationResult(ApplicationResult):
+    reference: str
+    action: str
+
+
+@dataclass(frozen=True, slots=True)
 class DemandMutationResult(ApplicationResult):
     demand_number: str
     status: str | None = None
