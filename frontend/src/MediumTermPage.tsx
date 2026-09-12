@@ -95,13 +95,34 @@ function placement(workPackage: WorkPackageReadModel, horizonStart: Date, horizo
   return { column: firstWeek + 2, span: Math.max(1, lastWeek - firstWeek + 1) };
 }
 
+function isTentative(demand: DemandReadModel) {
+  return normalize(demand.confirmation).includes("tentative");
+}
+
 function demandTone(demand: DemandReadModel, pending: boolean, hasApprovedPlan: boolean) {
   if (pending) return "pending";
+  if (hasApprovedPlan && isTentative(demand)) return "tentative";
   if (hasApprovedPlan) return "planned";
   const status = normalize(demand.status);
   if (status.includes("correction")) return "correction";
   if (status.includes("brouillon")) return "draft";
   return "neutral";
+}
+
+function demandDetails(demand: DemandReadModel, label: string) {
+  const window = `${demand.desired_start || "Date à préciser"} → ${demand.desired_end || demand.desired_start || "Date à préciser"}`;
+  const estimate = demand.estimated_hours == null ? "Heures à préciser" : hours(demand.estimated_hours);
+  const resources = `${demand.resource_count} ressource${demand.resource_count > 1 ? "s" : ""}`;
+  const competencies = demand.required_competencies || "Compétence à préciser";
+  return [
+    demand.project_number || "Projet non précisé",
+    demand.number,
+    label,
+    window,
+    estimate,
+    resources,
+    competencies,
+  ].join(" · ");
 }
 
 function WorkPackageRow({
@@ -175,20 +196,27 @@ function WorkPackageRow({
             const pendingLoad = pendingByDemand.get(demand.number);
             const planned = plannedNumbers.has(demand.number);
             const replacement = normalize(pendingLoad?.mode) === "replacement";
+            const tentative = isTentative(demand);
             const tone = demandTone(demand, Boolean(pendingLoad), planned);
             const label = pendingLoad
-              ? replacement ? "Modification en attente" : "Charge potentielle"
-              : planned ? "Plan approuvé" : demand.status;
+              ? replacement ? "Soumise · modification en attente" : "Soumise · charge potentielle"
+              : planned
+                ? tentative ? "Plan approuvé · tentative" : "Plan approuvé · confirmée"
+                : demand.status;
             return (
               <button
                 type="button"
                 className={`mt-demand-chip ${tone}`}
                 key={demand.number}
                 onClick={onOpenDemands}
-                title={`${demand.number} · ${demand.status} · ${label}`}
+                title={demandDetails(demand, label)}
+                aria-label={demandDetails(demand, label)}
               >
                 <strong>{demand.number}</strong>
                 <span>{label}</span>
+                <small>
+                  {hours(demand.estimated_hours)} · {demand.resource_count} res. · {demand.required_competencies || "Comp. à préciser"}
+                </small>
               </button>
             );
           })}
@@ -471,7 +499,8 @@ export default function MediumTermPage({ onOpenDemands }: { onOpenDemands: () =>
       </div>
 
       <div className="mt-legend">
-        <span><i className="planned" /> Plan approuvé présent</span>
+        <span><i className="planned" /> Plan approuvé confirmé</span>
+        <span><i className="tentative" /> Plan approuvé tentative</span>
         <span><i className="pending" /> Soumise / modification en attente</span>
         <span><i className="draft" /> Brouillon / autre état</span>
         <small>Capacité, exposition et résiduel proviennent du snapshot FastAPI; React ne recalcule ni la projection ni le non-double-comptage.</small>
