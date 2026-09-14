@@ -3,7 +3,7 @@ setlocal
 cd /d "%~dp0"
 
 echo =====================================================
-echo  Installation - Planification MO V1
+echo  Installation - Planification MO V1 ^(legacy^)
 echo =====================================================
 
 where py >nul 2>&1
@@ -33,8 +33,8 @@ echo Mise a jour de pip...
 python -m pip install --upgrade pip
 if errorlevel 1 goto :error
 
-echo Installation des dependances validees...
-pip install -r requirements.txt -c constraints-release.txt
+echo Installation des dependances V1 validees...
+pip install -r requirements-legacy.txt -c constraints-release.txt
 if errorlevel 1 goto :error
 
 echo.
