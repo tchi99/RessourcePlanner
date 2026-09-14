@@ -1,0 +1,26 @@
+.segment-parent-link {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--surface-muted, #f6f8fb);
+}
+
+.segment-parent-link > div {
+  display: grid;
+  gap: 3px;
+}
+
+.segment-parent-link span {
+  color: var(--text-muted, #667085);
+  font-size: 0.84rem;
+}
+
+@media (max-width: 620px) {
+  .segment-parent-link {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}
