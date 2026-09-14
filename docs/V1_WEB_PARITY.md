@@ -24,8 +24,8 @@ La majorité du flux métier est déjà couverte par React V2 :
 
 Deux écarts restent de vrais bloqueurs du retrait de NiceGUI :
 
-1. **administration des ressources, compétences et disponibilités**;
-2. **édition/assignation des ResourceRequirements (segments) depuis React**.
+1. **administration des ressources, compétences et disponibilités — #211**;
+2. **édition/assignation des ResourceRequirements (segments) depuis React — #212**.
 
 Les autres surfaces V1 ne doivent pas retarder le cutover SQL.
 
@@ -41,15 +41,15 @@ Les autres surfaces V1 ne doivent pas retarder le cutover SQL.
 | Demandes / approbations | React + FastAPI livrés | **COUVERT** | Création, modification, périodes, alternatives, workflow |
 | Projets | React + sync Acumatica Phase 1 | **COUVERT** | SQL local opérationnel + frontière ERP |
 | Tableau de bord V1 | Données déjà exposées ailleurs | **SUPPRIMER COMME BLOQUEUR** | Agrégat de KPI; utile éventuellement plus tard, mais aucune mutation exclusive |
-| Segments : liste / détail | API read déjà présente | **MIGRER** | React ne permet pas encore de travailler directement avec le besoin ressource |
-| Segments : créer / modifier / annuler / assigner | API command déjà présente | **MIGRER** | Commandes backend prêtes, surface React manquante |
+| Segments : liste / détail | API read déjà présente | **MIGRER — #212** | React ne permet pas encore de travailler directement avec le besoin ressource |
+| Segments : créer / modifier / annuler / assigner | API command déjà présente | **MIGRER — #212** | Commandes backend prêtes, surface React manquante |
 | Recommandation de ressource V1 | Pas de surface React dédiée | **REPORTER** | Aide à la décision, pas nécessaire pour préserver la capacité d'opérer; moteur/règles pourront être réexposés plus tard |
-| Ressources : créer / modifier / activer / désactiver | SQL existe; lecture API seulement | **MIGRER** | Nécessaire pour administrer l'équipe après cutover |
-| Classe / compétences / note / ordre ressource | SQL existe; lecture API seulement | **MIGRER** | Influence le planning, le tri et la capacité opérationnelle |
-| Horaire standard ressource | SQL `ResourceAvailabilityRule` existe; pas d'API de mutation | **MIGRER** | Le calcul de capacité dépend directement de ces règles |
-| Vacances / absences | SQL supporte les règles; pas d'admin Web | **MIGRER** | Nécessaire pour maintenir une capacité fiable après cutover |
-| Jours fériés globaux | SQL supporte `resource_id=NULL` pour `Jour férié` | **MIGRER** | Nécessaire à la capacité, mais peut partager la même surface Disponibilités |
-| Ordre manuel / préférences locales V1 | `Resource.sort_order` existe | **MIGRER LE MINIMUM** | Conserver l'ordre serveur; ne pas reproduire les préférences Excel/locales inutiles |
+| Ressources : créer / modifier / activer / désactiver | SQL existe; lecture API seulement | **MIGRER — #211** | Nécessaire pour administrer l'équipe après cutover |
+| Classe / compétences / note / ordre ressource | SQL existe; lecture API seulement | **MIGRER — #211** | Influence le planning, le tri et la capacité opérationnelle |
+| Horaire standard ressource | SQL `ResourceAvailabilityRule` existe; pas d'API de mutation | **MIGRER — #211** | Le calcul de capacité dépend directement de ces règles |
+| Vacances / absences | SQL supporte les règles; pas d'admin Web | **MIGRER — #211** | Nécessaire pour maintenir une capacité fiable après cutover |
+| Jours fériés globaux | SQL supporte `resource_id=NULL` pour `Jour férié` | **MIGRER — #211** | Nécessaire à la capacité, mais peut partager la même surface Disponibilités |
+| Ordre manuel / préférences locales V1 | `Resource.sort_order` existe | **MIGRER LE MINIMUM — #211** | Conserver l'ordre serveur; ne pas reproduire les préférences Excel/locales inutiles |
 | Rebuild planning explicite | Route FastAPI `/planning/rebuild` existe | **REPORTER / SUPPORT** | Pas un manque de domaine; ajouter un bouton admin seulement si nécessaire |
 | Données Excel génériques | Spécifique au classeur | **SUPPRIMER AU CUTOVER** | Une grille SQL générique serait un anti-pattern et contournerait les services métier |
 | Paramètres chemin classeur / OneDrive | Spécifique au runtime V1 | **SUPPRIMER AU CUTOVER** | SQL devient autoritaire; aucun fichier partagé à configurer |
@@ -60,7 +60,7 @@ Les autres surfaces V1 ne doivent pas retarder le cutover SQL.
 
 ---
 
-## Bloqueur 1 — Administration Ressources & Disponibilités
+## Bloqueur 1 — Administration Ressources & Disponibilités — #211
 
 ### Déjà présent
 
@@ -110,7 +110,7 @@ React :
 
 ---
 
-## Bloqueur 2 — Segments / ResourceRequirements dans React
+## Bloqueur 2 — Segments / ResourceRequirements dans React — #212
 
 ### Déjà présent
 
@@ -164,12 +164,12 @@ Les intégrations Outlook/Thunderbird du runtime V1 ne doivent pas être portée
 
 ## Ordre recommandé après cette analyse
 
-1. **Ressources & disponibilités Web** — bloqueur principal, car c'est une mutation opérationnelle sans équivalent Web aujourd'hui.
-2. **Segments intégrés Planning/Demandes** — backend déjà prêt, principalement travail React.
-3. **Runtime Web autonome** — servir/lancer React + FastAPI sans `main.py`.
+1. **#211 — Ressources & disponibilités Web** : bloqueur principal, car c'est une mutation opérationnelle sans équivalent Web aujourd'hui.
+2. **#212 — Segments intégrés Planning/Demandes** : backend déjà prêt, principalement travail React.
+3. **Runtime Web autonome** : servir/lancer React + FastAPI sans `main.py`.
 4. Validation réelle SQL Server #162 lorsqu'elle devient possible.
 5. Cutover #158/#161, puis retrait définitif du runtime V1.
 
 Le Dashboard, les communications et les fonctions de recommandation peuvent avancer indépendamment après le cutover de base.
 
-Refs : #40 #55 #158 #161 #162 #208 #209 #210
+Refs : #40 #55 #158 #161 #162 #208 #209 #210 #211 #212
