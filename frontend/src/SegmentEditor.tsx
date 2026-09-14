@@ -7,6 +7,7 @@ import {
   SegmentReadModel,
 } from "./api";
 import {
+  SegmentUpdateWrite,
   SegmentWrite,
   assignSegment,
   cancelSegment,
@@ -192,22 +193,17 @@ export default function SegmentEditor({
     }
 
     const selectedTechnician = form.technician.trim();
-    const technicianForUpdate = segmentId
-      ? selectedTechnician
-        ? segment?.resource_name ?? null
-        : null
-      : null;
-    const payload: SegmentWrite = {
-      demand_number: effectiveDemandNumber,
-      project_number: effectiveProjectNumber,
-      project_name: effectiveProjectName,
-      technician: technicianForUpdate,
+    const editablePayload: SegmentUpdateWrite = {
+      technician: segmentId
+        ? selectedTechnician
+          ? segment?.resource_name ?? null
+          : null
+        : null,
       start_date: form.start_date,
       end_date: form.end_date,
       planned_hours: plannedHours,
       status: form.status.trim() || "À assigner",
       description: form.description.trim(),
-      source_effort_id: null,
       required_competency: form.required_competency.trim() || null,
       planning_type: form.planning_type.trim() || "Flexible",
       priority: form.priority.trim() || "Normale",
@@ -219,13 +215,29 @@ export default function SegmentEditor({
     try {
       let savedSegmentId = segmentId;
       if (segmentId) {
-        await updateSegment(segmentId, payload);
+        await updateSegment(segmentId, editablePayload);
       } else {
-        const fingerprint = JSON.stringify(payload);
+        const createPayload: SegmentWrite = {
+          demand_number: effectiveDemandNumber,
+          project_number: effectiveProjectNumber,
+          project_name: effectiveProjectName,
+          source_effort_id: null,
+          ...editablePayload,
+          technician: null,
+          start_date: form.start_date,
+          end_date: form.end_date,
+          planned_hours: plannedHours,
+          status: form.status.trim() || "À assigner",
+          description: form.description.trim(),
+          planning_type: form.planning_type.trim() || "Flexible",
+          priority: form.priority.trim() || "Normale",
+          outside_standard_hours: form.outside_standard_hours,
+        };
+        const fingerprint = JSON.stringify(createPayload);
         const previous = createRetry.current;
         const key = previous?.fingerprint === fingerprint ? previous.key : newIdempotencyKey();
         createRetry.current = { fingerprint, key };
-        const result = await createSegment(payload, key);
+        const result = await createSegment(createPayload, key);
         savedSegmentId = result.segment_id;
         createRetry.current = null;
       }
