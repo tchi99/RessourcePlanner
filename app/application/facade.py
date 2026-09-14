@@ -27,6 +27,15 @@ from .demand_service import DemandService
 from .errors import ApplicationOperationError
 from .planning_service import PlanningService
 from .quick_shift_service import QuickShiftService
+from .resource_admin import (
+    AvailabilityRuleCreateCommand,
+    AvailabilityRuleMutationResult,
+    AvailabilityRuleUpdateCommand,
+    ResourceAdminService,
+    ResourceCreateCommand,
+    ResourceMutationResult,
+    ResourceUpdateCommand,
+)
 from .results import (
     AllocationMutationResult,
     DemandAlternativeSelectionResult,
@@ -57,6 +66,7 @@ class ApplicationFacade:
         quick_shifts: QuickShiftService,
         planning: PlanningService,
         work_packages: WorkPackageService | None = None,
+        resource_admin: ResourceAdminService | None = None,
     ) -> None:
         self._demands = demands
         self._segments = segments
@@ -64,6 +74,7 @@ class ApplicationFacade:
         self._quick_shifts = quick_shifts
         self._planning = planning
         self._work_packages = work_packages
+        self._resource_admin = resource_admin
 
     def _work_package_service(self) -> WorkPackageService:
         if self._work_packages is None:
@@ -72,6 +83,14 @@ class ApplicationFacade:
                 code="work_package_commands_unavailable",
             )
         return self._work_packages
+
+    def _resource_admin_service(self) -> ResourceAdminService:
+        if self._resource_admin is None:
+            raise ApplicationOperationError(
+                "L'administration des ressources n'est pas configurée dans cet adaptateur.",
+                code="resource_admin_unavailable",
+            )
+        return self._resource_admin
 
     def create_work_package(
         self,
@@ -84,6 +103,27 @@ class ApplicationFacade:
         command: WorkPackageUpdateCommand,
     ) -> WorkPackageMutationResult:
         return self._work_package_service().update_command(command)
+
+    def create_resource(self, command: ResourceCreateCommand) -> ResourceMutationResult:
+        return self._resource_admin_service().create_resource(command)
+
+    def update_resource(self, command: ResourceUpdateCommand) -> ResourceMutationResult:
+        return self._resource_admin_service().update_resource(command)
+
+    def create_availability_rule(
+        self,
+        command: AvailabilityRuleCreateCommand,
+    ) -> AvailabilityRuleMutationResult:
+        return self._resource_admin_service().create_availability_rule(command)
+
+    def update_availability_rule(
+        self,
+        command: AvailabilityRuleUpdateCommand,
+    ) -> AvailabilityRuleMutationResult:
+        return self._resource_admin_service().update_availability_rule(command)
+
+    def deactivate_availability_rule(self, rule_id: str) -> AvailabilityRuleMutationResult:
+        return self._resource_admin_service().deactivate_availability_rule(rule_id)
 
     def create_demand(self, command: DemandCreateCommand) -> DemandMutationResult:
         number = self._demands.create_command(command)
