@@ -1,6 +1,10 @@
 .ruff_cache/
 .pypirc
 
+# Python virtual environments
+.venv/
+.venv-web/
+
 # IDE / editor temp files
 tempCodeRunnerFile.py
 

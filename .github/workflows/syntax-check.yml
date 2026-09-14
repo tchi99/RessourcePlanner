@@ -5,8 +5,11 @@ on:
     paths:
       - "main.py"
       - "Lancer_Application.bat"
+      - "Lancer_Application_Legacy.bat"
       - "Installer.bat"
+      - "Installer_Web.bat"
       - "Lancer_Serveur.bat"
+      - "Lancer_Web.bat"
       - "Charger_Donnees_Demo.bat"
       - "app/**"
       - "tests/**"
@@ -50,6 +53,7 @@ jobs:
           app/server
           migrations
           tools/check_server_dependency_isolation.py
+          tools/check_web_runtime.py
           tools/cutover_inventory.py
       - name: Guard Web/SQL boundaries from V1 imports
         run: python tools/cutover_inventory.py --check-boundaries
@@ -85,5 +89,7 @@ jobs:
       - name: Build React V2 frontend
         working-directory: frontend
         run: npm run build
+      - name: Smoke complete FastAPI + React runtime
+        run: python tools/check_web_runtime.py
       - name: Scan current repository tree for common PII and secrets
         run: python tools/privacy_scan.py

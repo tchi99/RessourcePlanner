@@ -8,6 +8,7 @@ from fastapi import FastAPI
 import uvicorn
 
 from ..infrastructure.acumatica import AcumaticaProjectSource, AcumaticaProjectSourceSettings
+from .frontend import FrontendBuildError, attach_frontend
 from .http import create_api_app
 
 
@@ -16,6 +17,7 @@ HOST_ENV = "RESOURCEPLANNER_HOST"
 PORT_ENV = "RESOURCEPLANNER_PORT"
 LOG_LEVEL_ENV = "RESOURCEPLANNER_LOG_LEVEL"
 ACTOR_NAME_ENV = "RESOURCEPLANNER_ACTOR_NAME"
+FRONTEND_DIST_ENV = "RESOURCEPLANNER_FRONTEND_DIST"
 ACUMATICA_BASE_URL_ENV = "RESOURCEPLANNER_ACUMATICA_BASE_URL"
 ACUMATICA_ACCESS_TOKEN_ENV = "RESOURCEPLANNER_ACUMATICA_ACCESS_TOKEN"
 ACUMATICA_ENDPOINT_ENV = "RESOURCEPLANNER_ACUMATICA_ENDPOINT"
@@ -121,6 +123,7 @@ class ServerSettings:
     port: int = 8000
     log_level: str = "info"
     actor_name: str = "api"
+    frontend_dist: str | None = None
     acumatica: AcumaticaProjectSourceSettings | None = field(default=None, repr=False)
 
     @classmethod
@@ -144,6 +147,7 @@ class ServerSettings:
                 f"{LOG_LEVEL_ENV} doit être l'une des valeurs suivantes: {allowed}."
             )
         actor_name = _text(values.get(ACTOR_NAME_ENV)) or "api"
+        frontend_dist = _text(values.get(FRONTEND_DIST_ENV)) or None
 
         return cls(
             database_url=database_url,
@@ -151,12 +155,13 @@ class ServerSettings:
             port=port,
             log_level=log_level,
             actor_name=actor_name,
+            frontend_dist=frontend_dist,
             acumatica=_acumatica_settings(values),
         )
 
 
 def create_configured_app(settings: ServerSettings | None = None) -> FastAPI:
-    """Create the API app without running migrations or opening an Excel runtime."""
+    """Create the configured SQL API and optionally attach the React build."""
 
     resolved = settings or ServerSettings.from_environment()
     project_source = (
@@ -164,7 +169,7 @@ def create_configured_app(settings: ServerSettings | None = None) -> FastAPI:
         if resolved.acumatica is not None
         else None
     )
-    return create_api_app(
+    app = create_api_app(
         resolved.database_url,
         actor_name=resolved.actor_name,
         project_source=project_source,
@@ -174,6 +179,12 @@ def create_configured_app(settings: ServerSettings | None = None) -> FastAPI:
             else None
         ),
     )
+    if resolved.frontend_dist is not None:
+        try:
+            attach_frontend(app, resolved.frontend_dist, required=True)
+        except FrontendBuildError as exc:
+            raise ServerConfigurationError(str(exc)) from exc
+    return app
 
 
 def run_server(settings: ServerSettings | None = None) -> None:
