@@ -1,0 +1,559 @@
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+
+import {
+  ApiError,
+  AvailabilityRuleWrite,
+  AvailabilityType,
+  ResourceAvailabilityRuleReadModel,
+  ResourceReadModel,
+  ResourceWrite,
+  createAvailabilityRule,
+  createResource,
+  deactivateAvailabilityRule,
+  deactivateResource,
+  getAvailabilityRules,
+  getResources,
+  updateAvailabilityRule,
+  updateResource,
+} from "./api";
+
+const WEEKDAYS = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"] as const;
+const DEFAULT_WEEKDAYS = "Lun,Mar,Mer,Jeu,Ven";
+
+function mutationKey(prefix: string) {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return `${prefix}-${crypto.randomUUID()}`;
+  }
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+function apiMessage(reason: unknown, fallback: string) {
+  if (reason instanceof ApiError) {
+    return `${reason.message}${reason.code ? ` (${reason.code})` : ""}`;
+  }
+  return reason instanceof Error ? reason.message : fallback;
+}
+
+function nullable(value: string) {
+  const trimmed = value.trim();
+  return trimmed || null;
+}
+
+function shortTime(value: string | null) {
+  return value ? value.slice(0, 5) : "";
+}
+
+function resourceDraft(resource?: ResourceReadModel | null): ResourceWrite {
+  return {
+    name: resource?.name ?? "",
+    email: resource?.email ?? null,
+    resource_class: resource?.resource_class ?? null,
+    competencies: resource?.competencies ?? null,
+    note: resource?.note ?? null,
+    active: resource?.active ?? true,
+    sort_order: resource?.sort_order ?? 0,
+    external_id: resource?.external_id ?? null,
+  };
+}
+
+type RuleEditorProps = {
+  resourceId: string | null;
+  rule?: ResourceAvailabilityRuleReadModel | null;
+  forcedType?: AvailabilityType;
+  onSaved: () => void;
+  onCancel: () => void;
+};
+
+function RuleEditor({ resourceId, rule, forcedType, onSaved, onCancel }: RuleEditorProps) {
+  const initialType = forcedType ?? rule?.availability_type ?? "Horaire standard";
+  const [kind, setKind] = useState<AvailabilityType>(initialType);
+  const [startDate, setStartDate] = useState(rule?.start_date ?? "");
+  const [endDate, setEndDate] = useState(rule?.end_date ?? "");
+  const [startTime, setStartTime] = useState(shortTime(rule?.start_time ?? null) || "07:00");
+  const [endTime, setEndTime] = useState(shortTime(rule?.end_time ?? null) || "15:30");
+  const [weekdays, setWeekdays] = useState(
+    () => new Set((rule?.weekdays ?? DEFAULT_WEEKDAYS).split(",").map((item) => item.trim()).filter(Boolean)),
+  );
+  const [note, setNote] = useState(rule?.note ?? "");
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const idempotencyKey = useRef(mutationKey("availability"));
+
+  const effectiveType = forcedType ?? kind;
+  const isStandard = effectiveType === "Horaire standard";
+  const isHoliday = effectiveType === "Jour férié";
+
+  function toggleWeekday(day: string) {
+    setWeekdays((current) => {
+      const next = new Set(current);
+      if (next.has(day)) next.delete(day);
+      else next.add(day);
+      return next;
+    });
+  }
+
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    if (pending) return;
+    setError(null);
+
+    if (!isHoliday && !resourceId) {
+      setError("Une ressource doit être sélectionnée.");
+      return;
+    }
+    if ((effectiveType === "Vacances" || isHoliday) && !startDate) {
+      setError("La date de début est requise.");
+      return;
+    }
+    if (startDate && endDate && endDate < startDate) {
+      setError("La date de fin ne peut pas précéder la date de début.");
+      return;
+    }
+    if (isStandard && (!startTime || !endTime)) {
+      setError("Les heures de début et de fin sont requises pour un horaire standard.");
+      return;
+    }
+
+    const payload: AvailabilityRuleWrite = {
+      availability_type: effectiveType,
+      resource_id: isHoliday ? null : resourceId,
+      start_date: startDate || null,
+      end_date: endDate || null,
+      weekdays: isStandard ? WEEKDAYS.filter((day) => weekdays.has(day)).join(",") || null : null,
+      start_time: isStandard ? startTime : null,
+      end_time: isStandard ? endTime : null,
+      note: nullable(note),
+      active: rule?.active ?? true,
+    };
+
+    setPending(true);
+    try {
+      if (rule) await updateAvailabilityRule(rule.id, payload);
+      else await createAvailabilityRule(payload, idempotencyKey.current);
+      idempotencyKey.current = mutationKey("availability");
+      onSaved();
+    } catch (reason) {
+      setError(apiMessage(reason, "Impossible d'enregistrer la disponibilité."));
+    } finally {
+      setPending(false);
+    }
+  }
+
+  return (
+    <form className="admin-editor" onSubmit={submit}>
+      <div className="editor-heading">
+        <div>
+          <span className="eyebrow">{rule ? "Modifier" : "Ajouter"}</span>
+          <h3>{forcedType ?? "Disponibilité"}</h3>
+        </div>
+        <button className="quiet-button" type="button" onClick={onCancel}>Fermer</button>
+      </div>
+
+      {!forcedType && (
+        <label>
+          Type
+          <select value={kind} onChange={(event) => setKind(event.target.value as AvailabilityType)}>
+            <option>Horaire standard</option>
+            <option>Vacances</option>
+          </select>
+        </label>
+      )}
+
+      <div className="form-grid two-columns">
+        <label>
+          Date de début {isStandard ? "(optionnelle)" : ""}
+          <input type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} />
+        </label>
+        <label>
+          Date de fin {isStandard ? "(optionnelle)" : ""}
+          <input type="date" value={endDate} onChange={(event) => setEndDate(event.target.value)} />
+        </label>
+      </div>
+
+      {isStandard && (
+        <>
+          <div className="weekday-picker" aria-label="Jours de l'horaire standard">
+            {WEEKDAYS.map((day) => (
+              <label key={day} className={weekdays.has(day) ? "selected" : ""}>
+                <input
+                  type="checkbox"
+                  checked={weekdays.has(day)}
+                  onChange={() => toggleWeekday(day)}
+                />
+                {day}
+              </label>
+            ))}
+          </div>
+          <div className="form-grid two-columns">
+            <label>
+              Début
+              <input type="time" value={startTime} onChange={(event) => setStartTime(event.target.value)} />
+            </label>
+            <label>
+              Fin
+              <input type="time" value={endTime} onChange={(event) => setEndTime(event.target.value)} />
+            </label>
+          </div>
+        </>
+      )}
+
+      <label>
+        Note
+        <input value={note} onChange={(event) => setNote(event.target.value)} placeholder="Optionnel" />
+      </label>
+
+      {error && <div className="inline-error">{error}</div>}
+      <div className="editor-actions">
+        <button className="primary-button" type="submit" disabled={pending}>
+          {pending ? "Enregistrement…" : rule ? "Enregistrer" : "Ajouter"}
+        </button>
+      </div>
+    </form>
+  );
+}
+
+export default function ResourcesPage() {
+  const [resources, setResources] = useState<ResourceReadModel[]>([]);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [rules, setRules] = useState<ResourceAvailabilityRuleReadModel[]>([]);
+  const [holidays, setHolidays] = useState<ResourceAvailabilityRuleReadModel[]>([]);
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<"active" | "inactive" | "all">("active");
+  const [profile, setProfile] = useState<ResourceWrite>(resourceDraft());
+  const [creatingResource, setCreatingResource] = useState(false);
+  const [editingRule, setEditingRule] = useState<ResourceAvailabilityRuleReadModel | null>(null);
+  const [ruleEditorOpen, setRuleEditorOpen] = useState(false);
+  const [editingHoliday, setEditingHoliday] = useState<ResourceAvailabilityRuleReadModel | null>(null);
+  const [holidayEditorOpen, setHolidayEditorOpen] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [pendingProfile, setPendingProfile] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
+  const profileIdempotency = useRef(mutationKey("resource"));
+
+  const selected = useMemo(
+    () => resources.find((resource) => resource.id === selectedId) ?? null,
+    [resources, selectedId],
+  );
+
+  useEffect(() => {
+    const controller = new AbortController();
+    setLoading(true);
+    setError(null);
+    Promise.all([
+      getResources(false, controller.signal),
+      getAvailabilityRules(null, true, false, controller.signal),
+    ])
+      .then(([resourceRows, availabilityRows]) => {
+        setResources(resourceRows);
+        setHolidays(
+          availabilityRows.filter(
+            (rule) => rule.resource_id === null && rule.availability_type === "Jour férié",
+          ),
+        );
+        if (!creatingResource) {
+          setSelectedId((current) => {
+            if (current && resourceRows.some((row) => row.id === current)) return current;
+            return resourceRows.find((row) => row.active)?.id ?? resourceRows[0]?.id ?? null;
+          });
+        }
+      })
+      .catch((reason: unknown) => {
+        if (reason instanceof DOMException && reason.name === "AbortError") return;
+        setError(apiMessage(reason, "Impossible de charger les ressources."));
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoading(false);
+      });
+    return () => controller.abort();
+  }, [refreshKey, creatingResource]);
+
+  useEffect(() => {
+    if (!selectedId) {
+      setRules([]);
+      return;
+    }
+    const controller = new AbortController();
+    getAvailabilityRules(selectedId, false, false, controller.signal)
+      .then(setRules)
+      .catch((reason: unknown) => {
+        if (reason instanceof DOMException && reason.name === "AbortError") return;
+        setError(apiMessage(reason, "Impossible de charger les disponibilités."));
+      });
+    return () => controller.abort();
+  }, [selectedId, refreshKey]);
+
+  useEffect(() => {
+    if (creatingResource) return;
+    setProfile(resourceDraft(selected));
+  }, [selected, creatingResource]);
+
+  const visibleResources = useMemo(() => {
+    const query = search.trim().toLocaleLowerCase("fr-CA");
+    return resources.filter((resource) => {
+      if (statusFilter === "active" && !resource.active) return false;
+      if (statusFilter === "inactive" && resource.active) return false;
+      if (!query) return true;
+      return [resource.name, resource.email, resource.resource_class, resource.competencies]
+        .filter(Boolean)
+        .join(" ")
+        .toLocaleLowerCase("fr-CA")
+        .includes(query);
+    });
+  }, [resources, search, statusFilter]);
+
+  function selectResource(resource: ResourceReadModel) {
+    setCreatingResource(false);
+    setSelectedId(resource.id);
+    setEditingRule(null);
+    setRuleEditorOpen(false);
+  }
+
+  function startCreateResource() {
+    setCreatingResource(true);
+    setSelectedId(null);
+    setRules([]);
+    setProfile(resourceDraft());
+    setEditingRule(null);
+    setRuleEditorOpen(false);
+    profileIdempotency.current = mutationKey("resource");
+  }
+
+  async function saveProfile(event: FormEvent) {
+    event.preventDefault();
+    if (pendingProfile) return;
+    if (!profile.name.trim()) {
+      setError("Le nom de la ressource est requis.");
+      return;
+    }
+    setPendingProfile(true);
+    setError(null);
+    try {
+      const payload: ResourceWrite = {
+        ...profile,
+        name: profile.name.trim(),
+        email: nullable(profile.email ?? ""),
+        resource_class: nullable(profile.resource_class ?? ""),
+        competencies: nullable(profile.competencies ?? ""),
+        note: nullable(profile.note ?? ""),
+        external_id: nullable(profile.external_id ?? ""),
+        sort_order: Number(profile.sort_order || 0),
+      };
+      if (creatingResource) {
+        const result = await createResource(payload, profileIdempotency.current);
+        profileIdempotency.current = mutationKey("resource");
+        setCreatingResource(false);
+        setSelectedId(result.resource_id);
+      } else if (selectedId) {
+        await updateResource(selectedId, payload);
+      }
+      setRefreshKey((value) => value + 1);
+    } catch (reason) {
+      setError(apiMessage(reason, "Impossible d'enregistrer la ressource."));
+    } finally {
+      setPendingProfile(false);
+    }
+  }
+
+  async function disableResource() {
+    if (!selected || pendingProfile) return;
+    if (!window.confirm(`Désactiver ${selected.name} ? Son historique sera conservé.`)) return;
+    setPendingProfile(true);
+    setError(null);
+    try {
+      await deactivateResource(selected.id);
+      setRefreshKey((value) => value + 1);
+    } catch (reason) {
+      setError(apiMessage(reason, "Impossible de désactiver la ressource."));
+    } finally {
+      setPendingProfile(false);
+    }
+  }
+
+  async function disableRule(rule: ResourceAvailabilityRuleReadModel) {
+    if (!window.confirm("Désactiver cette règle de disponibilité ?")) return;
+    setError(null);
+    try {
+      await deactivateAvailabilityRule(rule.id);
+      setRefreshKey((value) => value + 1);
+    } catch (reason) {
+      setError(apiMessage(reason, "Impossible de désactiver la règle."));
+    }
+  }
+
+  function profileField(field: keyof ResourceWrite, value: string | number | boolean | null) {
+    setProfile((current) => ({ ...current, [field]: value }));
+  }
+
+  const standardRules = rules.filter((rule) => rule.availability_type === "Horaire standard");
+  const vacationRules = rules.filter((rule) => rule.availability_type === "Vacances");
+  const activeResources = resources.filter((resource) => resource.active).length;
+
+  return (
+    <section className="resources-page">
+      <div className="page-heading">
+        <div>
+          <span className="eyebrow">Administration</span>
+          <h1>Ressources & disponibilités</h1>
+          <p>Profils, compétences, horaires standards, absences et jours fériés utilisés par le moteur de capacité.</p>
+        </div>
+        <button className="primary-button" type="button" onClick={startCreateResource}>
+          + Nouvelle ressource
+        </button>
+      </div>
+
+      <div className="metric-grid resource-metrics">
+        <article><span>Ressources actives</span><strong>{activeResources}</strong><small>Planifiables selon leur horaire</small></article>
+        <article><span>Ressources inactives</span><strong>{resources.length - activeResources}</strong><small>Historique conservé</small></article>
+        <article><span>Jours fériés actifs</span><strong>{holidays.filter((rule) => rule.active).length}</strong><small>Règles globales de capacité</small></article>
+      </div>
+
+      {error && <div className="error-panel">{error}</div>}
+
+      <div className="resource-admin-layout">
+        <aside className="resource-list-panel">
+          <div className="panel-heading">
+            <div><span className="eyebrow">Équipe</span><h2>Ressources</h2></div>
+            {loading && <span className="subtle-status">Chargement…</span>}
+          </div>
+          <div className="resource-filters">
+            <input
+              type="search"
+              placeholder="Rechercher nom, classe, compétence…"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+            />
+            <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as typeof statusFilter)}>
+              <option value="active">Actives</option>
+              <option value="inactive">Inactives</option>
+              <option value="all">Toutes</option>
+            </select>
+          </div>
+          <div className="resource-list">
+            {!loading && visibleResources.length === 0 && <div className="empty-admin-state">Aucune ressource pour ce filtre.</div>}
+            {visibleResources.map((resource) => (
+              <button
+                type="button"
+                key={resource.id}
+                className={`resource-list-item ${selectedId === resource.id ? "selected" : ""} ${resource.active ? "" : "inactive"}`}
+                onClick={() => selectResource(resource)}
+              >
+                <span className="resource-list-main"><strong>{resource.name}</strong><small>{resource.resource_class || "Non classé"}</small></span>
+                <span className="resource-order">#{resource.sort_order}</span>
+              </button>
+            ))}
+          </div>
+        </aside>
+
+        <div className="resource-detail-panel">
+          {(creatingResource || selected) ? (
+            <>
+              <form className="admin-card resource-profile-card" onSubmit={saveProfile}>
+                <div className="panel-heading">
+                  <div>
+                    <span className="eyebrow">Profil</span>
+                    <h2>{creatingResource ? "Nouvelle ressource" : selected?.name}</h2>
+                  </div>
+                  {!creatingResource && selected && <span className={`status-chip ${selected.active ? "active" : "inactive"}`}>{selected.active ? "Active" : "Inactive"}</span>}
+                </div>
+
+                <div className="form-grid two-columns">
+                  <label>Nom<input value={profile.name} onChange={(event) => profileField("name", event.target.value)} required /></label>
+                  <label>Courriel<input type="email" value={profile.email ?? ""} onChange={(event) => profileField("email", event.target.value)} /></label>
+                  <label>Classe<input value={profile.resource_class ?? ""} onChange={(event) => profileField("resource_class", event.target.value)} placeholder="Programmation, Installation…" /></label>
+                  <label>Ordre<input type="number" min="0" value={profile.sort_order} onChange={(event) => profileField("sort_order", Number(event.target.value))} /></label>
+                </div>
+                <label>Compétences<input value={profile.competencies ?? ""} onChange={(event) => profileField("competencies", event.target.value)} placeholder="PLC; SCADA; MES" /></label>
+                <label>Note<textarea value={profile.note ?? ""} onChange={(event) => profileField("note", event.target.value)} rows={2} /></label>
+
+                <div className="editor-actions split-actions">
+                  {!creatingResource && selected?.active && (
+                    <button className="danger-button" type="button" disabled={pendingProfile} onClick={disableResource}>Désactiver</button>
+                  )}
+                  {!creatingResource && selected && !selected.active && (
+                    <button className="quiet-button" type="button" disabled={pendingProfile} onClick={() => profileField("active", true)}>Réactiver dans le profil</button>
+                  )}
+                  <span />
+                  {creatingResource && <button className="quiet-button" type="button" onClick={() => setCreatingResource(false)}>Annuler</button>}
+                  <button className="primary-button" type="submit" disabled={pendingProfile}>{pendingProfile ? "Enregistrement…" : "Enregistrer le profil"}</button>
+                </div>
+              </form>
+
+              {!creatingResource && selected && (
+                <div className="admin-card">
+                  <div className="panel-heading">
+                    <div><span className="eyebrow">Capacité</span><h2>Horaire & absences</h2></div>
+                    <button className="secondary-button" type="button" onClick={() => { setEditingRule(null); setRuleEditorOpen(true); }}>+ Ajouter</button>
+                  </div>
+
+                  {ruleEditorOpen && (
+                    <RuleEditor
+                      key={editingRule?.id ?? "new-resource-rule"}
+                      resourceId={selected.id}
+                      rule={editingRule}
+                      onCancel={() => { setRuleEditorOpen(false); setEditingRule(null); }}
+                      onSaved={() => { setRuleEditorOpen(false); setEditingRule(null); setRefreshKey((value) => value + 1); }}
+                    />
+                  )}
+
+                  <div className="rule-groups">
+                    <div>
+                      <h3>Horaire standard</h3>
+                      {standardRules.length === 0 && <p className="empty-admin-state">Aucun horaire standard. Cette ressource ne sera pas planifiable.</p>}
+                      {standardRules.map((rule) => (
+                        <article className={`availability-rule ${rule.active ? "" : "inactive"}`} key={rule.id}>
+                          <div><strong>{rule.weekdays || "Tous les jours"}</strong><span>{shortTime(rule.start_time)} → {shortTime(rule.end_time)}</span><small>{rule.start_date || "Sans début"} → {rule.end_date || "Sans fin"}{rule.note ? ` · ${rule.note}` : ""}</small></div>
+                          <div className="rule-actions"><button type="button" onClick={() => { setEditingRule(rule); setRuleEditorOpen(true); }}>Modifier</button>{rule.active && <button type="button" onClick={() => disableRule(rule)}>Désactiver</button>}</div>
+                        </article>
+                      ))}
+                    </div>
+                    <div>
+                      <h3>Vacances / absences</h3>
+                      {vacationRules.length === 0 && <p className="empty-admin-state">Aucune absence enregistrée.</p>}
+                      {vacationRules.map((rule) => (
+                        <article className={`availability-rule ${rule.active ? "" : "inactive"}`} key={rule.id}>
+                          <div><strong>{rule.start_date || "—"} → {rule.end_date || rule.start_date || "—"}</strong><small>{rule.note || "Vacances"}</small></div>
+                          <div className="rule-actions"><button type="button" onClick={() => { setEditingRule(rule); setRuleEditorOpen(true); }}>Modifier</button>{rule.active && <button type="button" onClick={() => disableRule(rule)}>Désactiver</button>}</div>
+                        </article>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </>
+          ) : (
+            <div className="admin-card empty-admin-state">Sélectionne une ressource ou crée-en une nouvelle.</div>
+          )}
+        </div>
+      </div>
+
+      <div className="admin-card holiday-panel">
+        <div className="panel-heading">
+          <div><span className="eyebrow">Calendrier global</span><h2>Jours fériés</h2><p>Ces règles s’appliquent à toutes les ressources ayant un horaire standard actif.</p></div>
+          <button className="secondary-button" type="button" onClick={() => { setEditingHoliday(null); setHolidayEditorOpen(true); }}>+ Jour férié</button>
+        </div>
+
+        {holidayEditorOpen && (
+          <RuleEditor
+            key={editingHoliday?.id ?? "new-holiday"}
+            resourceId={null}
+            rule={editingHoliday}
+            forcedType="Jour férié"
+            onCancel={() => { setHolidayEditorOpen(false); setEditingHoliday(null); }}
+            onSaved={() => { setHolidayEditorOpen(false); setEditingHoliday(null); setRefreshKey((value) => value + 1); }}
+          />
+        )}
+
+        <div className="holiday-list">
+          {holidays.length === 0 && <p className="empty-admin-state">Aucun jour férié enregistré.</p>}
+          {holidays.map((rule) => (
+            <article className={`availability-rule ${rule.active ? "" : "inactive"}`} key={rule.id}>
+              <div><strong>{rule.start_date || "—"}{rule.end_date && rule.end_date !== rule.start_date ? ` → ${rule.end_date}` : ""}</strong><span>{rule.note || "Jour férié"}</span></div>
+              <div className="rule-actions"><button type="button" onClick={() => { setEditingHoliday(rule); setHolidayEditorOpen(true); }}>Modifier</button>{rule.active && <button type="button" onClick={() => disableRule(rule)}>Désactiver</button>}</div>
+            </article>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
