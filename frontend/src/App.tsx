@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
+import { useAuth } from "./AuthContext";
 import DemandsWorkspace from "./DemandsWorkspace";
 import MediumTermPage from "./MediumTermPage";
 import PlanningPage from "./PlanningPage";
@@ -8,12 +9,14 @@ import ResourcesPage from "./ResourcesPage";
 
 type View = "planning" | "medium-term" | "demands" | "projects" | "resources" | "communications";
 
-const navItems: Array<{ key: View; label: string; eyebrow: string }> = [
+type NavItem = { key: View; label: string; eyebrow: string; permission?: string };
+
+const navItems: NavItem[] = [
   { key: "planning", label: "Planning opérationnel", eyebrow: "Semaine" },
   { key: "medium-term", label: "Moyen terme", eyebrow: "Capacité" },
   { key: "demands", label: "Demandes", eyebrow: "Main-d’œuvre" },
   { key: "projects", label: "Projets", eyebrow: "Portefeuille" },
-  { key: "resources", label: "Ressources", eyebrow: "Administration" },
+  { key: "resources", label: "Ressources", eyebrow: "Administration", permission: "manage_resources" },
   { key: "communications", label: "Communications", eyebrow: "À venir" },
 ];
 
@@ -32,8 +35,39 @@ function Placeholder({ view }: { view: View }) {
 }
 
 export default function App() {
+  const { principal, loading: authLoading, error: authError, can } = useAuth();
   const [view, setView] = useState<View>("planning");
   const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  const visibleNavItems = useMemo(
+    () => navItems.filter((item) => !item.permission || can(item.permission)),
+    [can],
+  );
+
+  if (authLoading) {
+    return (
+      <main className="main-content">
+        <section className="placeholder-panel">
+          <span className="eyebrow">Authentification</span>
+          <h2>Chargement de votre session…</h2>
+        </section>
+      </main>
+    );
+  }
+
+  if (authError || !principal) {
+    return (
+      <main className="main-content">
+        <section className="error-panel">
+          <strong>Impossible d’ouvrir la session RessourcePlanner.</strong>
+          <span>{authError || "Aucune identité active n’a été retournée par le serveur."}</span>
+          <small>Les permissions sont déterminées par FastAPI; React ne peut pas contourner cette étape.</small>
+        </section>
+      </main>
+    );
+  }
+
+  const currentItem = navItems.find((item) => item.key === view);
 
   return (
     <div className="app-shell">
@@ -47,7 +81,7 @@ export default function App() {
         </div>
 
         <nav className="main-nav" aria-label="Navigation principale">
-          {navItems.map((item) => (
+          {visibleNavItems.map((item) => (
             <button
               type="button"
               key={item.key}
@@ -64,8 +98,8 @@ export default function App() {
         </nav>
 
         <div className="sidebar-footer">
-          <span>Frontend V2</span>
-          <strong>React + FastAPI</strong>
+          <span>{principal.display_name}</span>
+          <strong>{principal.roles.join(" · ")}</strong>
         </div>
       </aside>
 
@@ -90,11 +124,11 @@ export default function App() {
           </button>
           <div>
             <span className="topbar-context">RessourcePlanner V2</span>
-            <strong>{navItems.find((item) => item.key === view)?.label}</strong>
+            <strong>{currentItem?.label}</strong>
           </div>
-          <div className="topbar-status" title="Authentification Acumatica à venir">
+          <div className="topbar-status" title={`Mode d’authentification: ${principal.auth_mode}`}>
             <span className="status-dot" />
-            Mode développement
+            {principal.display_name}
           </div>
         </header>
 
@@ -107,7 +141,7 @@ export default function App() {
             <DemandsWorkspace />
           ) : view === "projects" ? (
             <ProjectsPage />
-          ) : view === "resources" ? (
+          ) : view === "resources" && can("manage_resources") ? (
             <ResourcesPage />
           ) : (
             <Placeholder view={view} />
