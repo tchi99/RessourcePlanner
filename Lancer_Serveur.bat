@@ -2,9 +2,9 @@
 setlocal
 cd /d "%~dp0"
 
-if not exist ".venv\Scripts\python.exe" (
-    echo L'environnement Python .venv est introuvable.
-    echo Lance Installer.bat avant de demarrer le serveur.
+if not exist ".venv-web\Scripts\python.exe" (
+    echo L'environnement Python Web .venv-web est introuvable.
+    echo Lance Installer_Web.bat avant de demarrer le serveur.
     pause
     exit /b 1
 )
@@ -19,7 +19,7 @@ if not defined RESOURCEPLANNER_DATABASE_URL (
 
 if "%LOCAL_SQLITE_MODE%"=="1" (
     echo Verification des migrations de la base locale...
-    ".venv\Scripts\python.exe" -m alembic upgrade head
+    ".venv-web\Scripts\python.exe" -m alembic upgrade head
     if errorlevel 1 (
         echo.
         echo Echec des migrations Alembic.
@@ -28,8 +28,8 @@ if "%LOCAL_SQLITE_MODE%"=="1" (
     )
 )
 
-echo Demarrage du backend RessourcePlanner...
-".venv\Scripts\python.exe" -m app.server
+echo Demarrage du backend RessourcePlanner en mode API seul...
+".venv-web\Scripts\python.exe" -m app.server
 set EXIT_CODE=%errorlevel%
 
 if not "%EXIT_CODE%"=="0" (
