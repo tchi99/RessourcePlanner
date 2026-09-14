@@ -1,13 +1,62 @@
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, time
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
+AvailabilityType = Literal["Horaire standard", "Vacances", "Jour férié"]
+
+
 class StrictRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
+
+
+class ResourceCreateRequest(StrictRequest):
+    name: str = Field(min_length=1)
+    email: str | None = None
+    resource_class: str | None = None
+    competencies: str | None = None
+    note: str | None = None
+    active: bool = True
+    sort_order: int = Field(default=0, ge=0)
+    external_id: str | None = None
+
+
+class ResourceUpdateRequest(StrictRequest):
+    name: str | None = None
+    email: str | None = None
+    resource_class: str | None = None
+    competencies: str | None = None
+    note: str | None = None
+    active: bool | None = None
+    sort_order: int | None = Field(default=None, ge=0)
+    external_id: str | None = None
+
+
+class AvailabilityRuleCreateRequest(StrictRequest):
+    availability_type: AvailabilityType
+    resource_id: str | None = None
+    start_date: date | None = None
+    end_date: date | None = None
+    weekdays: str | None = None
+    start_time: time | None = None
+    end_time: time | None = None
+    note: str | None = None
+    active: bool = True
+
+
+class AvailabilityRuleUpdateRequest(StrictRequest):
+    availability_type: AvailabilityType | None = None
+    resource_id: str | None = None
+    start_date: date | None = None
+    end_date: date | None = None
+    weekdays: str | None = None
+    start_time: time | None = None
+    end_time: time | None = None
+    note: str | None = None
+    active: bool | None = None
 
 
 class WorkPackageCreateRequest(StrictRequest):
