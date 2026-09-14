@@ -6,6 +6,13 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class ServerLauncherContractTests(unittest.TestCase):
+    def test_server_launcher_uses_isolated_web_environment(self) -> None:
+        launcher = (ROOT / "Lancer_Serveur.bat").read_text(encoding="utf-8")
+
+        self.assertIn(".venv-web\\Scripts\\python.exe", launcher)
+        self.assertIn("Installer_Web.bat", launcher)
+        self.assertNotIn('".venv\\Scripts\\python.exe" -m app.server', launcher)
+
     def test_local_sqlite_fallback_and_migration_are_guarded(self) -> None:
         launcher = (ROOT / "Lancer_Serveur.bat").read_text(encoding="utf-8")
 
@@ -16,8 +23,8 @@ class ServerLauncherContractTests(unittest.TestCase):
         )
         self.assertIn('set "LOCAL_SQLITE_MODE=1"', launcher)
         self.assertIn('if "%LOCAL_SQLITE_MODE%"=="1"', launcher)
-        self.assertIn('".venv\\Scripts\\python.exe" -m alembic upgrade head', launcher)
-        self.assertIn('".venv\\Scripts\\python.exe" -m app.server', launcher)
+        self.assertIn('".venv-web\\Scripts\\python.exe" -m alembic upgrade head', launcher)
+        self.assertIn('".venv-web\\Scripts\\python.exe" -m app.server', launcher)
 
     def test_existing_database_url_is_not_overwritten_unconditionally(self) -> None:
         launcher = (ROOT / "Lancer_Serveur.bat").read_text(encoding="utf-8")
