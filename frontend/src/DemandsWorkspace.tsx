@@ -1,10 +1,11 @@
 import { useState } from "react";
 
 import DemandPeriodsPage from "./DemandPeriodsPage";
+import DemandSegmentsPage from "./DemandSegmentsPage";
 import DemandWorkflowPage from "./DemandWorkflowPage";
 import DemandsPage from "./DemandsPage";
 
-type DemandWorkspaceView = "requests" | "periods" | "workflow";
+type DemandWorkspaceView = "requests" | "segments" | "periods" | "workflow";
 
 export default function DemandsWorkspace() {
   const [view, setView] = useState<DemandWorkspaceView>("requests");
@@ -18,6 +19,13 @@ export default function DemandsWorkspace() {
           onClick={() => setView("requests")}
         >
           Demandes
+        </button>
+        <button
+          type="button"
+          className={view === "segments" ? "active" : ""}
+          onClick={() => setView("segments")}
+        >
+          Segments
         </button>
         <button
           type="button"
@@ -36,6 +44,8 @@ export default function DemandsWorkspace() {
       </nav>
       {view === "requests" ? (
         <DemandsPage />
+      ) : view === "segments" ? (
+        <DemandSegmentsPage />
       ) : view === "periods" ? (
         <DemandPeriodsPage />
       ) : (
