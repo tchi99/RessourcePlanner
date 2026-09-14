@@ -4,6 +4,7 @@ This package contains database infrastructure only. Application services and the
 planning engine must continue to depend on ports/read models rather than SQLAlchemy.
 """
 
+from .auth_session_repository import LoginTransactionRecord, SqlAuthSessionRepository
 from .base import Base, NAMING_CONVENTION, new_id
 from .command_adapters import (
     SqlAllocationCommandAdapter,
@@ -18,7 +19,7 @@ from .demand_period_models import (
 from .demand_period_repository import SqlDemandPeriodRepository
 from .demand_repository import SqlDemandRepository
 from .idempotency import CommandIdempotencyReceipt, SqlCommandIdempotencyAdapter
-from .identity_models import AppUser
+from .identity_models import AppUser, AuthLoginTransaction, AuthSession
 from .identity_repository import SqlUserIdentityRepository
 from .models import (
     ORIGIN_AD_HOC,
@@ -53,8 +54,11 @@ from .work_package_repository import SqlWorkPackageRepository
 
 __all__ = [
     "AppUser",
+    "AuthLoginTransaction",
+    "AuthSession",
     "Base",
     "CommandIdempotencyReceipt",
+    "LoginTransactionRecord",
     "NAMING_CONVENTION",
     "ORIGIN_AD_HOC",
     "ORIGIN_QUICK_SHIFT",
@@ -67,6 +71,7 @@ __all__ = [
     "Shift",
     "SqlAllocationCommandAdapter",
     "SqlApprovedDemandSyncAdapter",
+    "SqlAuthSessionRepository",
     "SqlCommandIdempotencyAdapter",
     "SqlDemandPeriodRepository",
     "SqlDemandRepository",
