@@ -5,17 +5,17 @@ export type SegmentWrite = {
   start_date: string;
   end_date: string;
   planned_hours: number;
-  project_number: string | null;
-  project_name: string | null;
-  technician: string | null;
-  status: string;
-  description: string;
-  source_effort_id: string | null;
-  required_competency: string | null;
-  planning_type: string;
-  priority: string;
-  outside_standard_hours: boolean;
-  confirmation: string | null;
+  project_number?: string | null;
+  project_name?: string | null;
+  technician?: string | null;
+  status?: string;
+  description?: string;
+  source_effort_id?: string | null;
+  required_competency?: string | null;
+  planning_type?: string;
+  priority?: string;
+  outside_standard_hours?: boolean;
+  confirmation?: string | null;
 };
 
 export type SegmentUpdateWrite = Partial<SegmentWrite>;
