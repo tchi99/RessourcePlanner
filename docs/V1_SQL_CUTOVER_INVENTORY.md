@@ -53,7 +53,49 @@ main.py
 
 `app/runtime_composition.py` rend explicite la dette de transition : compatibilités, modules V1 versionnés, pages NiceGUI et anciennes communications sont encore installés pour l'application historique.
 
-`requirements.txt` mélange encore les dépendances du nouveau serveur avec `nicegui`, `xlwings` et `openpyxl`. Cette séparation est l'objet de la tranche 6B.
+## Profils de dépendances — 6B
+
+Les dépendances sont maintenant séparées selon leur usage.
+
+### `requirements-server.txt`
+
+Profil **canonique Web/SQL** :
+
+- SQLAlchemy;
+- Alembic;
+- FastAPI;
+- Uvicorn;
+- httpx.
+
+Il ne contient ni `nicegui`, ni `xlwings`, ni `openpyxl`. C'est le profil à utiliser pour le futur runtime serveur.
+
+### `requirements-legacy.txt`
+
+Profil **V1 historique temporaire** :
+
+- inclut `requirements-server.txt`;
+- ajoute `nicegui`;
+- ajoute `xlwings`;
+- ajoute `openpyxl`.
+
+`Installer.bat` utilise explicitement ce profil parce qu'il installe encore `Lancer_Application.bat` / `main.py`.
+
+### `requirements.txt`
+
+Profil agrégé de compatibilité pour la CI complète et les usages historiques existants. Il conserve temporairement les dépendances V1 de manière explicite afin que l'inventaire 6A continue de les mesurer. Il **ne doit pas être utilisé comme preuve des dépendances nécessaires au serveur**.
+
+### Preuve CI d'isolation
+
+La job `server-isolation` installe **uniquement** `requirements-server.txt`, puis :
+
+1. compile les couches Web/SQL canoniques;
+2. exécute le garde-fou d'architecture;
+3. vérifie que `nicegui`, `xlwings` et `openpyxl` sont absents de l'environnement;
+4. crée une application FastAPI sur SQLite en mémoire;
+5. vérifie `/health`;
+6. vérifie la présence des routes essentielles dans OpenAPI.
+
+Cette job complète la CI historique : le projet doit désormais passer à la fois avec le profil serveur minimal et avec le profil agrégé tant que V1 existe.
 
 ## Inventaire automatique
 
@@ -96,13 +138,13 @@ L'inventaire expose séparément :
 
 ## Ordre de retrait recommandé
 
-### 6A — frontières et inventaire
+### 6A — frontières et inventaire ✅
 
-Empêcher toute nouvelle dépendance Web/SQL → V1 et mesurer la dette existante. Cette étape ne supprime aucun comportement utilisateur.
+Empêcher toute nouvelle dépendance Web/SQL → V1 et mesurer la dette existante, sans supprimer de comportement utilisateur.
 
 ### 6B — dépendances séparées
 
-Créer un ensemble de dépendances serveur minimal sans NiceGUI/xlwings/openpyxl et le valider en CI. Le runtime V1 peut conserver temporairement son propre requirements explicite.
+Valider le serveur avec un profil minimal sans NiceGUI/xlwings/openpyxl, tout en conservant un profil V1 explicite jusqu'au cutover.
 
 ### 6C — parité utile, pas parité historique aveugle
 
@@ -144,6 +186,7 @@ Cette étape attend la validation SQL Server #162 :
 - FastAPI reste la frontière de mutation métier;
 - React n'implémente pas les règles de capacité, approbation ou non-double-comptage;
 - les outils one-shot de migration peuvent conserver une dépendance Excel isolée sans que cette dépendance appartienne au runtime serveur;
-- la baseline de dette de frontière doit seulement diminuer, jamais augmenter pour contourner le garde-fou.
+- la baseline de dette de frontière doit seulement diminuer, jamais augmenter pour contourner le garde-fou;
+- `pyodbc` ne sera ajouté au profil serveur qu'après la validation réelle SQL Server #162.
 
-Refs : #15 #55 #158 #161 #162 #208
+Refs : #15 #55 #158 #161 #162 #208 #209
