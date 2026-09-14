@@ -34,6 +34,13 @@ class ResourceUpdateRequest(StrictRequest):
     sort_order: int | None = Field(default=None, ge=0)
     external_id: str | None = None
 
+    @field_validator("active", "sort_order", mode="before")
+    @classmethod
+    def reject_null_non_nullable_fields(cls, value: object) -> object:
+        if value is None:
+            raise ValueError("Ce champ ne peut pas être null; omets-le pour ne pas le modifier.")
+        return value
+
 
 class AvailabilityRuleCreateRequest(StrictRequest):
     availability_type: AvailabilityType
@@ -57,6 +64,13 @@ class AvailabilityRuleUpdateRequest(StrictRequest):
     end_time: time | None = None
     note: str | None = None
     active: bool | None = None
+
+    @field_validator("availability_type", "active", mode="before")
+    @classmethod
+    def reject_null_required_patch_fields(cls, value: object) -> object:
+        if value is None:
+            raise ValueError("Ce champ ne peut pas être null; omets-le pour ne pas le modifier.")
+        return value
 
 
 class WorkPackageCreateRequest(StrictRequest):
