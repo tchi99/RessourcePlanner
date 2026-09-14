@@ -31,7 +31,9 @@ Les packages canoniques protégés sont :
 - `app/infrastructure/acumatica`;
 - `app/server`.
 
-Ils ne doivent pas importer NiceGUI, xlwings, openpyxl ou les modules V1 historiques.
+Ils ne doivent pas acquérir de nouvelle dépendance vers NiceGUI, xlwings, openpyxl ou les modules V1 historiques.
+
+L'inventaire initial a détecté **une dette déjà existante et explicitement baselinée** : `app/application/runtime_services.py` construit encore les services NiceGUI V1 avec les adapters `app.infrastructure.excel`. Ce bridge est utilisé uniquement par la composition/UI historique et doit disparaître avant le retrait final de V1. Le garde-fou fonctionne comme un *ratchet* : cette dette précise reste visible, mais toute nouvelle violation fait échouer la CI.
 
 ### Runtime V1 encore actif
 
@@ -73,7 +75,12 @@ Pour le garde-fou CI :
 python tools\cutover_inventory.py --check-boundaries
 ```
 
-La commande échoue si un package Web/SQL canonique commence à importer une dépendance V1 ou un module `app.*` hors de sa couche autorisée.
+La commande distingue :
+
+- la dette de frontière **connue** au début du cutover;
+- les violations **inattendues**.
+
+Elle retourne un code d'échec uniquement pour une régression au-delà de la baseline explicite. Une baseline ne constitue pas une permission architecturale : elle doit rétrécir au fur et à mesure du cutover et ne doit jamais être élargie pour faire passer une PR.
 
 L'inventaire expose séparément :
 
@@ -84,7 +91,8 @@ L'inventaire expose séparément :
 - les modules UI NiceGUI;
 - les modules/adapters Excel;
 - le nombre et les catégories des étapes de `runtime_composition`;
-- l'outil de migration one-shot, qui demeure volontairement disponible jusqu'au cutover réel.
+- l'outil de migration one-shot, qui demeure volontairement disponible jusqu'au cutover réel;
+- la dette de frontière connue et les nouvelles violations éventuelles.
 
 ## Ordre de retrait recommandé
 
@@ -105,6 +113,8 @@ Comparer uniquement les fonctions NiceGUI encore réellement nécessaires au jou
 - **reporter/remplacer** : fonctionnalité couverte par une architecture cible différente.
 
 Les anciennes communications Outlook/Thunderbird ne doivent notamment pas être recopiées automatiquement dans React si #40/M365 constitue la cible retenue.
+
+Le bridge `app/application/runtime_services.py` fait partie de cette dette : il pourra être déplacé/supprimé lorsque ses derniers appelants NiceGUI ne seront plus nécessaires.
 
 ### 6D — runtime Web autonome
 
@@ -133,6 +143,7 @@ Cette étape attend la validation SQL Server #162 :
 - aucun secret dans les fichiers versionnés;
 - FastAPI reste la frontière de mutation métier;
 - React n'implémente pas les règles de capacité, approbation ou non-double-comptage;
-- les outils one-shot de migration peuvent conserver une dépendance Excel isolée sans que cette dépendance appartienne au runtime serveur.
+- les outils one-shot de migration peuvent conserver une dépendance Excel isolée sans que cette dépendance appartienne au runtime serveur;
+- la baseline de dette de frontière doit seulement diminuer, jamais augmenter pour contourner le garde-fou.
 
 Refs : #15 #55 #158 #161 #162 #208
