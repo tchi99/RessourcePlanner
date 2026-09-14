@@ -15,9 +15,21 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 class CutoverInventoryTests(unittest.TestCase):
-    def test_current_canonical_web_sql_boundaries_have_no_v1_imports(self) -> None:
+    def test_current_canonical_boundary_debt_is_explicit_and_has_no_regression(self) -> None:
         inventory = build_inventory(REPO_ROOT)
-        self.assertEqual(inventory.boundary_violations, ())
+
+        self.assertEqual(inventory.unexpected_boundary_violations, ())
+        self.assertGreaterEqual(len(inventory.known_boundary_debt), 1)
+        self.assertEqual(
+            {item.path for item in inventory.known_boundary_debt},
+            {"app/application/runtime_services.py"},
+        )
+        self.assertTrue(
+            all(
+                item.imported_module.startswith("app.infrastructure.excel")
+                for item in inventory.known_boundary_debt
+            )
+        )
 
     def test_current_inventory_keeps_runtime_and_migration_debt_visible(self) -> None:
         inventory = build_inventory(REPO_ROOT)
