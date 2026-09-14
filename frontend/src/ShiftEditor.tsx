@@ -1,5 +1,6 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 
+import { useAuth } from "./AuthContext";
 import {
   ApiError,
   ResourceReadModel,
@@ -27,6 +28,8 @@ export default function ShiftEditor({
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const { can } = useAuth();
+  const canManagePlanning = can("manage_planning");
   const [technician, setTechnician] = useState(shift.resource_name);
   const [day, setDay] = useState(shift.work_date);
   const [hours, setHours] = useState(String(shift.hours));
@@ -38,7 +41,7 @@ export default function ShiftEditor({
   const [segmentOpen, setSegmentOpen] = useState(false);
 
   useEffect(() => {
-    if (segmentOpen) return;
+    if (!canManagePlanning || segmentOpen) return;
     const previousOverflow = document.body.style.overflow;
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape" && !saving) onClose();
@@ -49,7 +52,7 @@ export default function ShiftEditor({
       document.body.style.overflow = previousOverflow;
       window.removeEventListener("keydown", onKeyDown);
     };
-  }, [onClose, saving, segmentOpen]);
+  }, [onClose, saving, segmentOpen, canManagePlanning]);
 
   const sortedResources = useMemo(
     () => [...resources].sort((left, right) => left.sort_order - right.sort_order || left.name.localeCompare(right.name, "fr-CA")),
@@ -58,7 +61,7 @@ export default function ShiftEditor({
 
   async function submit(event: FormEvent) {
     event.preventDefault();
-    if (saving) return;
+    if (saving || !canManagePlanning) return;
     const parsedHours = Number(hours);
     if (!technician.trim() || !day || !Number.isFinite(parsedHours) || parsedHours <= 0) {
       setError("Choisis un technicien, une date et un nombre d'heures supérieur à zéro.");
@@ -87,6 +90,8 @@ export default function ShiftEditor({
       setSaving(false);
     }
   }
+
+  if (!canManagePlanning) return null;
 
   if (segmentOpen) {
     return (
@@ -150,65 +155,22 @@ export default function ShiftEditor({
           </div>
 
           <div className="dialog-form-grid">
-            <label>
-              <span>Technicien</span>
-              <select value={technician} onChange={(event) => setTechnician(event.target.value)} required>
-                {sortedResources.map((resource) => (
-                  <option value={resource.name} key={resource.id}>
-                    {resource.name}{resource.resource_class ? ` — ${resource.resource_class}` : ""}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              <span>Date</span>
-              <input type="date" value={day} onChange={(event) => setDay(event.target.value)} required />
-            </label>
-            <label>
-              <span>Heures</span>
-              <input
-                type="number"
-                min="0.25"
-                step="0.25"
-                value={hours}
-                onChange={(event) => setHours(event.target.value)}
-                required
-              />
-            </label>
-            <label>
-              <span>Confirmation</span>
-              <select value={confirmation} onChange={(event) => setConfirmation(event.target.value as ConfirmationChoice)}>
-                <option value="inherit">Héritée du segment</option>
-                <option value="Tentative">Tentative</option>
-                <option value="Confirmée">Confirmée</option>
-              </select>
-            </label>
-            <label className="checkbox-field">
-              <input
-                type="checkbox"
-                checked={outsideStandardHours}
-                onChange={(event) => setOutsideStandardHours(event.target.checked)}
-              />
-              <span>Autoriser / marquer hors horaire standard</span>
-            </label>
-            <label className="span-2">
-              <span>Note</span>
-              <textarea value={note} onChange={(event) => setNote(event.target.value)} rows={3} />
-            </label>
+            <label><span>Technicien</span><select value={technician} onChange={(event) => setTechnician(event.target.value)} required>{sortedResources.map((resource) => <option value={resource.name} key={resource.id}>{resource.name}{resource.resource_class ? ` — ${resource.resource_class}` : ""}</option>)}</select></label>
+            <label><span>Date</span><input type="date" value={day} onChange={(event) => setDay(event.target.value)} required /></label>
+            <label><span>Heures</span><input type="number" min="0.25" step="0.25" value={hours} onChange={(event) => setHours(event.target.value)} required /></label>
+            <label><span>Confirmation</span><select value={confirmation} onChange={(event) => setConfirmation(event.target.value as ConfirmationChoice)}><option value="inherit">Héritée du segment</option><option value="Tentative">Tentative</option><option value="Confirmée">Confirmée</option></select></label>
+            <label className="checkbox-field"><input type="checkbox" checked={outsideStandardHours} onChange={(event) => setOutsideStandardHours(event.target.checked)} /><span>Autoriser / marquer hors horaire standard</span></label>
+            <label className="span-2"><span>Note</span><textarea value={note} onChange={(event) => setNote(event.target.value)} rows={3} /></label>
           </div>
 
           <div className="confirmation-help">
             <strong>Confirmation effective : {shift.confirmation || "—"}</strong>
-            <span>
-              « Héritée » supprime l'override du quart. Tentative ou Confirmée crée un choix explicite au niveau du quart.
-            </span>
+            <span>« Héritée » supprime l'override du quart. Tentative ou Confirmée crée un choix explicite au niveau du quart.</span>
           </div>
 
           <div className="dialog-actions">
             <button type="button" className="secondary-button" onClick={onClose} disabled={saving}>Annuler</button>
-            <button type="submit" className="primary-button" disabled={saving}>
-              {saving ? "Enregistrement…" : "Enregistrer les modifications"}
-            </button>
+            <button type="submit" className="primary-button" disabled={saving}>{saving ? "Enregistrement…" : "Enregistrer les modifications"}</button>
           </div>
         </form>
       </section>
