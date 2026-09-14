@@ -1,3 +1,6 @@
-# Compatibilite avec Installer.bat et le runtime V1 historique.
+# Profil agregat de compatibilite pour la CI et les usages historiques.
 # Le serveur Web/SQL utilise requirements-server.txt directement.
--r requirements-legacy.txt
+-r requirements-server.txt
+nicegui==3.16.0
+xlwings==0.36.14
+openpyxl==3.1.5
