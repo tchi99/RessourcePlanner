@@ -56,12 +56,62 @@ export type WorkPackageMutationResult = {
 export type ResourceReadModel = {
   id: string;
   name: string;
+  email: string | null;
   resource_class: string | null;
   competencies: string | null;
   note: string | null;
   active: boolean;
   sort_order: number;
   external_id: string | null;
+};
+
+export type ResourceWrite = {
+  name: string;
+  email: string | null;
+  resource_class: string | null;
+  competencies: string | null;
+  note: string | null;
+  active: boolean;
+  sort_order: number;
+  external_id: string | null;
+};
+
+export type ResourceMutationResult = {
+  resource_id: string;
+  action: string;
+};
+
+export type AvailabilityType = "Horaire standard" | "Vacances" | "Jour férié";
+
+export type ResourceAvailabilityRuleReadModel = {
+  id: string;
+  availability_type: AvailabilityType;
+  resource_id: string | null;
+  resource_name: string | null;
+  start_date: string | null;
+  end_date: string | null;
+  weekdays: string | null;
+  start_time: string | null;
+  end_time: string | null;
+  note: string | null;
+  active: boolean;
+};
+
+export type AvailabilityRuleWrite = {
+  availability_type: AvailabilityType;
+  resource_id: string | null;
+  start_date: string | null;
+  end_date: string | null;
+  weekdays: string | null;
+  start_time: string | null;
+  end_time: string | null;
+  note: string | null;
+  active: boolean;
+};
+
+export type AvailabilityRuleMutationResult = {
+  rule_id: string;
+  action: string;
 };
 
 export type DemandReadModel = {
@@ -397,6 +447,69 @@ export function updateWorkPackage(reference: string, payload: WorkPackageWrite) 
 export function getResources(activeOnly = true, signal?: AbortSignal) {
   const params = new URLSearchParams({ active_only: String(activeOnly) });
   return getJson<ResourceReadModel[]>(`/api/v1/resources?${params.toString()}`, signal);
+}
+
+export function createResource(payload: ResourceWrite, idempotencyKey: string) {
+  return sendJson<ResourceMutationResult>(
+    "/api/v1/resources",
+    "POST",
+    payload,
+    { "Idempotency-Key": idempotencyKey },
+  );
+}
+
+export function updateResource(resourceId: string, payload: ResourceWrite) {
+  return sendJson<ResourceMutationResult>(
+    `/api/v1/resources/${encodeURIComponent(resourceId)}`,
+    "PATCH",
+    payload,
+  );
+}
+
+export function deactivateResource(resourceId: string) {
+  return postJson<ResourceMutationResult>(
+    `/api/v1/resources/${encodeURIComponent(resourceId)}/deactivate`,
+  );
+}
+
+export function getAvailabilityRules(
+  resourceId: string | null = null,
+  includeGlobal = true,
+  activeOnly = true,
+  signal?: AbortSignal,
+) {
+  const params = new URLSearchParams({
+    include_global: String(includeGlobal),
+    active_only: String(activeOnly),
+  });
+  if (resourceId) params.set("resource_id", resourceId);
+  return getJson<ResourceAvailabilityRuleReadModel[]>(
+    `/api/v1/availability-rules?${params.toString()}`,
+    signal,
+  );
+}
+
+export function createAvailabilityRule(payload: AvailabilityRuleWrite, idempotencyKey: string) {
+  return sendJson<AvailabilityRuleMutationResult>(
+    "/api/v1/availability-rules",
+    "POST",
+    payload,
+    { "Idempotency-Key": idempotencyKey },
+  );
+}
+
+export function updateAvailabilityRule(ruleId: string, payload: AvailabilityRuleWrite) {
+  return sendJson<AvailabilityRuleMutationResult>(
+    `/api/v1/availability-rules/${encodeURIComponent(ruleId)}`,
+    "PATCH",
+    payload,
+  );
+}
+
+export function deactivateAvailabilityRule(ruleId: string) {
+  return postJson<AvailabilityRuleMutationResult>(
+    `/api/v1/availability-rules/${encodeURIComponent(ruleId)}/deactivate`,
+  );
 }
 
 export function getDemands(signal?: AbortSignal) {
