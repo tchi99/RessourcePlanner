@@ -6,6 +6,7 @@ import {
   ShiftReadModel,
   updateAllocation,
 } from "./api";
+import SegmentEditor from "./SegmentEditor";
 
 type ConfirmationChoice = "inherit" | "Tentative" | "Confirmée";
 
@@ -34,8 +35,10 @@ export default function ShiftEditor({
   const [confirmation, setConfirmation] = useState<ConfirmationChoice>(() => confirmationChoice(shift));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [segmentOpen, setSegmentOpen] = useState(false);
 
   useEffect(() => {
+    if (segmentOpen) return;
     const previousOverflow = document.body.style.overflow;
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape" && !saving) onClose();
@@ -46,7 +49,7 @@ export default function ShiftEditor({
       document.body.style.overflow = previousOverflow;
       window.removeEventListener("keydown", onKeyDown);
     };
-  }, [onClose, saving]);
+  }, [onClose, saving, segmentOpen]);
 
   const sortedResources = useMemo(
     () => [...resources].sort((left, right) => left.sort_order - right.sort_order || left.name.localeCompare(right.name, "fr-CA")),
@@ -85,6 +88,19 @@ export default function ShiftEditor({
     }
   }
 
+  if (segmentOpen) {
+    return (
+      <SegmentEditor
+        open
+        segmentId={shift.segment_id}
+        demand={null}
+        resources={resources}
+        onClose={() => setSegmentOpen(false)}
+        onSaved={onSaved}
+      />
+    );
+  }
+
   return (
     <div
       className="dialog-backdrop"
@@ -121,6 +137,16 @@ export default function ShiftEditor({
             <div><span>Responsable projet</span><strong>{shift.project_manager || "—"}</strong></div>
             <div><span>Demandeur</span><strong>{shift.requester || "—"}</strong></div>
             <div><span>État</span><strong>{shift.locked ? "Verrouillé" : "Automatique"}</strong></div>
+          </div>
+
+          <div className="segment-parent-link">
+            <div>
+              <strong>Besoin ressource parent</strong>
+              <span>Fenêtre, heures prévues, compétence, priorité, confirmation et règles hors horaire appartiennent au segment.</span>
+            </div>
+            <button type="button" className="secondary-button" onClick={() => setSegmentOpen(true)} disabled={saving}>
+              Modifier le segment parent
+            </button>
           </div>
 
           <div className="dialog-form-grid">
