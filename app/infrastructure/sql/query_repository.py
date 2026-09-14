@@ -186,78 +186,113 @@ class SqlPlannerQueryRepository(PlannerQueryPort):
         start: date,
         end: date,
     ) -> tuple[PendingDemandLoadReadModel, ...]:
-        if end < start:
-            start, end = end, start
-        demands = self._demands.list()
-        periods_by_demand: dict[str, list[DemandPeriodReadModel]] = {}
-        selections_by_demand: dict[str, dict[str, str]] = {}
-        segments_by_demand: dict[str, list[SegmentReadModel]] = {}
-        for segment in self._segments.list(include_cancelled=False):
-            if segment.demand_number:
-                segments_by_demand.setdefault(segment.demand_number, []).append(segment)
+        """Project submitted requests without mutating or double-counting approved work."""
+
+        requests = self._session.scalars(
+            select(WorkforceRequest)
+            .where(WorkforceRequest.status == "Soumise")
+            .order_by(
+                WorkforceRequest.desired_start,
+                WorkforceRequest.legacy_demand_number,
+                WorkforceRequest.id,
+            )
+        ).all()
         result: list[PendingDemandLoadReadModel] = []
-        for demand in demands:
-            if demand.status != "Soumise" or not _demand_overlaps(demand, start, end):
+
+        for request in requests:
+            number = _text(request.legacy_demand_number) or request.id
+            demand = self._demands.get(number)
+            if demand is None:
                 continue
-            periods = periods_by_demand.setdefault(
-                demand.number,
-                list(self._periods.list_for_demand(demand.number)),
-            )
-            definitions = tuple(_period_definition(period) for period in periods)
-            selections = selections_by_demand.setdefault(
-                demand.number,
-                dict(self._periods.selections_for_demand(demand.number)),
-            )
-            projected_hours = (
-                projected_period_hours_in_window_without_double_counting(
+
+            periods = tuple(self._periods.list_for_demand(number))
+            if periods:
+                definitions = tuple(_period_definition(row) for row in periods)
+                selections = {
+                    _text(row.alternative_group): row.period_id
+                    for row in periods
+                    if row.selected and _text(row.alternative_group)
+                }
+                proposal_start = min(row.start_date for row in periods)
+                proposal_end = max(row.end_date for row in periods)
+                if proposal_end < start or proposal_start > end:
+                    continue
+                projected_hours = projected_hours_without_double_counting(
+                    definitions,
+                    selections,
+                )
+                window_hours = projected_period_hours_in_window_without_double_counting(
                     definitions,
                     start,
                     end,
-                    selections=selections,
+                    selections,
                 )
-                if definitions
-                else projected_hours_in_window(
-                    start=demand.desired_start,
-                    end=demand.desired_end,
-                    hours=demand.estimated_hours,
-                    window_start=start,
-                    window_end=end,
+            else:
+                proposal_start = demand.desired_start
+                if proposal_start is None:
+                    continue
+                proposal_end = demand.desired_end or proposal_start
+                if proposal_end < start or proposal_start > end:
+                    continue
+                projected_hours = demand.estimated_hours
+                window_hours = (
+                    projected_hours_in_window(
+                        projected_hours,
+                        proposal_start,
+                        proposal_end,
+                        start,
+                        end,
+                    )
+                    if projected_hours is not None
+                    else 0.0
                 )
+
+            current = self._session.scalars(
+                select(ResourceRequirement).where(
+                    ResourceRequirement.workforce_request_id == request.id,
+                    ResourceRequirement.status != "Annulé",
+                )
+            ).all()
+            current_plan_hours = round(
+                sum(
+                    projected_hours_in_window(
+                        float(requirement.planned_hours),
+                        requirement.start_date,
+                        requirement.end_date,
+                        start,
+                        end,
+                    )
+                    for requirement in current
+                ),
+                2,
             )
-            window_hours = (
-                projected_hours_without_double_counting(definitions, selections=selections)
-                if definitions
-                else float(demand.estimated_hours or 0.0)
+            mode = pending_load_mode(has_current_plan=bool(current))
+            delta_hours = (
+                round(window_hours - current_plan_hours, 2)
+                if projected_hours is not None
+                else None
             )
-            current_plan_hours = sum(
-                segment.planned_hours
-                for segment in segments_by_demand.get(demand.number, ())
-                if segment.status != "Annulé"
-            )
-            mode = pending_load_mode(current_plan_hours=current_plan_hours)
             result.append(
                 PendingDemandLoadReadModel(
-                    demand_number=demand.number,
+                    demand_number=number,
                     project_number=demand.project_number,
                     project_name=demand.project_name,
-                    start_date=demand.desired_start or start,
-                    end_date=demand.desired_end or demand.desired_start or end,
+                    start_date=proposal_start,
+                    end_date=proposal_end,
                     projected_hours=projected_hours,
                     window_hours=window_hours,
                     mode=mode,
-                    load_kind=workload_kind(demand.confirmation),
                     current_plan_hours=current_plan_hours,
-                    delta_hours=(
-                        projected_hours - current_plan_hours
-                        if mode != PENDING_LOAD_ADDITIVE
-                        else None
-                    ),
+                    delta_hours=delta_hours,
                     resource_count=demand.resource_count,
-                    confirmation=demand.confirmation,
                     required_competencies=demand.required_competencies,
-                    proposed_resource=demand.proposed_technician,
+                    proposed_resource=demand.proposed_resource,
+                    work_package_ref=demand.work_package_ref,
+                    confirmation=demand.confirmation,
+                    periods=periods,
                 )
             )
+
         return tuple(result)
 
     def list_segments(
@@ -268,16 +303,14 @@ class SqlPlannerQueryRepository(PlannerQueryPort):
         include_cancelled: bool = False,
     ) -> tuple[SegmentReadModel, ...]:
         rows = self._segments.list(include_cancelled=include_cancelled)
-        if start is None and end is None:
-            return tuple(rows)
-        return tuple(
-            row
-            for row in rows
-            if not (
-                (start is not None and row.end_date < start)
-                or (end is not None and row.start_date > end)
-            )
-        )
+        result: list[SegmentReadModel] = []
+        for row in rows:
+            if start is not None and row.end_date is not None and row.end_date < start:
+                continue
+            if end is not None and row.start_date is not None and row.start_date > end:
+                continue
+            result.append(row)
+        return tuple(result)
 
     def get_segment(self, segment_id: str) -> SegmentReadModel | None:
         return self._segments.get(segment_id)
@@ -290,26 +323,45 @@ class SqlPlannerQueryRepository(PlannerQueryPort):
         resource_name: str | None = None,
     ) -> tuple[ShiftReadModel, ...]:
         statement = (
-            select(Shift, Resource, ResourceRequirement, WorkforceRequest, Project)
+            select(Shift, ResourceRequirement, Resource, Project, WorkforceRequest)
+            .join(
+                ResourceRequirement,
+                Shift.resource_requirement_id == ResourceRequirement.id,
+            )
             .join(Resource, Shift.resource_id == Resource.id)
-            .join(ResourceRequirement, Shift.resource_requirement_id == ResourceRequirement.id)
-            .outerjoin(WorkforceRequest, ResourceRequirement.workforce_request_id == WorkforceRequest.id)
             .join(Project, ResourceRequirement.project_id == Project.id)
-            .order_by(Shift.work_date, Resource.sort_order, Resource.name, Shift.id)
+            .outerjoin(
+                WorkforceRequest,
+                ResourceRequirement.workforce_request_id == WorkforceRequest.id,
+            )
         )
         if start is not None:
             statement = statement.where(Shift.work_date >= start)
         if end is not None:
             statement = statement.where(Shift.work_date <= end)
-        if resource_name:
-            statement = statement.where(Resource.name == resource_name)
-        rows = self._session.execute(statement).all()
+        wanted_resource = _text(resource_name)
+        if wanted_resource:
+            statement = statement.where(Resource.name == wanted_resource)
+
+        rows = self._session.execute(
+            statement.order_by(
+                Shift.work_date,
+                Resource.sort_order,
+                Resource.name,
+                Shift.locked.desc(),
+                Shift.id,
+            )
+        ).all()
         result: list[ShiftReadModel] = []
-        for shift, resource, requirement, demand, project in rows:
+        for shift, requirement, resource, project, request in rows:
+            confirmation = effective_confirmation(
+                shift.confirmation,
+                requirement.confirmation,
+            )
             result.append(
                 ShiftReadModel(
-                    allocation_id=shift.id,
-                    segment_id=requirement.id,
+                    allocation_id=_text(shift.legacy_allocation_id) or shift.id,
+                    segment_id=_text(requirement.legacy_segment_id) or requirement.id,
                     resource_id=resource.id,
                     resource_name=resource.name,
                     work_date=shift.work_date,
@@ -318,28 +370,22 @@ class SqlPlannerQueryRepository(PlannerQueryPort):
                     source=_text(shift.source) or "AUTO",
                     locked=bool(shift.locked),
                     outside_standard_hours=bool(shift.outside_standard_hours),
-                    confirmation=effective_confirmation(
-                        shift.confirmation_override,
-                        requirement.confirmation,
-                    ),
-                    confirmation_override=_optional_text(shift.confirmation_override),
-                    load_kind=workload_kind(
-                        effective_confirmation(
-                            shift.confirmation_override,
-                            requirement.confirmation,
-                        )
-                    ),
+                    confirmation=confirmation,
+                    confirmation_override=_optional_text(shift.confirmation),
+                    load_kind=workload_kind(confirmation),
                     note=_optional_text(shift.note),
                     demand_number=(
-                        _optional_text(demand.legacy_demand_number)
-                        if demand is not None
+                        _text(request.legacy_demand_number) or request.id
+                        if request is not None
                         else None
                     ),
-                    project_number=project.number,
-                    project_name=project.name,
+                    project_number=_optional_text(project.number),
+                    project_name=_optional_text(project.name),
                     project_manager=_optional_text(project.project_manager_name),
                     requester=(
-                        _optional_text(demand.requester_name) if demand is not None else None
+                        _optional_text(request.requester_name)
+                        if request is not None
+                        else _optional_text(requirement.created_by_name)
                     ),
                 )
             )
@@ -351,19 +397,41 @@ class SqlPlannerQueryRepository(PlannerQueryPort):
         start: date,
         end: date,
     ) -> PlanningSnapshotReadModel:
-        if end < start:
-            start, end = end, start
-        resources = self.list_schedulable_resources(start=start, end=end)
+        """Read the web planning window inside the caller-owned SQL transaction."""
+
+        demands = tuple(
+            row for row in self.list_demands() if _demand_overlaps(row, start, end)
+        )
         shifts = self.list_shifts(start=start, end=end)
-        pending = self.list_pending_loads(start=start, end=end)
-        totals = WorkloadTotals.from_inputs(shifts=shifts, pending_loads=pending)
+        pending_loads = self.list_pending_loads(start=start, end=end)
+        totals = WorkloadTotals()
+        for shift in shifts:
+            totals = totals.add(shift.hours, shift.confirmation)
+        additive_pending = round(
+            sum(
+                row.window_hours
+                for row in pending_loads
+                if row.mode == PENDING_LOAD_ADDITIVE
+            ),
+            2,
+        )
+        replacement_proposals = round(
+            sum(
+                row.window_hours
+                for row in pending_loads
+                if row.mode != PENDING_LOAD_ADDITIVE
+            ),
+            2,
+        )
         return PlanningSnapshotReadModel(
-            start_date=start,
-            end_date=end,
-            resources=resources,
+            start=start,
+            end=end,
+            resources=self.list_schedulable_resources(start=start, end=end),
+            demands=demands,
+            segments=self.list_segments(start=start, end=end, include_cancelled=False),
             shifts=shifts,
-            pending_loads=pending,
+            pending_loads=pending_loads,
             firm_hours=totals.firm_hours,
-            potential_hours=totals.potential_hours,
-            replacement_proposal_hours=totals.replacement_proposal_hours,
+            potential_hours=round(totals.potential_hours + additive_pending, 2),
+            replacement_proposal_hours=replacement_proposals,
         )
