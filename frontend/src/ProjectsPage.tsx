@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 
+import { useAuth } from "./AuthContext";
 import {
   AcumaticaIntegrationStatus,
   ApiError,
@@ -25,6 +26,8 @@ function apiErrorMessage(reason: unknown, fallback: string) {
 }
 
 export default function ProjectsPage() {
+  const { can } = useAuth();
+  const canSyncProjects = can("sync_projects");
   const [projects, setProjects] = useState<ProjectReadModel[]>([]);
   const [integration, setIntegration] = useState<AcumaticaIntegrationStatus | null>(null);
   const [loading, setLoading] = useState(true);
@@ -93,7 +96,7 @@ export default function ProjectsPage() {
   const erpCount = projects.filter((project) => Boolean(project.erp_external_id)).length;
 
   async function synchronize() {
-    if (!integration?.configured || syncing) return;
+    if (!integration?.configured || syncing || !canSyncProjects) return;
     setSyncing(true);
     setSyncMessage(null);
     setSyncError(null);
@@ -151,9 +154,11 @@ export default function ProjectsPage() {
           )}
         </div>
         {integration?.configured && (
-          <button type="button" onClick={synchronize} disabled={syncing || loading}>
-            {syncing ? "Synchronisation…" : "Synchroniser les projets"}
-          </button>
+          canSyncProjects ? (
+            <button type="button" onClick={synchronize} disabled={syncing || loading}>
+              {syncing ? "Synchronisation…" : "Synchroniser les projets"}
+            </button>
+          ) : null
         )}
       </section>
 

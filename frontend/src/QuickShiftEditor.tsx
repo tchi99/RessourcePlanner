@@ -1,5 +1,6 @@
 import { FormEvent, MouseEvent, useEffect, useMemo, useRef, useState } from "react";
 
+import { useAuth } from "./AuthContext";
 import {
   ApiError,
   ProjectReadModel,
@@ -48,6 +49,8 @@ export default function QuickShiftEditor({
   onClose,
   onSaved,
 }: Props) {
+  const { can } = useAuth();
+  const canManagePlanning = can("manage_planning");
   const [projects, setProjects] = useState<ProjectReadModel[]>([]);
   const [resources, setResources] = useState<ResourceReadModel[]>([]);
   const [loadingChoices, setLoadingChoices] = useState(false);
@@ -64,7 +67,7 @@ export default function QuickShiftEditor({
   const retryReceipt = useRef<RetryReceipt | null>(null);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open || !canManagePlanning) return;
     const controller = new AbortController();
     setLoadingChoices(true);
     setError(null);
@@ -104,16 +107,16 @@ export default function QuickShiftEditor({
       });
 
     return () => controller.abort();
-  }, [open, defaultDay, initialProjectNumber]);
+  }, [open, canManagePlanning, defaultDay, initialProjectNumber]);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open || !canManagePlanning) return;
     const listener = (event: KeyboardEvent) => {
       if (event.key === "Escape" && !saving) onClose();
     };
     window.addEventListener("keydown", listener);
     return () => window.removeEventListener("keydown", listener);
-  }, [open, saving, onClose]);
+  }, [open, canManagePlanning, saving, onClose]);
 
   const selectedProject = useMemo(
     () => projects.find((row) => row.number === projectNumber) ?? null,
@@ -125,7 +128,7 @@ export default function QuickShiftEditor({
     [resources, technician],
   );
 
-  if (!open) return null;
+  if (!open || !canManagePlanning) return null;
 
   function closeFromBackdrop(event: MouseEvent<HTMLDivElement>) {
     if (!saving && event.target === event.currentTarget) onClose();
@@ -205,144 +208,29 @@ export default function QuickShiftEditor({
 
           {selectedProject && (
             <div className="dialog-context-grid quick-shift-context">
-              <div>
-                <span>Projet</span>
-                <strong>{selectedProject.number}</strong>
-              </div>
-              <div>
-                <span>Nom</span>
-                <strong>{selectedProject.name || "—"}</strong>
-              </div>
-              <div>
-                <span>Client</span>
-                <strong>{selectedProject.client || "—"}</strong>
-              </div>
-              <div>
-                <span>Responsable</span>
-                <strong>{selectedProject.project_manager || "—"}</strong>
-              </div>
+              <div><span>Projet</span><strong>{selectedProject.number}</strong></div>
+              <div><span>Nom</span><strong>{selectedProject.name || "—"}</strong></div>
+              <div><span>Client</span><strong>{selectedProject.client || "—"}</strong></div>
+              <div><span>Responsable</span><strong>{selectedProject.project_manager || "—"}</strong></div>
             </div>
           )}
 
           <div className="dialog-form-grid">
-            <label>
-              <span>Projet</span>
-              <select
-                value={projectNumber}
-                onChange={(event) => setProjectNumber(event.target.value)}
-                disabled={saving || loadingChoices}
-                required
-                autoFocus
-              >
-                <option value="">Sélectionner un projet…</option>
-                {projects.map((row) => (
-                  <option value={row.number} key={row.id}>{row.number} — {row.name}</option>
-                ))}
-              </select>
-            </label>
-
-            <label>
-              <span>Technicien</span>
-              <select
-                value={technician}
-                onChange={(event) => setTechnician(event.target.value)}
-                disabled={saving || loadingChoices}
-                required
-              >
-                <option value="">Sélectionner une ressource…</option>
-                {resources.map((row) => (
-                  <option value={row.name} key={row.id}>
-                    {row.name}{row.resource_class ? ` — ${row.resource_class}` : ""}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <label>
-              <span>Date</span>
-              <input
-                type="date"
-                min={weekStart}
-                max={weekEnd}
-                value={day}
-                onChange={(event) => setDay(event.target.value)}
-                disabled={saving}
-                required
-              />
-            </label>
-
-            <label>
-              <span>Heures</span>
-              <input
-                type="number"
-                min="0.25"
-                step="0.25"
-                value={hours}
-                onChange={(event) => setHours(event.target.value)}
-                disabled={saving}
-                required
-              />
-            </label>
-
-            <label>
-              <span>Confirmation</span>
-              <select
-                value={confirmation}
-                onChange={(event) => setConfirmation(event.target.value as "Tentative" | "Confirmée")}
-                disabled={saving}
-              >
-                <option value="Confirmée">Confirmée</option>
-                <option value="Tentative">Tentative</option>
-              </select>
-            </label>
-
-            <label className="checkbox-field">
-              <input
-                type="checkbox"
-                checked={outsideStandardHours}
-                onChange={(event) => setOutsideStandardHours(event.target.checked)}
-                disabled={saving}
-              />
-              <span>Autoriser ce quart en dehors de l’horaire standard</span>
-            </label>
-
-            <label className="span-2">
-              <span>Description</span>
-              <textarea
-                value={description}
-                onChange={(event) => setDescription(event.target.value)}
-                disabled={saving}
-                rows={2}
-                placeholder="Travail à effectuer…"
-              />
-            </label>
-
-            <label className="span-2">
-              <span>Note</span>
-              <textarea
-                value={note}
-                onChange={(event) => setNote(event.target.value)}
-                disabled={saving}
-                rows={2}
-                placeholder="Note opérationnelle facultative…"
-              />
-            </label>
+            <label><span>Projet</span><select value={projectNumber} onChange={(event) => setProjectNumber(event.target.value)} disabled={saving || loadingChoices} required autoFocus><option value="">Sélectionner un projet…</option>{projects.map((row) => <option value={row.number} key={row.id}>{row.number} — {row.name}</option>)}</select></label>
+            <label><span>Technicien</span><select value={technician} onChange={(event) => setTechnician(event.target.value)} disabled={saving || loadingChoices} required><option value="">Sélectionner une ressource…</option>{resources.map((row) => <option value={row.name} key={row.id}>{row.name}{row.resource_class ? ` — ${row.resource_class}` : ""}</option>)}</select></label>
+            <label><span>Date</span><input type="date" min={weekStart} max={weekEnd} value={day} onChange={(event) => setDay(event.target.value)} disabled={saving} required /></label>
+            <label><span>Heures</span><input type="number" min="0.25" step="0.25" value={hours} onChange={(event) => setHours(event.target.value)} disabled={saving} required /></label>
+            <label><span>Confirmation</span><select value={confirmation} onChange={(event) => setConfirmation(event.target.value as "Tentative" | "Confirmée")} disabled={saving}><option value="Confirmée">Confirmée</option><option value="Tentative">Tentative</option></select></label>
+            <label className="checkbox-field"><input type="checkbox" checked={outsideStandardHours} onChange={(event) => setOutsideStandardHours(event.target.checked)} disabled={saving} /><span>Autoriser ce quart en dehors de l’horaire standard</span></label>
+            <label className="span-2"><span>Description</span><textarea value={description} onChange={(event) => setDescription(event.target.value)} disabled={saving} rows={2} placeholder="Travail à effectuer…" /></label>
+            <label className="span-2"><span>Note</span><textarea value={note} onChange={(event) => setNote(event.target.value)} disabled={saving} rows={2} placeholder="Note opérationnelle facultative…" /></label>
           </div>
 
-          {selectedResource && (
-            <div className="confirmation-help">
-              <strong>{selectedResource.name}</strong>
-              <span>
-                {[selectedResource.resource_class, selectedResource.competencies].filter(Boolean).join(" · ") || "Ressource active"}
-              </span>
-            </div>
-          )}
+          {selectedResource && <div className="confirmation-help"><strong>{selectedResource.name}</strong><span>{[selectedResource.resource_class, selectedResource.competencies].filter(Boolean).join(" · ") || "Ressource active"}</span></div>}
 
           <div className="dialog-actions">
             <button className="secondary-button" type="button" onClick={onClose} disabled={saving}>Annuler</button>
-            <button className="primary-button" type="submit" disabled={saving || loadingChoices}>
-              {saving ? "Création…" : loadingChoices ? "Chargement…" : "Créer le Quick Shift"}
-            </button>
+            <button className="primary-button" type="submit" disabled={saving || loadingChoices}>{saving ? "Création…" : loadingChoices ? "Chargement…" : "Créer le Quick Shift"}</button>
           </div>
         </form>
       </section>
