@@ -8,6 +8,7 @@ from .query_models import (
     PendingDemandLoadReadModel,
     PlanningSnapshotReadModel,
     ProjectReadModel,
+    ResourceAvailabilityRuleReadModel,
     ResourceReadModel,
     ShiftReadModel,
     WorkPackageReadModel,
@@ -28,6 +29,14 @@ class PlannerQueryPort(Protocol):
     ) -> Sequence[WorkPackageReadModel]: ...
 
     def list_resources(self, *, active_only: bool = True) -> Sequence[ResourceReadModel]: ...
+
+    def list_availability_rules(
+        self,
+        *,
+        resource_id: str | None = None,
+        include_global: bool = True,
+        active_only: bool = True,
+    ) -> Sequence[ResourceAvailabilityRuleReadModel]: ...
 
     def list_schedulable_resources(
         self,
