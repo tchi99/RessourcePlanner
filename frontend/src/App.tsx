@@ -4,14 +4,16 @@ import DemandsWorkspace from "./DemandsWorkspace";
 import MediumTermPage from "./MediumTermPage";
 import PlanningPage from "./PlanningPage";
 import ProjectsPage from "./ProjectsPage";
+import ResourcesPage from "./ResourcesPage";
 
-type View = "planning" | "medium-term" | "demands" | "projects" | "communications";
+type View = "planning" | "medium-term" | "demands" | "projects" | "resources" | "communications";
 
 const navItems: Array<{ key: View; label: string; eyebrow: string }> = [
   { key: "planning", label: "Planning opérationnel", eyebrow: "Semaine" },
   { key: "medium-term", label: "Moyen terme", eyebrow: "Capacité" },
   { key: "demands", label: "Demandes", eyebrow: "Main-d’œuvre" },
   { key: "projects", label: "Projets", eyebrow: "Portefeuille" },
+  { key: "resources", label: "Ressources", eyebrow: "Administration" },
   { key: "communications", label: "Communications", eyebrow: "À venir" },
 ];
 
@@ -105,6 +107,8 @@ export default function App() {
             <DemandsWorkspace />
           ) : view === "projects" ? (
             <ProjectsPage />
+          ) : view === "resources" ? (
+            <ResourcesPage />
           ) : (
             <Placeholder view={view} />
           )}
