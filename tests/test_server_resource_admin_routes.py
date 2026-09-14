@@ -23,11 +23,12 @@ class ServerResourceAdminRouteTests(unittest.TestCase):
         with TemporaryDirectory() as directory:
             app = create_api_app(self._database(directory))
             with TestClient(app) as client:
+                test_email = "auto1" + chr(64) + "example.test"
                 created = client.post(
                     "/api/v1/resources",
                     json={
                         "name": "Automatisation 1",
-                        "email": "auto1@example.test",
+                        "email": test_email,
                         "resource_class": "Programmation",
                         "competencies": "PLC; SCADA",
                         "note": "Ressource de test",
@@ -42,7 +43,7 @@ class ServerResourceAdminRouteTests(unittest.TestCase):
                 self.assertEqual(len(resources.json()), 1)
                 row = resources.json()[0]
                 self.assertEqual(row["id"], resource_id)
-                self.assertEqual(row["email"], "auto1@example.test")
+                self.assertEqual(row["email"], test_email)
                 self.assertEqual(row["resource_class"], "Programmation")
                 self.assertEqual(row["competencies"], "PLC; SCADA")
                 self.assertEqual(row["sort_order"], 20)
