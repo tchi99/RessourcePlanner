@@ -113,6 +113,7 @@ export default function SegmentEditor({
     setError(null);
     createRetry.current = null;
     if (!segmentId) {
+      setLoading(false);
       setSegment(null);
       setForm(demand ? formFromDemand(demand) : null);
       return;
@@ -120,6 +121,8 @@ export default function SegmentEditor({
 
     const controller = new AbortController();
     setLoading(true);
+    setSegment(null);
+    setForm(null);
     getSegment(segmentId, controller.signal)
       .then((row) => {
         setSegment(row);
@@ -188,11 +191,17 @@ export default function SegmentEditor({
       return;
     }
 
+    const selectedTechnician = form.technician.trim();
+    const technicianForUpdate = segmentId
+      ? selectedTechnician
+        ? segment?.resource_name ?? null
+        : null
+      : null;
     const payload: SegmentWrite = {
       demand_number: effectiveDemandNumber,
       project_number: effectiveProjectNumber,
       project_name: effectiveProjectName,
-      technician: null,
+      technician: technicianForUpdate,
       start_date: form.start_date,
       end_date: form.end_date,
       planned_hours: plannedHours,
@@ -221,10 +230,10 @@ export default function SegmentEditor({
         createRetry.current = null;
       }
 
-      const technicianChanged = Boolean(form.technician.trim())
-        && form.technician.trim() !== (segment?.resource_name ?? "");
+      const technicianChanged = Boolean(selectedTechnician)
+        && selectedTechnician !== (segment?.resource_name ?? "");
       if (savedSegmentId && technicianChanged) {
-        await assignSegment(savedSegmentId, form.technician.trim());
+        await assignSegment(savedSegmentId, selectedTechnician);
       }
       onSaved();
     } catch (reason: unknown) {
@@ -342,9 +351,6 @@ export default function SegmentEditor({
                     </option>
                   ))}
                 </select>
-                {segment?.resource_name && !form.technician && (
-                  <small>Pour retirer une affectation existante, utilise la modification du segment dédiée; l'assignation automatique n'accepte qu'une ressource valide.</small>
-                )}
               </label>
               <label className="checkbox-field segment-outside-field">
                 <input type="checkbox" checked={form.outside_standard_hours} onChange={(event) => setField("outside_standard_hours", event.target.checked)} />
