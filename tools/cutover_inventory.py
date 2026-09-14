@@ -84,19 +84,21 @@ class Inventory:
         }
 
 
-def _module_name(root: Path, path: Path) -> str:
+def _module_and_package(root: Path, path: Path) -> tuple[str, str]:
     relative = path.relative_to(root).with_suffix("")
     parts = list(relative.parts)
-    if parts and parts[-1] == "__init__":
+    is_package = bool(parts and parts[-1] == "__init__")
+    if is_package:
         parts.pop()
-    return ".".join(parts)
+    module = ".".join(parts)
+    package = module if is_package else module.rsplit(".", 1)[0]
+    return module, package
 
 
-def _resolve_import_from(current_module: str, node: ast.ImportFrom) -> str:
+def _resolve_import_from(current_package: str, node: ast.ImportFrom) -> str:
     if node.level == 0:
         return node.module or ""
-    package = current_module.rsplit(".", 1)[0] if "." in current_module else current_module
-    package_parts = package.split(".") if package else []
+    package_parts = current_package.split(".") if current_package else []
     keep = max(0, len(package_parts) - (node.level - 1))
     prefix = package_parts[:keep]
     if node.module:
@@ -127,14 +129,14 @@ def _scan_python_boundary(
             )
         ]
 
-    current_module = _module_name(root, path)
+    _current_module, current_package = _module_and_package(root, path)
     violations: list[BoundaryViolation] = []
     for node in ast.walk(tree):
         targets: list[tuple[str, int]] = []
         if isinstance(node, ast.Import):
             targets.extend((alias.name, node.lineno) for alias in node.names)
         elif isinstance(node, ast.ImportFrom):
-            targets.append((_resolve_import_from(current_module, node), node.lineno))
+            targets.append((_resolve_import_from(current_package, node), node.lineno))
 
         for target, line in targets:
             if not target:
@@ -285,7 +287,10 @@ def render_markdown(inventory: Inventory) -> str:
     )
     for title, values in sections:
         lines.extend(("", f"## {title}"))
-        lines.extend(f"- `{value}`" for value in values) if values else lines.append("- none")
+        if values:
+            lines.extend(f"- `{value}`" for value in values)
+        else:
+            lines.append("- none")
 
     lines.extend(("", "## Canonical boundary violations"))
     if inventory.boundary_violations:
