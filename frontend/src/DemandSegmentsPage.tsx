@@ -7,8 +7,8 @@ import {
   SegmentReadModel,
   getDemands,
   getResources,
-  getSegments,
 } from "./api";
+import { getSegments } from "./segments-api";
 import SegmentEditor from "./SegmentEditor";
 
 function normalize(value: string | null | undefined) {
