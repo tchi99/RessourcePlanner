@@ -154,12 +154,14 @@ def _request_validation_response(exc: RequestValidationError) -> JSONResponse:
     )
 
 
-def _default_auth_resolver() -> AuthResolver:
+def _default_auth_resolver(actor_name: str) -> AuthResolver:
+    """Keep direct API construction backward compatible while still exercising auth."""
+
     principal = AuthPrincipal.from_roles(
         local_user_id=None,
         issuer="urn:resourceplanner:test",
         subject="test-admin",
-        display_name="API test admin",
+        display_name=actor_name,
         email=None,
         roles=(ROLE_ADMIN,),
         auth_mode="test",
@@ -211,7 +213,10 @@ def create_api_app(
     app.state.idempotency_dependency = idempotency_dependency
     app.state.query_dependency = query_dependency
 
-    install_authorization_middleware(app, auth_resolver or _default_auth_resolver())
+    install_authorization_middleware(
+        app,
+        auth_resolver or _default_auth_resolver(actor_name),
+    )
 
     @app.exception_handler(RequestValidationError)
     async def handle_request_validation_error(
