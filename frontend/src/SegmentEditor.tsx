@@ -5,13 +5,15 @@ import {
   DemandReadModel,
   ResourceReadModel,
   SegmentReadModel,
+} from "./api";
+import {
   SegmentWrite,
   assignSegment,
   cancelSegment,
   createSegment,
   getSegment,
   updateSegment,
-} from "./api";
+} from "./segments-api";
 
 type ConfirmationChoice = "inherit" | "Tentative" | "Confirmée";
 
