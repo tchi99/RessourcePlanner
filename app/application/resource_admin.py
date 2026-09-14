@@ -23,6 +23,7 @@ AVAILABILITY_TYPES = (
     AVAILABILITY_VACATION,
     AVAILABILITY_HOLIDAY,
 )
+AVAILABILITY_WEEKDAYS = ("Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim")
 
 
 @dataclass(frozen=True, slots=True)
@@ -109,6 +110,7 @@ class AvailabilityRuleCreateCommand:
             resource_id=self.resource_id,
             start_date=self.start_date,
             end_date=self.end_date,
+            weekdays=self.weekdays,
             start_time=self.start_time,
             end_time=self.end_time,
         )
@@ -187,12 +189,27 @@ class ResourceAdminRepositoryPort(Protocol):
     def update_availability_rule(self, rule_id: str, values: Mapping[str, Any]) -> str: ...
 
 
+def _validate_weekdays(value: object) -> None:
+    text = str(value or "").strip()
+    if not text:
+        return
+    tokens = [part.strip() for part in text.replace(";", ",").split(",") if part.strip()]
+    invalid = [token for token in tokens if token not in AVAILABILITY_WEEKDAYS]
+    if invalid:
+        raise ApplicationValidationError(
+            "Un ou plusieurs jours de semaine ne sont pas reconnus.",
+            code="availability_weekdays_invalid",
+            context={"invalid": invalid, "allowed": list(AVAILABILITY_WEEKDAYS)},
+        )
+
+
 def _validate_availability_values(
     *,
     availability_type: object,
     resource_id: object,
     start_date: date | None,
     end_date: date | None,
+    weekdays: object,
     start_time: time | None,
     end_time: time | None,
 ) -> None:
@@ -215,6 +232,7 @@ def _validate_availability_values(
             context={"availability_type": kind},
         )
     validate_date_window(start_date, end_date, prefix="availability")
+    _validate_weekdays(weekdays)
     if kind == AVAILABILITY_STANDARD and (start_time is None or end_time is None):
         raise ApplicationValidationError(
             "L'heure de début et l'heure de fin sont requises pour un horaire standard.",
@@ -338,10 +356,11 @@ class ResourceAdminService:
                 context={"rule_id": command.rule_id},
             )
         changes = command.changes()
-        availability_type = str(changes.get("availability_type", current.availability_type))
+        availability_type = changes.get("availability_type", current.availability_type)
         resource_id = changes.get("resource_id", current.resource_id)
         start_date = changes.get("start_date", current.start_date)
         end_date = changes.get("end_date", current.end_date)
+        weekdays = changes.get("weekdays", current.weekdays)
         start_time = changes.get("start_time", current.start_time)
         end_time = changes.get("end_time", current.end_time)
         _validate_availability_values(
@@ -349,6 +368,7 @@ class ResourceAdminService:
             resource_id=resource_id,
             start_date=start_date if isinstance(start_date, date) else None,
             end_date=end_date if isinstance(end_date, date) else None,
+            weekdays=weekdays,
             start_time=start_time if isinstance(start_time, time) else None,
             end_time=end_time if isinstance(end_time, time) else None,
         )
