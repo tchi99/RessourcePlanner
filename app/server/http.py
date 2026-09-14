@@ -22,6 +22,7 @@ from ..application import (
     ProjectSourcePort,
 )
 from ..application.errors import ApplicationUnavailableError
+from ..application.security import AuthPrincipal, ROLE_ADMIN
 from ..infrastructure.sql import (
     SqlSessionFactory,
     create_session_factory,
@@ -33,9 +34,11 @@ from .composition import (
     build_sql_idempotency_executor,
     build_sql_query_port,
 )
+from .routes_auth import build_auth_router
 from .routes_commands import build_command_router
 from .routes_integrations import build_integration_router
 from .routes_reads import build_read_router
+from .security import AuthResolver, install_authorization_middleware, static_auth_resolver
 
 
 SessionDependency = Callable[[], Iterator[Session]]
@@ -73,6 +76,11 @@ def make_session_dependency(factory: SqlSessionFactory) -> SessionDependency:
     return dependency
 
 
+def _request_actor(request: Request, fallback: str) -> str:
+    principal: AuthPrincipal | None = getattr(request.state, "auth_principal", None)
+    return principal.display_name if principal is not None else fallback
+
+
 def make_facade_dependency(
     factory: SqlSessionFactory,
     *,
@@ -82,10 +90,10 @@ def make_facade_dependency(
     request_session = session_dependency or make_session_dependency(factory)
 
     def dependency(
+        request: Request,
         session: Session = Depends(request_session),
     ) -> Iterator[ApplicationFacade]:
-        # Yielding keeps the facade scoped to the same request transaction as Session.
-        yield build_sql_facade(session, actor_name=actor_name)
+        yield build_sql_facade(session, actor_name=_request_actor(request, actor_name))
 
     return dependency
 
@@ -99,9 +107,13 @@ def make_idempotency_dependency(
     request_session = session_dependency or make_session_dependency(factory)
 
     def dependency(
+        request: Request,
         session: Session = Depends(request_session),
     ) -> Iterator[IdempotentCommandExecutor]:
-        yield build_sql_idempotency_executor(session, actor_name=actor_name)
+        yield build_sql_idempotency_executor(
+            session,
+            actor_name=_request_actor(request, actor_name),
+        )
 
     return dependency
 
@@ -142,12 +154,26 @@ def _request_validation_response(exc: RequestValidationError) -> JSONResponse:
     )
 
 
+def _default_auth_resolver() -> AuthResolver:
+    principal = AuthPrincipal.from_roles(
+        local_user_id=None,
+        issuer="urn:resourceplanner:test",
+        subject="test-admin",
+        display_name="API test admin",
+        email=None,
+        roles=(ROLE_ADMIN,),
+        auth_mode="test",
+    )
+    return static_auth_resolver(principal)
+
+
 def create_api_app(
     database_url: str,
     *,
     actor_name: str = "api",
     project_source: ProjectSourcePort | None = None,
     acumatica_info: dict[str, Any] | None = None,
+    auth_resolver: AuthResolver | None = None,
 ) -> FastAPI:
     engine = create_sql_engine(database_url)
     factory = create_session_factory(engine)
@@ -184,6 +210,8 @@ def create_api_app(
     app.state.facade_dependency = facade_dependency
     app.state.idempotency_dependency = idempotency_dependency
     app.state.query_dependency = query_dependency
+
+    install_authorization_middleware(app, auth_resolver or _default_auth_resolver())
 
     @app.exception_handler(RequestValidationError)
     async def handle_request_validation_error(
@@ -224,6 +252,7 @@ def create_api_app(
             "api": "v1",
         }
 
+    app.include_router(build_auth_router())
     app.include_router(build_command_router(facade_dependency, idempotency_dependency))
     app.include_router(build_read_router(query_dependency))
     app.include_router(
