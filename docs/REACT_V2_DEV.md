@@ -2,7 +2,7 @@
 
 Le frontend React V2 peut être développé et validé sans attendre l'accès au SQL Server cible. Le navigateur ne connaît ni Excel ni SQL : il consomme uniquement FastAPI.
 
-## Architecture locale
+## Architecture locale de développement
 
 ```text
 React / Vite :5173
@@ -14,118 +14,131 @@ FastAPI :8000
 resourceplanner_server.db
 ```
 
-Le remplacement ultérieur de SQLite par SQL Server ne doit nécessiter aucune modification métier du frontend.
+Le runtime d'exploitation utilise maintenant une variante plus simple : le build React est servi directement par FastAPI sur le même port. Voir `WEB_RUNTIME.md`.
 
-## 1. Préparer le backend local
+## 0. Préparer l'environnement Web
 
-Depuis la racine du dépôt, `Lancer_Serveur.bat` est maintenant le chemin normal de développement :
+La première fois :
+
+```bat
+Installer_Web.bat
+```
+
+Cela crée `.venv-web`, installe les dépendances serveur sans NiceGUI/Excel, installe les dépendances Node et produit aussi un build React de production.
+
+## 1. Préparer le backend local pour Vite
+
+Depuis la racine :
 
 ```bat
 Lancer_Serveur.bat
 ```
 
-Si `RESOURCEPLANNER_DATABASE_URL` n'est pas déjà définie, le lanceur utilise automatiquement :
+Si `RESOURCEPLANNER_DATABASE_URL` n'est pas définie, le lanceur utilise :
 
 ```text
 sqlite:///./resourceplanner_server.db
 ```
 
-Dans ce mode local SQLite, il applique aussi `alembic upgrade head` avant de démarrer FastAPI. Si une URL explicite est configurée plus tard pour SQL Server, elle est conservée et le lanceur n'exécute pas les migrations automatiquement.
+Dans ce mode local SQLite, il applique `alembic upgrade head` avant de démarrer FastAPI. Si une URL explicite est configurée, elle est conservée et aucune migration automatique n'est exécutée.
 
-Le serveur FastAPI doit répondre sur `http://127.0.0.1:8000/health`. La documentation interactive est disponible à `http://127.0.0.1:8000/docs`.
+Le serveur répond par défaut à :
 
-## 2. Charger un jeu de données de démonstration
+- `http://127.0.0.1:8000/health`;
+- `http://127.0.0.1:8000/docs`.
 
-Pour essayer l'interface React sans importer de données réelles, fermer le serveur puis lancer :
+`Lancer_Serveur.bat` est volontairement un mode API seul pour le développement. Il utilise `.venv-web`.
+
+## 2. Charger les données de démonstration
+
+Fermer le serveur puis lancer :
 
 ```bat
 Charger_Donnees_Demo.bat
 ```
 
-Le chargeur :
+Le chargeur utilise maintenant le même environnement `.venv-web`. Il :
 
-- utilise uniquement `resourceplanner_server.db` dans le dossier du projet;
-- applique les migrations Alembic avant le chargement;
-- refuse de fonctionner contre un moteur autre que SQLite;
-- crée des projets, ressources, horaires standards, WorkPackages, demandes, périodes alternatives, besoins et quarts;
-- replace les dates autour de la semaine courante à chaque exécution;
-- remplace uniquement les données rattachées aux projets `DEMO-*`, afin d'éviter les doublons tout en laissant les autres données locales intactes.
+- cible uniquement `resourceplanner_server.db`;
+- applique les migrations;
+- refuse un moteur autre que SQLite;
+- crée projets, ressources, disponibilités, WorkPackages, demandes, périodes, segments et quarts;
+- replace les dates autour de la semaine courante;
+- remplace seulement les données rattachées aux projets `DEMO-*`.
 
-Le jeu couvre notamment :
+Après chargement, le chemin le plus simple pour tester l'application complète est :
 
-- plusieurs classes de ressources;
-- quarts automatiques et manuels/verrouillés;
-- confirmation ferme et tentative;
-- Quick Shift hors horaire;
-- demande `Soumise` visible comme charge potentielle;
-- demande `Brouillon`;
-- demande `À corriger`;
-- période cumulative + deux dates alternatives exclusives dont une sélectionnée;
-- plusieurs WorkPackages et chargés de projet.
+```bat
+Lancer_Web.bat
+```
 
-Pour un test avec une copie de données V1 réelles, utiliser plutôt le CLI de cutover décrit dans `docs/SQL_CUTOVER_RUNBOOK.md`.
+## 3. Développement React avec HMR
 
-## 3. Démarrer React
-
-Garder `Lancer_Serveur.bat` ouvert. Dans un deuxième terminal :
+Pour modifier React avec Vite, garder `Lancer_Serveur.bat` ouvert puis, dans un deuxième terminal :
 
 ```bat
 cd frontend
-npm install
 npm run dev
 ```
 
-`npm install` est requis la première fois et après un changement de dépendances. Ouvrir ensuite `http://127.0.0.1:5173`.
+Ouvrir `http://127.0.0.1:5173`.
 
-Vite relaie automatiquement `/api` et `/health` vers `http://127.0.0.1:8000`. On évite ainsi d'ajouter une politique CORS uniquement pour le développement local.
+Vite relaie `/api` et `/health` vers `http://127.0.0.1:8000`, ce qui évite une politique CORS dédiée au développement.
 
-## 4. API distante optionnelle
-
-En dehors du proxy Vite, le frontend accepte `VITE_API_BASE_URL`. Exemple :
-
-```bat
-set VITE_API_BASE_URL=https://resourceplanner-test.example.internal
-npm run build
-```
-
-En production, la cible privilégiée reste un déploiement same-origin via reverse proxy :
-
-```text
-https://resourceplanner/
-  ├─ /            → build React
-  └─ /api/*       → FastAPI
-```
-
-## 5. Build vérifié
+## 4. Build de production
 
 ```bat
 cd frontend
-npm install
 npm run build
 ```
 
-Le build exécute d'abord TypeScript en mode strict puis Vite. GitHub Actions exécute aussi ce build pour les PR touchant le frontend.
+Le build exécute TypeScript puis Vite et produit `frontend/dist`.
 
-## 6. Portée actuelle
+Pour tester exactement le runtime cible après le build :
 
-Le planning opérationnel Web V2 supporte maintenant :
+```bat
+cd ..
+Lancer_Web.bat
+```
 
-- navigation hebdomadaire;
-- ressources groupées par classe;
-- quarts confirmés/tentatifs, verrouillés et hors horaire;
-- charge ferme/potentielle et propositions de remplacement;
-- demandes potentielles en attente;
-- filtres projet, confirmation et recherche;
-- édition d'un quart existant depuis sa carte;
-- passage d'un quart automatique vers une décision manuelle/verrouillée lors d'une modification;
-- override de confirmation du quart ou retour à l'héritage du segment;
-- création d'un Quick Shift ad hoc directement sous un projet, sans WorkforceRequest fictif;
-- chargement des projets et ressources actifs depuis les read models FastAPI;
-- `Idempotency-Key` sur les Quick Shifts : un retry du même payload réutilise la même clé afin d'éviter les doublons;
-- rechargement du snapshot après chaque mutation réussie.
+FastAPI sert alors :
 
-L'espace Demandes React V2 supporte aussi la liste, le détail, la création/modification, les périodes cumulatives/alternatives et le workflow de soumission/approbation/correction/annulation. FastAPI reste la frontière métier autoritaire.
+```text
+http://127.0.0.1:8000/
+  ├─ /             → React / Vite build
+  ├─ /assets/*     → assets statiques
+  ├─ /api/v1/*     → FastAPI
+  └─ /health       → FastAPI / SQL
+```
 
-L'OIDC/RBAC, Acumatica, le SQL Server réel et l'hébergement de production restent hors de cette tranche de développement local.
+Aucun processus `vite preview` ou serveur Node n'est requis en exploitation.
 
-Refs : #187, #189, #192, #95, #55, #162.
+## 5. API distante optionnelle
+
+Le frontend conserve `VITE_API_BASE_URL` pour des scénarios de développement/intégration particuliers. Le runtime cible normal n'en a pas besoin car React et FastAPI sont same-origin.
+
+## 6. Validation
+
+GitHub Actions :
+
+1. exécute les tests Python;
+2. construit React avec Node 22;
+3. exécute `tools/check_web_runtime.py` contre le vrai `frontend/dist`;
+4. vérifie que le serveur Web/SQL reste isolé du runtime NiceGUI/Excel.
+
+Le smoke complet peut aussi être lancé localement après un build :
+
+```bat
+.venv-web\Scripts\python.exe tools\check_web_runtime.py
+```
+
+## 7. Autorité métier
+
+Même en développement React :
+
+- FastAPI reste la frontière de mutation;
+- le moteur Python reste autoritaire pour planification/capacité;
+- React ne doit pas recopier les règles de non-double-comptage;
+- Acumatica n'est jamais appelé directement par le navigateur.
+
+Refs : #55, #162, #187, #189, #192, #198, #203, #208, #211, #212.
