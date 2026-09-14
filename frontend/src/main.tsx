@@ -13,6 +13,7 @@ import "./demand-workflow.css";
 import "./medium-term.css";
 import "./projects.css";
 import "./resource-admin.css";
+import "./segments.css";
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
