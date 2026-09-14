@@ -1,0 +1,163 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Protocol
+
+
+ROLE_ADMIN = "ADMIN"
+ROLE_COORDINATOR = "COORDINATOR"
+ROLE_PROJECT_MANAGER = "PROJECT_MANAGER"
+ROLE_MANAGER = "MANAGER"
+ROLE_TECHNICIAN = "TECHNICIAN"
+
+ROLES = (
+    ROLE_ADMIN,
+    ROLE_COORDINATOR,
+    ROLE_PROJECT_MANAGER,
+    ROLE_MANAGER,
+    ROLE_TECHNICIAN,
+)
+
+PERMISSION_READ = "read"
+PERMISSION_MANAGE_DEMANDS = "manage_demands"
+PERMISSION_APPROVE_DEMANDS = "approve_demands"
+PERMISSION_MANAGE_PLANNING = "manage_planning"
+PERMISSION_MANAGE_WORK_PACKAGES = "manage_work_packages"
+PERMISSION_MANAGE_RESOURCES = "manage_resources"
+PERMISSION_SYNC_PROJECTS = "sync_projects"
+PERMISSION_ADMIN_USERS = "admin_users"
+
+PERMISSIONS = (
+    PERMISSION_READ,
+    PERMISSION_MANAGE_DEMANDS,
+    PERMISSION_APPROVE_DEMANDS,
+    PERMISSION_MANAGE_PLANNING,
+    PERMISSION_MANAGE_WORK_PACKAGES,
+    PERMISSION_MANAGE_RESOURCES,
+    PERMISSION_SYNC_PROJECTS,
+    PERMISSION_ADMIN_USERS,
+)
+
+ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
+    ROLE_ADMIN: frozenset(PERMISSIONS),
+    ROLE_COORDINATOR: frozenset(
+        {
+            PERMISSION_READ,
+            PERMISSION_MANAGE_DEMANDS,
+            PERMISSION_APPROVE_DEMANDS,
+            PERMISSION_MANAGE_PLANNING,
+            PERMISSION_MANAGE_WORK_PACKAGES,
+            PERMISSION_MANAGE_RESOURCES,
+        }
+    ),
+    ROLE_PROJECT_MANAGER: frozenset(
+        {
+            PERMISSION_READ,
+            PERMISSION_MANAGE_DEMANDS,
+            PERMISSION_MANAGE_WORK_PACKAGES,
+        }
+    ),
+    ROLE_MANAGER: frozenset({PERMISSION_READ, PERMISSION_APPROVE_DEMANDS}),
+    ROLE_TECHNICIAN: frozenset({PERMISSION_READ}),
+}
+
+
+def normalize_roles(roles: tuple[str, ...] | list[str] | set[str]) -> tuple[str, ...]:
+    normalized = tuple(dict.fromkeys(str(role).strip().upper() for role in roles if str(role).strip()))
+    invalid = sorted(set(normalized) - set(ROLES))
+    if invalid:
+        raise ValueError(f"Rôle(s) RessourcePlanner invalide(s): {', '.join(invalid)}")
+    return normalized
+
+
+def permissions_for_roles(roles: tuple[str, ...] | list[str] | set[str]) -> tuple[str, ...]:
+    normalized = normalize_roles(roles)
+    permissions: set[str] = set()
+    for role in normalized:
+        permissions.update(ROLE_PERMISSIONS[role])
+    return tuple(permission for permission in PERMISSIONS if permission in permissions)
+
+
+@dataclass(frozen=True, slots=True)
+class AuthPrincipal:
+    local_user_id: str | None
+    issuer: str
+    subject: str
+    display_name: str
+    email: str | None
+    roles: tuple[str, ...]
+    permissions: tuple[str, ...]
+    auth_mode: str
+
+    @classmethod
+    def from_roles(
+        cls,
+        *,
+        local_user_id: str | None,
+        issuer: str,
+        subject: str,
+        display_name: str,
+        email: str | None,
+        roles: tuple[str, ...] | list[str] | set[str],
+        auth_mode: str,
+    ) -> "AuthPrincipal":
+        normalized_roles = normalize_roles(roles)
+        return cls(
+            local_user_id=local_user_id,
+            issuer=str(issuer).strip(),
+            subject=str(subject).strip(),
+            display_name=str(display_name).strip(),
+            email=str(email).strip() if email else None,
+            roles=normalized_roles,
+            permissions=permissions_for_roles(normalized_roles),
+            auth_mode=str(auth_mode).strip(),
+        )
+
+    def has_permission(self, permission: str) -> bool:
+        return permission in self.permissions
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "local_user_id": self.local_user_id,
+            "issuer": self.issuer,
+            "subject": self.subject,
+            "display_name": self.display_name,
+            "email": self.email,
+            "roles": list(self.roles),
+            "permissions": list(self.permissions),
+            "auth_mode": self.auth_mode,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class UserIdentityRecord:
+    user_id: str
+    issuer: str
+    subject: str
+    display_name: str
+    email: str | None
+    roles: tuple[str, ...]
+    active: bool
+
+
+class UserIdentityRepositoryPort(Protocol):
+    def get_by_external_identity(self, issuer: str, subject: str) -> UserIdentityRecord | None: ...
+
+
+class IdentityService:
+    def __init__(self, repository: UserIdentityRepositoryPort) -> None:
+        self._repository = repository
+
+    def resolve(self, *, issuer: str, subject: str, auth_mode: str = "oidc") -> AuthPrincipal | None:
+        record = self._repository.get_by_external_identity(issuer, subject)
+        if record is None or not record.active:
+            return None
+        return AuthPrincipal.from_roles(
+            local_user_id=record.user_id,
+            issuer=record.issuer,
+            subject=record.subject,
+            display_name=record.display_name,
+            email=record.email,
+            roles=record.roles,
+            auth_mode=auth_mode,
+        )

@@ -1,0 +1,93 @@
+from __future__ import annotations
+
+import unittest
+
+from app.application.security import (
+    PERMISSION_ADMIN_USERS,
+    PERMISSION_APPROVE_DEMANDS,
+    PERMISSION_MANAGE_DEMANDS,
+    PERMISSION_MANAGE_PLANNING,
+    PERMISSION_MANAGE_RESOURCES,
+    PERMISSION_MANAGE_WORK_PACKAGES,
+    PERMISSION_READ,
+    PERMISSION_SYNC_PROJECTS,
+    ROLE_ADMIN,
+    ROLE_COORDINATOR,
+    ROLE_MANAGER,
+    ROLE_PROJECT_MANAGER,
+    ROLE_TECHNICIAN,
+    AuthPrincipal,
+    permissions_for_roles,
+)
+from app.server.security import required_permission
+
+
+class SecurityPolicyTests(unittest.TestCase):
+    def test_admin_has_every_declared_permission(self) -> None:
+        permissions = set(permissions_for_roles((ROLE_ADMIN,)))
+        self.assertEqual(
+            permissions,
+            {
+                PERMISSION_READ,
+                PERMISSION_MANAGE_DEMANDS,
+                PERMISSION_APPROVE_DEMANDS,
+                PERMISSION_MANAGE_PLANNING,
+                PERMISSION_MANAGE_WORK_PACKAGES,
+                PERMISSION_MANAGE_RESOURCES,
+                PERMISSION_SYNC_PROJECTS,
+                PERMISSION_ADMIN_USERS,
+            },
+        )
+
+    def test_role_boundaries_are_explicit(self) -> None:
+        technician = set(permissions_for_roles((ROLE_TECHNICIAN,)))
+        manager = set(permissions_for_roles((ROLE_MANAGER,)))
+        project_manager = set(permissions_for_roles((ROLE_PROJECT_MANAGER,)))
+        coordinator = set(permissions_for_roles((ROLE_COORDINATOR,)))
+
+        self.assertEqual(technician, {PERMISSION_READ})
+        self.assertIn(PERMISSION_APPROVE_DEMANDS, manager)
+        self.assertNotIn(PERMISSION_MANAGE_DEMANDS, manager)
+        self.assertIn(PERMISSION_MANAGE_DEMANDS, project_manager)
+        self.assertIn(PERMISSION_MANAGE_WORK_PACKAGES, project_manager)
+        self.assertNotIn(PERMISSION_MANAGE_PLANNING, project_manager)
+        self.assertIn(PERMISSION_MANAGE_PLANNING, coordinator)
+        self.assertIn(PERMISSION_MANAGE_RESOURCES, coordinator)
+        self.assertNotIn(PERMISSION_SYNC_PROJECTS, coordinator)
+
+    def test_invalid_role_is_rejected(self) -> None:
+        with self.assertRaises(ValueError):
+            AuthPrincipal.from_roles(
+                local_user_id=None,
+                issuer="issuer",
+                subject="subject",
+                display_name="Test",
+                email=None,
+                roles=("SUPERUSER",),
+                auth_mode="test",
+            )
+
+    def test_http_permission_mapping_is_fail_closed_for_mutations(self) -> None:
+        self.assertEqual(required_permission("GET", "/api/v1/projects"), PERMISSION_READ)
+        self.assertEqual(
+            required_permission("POST", "/api/v1/demands/DMO-1/approve"),
+            PERMISSION_APPROVE_DEMANDS,
+        )
+        self.assertEqual(
+            required_permission("POST", "/api/v1/integrations/acumatica/projects/sync"),
+            PERMISSION_SYNC_PROJECTS,
+        )
+        self.assertEqual(
+            required_permission("PATCH", "/api/v1/resources/r-1"),
+            PERMISSION_MANAGE_RESOURCES,
+        )
+        self.assertEqual(
+            required_permission("POST", "/api/v1/future-command"),
+            "__unassigned_mutation__",
+        )
+        self.assertIsNone(required_permission("GET", "/api/v1/auth/me"))
+        self.assertIsNone(required_permission("GET", "/health"))
+
+
+if __name__ == "__main__":
+    unittest.main()

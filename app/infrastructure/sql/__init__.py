@@ -18,6 +18,8 @@ from .demand_period_models import (
 from .demand_period_repository import SqlDemandPeriodRepository
 from .demand_repository import SqlDemandRepository
 from .idempotency import CommandIdempotencyReceipt, SqlCommandIdempotencyAdapter
+from .identity_models import AppUser
+from .identity_repository import SqlUserIdentityRepository
 from .models import (
     ORIGIN_AD_HOC,
     ORIGIN_QUICK_SHIFT,
@@ -50,6 +52,7 @@ from .session import (
 from .work_package_repository import SqlWorkPackageRepository
 
 __all__ = [
+    "AppUser",
     "Base",
     "CommandIdempotencyReceipt",
     "NAMING_CONVENTION",
@@ -75,6 +78,7 @@ __all__ = [
     "SqlResourceAdminRepository",
     "SqlSegmentRepository",
     "SqlSessionFactory",
+    "SqlUserIdentityRepository",
     "SqlWorkPackageRepository",
     "WORKFORCE_REQUEST_NUMBER_INDEX",
     "WorkPackage",

@@ -3,10 +3,15 @@ from __future__ import annotations
 import unittest
 from unittest.mock import patch
 
+from app.application.security import ROLE_ADMIN, ROLE_COORDINATOR
 from app.server.runtime import (
     ACTOR_NAME_ENV,
+    ALLOW_LOCAL_AUTH_NETWORK_ENV,
+    AUTH_MODE_ENV,
     DATABASE_URL_ENV,
     HOST_ENV,
+    LOCAL_AUTH_NAME_ENV,
+    LOCAL_AUTH_ROLES_ENV,
     LOG_LEVEL_ENV,
     PORT_ENV,
     ServerConfigurationError,
@@ -30,8 +35,10 @@ class ServerRuntimeTests(unittest.TestCase):
         self.assertEqual(settings.port, 8000)
         self.assertEqual(settings.log_level, "info")
         self.assertEqual(settings.actor_name, "api")
+        self.assertEqual(settings.auth_principal.auth_mode, "local")
+        self.assertEqual(settings.auth_principal.roles, (ROLE_ADMIN,))
 
-    def test_environment_overrides_server_values(self) -> None:
+    def test_environment_overrides_server_values_and_local_roles(self) -> None:
         settings = ServerSettings.from_environment(
             {
                 DATABASE_URL_ENV: "sqlite+pysqlite:///:memory:",
@@ -39,12 +46,46 @@ class ServerRuntimeTests(unittest.TestCase):
                 PORT_ENV: "8123",
                 LOG_LEVEL_ENV: "WARNING",
                 ACTOR_NAME_ENV: "local-admin",
+                LOCAL_AUTH_NAME_ENV: "Coordination locale",
+                LOCAL_AUTH_ROLES_ENV: ROLE_COORDINATOR,
+                ALLOW_LOCAL_AUTH_NETWORK_ENV: "true",
             }
         )
         self.assertEqual(settings.host, "0.0.0.0")
         self.assertEqual(settings.port, 8123)
         self.assertEqual(settings.log_level, "warning")
         self.assertEqual(settings.actor_name, "local-admin")
+        self.assertEqual(settings.auth_principal.display_name, "Coordination locale")
+        self.assertEqual(settings.auth_principal.roles, (ROLE_COORDINATOR,))
+
+    def test_local_auth_refuses_network_bind_without_explicit_override(self) -> None:
+        with self.assertRaises(ServerConfigurationError) as caught:
+            ServerSettings.from_environment(
+                {
+                    DATABASE_URL_ENV: "sqlite+pysqlite:///:memory:",
+                    HOST_ENV: "0.0.0.0",
+                }
+            )
+        self.assertIn(ALLOW_LOCAL_AUTH_NETWORK_ENV, str(caught.exception))
+
+    def test_non_local_auth_mode_is_not_silently_accepted(self) -> None:
+        with self.assertRaises(ServerConfigurationError) as caught:
+            ServerSettings.from_environment(
+                {
+                    DATABASE_URL_ENV: "sqlite+pysqlite:///:memory:",
+                    AUTH_MODE_ENV: "oidc",
+                }
+            )
+        self.assertIn(AUTH_MODE_ENV, str(caught.exception))
+
+    def test_invalid_local_role_is_rejected(self) -> None:
+        with self.assertRaises(ServerConfigurationError):
+            ServerSettings.from_environment(
+                {
+                    DATABASE_URL_ENV: "sqlite+pysqlite:///:memory:",
+                    LOCAL_AUTH_ROLES_ENV: "SUPERUSER",
+                }
+            )
 
     def test_invalid_port_is_rejected(self) -> None:
         for value in ("abc", "0", "65536"):

@@ -19,6 +19,7 @@ DOMAIN_ENGINE = ROOT / "app" / "domain" / "planning_engine.py"
 DAY = date(2026, 8, 26)
 
 EXPECTED_TABLES = {
+    "app_users",
     "command_idempotency_receipts",
     "projects",
     "resources",
@@ -44,6 +45,7 @@ class SqlSchemaTests(unittest.TestCase):
         period_requirements = Base.metadata.tables["workforce_request_period_requirements"].c
         availability = Base.metadata.tables["resource_availability_rules"].c
         idempotency = Base.metadata.tables["command_idempotency_receipts"].c
+        users = Base.metadata.tables["app_users"].c
 
         self.assertFalse(requirements.project_id.nullable)
         self.assertTrue(requirements.workforce_request_id.nullable)
@@ -60,6 +62,12 @@ class SqlSchemaTests(unittest.TestCase):
         self.assertFalse(idempotency.idempotency_key.nullable)
         self.assertFalse(idempotency.request_fingerprint.nullable)
         self.assertFalse(idempotency.response_json.nullable)
+        self.assertFalse(users.issuer.nullable)
+        self.assertFalse(users.subject.nullable)
+        self.assertFalse(users.display_name.nullable)
+        self.assertTrue(users.email.nullable)
+        self.assertFalse(users.roles_json.nullable)
+        self.assertFalse(users.active.nullable)
 
     def test_metadata_creates_all_tables_on_sqlite_memory(self) -> None:
         engine = create_engine("sqlite+pysqlite:///:memory:")
