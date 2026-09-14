@@ -6,6 +6,8 @@ from fastapi import APIRouter, Depends, Header, status
 
 from ..application import (
     ApplicationFacade,
+    AvailabilityRuleCreateCommand,
+    AvailabilityRuleUpdateCommand,
     DemandAlternativeSelectCommand,
     DemandApproveCommand,
     DemandCancelCommand,
@@ -22,6 +24,8 @@ from ..application import (
     ManualAllocationUpdateCommand,
     PlanningRebuildCommand,
     QuickShiftCreateCommand,
+    ResourceCreateCommand,
+    ResourceUpdateCommand,
     SegmentAssignCommand,
     SegmentCancelCommand,
     SegmentCreateCommand,
@@ -30,6 +34,8 @@ from ..application import (
     WorkPackageUpdateCommand,
 )
 from .schemas import (
+    AvailabilityRuleCreateRequest,
+    AvailabilityRuleUpdateRequest,
     DemandAlternativeSelectionRequest,
     DemandCreateRequest,
     DemandPeriodsReplaceRequest,
@@ -38,6 +44,8 @@ from .schemas import (
     OptionalCommentRequest,
     QuickShiftRequest,
     RequiredCommentRequest,
+    ResourceCreateRequest,
+    ResourceUpdateRequest,
     SegmentAssignRequest,
     SegmentCreateRequest,
     SegmentUpdateRequest,
@@ -70,6 +78,86 @@ def build_command_router(
     idempotency_dependency: IdempotencyProvider,
 ) -> APIRouter:
     router = APIRouter(prefix="/api/v1", tags=["commands"])
+
+    @router.post("/resources", status_code=status.HTTP_201_CREATED)
+    def create_resource(
+        body: ResourceCreateRequest,
+        idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+        facade: ApplicationFacade = Depends(facade_dependency),
+        idempotency: IdempotentCommandExecutor = Depends(idempotency_dependency),
+    ) -> dict[str, Any]:
+        return idempotency.execute(
+            scope="resource.create",
+            key=idempotency_key,
+            request_payload=_json_body(body),
+            action=lambda: _payload(
+                facade.create_resource(ResourceCreateCommand(**body.model_dump()))
+            ),
+        )
+
+    @router.patch("/resources/{resource_id}")
+    def update_resource(
+        resource_id: str,
+        body: ResourceUpdateRequest,
+        facade: ApplicationFacade = Depends(facade_dependency),
+    ) -> dict[str, Any]:
+        return _payload(
+            facade.update_resource(
+                ResourceUpdateCommand(
+                    resource_id=resource_id,
+                    **body.model_dump(exclude_unset=True),
+                )
+            )
+        )
+
+    @router.post("/resources/{resource_id}/deactivate")
+    def deactivate_resource(
+        resource_id: str,
+        facade: ApplicationFacade = Depends(facade_dependency),
+    ) -> dict[str, Any]:
+        return _payload(
+            facade.update_resource(ResourceUpdateCommand(resource_id=resource_id, active=False))
+        )
+
+    @router.post("/availability-rules", status_code=status.HTTP_201_CREATED)
+    def create_availability_rule(
+        body: AvailabilityRuleCreateRequest,
+        idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+        facade: ApplicationFacade = Depends(facade_dependency),
+        idempotency: IdempotentCommandExecutor = Depends(idempotency_dependency),
+    ) -> dict[str, Any]:
+        return idempotency.execute(
+            scope="availability_rule.create",
+            key=idempotency_key,
+            request_payload=_json_body(body),
+            action=lambda: _payload(
+                facade.create_availability_rule(
+                    AvailabilityRuleCreateCommand(**body.model_dump())
+                )
+            ),
+        )
+
+    @router.patch("/availability-rules/{rule_id}")
+    def update_availability_rule(
+        rule_id: str,
+        body: AvailabilityRuleUpdateRequest,
+        facade: ApplicationFacade = Depends(facade_dependency),
+    ) -> dict[str, Any]:
+        return _payload(
+            facade.update_availability_rule(
+                AvailabilityRuleUpdateCommand(
+                    rule_id=rule_id,
+                    **body.model_dump(exclude_unset=True),
+                )
+            )
+        )
+
+    @router.post("/availability-rules/{rule_id}/deactivate")
+    def deactivate_availability_rule(
+        rule_id: str,
+        facade: ApplicationFacade = Depends(facade_dependency),
+    ) -> dict[str, Any]:
+        return _payload(facade.deactivate_availability_rule(rule_id))
 
     @router.post("/work-packages", status_code=status.HTTP_201_CREATED)
     def create_work_package(

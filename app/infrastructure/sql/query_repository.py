@@ -88,6 +88,7 @@ def _resource_read_model(resource: Resource) -> ResourceReadModel:
     return ResourceReadModel(
         id=resource.id,
         name=resource.name,
+        email=_optional_text(resource.email),
         resource_class=_optional_text(resource.resource_class),
         competencies=_optional_text(resource.competencies),
         note=_optional_text(resource.note),

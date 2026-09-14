@@ -13,6 +13,7 @@ from ..application import (
     PlannerQueryPort,
     PlanningSnapshotReadModel,
     ProjectReadModel,
+    ResourceAvailabilityRuleReadModel,
     ResourceReadModel,
     SegmentReadModel,
     ShiftReadModel,
@@ -61,6 +62,21 @@ def build_read_router(query_dependency: QueryProvider) -> APIRouter:
         queries: PlannerQueryPort = Depends(query_dependency),
     ) -> list[ResourceReadModel]:
         return list(queries.list_resources(active_only=active_only))
+
+    @router.get("/availability-rules")
+    def list_availability_rules(
+        resource_id: str | None = Query(default=None),
+        include_global: bool = True,
+        active_only: bool = True,
+        queries: PlannerQueryPort = Depends(query_dependency),
+    ) -> list[ResourceAvailabilityRuleReadModel]:
+        return list(
+            queries.list_availability_rules(
+                resource_id=resource_id,
+                include_global=include_global,
+                active_only=active_only,
+            )
+        )
 
     @router.get("/demands")
     def list_demands(
