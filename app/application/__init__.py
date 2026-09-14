@@ -60,6 +60,7 @@ from .query_models import (
     PendingDemandLoadReadModel,
     PlanningSnapshotReadModel,
     ProjectReadModel,
+    ResourceAvailabilityRuleReadModel,
     ResourceReadModel,
     ShiftReadModel,
     WorkPackageReadModel,
@@ -72,6 +73,20 @@ from .repository_ports import (
     PlanningReadRepositoryPort,
     SegmentRepositoryPort,
     WorkPackageRepositoryPort,
+)
+from .resource_admin import (
+    AVAILABILITY_HOLIDAY,
+    AVAILABILITY_STANDARD,
+    AVAILABILITY_TYPES,
+    AVAILABILITY_VACATION,
+    AvailabilityRuleCreateCommand,
+    AvailabilityRuleMutationResult,
+    AvailabilityRuleUpdateCommand,
+    ResourceAdminRepositoryPort,
+    ResourceAdminService,
+    ResourceCreateCommand,
+    ResourceMutationResult,
+    ResourceUpdateCommand,
 )
 from .results import (
     AllocationMutationResult,
@@ -87,6 +102,10 @@ from .results import (
 from .work_package_service import WorkPackageService
 
 __all__ = [
+    "AVAILABILITY_HOLIDAY",
+    "AVAILABILITY_STANDARD",
+    "AVAILABILITY_TYPES",
+    "AVAILABILITY_VACATION",
     "AllocationCommandPort",
     "AllocationMutationResult",
     "AllocationService",
@@ -98,6 +117,9 @@ __all__ = [
     "ApplicationResult",
     "ApplicationValidationError",
     "ApprovedDemandSyncPort",
+    "AvailabilityRuleCreateCommand",
+    "AvailabilityRuleMutationResult",
+    "AvailabilityRuleUpdateCommand",
     "CommandIdempotencyPort",
     "DemandAlternativeSelectCommand",
     "DemandAlternativeSelectionResult",
@@ -136,7 +158,13 @@ __all__ = [
     "ProjectSyncService",
     "QuickShiftCreateCommand",
     "QuickShiftCreatedResult",
+    "ResourceAdminRepositoryPort",
+    "ResourceAdminService",
+    "ResourceAvailabilityRuleReadModel",
+    "ResourceCreateCommand",
+    "ResourceMutationResult",
     "ResourceReadModel",
+    "ResourceUpdateCommand",
     "SegmentAssignCommand",
     "SegmentCancelCommand",
     "SegmentCreateCommand",
