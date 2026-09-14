@@ -18,6 +18,8 @@ export type SegmentWrite = {
   confirmation: string | null;
 };
 
+export type SegmentUpdateWrite = Partial<SegmentWrite>;
+
 export type SegmentMutationResult = {
   segment_id: string;
   action: string;
@@ -102,7 +104,7 @@ export function createSegment(payload: SegmentWrite, idempotencyKey: string) {
   );
 }
 
-export function updateSegment(segmentId: string, payload: SegmentWrite) {
+export function updateSegment(segmentId: string, payload: SegmentUpdateWrite) {
   return sendJson<SegmentMutationResult>(
     `/api/v1/segments/${encodeURIComponent(segmentId)}`,
     "PATCH",
