@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, time
 
 from .read_models import DemandPeriodReadModel, DemandReadModel, SegmentReadModel
 
@@ -36,12 +36,28 @@ class WorkPackageReadModel:
 class ResourceReadModel:
     id: str
     name: str
+    email: str | None = None
     resource_class: str | None = None
     competencies: str | None = None
     note: str | None = None
     active: bool = True
     sort_order: int = 0
     external_id: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ResourceAvailabilityRuleReadModel:
+    id: str
+    availability_type: str
+    resource_id: str | None = None
+    resource_name: str | None = None
+    start_date: date | None = None
+    end_date: date | None = None
+    weekdays: str | None = None
+    start_time: time | None = None
+    end_time: time | None = None
+    note: str | None = None
+    active: bool = True
 
 
 @dataclass(frozen=True, slots=True)
