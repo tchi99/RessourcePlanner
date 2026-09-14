@@ -38,6 +38,14 @@ LEGACY_ENTRYPOINTS = ("main.py", "Lancer_Application.bat", "Installer.bat")
 MIGRATION_TOOLS = ("tools/cutover_excel_to_sql.py",)
 VERSIONED_MODULE = re.compile(r"^app/v\d.*\.py$", re.IGNORECASE)
 
+# Ratchet, not an architecture exemption. This exact bridge already existed before #208
+# and is intentionally visible until its NiceGUI callers are retired/moved. No new
+# canonical file or imported prefix may be added here casually: removing this baseline
+# is one of the explicit cutover goals.
+KNOWN_BOUNDARY_DEBT: dict[str, tuple[str, ...]] = {
+    "app/application/runtime_services.py": ("app.infrastructure.excel",),
+}
+
 
 @dataclass(frozen=True, slots=True)
 class BoundaryViolation:
@@ -59,7 +67,26 @@ class Inventory:
     runtime_steps: tuple[tuple[str, str], ...]
     boundary_violations: tuple[BoundaryViolation, ...]
 
+    @property
+    def unexpected_boundary_violations(self) -> tuple[BoundaryViolation, ...]:
+        return tuple(item for item in self.boundary_violations if not _is_known_debt(item))
+
+    @property
+    def known_boundary_debt(self) -> tuple[BoundaryViolation, ...]:
+        return tuple(item for item in self.boundary_violations if _is_known_debt(item))
+
     def as_dict(self) -> dict[str, object]:
+        def serialize(items: tuple[BoundaryViolation, ...]) -> list[dict[str, object]]:
+            return [
+                {
+                    "path": item.path,
+                    "line": item.line,
+                    "imported_module": item.imported_module,
+                    "reason": item.reason,
+                }
+                for item in items
+            ]
+
         return {
             "legacy_entrypoints": list(self.legacy_entrypoints),
             "migration_tools": list(self.migration_tools),
@@ -72,15 +99,8 @@ class Inventory:
                 {"name": name, "category": category}
                 for name, category in self.runtime_steps
             ],
-            "boundary_violations": [
-                {
-                    "path": item.path,
-                    "line": item.line,
-                    "imported_module": item.imported_module,
-                    "reason": item.reason,
-                }
-                for item in self.boundary_violations
-            ],
+            "known_boundary_debt": serialize(self.known_boundary_debt),
+            "unexpected_boundary_violations": serialize(self.unexpected_boundary_violations),
         }
 
 
@@ -108,6 +128,14 @@ def _resolve_import_from(current_package: str, node: ast.ImportFrom) -> str:
 
 def _app_import_allowed(target: str, allowed_prefixes: tuple[str, ...]) -> bool:
     return any(target == prefix or target.startswith(prefix + ".") for prefix in allowed_prefixes)
+
+
+def _is_known_debt(item: BoundaryViolation) -> bool:
+    prefixes = KNOWN_BOUNDARY_DEBT.get(item.path, ())
+    return any(
+        item.imported_module == prefix or item.imported_module.startswith(prefix + ".")
+        for prefix in prefixes
+    )
 
 
 def _scan_python_boundary(
@@ -267,7 +295,8 @@ def render_markdown(inventory: Inventory) -> str:
         f"- NiceGUI/UI modules: **{len(inventory.ui_modules)}**",
         f"- Excel-named/adaptor modules: **{len(inventory.excel_modules)}**",
         f"- Transitional runtime composition steps: **{len(inventory.runtime_steps)}**",
-        f"- Canonical boundary violations: **{len(inventory.boundary_violations)}**",
+        f"- Known canonical boundary debt: **{len(inventory.known_boundary_debt)}**",
+        f"- Unexpected canonical boundary violations: **{len(inventory.unexpected_boundary_violations)}**",
         "",
         "## Runtime composition categories",
     ]
@@ -292,14 +321,23 @@ def render_markdown(inventory: Inventory) -> str:
         else:
             lines.append("- none")
 
-    lines.extend(("", "## Canonical boundary violations"))
-    if inventory.boundary_violations:
-        for item in inventory.boundary_violations:
+    lines.extend(("", "## Known canonical boundary debt"))
+    if inventory.known_boundary_debt:
+        for item in inventory.known_boundary_debt:
+            lines.append(
+                f"- `{item.path}:{item.line}` → `{item.imported_module}` — baseline to remove"
+            )
+    else:
+        lines.append("- none")
+
+    lines.extend(("", "## Unexpected canonical boundary violations"))
+    if inventory.unexpected_boundary_violations:
+        for item in inventory.unexpected_boundary_violations:
             lines.append(
                 f"- `{item.path}:{item.line}` → `{item.imported_module}` — {item.reason}"
             )
     else:
-        lines.append("- none — Web/SQL canonical boundaries are isolated from V1 imports")
+        lines.append("- none — no regression beyond the explicit cutover baseline")
     return "\n".join(lines) + "\n"
 
 
@@ -312,7 +350,7 @@ def main() -> int:
     parser.add_argument(
         "--check-boundaries",
         action="store_true",
-        help="Return exit code 1 when canonical Web/SQL code imports V1/forbidden modules.",
+        help="Return exit code 1 for boundary regressions beyond the explicit known-debt baseline.",
     )
     args = parser.parse_args()
 
@@ -322,7 +360,7 @@ def main() -> int:
     else:
         print(render_markdown(inventory), end="")
 
-    if args.check_boundaries and inventory.boundary_violations:
+    if args.check_boundaries and inventory.unexpected_boundary_violations:
         return 1
     return 0
 
