@@ -2,15 +2,9 @@
 setlocal
 cd /d "%~dp0"
 
-if not exist ".venv\Scripts\python.exe" (
-    echo L'application n'est pas encore installee.
-    call Installer.bat
-    if errorlevel 1 exit /b 1
-)
+echo ATTENTION : Lancer_Application.bat est maintenant un alias de compatibilite V1 LEGACY.
+echo Utilise Lancer_Web.bat pour le runtime Web / SQL cible.
+echo.
 
-".venv\Scripts\python.exe" main.py
-if errorlevel 1 (
-    echo.
-    echo L'application s'est arretee avec une erreur.
-    pause
-)
+call Lancer_Application_Legacy.bat
+exit /b %errorlevel%
