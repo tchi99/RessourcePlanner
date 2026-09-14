@@ -153,10 +153,12 @@ export default function ProjectsPage() {
             <p>Non configurée sur ce serveur. Le portefeuille local SQL demeure entièrement utilisable.</p>
           )}
         </div>
-        {integration?.configured && canSyncProjects && (
-          <button type="button" onClick={synchronize} disabled={syncing || loading}>
-            {syncing ? "Synchronisation…" : "Synchroniser les projets"}
-          </button>
+        {integration?.configured && (
+          canSyncProjects ? (
+            <button type="button" onClick={synchronize} disabled={syncing || loading}>
+              {syncing ? "Synchronisation…" : "Synchroniser les projets"}
+            </button>
+          ) : null
         )}
       </section>
 
