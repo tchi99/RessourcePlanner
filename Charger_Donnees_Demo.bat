@@ -2,9 +2,9 @@
 setlocal
 cd /d "%~dp0"
 
-if not exist ".venv\Scripts\python.exe" (
-    echo L'environnement Python .venv est introuvable.
-    echo Lance Installer.bat avant de charger les donnees demo.
+if not exist ".venv-web\Scripts\python.exe" (
+    echo L'environnement Python Web .venv-web est introuvable.
+    echo Lance Installer_Web.bat avant de charger les donnees demo.
     pause
     exit /b 1
 )
@@ -12,7 +12,7 @@ if not exist ".venv\Scripts\python.exe" (
 set "RESOURCEPLANNER_DATABASE_URL=sqlite:///./resourceplanner_server.db"
 
 echo Preparation de la base SQLite locale...
-".venv\Scripts\python.exe" -m alembic upgrade head
+".venv-web\Scripts\python.exe" -m alembic upgrade head
 if errorlevel 1 (
     echo.
     echo Echec des migrations Alembic.
@@ -22,7 +22,7 @@ if errorlevel 1 (
 
 echo.
 echo Chargement des donnees de demonstration...
-".venv\Scripts\python.exe" tools\seed_demo_data.py
+".venv-web\Scripts\python.exe" tools\seed_demo_data.py
 set EXIT_CODE=%errorlevel%
 
 if not "%EXIT_CODE%"=="0" (
@@ -34,6 +34,7 @@ if not "%EXIT_CODE%"=="0" (
 
 echo.
 echo Donnees demo pretes dans resourceplanner_server.db.
-echo Tu peux maintenant lancer Lancer_Serveur.bat puis React avec npm run dev.
+echo Tu peux maintenant lancer Lancer_Web.bat.
+echo Pour le developpement React avec Vite, Lancer_Serveur.bat + npm run dev restent disponibles.
 pause
 exit /b 0
