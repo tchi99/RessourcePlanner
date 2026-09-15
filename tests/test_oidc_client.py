@@ -8,7 +8,7 @@ import unittest
 import httpx
 from authlib.jose import JsonWebKey, JsonWebToken
 
-from app.infrastructure.oidc_client import (
+from app.infrastructure.acumatica.oidc import (
     OidcClient,
     OidcClientSettings,
     OidcProtocolError,
