@@ -153,7 +153,7 @@ def _oidc_settings(values: Mapping[str, str]) -> OidcClientSettings:
     return OidcClientSettings(
         discovery_url=discovery_url,
         client_id=client_id,
-        client_secret=_text(values.get(OIDC_CLIENT_SECRET_ENV)) or None,
+        client_credential=_text(values.get(OIDC_CLIENT_SECRET_ENV)) or None,
         redirect_uri=redirect_uri,
         scopes=scopes,
     )
