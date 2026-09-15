@@ -35,7 +35,15 @@ function Placeholder({ view }: { view: View }) {
 }
 
 export default function App() {
-  const { principal, loading: authLoading, error: authError, can } = useAuth();
+  const {
+    principal,
+    loading: authLoading,
+    error: authError,
+    authenticationRequired,
+    can,
+    login,
+    logout,
+  } = useAuth();
   const [view, setView] = useState<View>("planning");
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
@@ -50,6 +58,21 @@ export default function App() {
         <section className="placeholder-panel">
           <span className="eyebrow">Authentification</span>
           <h2>Chargement de votre session…</h2>
+        </section>
+      </main>
+    );
+  }
+
+  if (authenticationRequired || (!principal && !authError)) {
+    return (
+      <main className="main-content">
+        <section className="placeholder-panel">
+          <span className="eyebrow">Authentification</span>
+          <h2>Connexion requise</h2>
+          <p>Votre session RessourcePlanner est absente ou expirée.</p>
+          <div className="week-navigation">
+            <button type="button" onClick={login}>Se connecter avec Acumatica</button>
+          </div>
         </section>
       </main>
     );
@@ -100,6 +123,11 @@ export default function App() {
         <div className="sidebar-footer">
           <span>{principal.display_name}</span>
           <strong>{principal.roles.join(" · ")}</strong>
+          {principal.auth_mode === "oidc" && (
+            <button type="button" onClick={() => void logout().catch(() => undefined)}>
+              Déconnexion
+            </button>
+          )}
         </div>
       </aside>
 

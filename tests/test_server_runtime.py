@@ -13,6 +13,11 @@ from app.server.runtime import (
     LOCAL_AUTH_NAME_ENV,
     LOCAL_AUTH_ROLES_ENV,
     LOG_LEVEL_ENV,
+    OIDC_CLIENT_ID_ENV,
+    OIDC_DISCOVERY_URL_ENV,
+    OIDC_REDIRECT_URI_ENV,
+    OIDC_SCOPES_ENV,
+    OIDC_SECURE_COOKIE_ENV,
     PORT_ENV,
     ServerConfigurationError,
     ServerSettings,
@@ -35,6 +40,8 @@ class ServerRuntimeTests(unittest.TestCase):
         self.assertEqual(settings.port, 8000)
         self.assertEqual(settings.log_level, "info")
         self.assertEqual(settings.actor_name, "api")
+        self.assertEqual(settings.auth_mode, "local")
+        assert settings.auth_principal is not None
         self.assertEqual(settings.auth_principal.auth_mode, "local")
         self.assertEqual(settings.auth_principal.roles, (ROLE_ADMIN,))
 
@@ -55,6 +62,7 @@ class ServerRuntimeTests(unittest.TestCase):
         self.assertEqual(settings.port, 8123)
         self.assertEqual(settings.log_level, "warning")
         self.assertEqual(settings.actor_name, "local-admin")
+        assert settings.auth_principal is not None
         self.assertEqual(settings.auth_principal.display_name, "Coordination locale")
         self.assertEqual(settings.auth_principal.roles, (ROLE_COORDINATOR,))
 
@@ -68,12 +76,60 @@ class ServerRuntimeTests(unittest.TestCase):
             )
         self.assertIn(ALLOW_LOCAL_AUTH_NETWORK_ENV, str(caught.exception))
 
-    def test_non_local_auth_mode_is_not_silently_accepted(self) -> None:
+    def test_oidc_mode_requires_complete_configuration(self) -> None:
         with self.assertRaises(ServerConfigurationError) as caught:
             ServerSettings.from_environment(
                 {
                     DATABASE_URL_ENV: "sqlite+pysqlite:///:memory:",
                     AUTH_MODE_ENV: "oidc",
+                    OIDC_CLIENT_ID_ENV: "client-only",
+                }
+            )
+        self.assertIn(OIDC_DISCOVERY_URL_ENV, str(caught.exception))
+        self.assertIn(OIDC_REDIRECT_URI_ENV, str(caught.exception))
+
+    def test_oidc_mode_builds_separate_identity_configuration(self) -> None:
+        settings = ServerSettings.from_environment(
+            {
+                DATABASE_URL_ENV: "sqlite+pysqlite:///:memory:",
+                AUTH_MODE_ENV: "oidc",
+                OIDC_DISCOVERY_URL_ENV: "https://identity.example.invalid/.well-known/openid-configuration",
+                OIDC_CLIENT_ID_ENV: "resourceplanner",
+                OIDC_REDIRECT_URI_ENV: "https://planner.example.invalid/api/v1/auth/callback",
+                OIDC_SCOPES_ENV: "openid profile email",
+                OIDC_SECURE_COOKIE_ENV: "true",
+                HOST_ENV: "0.0.0.0",
+            }
+        )
+
+        self.assertEqual(settings.auth_mode, "oidc")
+        self.assertIsNone(settings.auth_principal)
+        self.assertIsNotNone(settings.oidc)
+        assert settings.oidc is not None
+        self.assertEqual(settings.oidc.client_id, "resourceplanner")
+        self.assertEqual(settings.oidc.scopes, ("openid", "profile", "email"))
+        self.assertTrue(settings.oidc_secure_cookie)
+
+    def test_oidc_scopes_must_include_openid(self) -> None:
+        with self.assertRaises(ServerConfigurationError) as caught:
+            ServerSettings.from_environment(
+                {
+                    DATABASE_URL_ENV: "sqlite+pysqlite:///:memory:",
+                    AUTH_MODE_ENV: "oidc",
+                    OIDC_DISCOVERY_URL_ENV: "https://identity.example.invalid/.well-known/openid-configuration",
+                    OIDC_CLIENT_ID_ENV: "resourceplanner",
+                    OIDC_REDIRECT_URI_ENV: "https://planner.example.invalid/api/v1/auth/callback",
+                    OIDC_SCOPES_ENV: "profile email",
+                }
+            )
+        self.assertIn("openid", str(caught.exception))
+
+    def test_invalid_auth_mode_is_rejected(self) -> None:
+        with self.assertRaises(ServerConfigurationError) as caught:
+            ServerSettings.from_environment(
+                {
+                    DATABASE_URL_ENV: "sqlite+pysqlite:///:memory:",
+                    AUTH_MODE_ENV: "header",
                 }
             )
         self.assertIn(AUTH_MODE_ENV, str(caught.exception))

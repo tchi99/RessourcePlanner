@@ -27,6 +27,24 @@ class ReactAuthContextContractTests(unittest.TestCase):
         self.assertIn("authLoading", app)
         self.assertIn("authError", app)
 
+    def test_oidc_login_and_logout_are_same_origin_server_actions(self) -> None:
+        context = (FRONTEND / "AuthContext.tsx").read_text(encoding="utf-8")
+        api = (FRONTEND / "auth-api.ts").read_text(encoding="utf-8")
+        app = (FRONTEND / "App.tsx").read_text(encoding="utf-8")
+
+        self.assertIn("/api/v1/auth/login", api)
+        self.assertIn("/api/v1/auth/logout", api)
+        self.assertIn('credentials: "include"', api)
+        self.assertIn('reason.code === "authentication_required"', context)
+        self.assertIn("window.location.assign(getLoginUrl())", context)
+        self.assertIn("Se connecter avec Acumatica", app)
+        self.assertIn("Déconnexion", app)
+        self.assertIn('principal.auth_mode === "oidc"', app)
+        self.assertNotIn("access_token", context)
+        self.assertNotIn("id_token", context)
+        self.assertNotIn("localStorage", context)
+        self.assertNotIn("sessionStorage", context)
+
     def test_mutating_surfaces_consume_backend_permissions(self) -> None:
         projects = (FRONTEND / "ProjectsPage.tsx").read_text(encoding="utf-8")
         workspace = (FRONTEND / "DemandsWorkspace.tsx").read_text(encoding="utf-8")

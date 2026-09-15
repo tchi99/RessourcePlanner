@@ -20,6 +20,8 @@ DAY = date(2026, 8, 26)
 
 EXPECTED_TABLES = {
     "app_users",
+    "auth_login_transactions",
+    "auth_sessions",
     "command_idempotency_receipts",
     "projects",
     "resources",
@@ -46,6 +48,8 @@ class SqlSchemaTests(unittest.TestCase):
         availability = Base.metadata.tables["resource_availability_rules"].c
         idempotency = Base.metadata.tables["command_idempotency_receipts"].c
         users = Base.metadata.tables["app_users"].c
+        login_transactions = Base.metadata.tables["auth_login_transactions"].c
+        auth_sessions = Base.metadata.tables["auth_sessions"].c
 
         self.assertFalse(requirements.project_id.nullable)
         self.assertTrue(requirements.workforce_request_id.nullable)
@@ -68,6 +72,15 @@ class SqlSchemaTests(unittest.TestCase):
         self.assertTrue(users.email.nullable)
         self.assertFalse(users.roles_json.nullable)
         self.assertFalse(users.active.nullable)
+        self.assertFalse(login_transactions.state_hash.nullable)
+        self.assertFalse(login_transactions.nonce.nullable)
+        self.assertFalse(login_transactions.code_verifier.nullable)
+        self.assertFalse(login_transactions.expires_at.nullable)
+        self.assertTrue(login_transactions.consumed_at.nullable)
+        self.assertFalse(auth_sessions.token_hash.nullable)
+        self.assertFalse(auth_sessions.user_id.nullable)
+        self.assertFalse(auth_sessions.expires_at.nullable)
+        self.assertTrue(auth_sessions.revoked_at.nullable)
 
     def test_metadata_creates_all_tables_on_sqlite_memory(self) -> None:
         engine = create_engine("sqlite+pysqlite:///:memory:")

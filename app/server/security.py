@@ -23,14 +23,24 @@ AuthResolverResult = AuthPrincipal | None | Awaitable[AuthPrincipal | None]
 AuthResolver = Callable[[Request], AuthResolverResult]
 
 _PUBLIC_PREFIXES = ("/assets/",)
-_PUBLIC_PATHS = {"/", "/health", "/docs", "/docs/", "/openapi.json", "/redoc", "/favicon.ico"}
+_PUBLIC_PATHS = {
+    "/",
+    "/health",
+    "/docs",
+    "/docs/",
+    "/openapi.json",
+    "/redoc",
+    "/favicon.ico",
+    "/api/v1/auth/login",
+    "/api/v1/auth/callback",
+}
 
 
 def required_permission(method: str, path: str) -> str | None:
     verb = str(method).upper()
     if not path.startswith("/api/v1/"):
         return None
-    if path == "/api/v1/auth/me":
+    if path in {"/api/v1/auth/me", "/api/v1/auth/logout"}:
         return None
     if verb == "GET":
         return PERMISSION_READ

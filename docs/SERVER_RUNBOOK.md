@@ -9,7 +9,12 @@ Deux modes utilisent le même backend :
 1. **API seule** : `python -m app.server`, sans frontend si `RESOURCEPLANNER_FRONTEND_DIST` est absente;
 2. **Web autonome** : `Lancer_Web.bat`, qui sert le build React et l'API sur la même origine.
 
-La validation finale SQL Server reste à faire dans #162. Tant que l'authentification Acumatica/OIDC n'est pas ajoutée, ne pas exposer le runtime sur un réseau non maîtrisé.
+Deux modes d'identité sont disponibles :
+
+- `local` pour le développement/test explicite;
+- `oidc` pour l'Authorization Code Flow vers Acumatica avec PKCE S256 et session serveur.
+
+La validation finale SQL Server reste à faire dans #162. L'implémentation OIDC est couverte par un fournisseur simulé en tests; la validation contre l'instance Acumatica réelle reste dépendante de ses paramètres issuer/client/redirect.
 
 ## 1. Dépendances serveur
 
@@ -39,14 +44,63 @@ Le serveur n'utilise pas `app_config.json`. Sa configuration d'exploitation vien
 | `RESOURCEPLANNER_HOST` | non | `127.0.0.1` | interface d'écoute Uvicorn |
 | `RESOURCEPLANNER_PORT` | non | `8000` | port TCP |
 | `RESOURCEPLANNER_LOG_LEVEL` | non | `info` | niveau Uvicorn |
-| `RESOURCEPLANNER_ACTOR_NAME` | non | `api` | identité technique temporaire avant OIDC |
+| `RESOURCEPLANNER_ACTOR_NAME` | non | `api` | identité technique de fallback |
 | `RESOURCEPLANNER_FRONTEND_DIST` | non | — | build React à servir; s'il est défini, le build doit être valide |
+| `RESOURCEPLANNER_AUTH_MODE` | non | `local` | `local` ou `oidc` |
 
-Les variables Acumatica documentées dans `ACUMATICA_PHASE1.md` restent optionnelles tant que l'intégration n'est pas configurée.
+Les variables Acumatica de synchronisation projets documentées dans `ACUMATICA_PHASE1.md` restent séparées de l'authentification utilisateur OIDC.
 
-`RESOURCEPLANNER_DATABASE_URL` et les tokens d'intégration peuvent contenir des secrets. Ne jamais les committer.
+`RESOURCEPLANNER_DATABASE_URL`, les credentials OIDC et les tokens d'intégration peuvent contenir des secrets. Ne jamais les committer.
 
-## 3. Migrations
+## 3. Authentification locale
+
+Le mode local sert uniquement au développement et aux smokes contrôlés. Il crée un principal local avec les rôles configurés côté serveur; aucun rôle envoyé par le navigateur n'est accepté.
+
+Variables utiles :
+
+- `RESOURCEPLANNER_LOCAL_AUTH_NAME`;
+- `RESOURCEPLANNER_LOCAL_AUTH_EMAIL`;
+- `RESOURCEPLANNER_LOCAL_AUTH_ROLES`;
+- `RESOURCEPLANNER_ALLOW_LOCAL_AUTH_NETWORK`.
+
+Par défaut, le mode local refuse une écoute réseau non loopback. Une ouverture réseau exige un opt-in explicite et ne constitue pas le mode de production cible.
+
+## 4. Authentification OIDC Acumatica
+
+Pour activer OIDC, définir `RESOURCEPLANNER_AUTH_MODE` à `oidc` et configurer :
+
+- `RESOURCEPLANNER_OIDC_DISCOVERY_URL`;
+- `RESOURCEPLANNER_OIDC_CLIENT_ID`;
+- `RESOURCEPLANNER_OIDC_CLIENT_SECRET` lorsque le client enregistré l'exige;
+- `RESOURCEPLANNER_OIDC_REDIRECT_URI`;
+- `RESOURCEPLANNER_OIDC_SCOPES` — doit contenir `openid`, défaut `openid profile email`;
+- `RESOURCEPLANNER_OIDC_COOKIE_NAME` — optionnel;
+- `RESOURCEPLANNER_OIDC_SESSION_HOURS` — optionnel, défaut 8;
+- `RESOURCEPLANNER_OIDC_SECURE_COOKIE` — optionnel, par défaut activé si le redirect URI est HTTPS.
+
+Le flux utilise :
+
+1. découverte OIDC;
+2. Authorization Code;
+3. PKCE S256;
+4. validation de la signature JWKS, issuer, audience, expiration et nonce;
+5. résolution de `(issuer, subject)` vers `app_users`;
+6. création d'une session opaque côté serveur;
+7. cookie `HttpOnly`, `SameSite=Lax` et `Secure` selon la configuration.
+
+Seul le hash SHA-256 du token de session opaque est persisté. L'access token et l'id token OIDC ne sont ni stockés dans React ni persistés dans les tables de session RessourcePlanner.
+
+### Provisionnement utilisateur
+
+L'identité externe n'accorde jamais elle-même les rôles métier. Avant la première connexion réelle, l'utilisateur doit exister dans `app_users` avec le couple exact `(issuer, subject)`, être actif et posséder au moins un rôle RessourcePlanner.
+
+Les rôles/permissions restent autoritaires dans RessourcePlanner. Un utilisateur Acumatica valide mais non provisionné reçoit un refus explicite et aucune session applicative.
+
+### Séparation avec la synchro ERP
+
+Les credentials OIDC utilisateur sont indépendants de `RESOURCEPLANNER_ACUMATICA_ACCESS_TOKEN`, utilisé par la synchronisation serveur-à-serveur des projets. Ne pas réutiliser un token utilisateur comme credential de synchronisation ERP.
+
+## 5. Migrations
 
 Le serveur Python normal n'exécute jamais Alembic automatiquement :
 
@@ -54,11 +108,13 @@ Le serveur Python normal n'exécute jamais Alembic automatiquement :
 python -m alembic upgrade head
 ```
 
+La migration `0011_oidc_sessions` ajoute les transactions de login OIDC à usage unique et les sessions serveur.
+
 `Lancer_Web.bat` et `Lancer_Serveur.bat` conservent une exception de commodité **uniquement pour leur fallback SQLite local**, lorsque `RESOURCEPLANNER_DATABASE_URL` n'était pas définie avant le lancement.
 
 Avec une base explicitement configurée — notamment SQL Server — les migrations restent toujours explicites.
 
-## 4. Démarrage API seul
+## 6. Démarrage API seul
 
 Exemple :
 
@@ -76,7 +132,7 @@ Endpoints principaux :
 
 Dans ce mode, `/` retourne 404 si aucun build frontend n'est configuré.
 
-## 5. Démarrage Web autonome
+## 7. Démarrage Web autonome
 
 Après :
 
@@ -94,7 +150,9 @@ Le lanceur définit `RESOURCEPLANNER_FRONTEND_DIST` vers `frontend\dist`, vérif
 
 Le runtime Web refuse de démarrer si le build React demandé est absent ou incomplet; il ne retombe pas silencieusement en API seule.
 
-## 6. Préflights et smokes
+En mode OIDC, une requête sans session vers `/api/v1/auth/me` retourne `authentication_required`; React propose alors la connexion via `/api/v1/auth/login`. La déconnexion passe par `POST /api/v1/auth/logout`, qui révoque la session SQL avant de supprimer le cookie.
+
+## 8. Préflights et smokes
 
 ### Backend configuré
 
@@ -122,7 +180,23 @@ python tools\check_web_runtime.py
 
 Ce smoke vérifie le `index.html`, un asset Vite réel, `/health` et l'isolation du namespace `/api/v1`.
 
-## 7. SQL Server — validation restante
+### OIDC
+
+La CI utilise un fournisseur OIDC simulé et couvre :
+
+- URL Authorization Code + PKCE S256;
+- id token signé;
+- issuer/audience/expiration/nonce;
+- refus d'un algorithme non signé;
+- transaction state à usage unique;
+- utilisateur local autorisé/non autorisé;
+- session valide, expirée et révoquée;
+- login, `/me` et logout;
+- cookie HttpOnly et absence de token OIDC dans React.
+
+Ce smoke simulé ne remplace pas la validation finale contre l'instance Acumatica réelle.
+
+## 9. SQL Server — validation restante
 
 Lorsque l'environnement cible sera disponible :
 
@@ -135,7 +209,7 @@ Lorsque l'environnement cible sera disponible :
 7. valider `/`, `/health`, les lectures et au moins une mutation métier;
 8. épingler le driver retenu après validation.
 
-## 8. Relation avec le cutover Excel → SQL
+## 10. Relation avec le cutover Excel → SQL
 
 Le basculement des données reste décrit dans [`SQL_CUTOVER_RUNBOOK.md`](SQL_CUTOVER_RUNBOOK.md). Le runtime Web autonome ne déclare pas à lui seul SQL Server autoritaire.
 
@@ -149,7 +223,7 @@ Ordre de haut niveau le jour du cutover :
 6. exécuter les smokes lecture + mutation;
 7. seulement ensuite déclarer SQL autoritaire.
 
-## 9. Runtime V1 legacy
+## 11. Runtime V1 legacy
 
 `Lancer_Application.bat` est conservé comme alias de compatibilité explicite vers `Lancer_Application_Legacy.bat`.
 

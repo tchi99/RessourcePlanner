@@ -34,6 +34,7 @@ from .composition import (
     build_sql_idempotency_executor,
     build_sql_query_port,
 )
+from .oidc import OidcRuntime
 from .routes_auth import build_auth_router
 from .routes_commands import build_command_router
 from .routes_integrations import build_integration_router
@@ -176,6 +177,7 @@ def create_api_app(
     project_source: ProjectSourcePort | None = None,
     acumatica_info: dict[str, Any] | None = None,
     auth_resolver: AuthResolver | None = None,
+    oidc_runtime: OidcRuntime | None = None,
 ) -> FastAPI:
     engine = create_sql_engine(database_url)
     factory = create_session_factory(engine)
@@ -257,7 +259,7 @@ def create_api_app(
             "api": "v1",
         }
 
-    app.include_router(build_auth_router())
+    app.include_router(build_auth_router(oidc_runtime))
     app.include_router(build_command_router(facade_dependency, idempotency_dependency))
     app.include_router(build_read_router(query_dependency))
     app.include_router(
