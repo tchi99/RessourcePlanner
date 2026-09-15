@@ -10,7 +10,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 
 from app.application.security import ROLE_TECHNICIAN
-from app.infrastructure.oidc_client import OidcIdentity
+from app.infrastructure.acumatica.oidc import OidcIdentity
 from app.infrastructure.sql import (
     AuthSession,
     Base,
@@ -187,12 +187,12 @@ class ServerOidcTests(unittest.TestCase):
         with self.factory.begin() as session:
             repository = SqlAuthSessionRepository(session)
             repository.create_session(
-                session_token="expired-token",
+                raw_token="expired-token",
                 user_id=self.user.user_id,
                 expires_at=now - timedelta(seconds=1),
             )
             repository.create_session(
-                session_token="revoked-token",
+                raw_token="revoked-token",
                 user_id=self.user.user_id,
                 expires_at=now + timedelta(hours=1),
             )
