@@ -21,7 +21,7 @@ class OidcProtocolError(RuntimeError):
 class OidcClientSettings:
     discovery_url: str
     client_id: str
-    client_secret: str | None
+    client_credential: str | None
     redirect_uri: str
     scopes: tuple[str, ...] = ("openid", "profile", "email")
 
@@ -102,8 +102,8 @@ class OidcClient:
             "client_id": self.settings.client_id,
             "code_verifier": code_verifier,
         }
-        if self.settings.client_secret:
-            form["client_secret"] = self.settings.client_secret
+        if self.settings.client_credential:
+            form["client_secret"] = self.settings.client_credential
 
         async with httpx.AsyncClient(transport=self._transport, timeout=self._timeout) as client:
             response = await client.post(
