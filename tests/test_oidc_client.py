@@ -82,7 +82,7 @@ class OidcClientTests(unittest.TestCase):
             OidcClientSettings(
                 discovery_url=DISCOVERY,
                 client_id=CLIENT_ID,
-                client_secret=None,
+                client_credential=None,
                 redirect_uri=REDIRECT_URI,
             ),
             transport=self._transport(nonce=nonce, algorithms=algorithms),
