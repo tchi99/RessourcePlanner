@@ -27,6 +27,16 @@ class SqlUserIdentityRepository:
             active=bool(row.active),
         )
 
+    def list_users(self) -> tuple[UserIdentityRecord, ...]:
+        rows = self._session.scalars(
+            select(AppUser).order_by(AppUser.display_name, AppUser.issuer, AppUser.subject)
+        ).all()
+        return tuple(self._record(row) for row in rows)
+
+    def get_by_id(self, user_id: str) -> UserIdentityRecord | None:
+        row = self._session.get(AppUser, str(user_id).strip())
+        return self._record(row) if row is not None else None
+
     def get_by_external_identity(self, issuer: str, subject: str) -> UserIdentityRecord | None:
         row = self._session.scalar(
             select(AppUser).where(
