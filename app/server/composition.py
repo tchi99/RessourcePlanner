@@ -14,6 +14,7 @@ from ..application import (
 from ..application.demand_service import DemandService
 from ..application.quick_shift_service import QuickShiftService
 from ..application.segment_service import SegmentService
+from ..application.user_admin import UserAdminService
 from ..infrastructure.sql import (
     SqlAllocationCommandAdapter,
     SqlCommandIdempotencyAdapter,
@@ -23,6 +24,7 @@ from ..infrastructure.sql import (
     SqlPlanningCommandAdapter,
     SqlResourceAdminRepository,
     SqlSegmentRepository,
+    SqlUserIdentityRepository,
     SqlWorkPackageRepository,
 )
 from ..infrastructure.sql.web_query_repository import SqlPlannerQueryRepositoryWeb
@@ -82,3 +84,9 @@ def build_sql_query_port(session: Session) -> PlannerQueryPort:
     """Compose the canonical read-only query port for one request transaction."""
 
     return SqlPlannerQueryRepositoryWeb(session)
+
+
+def build_user_admin_service(session: Session) -> UserAdminService:
+    """Compose local identity administration inside the request transaction."""
+
+    return UserAdminService(SqlUserIdentityRepository(session))
