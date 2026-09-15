@@ -8,6 +8,7 @@ from urllib.parse import urlencode
 
 import httpx
 from authlib.jose import JsonWebToken
+from authlib.jose.errors import JoseError
 from authlib.oidc.core import CodeIDToken
 
 
@@ -118,27 +119,40 @@ class OidcClient:
             raise OidcProtocolError("Acumatica n'a retourné aucun id_token OIDC.")
 
         jwks = await self._get_json(str(metadata["jwks_uri"]))
-        algorithms = metadata.get("id_token_signing_alg_values_supported") or ["RS256"]
-        if not isinstance(algorithms, list) or not algorithms:
-            algorithms = ["RS256"]
-        decoder = JsonWebToken([str(item) for item in algorithms])
-        claims = decoder.decode(
-            id_token,
-            key=jwks,
-            claims_cls=CodeIDToken,
-            claims_options={
-                "iss": {"essential": True, "values": [str(metadata["issuer"])]},
-                "sub": {"essential": True},
-                "aud": {"essential": True},
-                "exp": {"essential": True},
-            },
-            claims_params={
-                "nonce": nonce,
-                "client_id": self.settings.client_id,
-                "access_token": token.get("access_token"),
-            },
-        )
-        claims.validate(leeway=120)
+        advertised = metadata.get("id_token_signing_alg_values_supported") or ["RS256"]
+        if not isinstance(advertised, list) or not advertised:
+            advertised = ["RS256"]
+        algorithms = [
+            str(item).strip()
+            for item in advertised
+            if str(item).strip() and str(item).strip().casefold() != "none"
+        ]
+        if not algorithms:
+            raise OidcProtocolError(
+                "Le fournisseur OIDC ne publie aucun algorithme de signature sûr pour l'id_token."
+            )
+
+        try:
+            decoder = JsonWebToken(algorithms)
+            claims = decoder.decode(
+                id_token,
+                key=jwks,
+                claims_cls=CodeIDToken,
+                claims_options={
+                    "iss": {"essential": True, "values": [str(metadata["issuer"])]},
+                    "sub": {"essential": True},
+                    "aud": {"essential": True},
+                    "exp": {"essential": True},
+                },
+                claims_params={
+                    "nonce": nonce,
+                    "client_id": self.settings.client_id,
+                    "access_token": token.get("access_token"),
+                },
+            )
+            claims.validate(leeway=120)
+        except JoseError as exc:
+            raise OidcProtocolError("L'id_token OIDC est invalide.") from exc
 
         issuer = str(claims.get("iss") or "").strip()
         subject = str(claims.get("sub") or "").strip()
