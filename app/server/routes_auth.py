@@ -7,7 +7,7 @@ from fastapi.responses import JSONResponse, RedirectResponse, Response
 import httpx
 
 from ..application.security import AuthPrincipal, IdentityService
-from ..infrastructure.oidc_client import OidcProtocolError
+from ..infrastructure.acumatica.oidc import OidcProtocolError
 from ..infrastructure.sql import SqlUserIdentityRepository
 from .oidc import (
     OidcRuntime,
