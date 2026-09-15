@@ -8,7 +8,7 @@ from typing import Any
 from fastapi import Request
 
 from ..application.security import AuthPrincipal
-from ..infrastructure.oidc_client import OidcClient
+from ..infrastructure.acumatica.oidc import OidcClient
 from ..infrastructure.sql import SqlAuthSessionRepository, SqlSessionFactory
 from ..infrastructure.sql.base import utc_now
 from .security import AuthResolver
