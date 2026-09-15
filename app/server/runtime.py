@@ -9,7 +9,7 @@ import uvicorn
 
 from ..application.security import AuthPrincipal, ROLE_ADMIN, normalize_roles
 from ..infrastructure.acumatica import AcumaticaProjectSource, AcumaticaProjectSourceSettings
-from ..infrastructure.oidc_client import OidcClient, OidcClientSettings
+from ..infrastructure.acumatica.oidc import OidcClient, OidcClientSettings
 from .frontend import FrontendBuildError, attach_frontend
 from .http import create_api_app
 from .oidc import OidcRuntime, oidc_session_auth_resolver
