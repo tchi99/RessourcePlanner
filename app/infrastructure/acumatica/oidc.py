@@ -8,8 +8,9 @@ from urllib.parse import urlencode
 
 import httpx
 from authlib.jose import JsonWebToken
-from authlib.jose.errors import JoseError
+from authlib.jose.errors import JoseError as AuthlibJoseError
 from authlib.oidc.core import CodeIDToken
+from joserfc.errors import JoseError as JoseRfcError
 
 
 class OidcProtocolError(RuntimeError):
@@ -151,7 +152,7 @@ class OidcClient:
                 },
             )
             claims.validate(leeway=120)
-        except JoseError as exc:
+        except (AuthlibJoseError, JoseRfcError) as exc:
             raise OidcProtocolError("L'id_token OIDC est invalide.") from exc
 
         issuer = str(claims.get("iss") or "").strip()
