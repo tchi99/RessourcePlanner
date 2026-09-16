@@ -1,12 +1,13 @@
 import { useEffect, useState } from "react";
 
 import { useAuth } from "./AuthContext";
+import DemandHistoryPage from "./DemandHistoryPage";
 import DemandPeriodsPage from "./DemandPeriodsPage";
 import DemandSegmentsPage from "./DemandSegmentsPage";
 import DemandWorkflowPage from "./DemandWorkflowPage";
 import DemandsPage from "./DemandsPage";
 
-type DemandWorkspaceView = "requests" | "segments" | "periods" | "workflow";
+type DemandWorkspaceView = "requests" | "segments" | "periods" | "workflow" | "history";
 
 export default function DemandsWorkspace() {
   const { can } = useAuth();
@@ -58,6 +59,13 @@ export default function DemandsWorkspace() {
             Workflow
           </button>
         )}
+        <button
+          type="button"
+          className={view === "history" ? "active" : ""}
+          onClick={() => setView("history")}
+        >
+          Historique
+        </button>
       </nav>
       {view === "requests" ? (
         <DemandsPage />
@@ -65,8 +73,10 @@ export default function DemandsWorkspace() {
         <DemandSegmentsPage />
       ) : view === "periods" ? (
         <DemandPeriodsPage />
-      ) : (
+      ) : view === "workflow" ? (
         <DemandWorkflowPage />
+      ) : (
+        <DemandHistoryPage />
       )}
     </div>
   );
