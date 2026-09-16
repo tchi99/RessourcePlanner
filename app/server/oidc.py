@@ -1,12 +1,13 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import timedelta
 import secrets
 from typing import Any
 
 from fastapi import Request
 
+from ..application.identity_provisioning import AutoProvisioningPolicy
 from ..application.security import AuthPrincipal
 from ..infrastructure.acumatica.oidc import OidcClient
 from ..infrastructure.sql import SqlAuthSessionRepository, SqlSessionFactory
@@ -21,6 +22,7 @@ class OidcRuntime:
     session_hours: int = 8
     secure_cookie: bool = True
     cookie_samesite: str = "lax"
+    auto_provisioning: AutoProvisioningPolicy = field(default_factory=AutoProvisioningPolicy)
 
     @property
     def login_ttl(self) -> timedelta:
