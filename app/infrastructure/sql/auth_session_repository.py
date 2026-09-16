@@ -111,6 +111,7 @@ class SqlAuthSessionRepository:
             subject=record.subject,
             display_name=record.display_name,
             email=record.email,
+            employee_external_id=record.employee_external_id,
             roles=record.roles,
             auth_mode="oidc",
         )
