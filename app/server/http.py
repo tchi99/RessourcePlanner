@@ -21,6 +21,7 @@ from ..application import (
     PlannerQueryPort,
     ProjectSourcePort,
 )
+from ..application.communications import CommunicationService
 from ..application.errors import ApplicationUnavailableError
 from ..application.security import AuthPrincipal, ROLE_ADMIN
 from ..infrastructure.sql import (
@@ -30,6 +31,7 @@ from ..infrastructure.sql import (
     transactional_session,
 )
 from .composition import (
+    build_communication_service,
     build_sql_facade,
     build_sql_idempotency_executor,
     build_sql_query_port,
@@ -38,6 +40,7 @@ from .composition import (
 from .oidc import OidcRuntime
 from .routes_auth import build_auth_router
 from .routes_commands import build_command_router
+from .routes_communications import build_communication_router
 from .routes_integrations import build_integration_router
 from .routes_me import build_me_router
 from .routes_reads import build_read_router
@@ -50,6 +53,7 @@ FacadeDependency = Callable[[], Iterator[ApplicationFacade]]
 IdempotencyDependency = Callable[[], Iterator[IdempotentCommandExecutor]]
 QueryDependency = Callable[[], Iterator[PlannerQueryPort]]
 UserAdminDependency = Callable[..., Any]
+CommunicationDependency = Callable[..., Any]
 
 
 def application_error_status(exc: ApplicationError) -> int:
@@ -153,6 +157,21 @@ def make_user_admin_dependency(
     return dependency
 
 
+def make_communication_dependency(
+    factory: SqlSessionFactory,
+    *,
+    session_dependency: SessionDependency | None = None,
+) -> CommunicationDependency:
+    request_session = session_dependency or make_session_dependency(factory)
+
+    def dependency(
+        session: Session = Depends(request_session),
+    ) -> Iterator[CommunicationService]:
+        yield build_communication_service(session)
+
+    return dependency
+
+
 def _request_validation_response(exc: RequestValidationError) -> JSONResponse:
     details = [
         {
@@ -175,8 +194,6 @@ def _request_validation_response(exc: RequestValidationError) -> JSONResponse:
 
 
 def _default_auth_resolver(actor_name: str) -> AuthResolver:
-    """Keep direct API construction backward compatible while still exercising auth."""
-
     principal = AuthPrincipal.from_roles(
         local_user_id=None,
         issuer="urn:resourceplanner:test",
@@ -219,6 +236,10 @@ def create_api_app(
         factory,
         session_dependency=session_dependency,
     )
+    communication_dependency = make_communication_dependency(
+        factory,
+        session_dependency=session_dependency,
+    )
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
@@ -238,6 +259,7 @@ def create_api_app(
     app.state.idempotency_dependency = idempotency_dependency
     app.state.query_dependency = query_dependency
     app.state.user_admin_dependency = user_admin_dependency
+    app.state.communication_dependency = communication_dependency
 
     install_authorization_middleware(
         app,
@@ -288,6 +310,7 @@ def create_api_app(
     app.include_router(build_command_router(facade_dependency, idempotency_dependency))
     app.include_router(build_read_router(query_dependency))
     app.include_router(build_me_router(query_dependency))
+    app.include_router(build_communication_router(communication_dependency))
     app.include_router(
         build_integration_router(
             session_dependency,
