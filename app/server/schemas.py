@@ -7,6 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 AvailabilityType = Literal["Horaire standard", "Vacances", "Jour férié"]
+OverallocationPolicy = Literal["KEEP_EXCEPTION", "INCREASE_PLANNED"]
 
 
 class StrictRequest(BaseModel):
@@ -101,8 +102,6 @@ class DemandCreateRequest(StrictRequest):
     submit: bool = False
     project_name: str = ""
     client: str = ""
-    # Project manager is intentionally read-only here: it is projected from Project
-    # and will be mastered by Acumatica rather than copied into WorkforceRequest.
     requester: str | None = None
     work_package_ref: str | None = None
     request_type: str = "Projet"
@@ -123,7 +122,6 @@ class DemandUpdateRequest(StrictRequest):
     project_number: str | None = None
     project_name: str | None = None
     client: str | None = None
-    # Project manager is read-only in the web/API contract.
     requester: str | None = None
     work_package_ref: str | None = None
     request_type: str | None = None
@@ -181,14 +179,11 @@ class SegmentCreateRequest(StrictRequest):
     technician: str | None = None
     status: str = "À assigner"
     description: str = ""
-    # Stable effort/work-package reference. The HTTP contract intentionally does not
-    # expose the historical Excel row-number field used by the compatibility DTO.
     source_effort_id: str | None = None
     required_competency: str | None = None
     planning_type: str = "Flexible"
     priority: str = "Normale"
     outside_standard_hours: bool = False
-    # NULL means inherit the approved request/period snapshot.
     confirmation: str | None = None
 
 
@@ -207,8 +202,8 @@ class SegmentUpdateRequest(StrictRequest):
     planning_type: str | None = None
     priority: str | None = None
     outside_standard_hours: bool | None = None
-    # Explicit NULL clears the segment override and restores inherited confirmation.
     confirmation: str | None = None
+    allow_locked_overallocation: bool = False
 
     @field_validator("outside_standard_hours", mode="before")
     @classmethod
@@ -230,8 +225,8 @@ class ManualAllocationRequest(StrictRequest):
     hours: float = Field(gt=0)
     outside_standard_hours: bool = False
     note: str = ""
-    # NULL/omitted means inherit the segment confirmation.
     confirmation: str | None = None
+    overallocation_policy: OverallocationPolicy | None = None
 
 
 class QuickShiftRequest(StrictRequest):
