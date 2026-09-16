@@ -321,6 +321,7 @@ class SqlPlannerQueryRepository(PlannerQueryPort):
         start: date | None = None,
         end: date | None = None,
         resource_name: str | None = None,
+        resource_id: str | None = None,
     ) -> tuple[ShiftReadModel, ...]:
         statement = (
             select(Shift, ResourceRequirement, Resource, Project, WorkforceRequest)
@@ -342,6 +343,9 @@ class SqlPlannerQueryRepository(PlannerQueryPort):
         wanted_resource = _text(resource_name)
         if wanted_resource:
             statement = statement.where(Resource.name == wanted_resource)
+        wanted_resource_id = _text(resource_id)
+        if wanted_resource_id:
+            statement = statement.where(Resource.id == wanted_resource_id)
 
         rows = self._session.execute(
             statement.order_by(
