@@ -29,6 +29,12 @@ from ..infrastructure.sql import (
     SqlWorkPackageRepository,
 )
 from ..infrastructure.sql.communication_repository import SqlCommunicationRepository
+from ..infrastructure.sql.planning_audit import (
+    AuditedAllocationCommandAdapter,
+    AuditedApprovedDemandSyncAdapter,
+    AuditedSegmentRepository,
+    SqlPlanningAuditJournal,
+)
 from ..infrastructure.sql.web_query_repository import SqlPlannerQueryRepositoryWeb
 
 
@@ -40,17 +46,27 @@ def build_sql_facade(
     """Compose one application facade inside the caller-owned SQL transaction."""
 
     actor = str(actor_name or "api").strip() or "api"
+    journal = SqlPlanningAuditJournal(session, actor_name=actor)
     demands = SqlDemandRepository(session, actor_name=actor)
     periods = SqlDemandPeriodRepository(session, actor_name=actor)
-    segments = SqlSegmentRepository(session, actor_name=actor)
+    segments = AuditedSegmentRepository(
+        SqlSegmentRepository(session, actor_name=actor),
+        journal,
+    )
     work_packages = SqlWorkPackageRepository(session)
     resources = SqlResourceAdminRepository(session)
     planning_commands = SqlPlanningCommandAdapter(session)
-    allocation_commands = SqlAllocationCommandAdapter(
-        session,
-        planning=planning_commands,
+    allocation_commands = AuditedAllocationCommandAdapter(
+        SqlAllocationCommandAdapter(
+            session,
+            planning=planning_commands,
+        ),
+        journal,
     )
-    approved_sync = SqlPeriodAwareApprovedDemandSyncAdapter(session)
+    approved_sync = AuditedApprovedDemandSyncAdapter(
+        SqlPeriodAwareApprovedDemandSyncAdapter(session),
+        journal,
+    )
 
     return ApplicationFacade(
         demands=DemandService(
