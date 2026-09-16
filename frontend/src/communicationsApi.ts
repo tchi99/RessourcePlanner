@@ -52,6 +52,10 @@ export type CommunicationBatch = {
   communicated_at: string | null;
   cancelled_by: string | null;
   cancelled_at: string | null;
+  drafts_provider: string | null;
+  drafts_created_count: number;
+  drafts_created_by: string | null;
+  drafts_created_at: string | null;
   messages: CommunicationMessage[];
   stale: boolean;
 };
@@ -136,7 +140,7 @@ export function listCommunicationBatches(weekStart: string) {
 
 export function communicationBatchAction(
   batchId: string,
-  action: "approve" | "cancel" | "mark-communicated",
+  action: "approve" | "create-drafts" | "cancel" | "mark-communicated",
 ) {
   return request<CommunicationBatch>(
     `/api/v1/communications/batches/${encodeURIComponent(batchId)}/${action}`,
