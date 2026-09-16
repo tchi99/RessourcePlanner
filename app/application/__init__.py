@@ -64,6 +64,7 @@ from .identity_resource_link import (
     IdentityResourceLinkRepositoryPort,
     IdentityResourceLinkService,
 )
+from .plan_delta import DemandPlanDeltaItemReadModel, DemandPlanDeltaReadModel
 from .planning_service import PlanningService
 from .project_sync import (
     ExternalProjectRecord,
@@ -152,6 +153,8 @@ __all__ = [
     "DemandPeriodRepositoryPort",
     "DemandPeriodsMutationResult",
     "DemandPeriodsReplaceCommand",
+    "DemandPlanDeltaItemReadModel",
+    "DemandPlanDeltaReadModel",
     "DemandReadModel",
     "DemandRepositoryPort",
     "DemandSubmitCommand",
