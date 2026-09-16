@@ -31,7 +31,7 @@ class EmergencyOverrideFrontendContractTests(unittest.TestCase):
         self.assertIn("coordonnateur doit être informé", source.lower())
         self.assertIn("Justification de l’urgence (requise)", source)
         self.assertIn("emergency_override_active", source)
-        self.assertIn("la demande demeurera Soumise", source)
+        self.assertIn("la demande demeure Soumise", source)
 
     def test_planning_marks_shifts_from_active_override(self) -> None:
         source = (ROOT / "frontend" / "src" / "PlanningPage.tsx").read_text(
