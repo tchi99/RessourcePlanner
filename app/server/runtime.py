@@ -145,10 +145,10 @@ def _acumatica_settings(values: Mapping[str, str]) -> AcumaticaProjectSourceSett
 def _m365_settings(values: Mapping[str, str]) -> MicrosoftGraphCommunicationSettings | None:
     tenant_id = _text(values.get(M365_TENANT_ID_ENV))
     client_id = _text(values.get(M365_CLIENT_ID_ENV))
-    client_secret = _text(values.get(M365_CLIENT_SECRET_ENV))
+    credential_value = _text(values.get(M365_CLIENT_SECRET_ENV))
     mailbox = _text(values.get(M365_MAILBOX_ENV))
 
-    if not any((tenant_id, client_id, client_secret, mailbox)):
+    if not any((tenant_id, client_id, credential_value, mailbox)):
         return None
 
     missing = [
@@ -156,7 +156,7 @@ def _m365_settings(values: Mapping[str, str]) -> MicrosoftGraphCommunicationSett
         for name, value in (
             (M365_TENANT_ID_ENV, tenant_id),
             (M365_CLIENT_ID_ENV, client_id),
-            (M365_CLIENT_SECRET_ENV, client_secret),
+            (M365_CLIENT_SECRET_ENV, credential_value),
             (M365_MAILBOX_ENV, mailbox),
         )
         if not value
@@ -175,7 +175,7 @@ def _m365_settings(values: Mapping[str, str]) -> MicrosoftGraphCommunicationSett
     return MicrosoftGraphCommunicationSettings(
         tenant_id=tenant_id,
         client_id=client_id,
-        client_secret=client_secret,
+        client_credential=credential_value,
         mailbox=mailbox,
         graph_base_url=(
             _text(values.get(M365_GRAPH_BASE_URL_ENV)) or "https://graph.microsoft.com/v1.0"
