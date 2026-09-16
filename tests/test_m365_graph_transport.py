@@ -97,6 +97,36 @@ class MicrosoftGraphCommunicationTransportTests(unittest.TestCase):
         self.assertEqual(len(deleted), 1)
         self.assertTrue(deleted[0].endswith("/messages/draft-1"))
 
+    def test_network_failure_is_translated_to_application_unavailable(self) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            if request.url.path.endswith("/oauth2/v2.0/token"):
+                return httpx.Response(200, json={"access_token": "test-token"})
+            raise httpx.ConnectError("graph unavailable", request=request)
+
+        adapter = MicrosoftGraphCommunicationTransport(
+            self._settings(),
+            transport=httpx.MockTransport(handler),
+        )
+        with self.assertRaises(ApplicationUnavailableError) as caught:
+            adapter.create_drafts((self._message("tech@example.test"),))
+
+        self.assertEqual(caught.exception.code, "communication_graph_unavailable")
+
+    def test_invalid_success_payload_is_rejected(self) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            if request.url.path.endswith("/oauth2/v2.0/token"):
+                return httpx.Response(200, json={"access_token": "test-token"})
+            return httpx.Response(201, text="not-json")
+
+        adapter = MicrosoftGraphCommunicationTransport(
+            self._settings(),
+            transport=httpx.MockTransport(handler),
+        )
+        with self.assertRaises(ApplicationUnavailableError) as caught:
+            adapter.create_drafts((self._message("tech@example.test"),))
+
+        self.assertEqual(caught.exception.code, "communication_graph_invalid_response")
+
     def test_settings_repr_never_exposes_client_secret(self) -> None:
         settings = self._settings()
         self.assertNotIn("super-secret", repr(settings))
