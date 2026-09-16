@@ -31,9 +31,11 @@ from ..infrastructure.sql import (
     SqlWorkPackageRepository,
 )
 from ..infrastructure.sql.communication_repository import SqlCommunicationRepository
+from ..infrastructure.sql.emergency_planning_audit import (
+    EmergencyAwareApprovedDemandSyncAdapter,
+)
 from ..infrastructure.sql.planning_audit import (
     AuditedAllocationCommandAdapter,
-    AuditedApprovedDemandSyncAdapter,
     AuditedSegmentRepository,
     SqlPlanningAuditJournal,
 )
@@ -64,9 +66,10 @@ def build_sql_facade(
         ),
         journal,
     )
-    approved_sync = AuditedApprovedDemandSyncAdapter(
+    approved_sync = EmergencyAwareApprovedDemandSyncAdapter(
         SqlPeriodAwareApprovedDemandSyncAdapter(session),
         journal,
+        session,
     )
 
     return EmergencyApplicationFacade(
