@@ -73,6 +73,17 @@ class DemandHistoryReadModel:
 
 
 @dataclass(frozen=True, slots=True)
+class PlanningHistoryReadModel:
+    entity_type: str
+    entity_reference: str
+    action: str
+    occurred_at: datetime
+    parent_reference: str | None = None
+    details: str | None = None
+    actor_name: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class ShiftReadModel:
     allocation_id: str
     segment_id: str

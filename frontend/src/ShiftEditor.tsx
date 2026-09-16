@@ -7,6 +7,7 @@ import {
   ShiftReadModel,
   updateAllocation,
 } from "./api";
+import PlanningHistoryPanel from "./PlanningHistoryPanel";
 import SegmentEditor from "./SegmentEditor";
 
 type ConfirmationChoice = "inherit" | "Tentative" | "Confirmée";
@@ -167,6 +168,8 @@ export default function ShiftEditor({
             <strong>Confirmation effective : {shift.confirmation || "—"}</strong>
             <span>« Héritée » supprime l'override du quart. Tentative ou Confirmée crée un choix explicite au niveau du quart.</span>
           </div>
+
+          <PlanningHistoryPanel entityType="SHIFT" reference={shift.allocation_id} />
 
           <div className="dialog-actions">
             <button type="button" className="secondary-button" onClick={onClose} disabled={saving}>Annuler</button>

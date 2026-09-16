@@ -27,6 +27,7 @@ EXPECTED_TABLES = {
     "communication_contacts",
     "communication_messages",
     "communication_snapshot_lines",
+    "planning_change_history",
     "projects",
     "resources",
     "work_packages",
@@ -58,6 +59,7 @@ class SqlSchemaTests(unittest.TestCase):
         communication_batches = Base.metadata.tables["communication_batches"].c
         communication_messages = Base.metadata.tables["communication_messages"].c
         communication_snapshots = Base.metadata.tables["communication_snapshot_lines"].c
+        planning_history = Base.metadata.tables["planning_change_history"].c
 
         self.assertFalse(requirements.project_id.nullable)
         self.assertTrue(requirements.workforce_request_id.nullable)
@@ -97,6 +99,14 @@ class SqlSchemaTests(unittest.TestCase):
         self.assertFalse(communication_messages.included.nullable)
         self.assertFalse(communication_snapshots.batch_id.nullable)
         self.assertFalse(communication_snapshots.resource_id.nullable)
+        self.assertFalse(planning_history.entity_type.nullable)
+        self.assertFalse(planning_history.entity_id.nullable)
+        self.assertFalse(planning_history.entity_reference.nullable)
+        self.assertFalse(planning_history.action.nullable)
+        self.assertTrue(planning_history.parent_reference.nullable)
+        self.assertTrue(planning_history.details.nullable)
+        self.assertTrue(planning_history.actor_name.nullable)
+        self.assertFalse(planning_history.occurred_at.nullable)
 
     def test_metadata_creates_all_tables_on_sqlite_memory(self) -> None:
         engine = create_engine("sqlite+pysqlite:///:memory:")

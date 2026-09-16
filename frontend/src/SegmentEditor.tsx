@@ -6,6 +6,7 @@ import {
   ResourceReadModel,
   SegmentReadModel,
 } from "./api";
+import PlanningHistoryPanel from "./PlanningHistoryPanel";
 import {
   SegmentUpdateWrite,
   SegmentWrite,
@@ -378,6 +379,8 @@ export default function SegmentEditor({
               <strong>Segment = besoin ressource; quart = affectation opérationnelle datée.</strong>
               <span>Les règles de validation et le recalcul du planning restent dans FastAPI. Une affectation choisie ici utilise la commande backend d'assignation du segment.</span>
             </div>
+
+            {segmentId && <PlanningHistoryPanel entityType="SEGMENT" reference={segmentId} />}
 
             <div className="dialog-actions segment-dialog-actions">
               {segmentId && segment?.status !== "Annulé" && (

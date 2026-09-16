@@ -8,6 +8,7 @@ from ...application import (
     ResourceAvailabilityRuleReadModel,
     WorkPackageReadModel,
 )
+from ...application.query_models import PlanningHistoryReadModel
 from .models import (
     Project,
     Resource,
@@ -16,6 +17,7 @@ from .models import (
     WorkforceRequestHistory,
     WorkPackage,
 )
+from .planning_audit import PlanningChangeHistory
 from .query_repository import SqlPlannerQueryRepository
 
 
@@ -172,4 +174,37 @@ class SqlPlannerQueryRepositoryWeb(SqlPlannerQueryRepository):
                 actor_name=_optional_text(history.actor_name),
             )
             for history, request in rows
+        )
+
+    def list_planning_history(
+        self,
+        entity_type: str,
+        reference: str,
+    ) -> tuple[PlanningHistoryReadModel, ...]:
+        wanted_type = _text(entity_type).upper()
+        wanted_reference = _text(reference)
+        if not wanted_type or not wanted_reference:
+            return ()
+        rows = self._web_session.scalars(
+            select(PlanningChangeHistory)
+            .where(
+                PlanningChangeHistory.entity_type == wanted_type,
+                PlanningChangeHistory.entity_reference == wanted_reference,
+            )
+            .order_by(
+                PlanningChangeHistory.occurred_at.desc(),
+                PlanningChangeHistory.id.desc(),
+            )
+        ).all()
+        return tuple(
+            PlanningHistoryReadModel(
+                entity_type=row.entity_type,
+                entity_reference=row.entity_reference,
+                action=row.action,
+                occurred_at=row.occurred_at,
+                parent_reference=_optional_text(row.parent_reference),
+                details=_optional_text(row.details),
+                actor_name=_optional_text(row.actor_name),
+            )
+            for row in rows
         )

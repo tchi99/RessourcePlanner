@@ -7,6 +7,7 @@ from typing import Protocol
 from .query_models import (
     DemandHistoryReadModel,
     PendingDemandLoadReadModel,
+    PlanningHistoryReadModel,
     PlanningSnapshotReadModel,
     ProjectReadModel,
     ResourceAvailabilityRuleReadModel,
@@ -70,6 +71,12 @@ class PlannerQueryPort(Protocol):
     ) -> Sequence[SegmentReadModel]: ...
 
     def get_segment(self, segment_id: str) -> SegmentReadModel | None: ...
+
+    def list_planning_history(
+        self,
+        entity_type: str,
+        reference: str,
+    ) -> Sequence[PlanningHistoryReadModel]: ...
 
     def list_shifts(
         self,
