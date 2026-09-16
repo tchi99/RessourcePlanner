@@ -55,14 +55,14 @@ class ServerArchitectureTests(unittest.TestCase):
         self.assertIn("OverallocationAuditedAllocationCommandAdapter", composition)
         self.assertIn("OverallocationAuditedSegmentRepository", composition)
         self.assertIn("SqlPeriodAwareApprovedDemandSyncAdapter", composition)
-        self.assertIn("SqlPlannerQueryRepositoryWithEstimatedDays", composition)
+        self.assertIn("SqlPlannerQueryRepositoryWithLoadProfiles", composition)
 
         forbidden_sql_names = (
             "SqlEmergencyDemandRepository",
             "SqlSegmentRepositoryWithActiveDayMetrics",
             "SqlPlanningCommandAdapter",
             "SqlOverallocationAllocationCommandAdapter",
-            "SqlPlannerQueryRepositoryWithEstimatedDays",
+            "SqlPlannerQueryRepositoryWithLoadProfiles",
         )
         for filename in ("http.py", "routes_commands.py", "routes_reads.py"):
             source = (SERVER / filename).read_text(encoding="utf-8")
