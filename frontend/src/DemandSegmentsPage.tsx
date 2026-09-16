@@ -11,10 +11,14 @@ import {
 import { getSegments } from "./segments-api";
 import SegmentEditor from "./SegmentEditor";
 
-type OverallocationSegment = SegmentReadModel & {
+type PlanningSegment = SegmentReadModel & {
   locked_hours?: number;
   overallocated_hours?: number;
   overallocated?: boolean;
+  desired_active_days?: number | null;
+  planned_active_days?: number;
+  active_day_target_met?: boolean | null;
+  active_day_diagnostic?: string | null;
 };
 
 function normalize(value: string | null | undefined) {
@@ -49,8 +53,11 @@ function hours(value: number | null | undefined) {
 
 function SegmentCard({ segment, onOpen }: { segment: SegmentReadModel; onOpen: () => void }) {
   const cancelled = normalize(segment.status).startsWith("annul");
-  const overallocation = segment as OverallocationSegment;
-  const excess = Number(overallocation.overallocated_hours ?? 0);
+  const planning = segment as PlanningSegment;
+  const excess = Number(planning.overallocated_hours ?? 0);
+  const activeDayTarget = planning.desired_active_days ?? null;
+  const plannedDays = Number(planning.planned_active_days ?? 0);
+  const activeDayWarning = activeDayTarget != null && planning.active_day_target_met === false;
   return (
     <button type="button" className={`segment-card ${cancelled ? "segment-card-cancelled" : ""} ${excess > 0 ? "segment-card-overallocated" : ""}`} onClick={onOpen}>
       <div className="segment-card-heading">
@@ -62,7 +69,13 @@ function SegmentCard({ segment, onOpen }: { segment: SegmentReadModel; onOpen: (
       </div>
       {excess > 0 && (
         <div className="overallocation-inline-warning">
-          ⚠ Surallocation manuelle +{hours(excess)} h · {hours(overallocation.locked_hours)} h verrouillées / {hours(segment.planned_hours)} h prévues
+          ⚠ Surallocation manuelle +{hours(excess)} h · {hours(planning.locked_hours)} h verrouillées / {hours(segment.planned_hours)} h prévues
+        </div>
+      )}
+      {activeDayTarget != null && (
+        <div className={activeDayWarning ? "overallocation-inline-warning" : "segment-active-days"}>
+          {activeDayWarning ? "⚠ " : ""}Cible {activeDayTarget} jour(s) actif(s) · planifié {plannedDays}
+          {planning.active_day_diagnostic ? ` — ${planning.active_day_diagnostic}` : ""}
         </div>
       )}
       <div className="segment-card-meta">
@@ -157,7 +170,7 @@ export default function DemandSegmentsPage() {
 
   const totalHours = selectedSegments.reduce((sum, segment) => sum + Number(segment.planned_hours || 0), 0);
   const totalOverallocation = selectedSegments.reduce(
-    (sum, segment) => sum + Number((segment as OverallocationSegment).overallocated_hours ?? 0),
+    (sum, segment) => sum + Number((segment as PlanningSegment).overallocated_hours ?? 0),
     0,
   );
 
@@ -242,7 +255,9 @@ export default function DemandSegmentsPage() {
 
               <div className="segment-demand-context">
                 <span>Fenêtre demandée : {selectedDemand.desired_start || "—"}{selectedDemand.desired_end ? ` → ${selectedDemand.desired_end}` : ""}</span>
-                <span>Ressources : {selectedDemand.resource_count || 1}</span>
+                <span>Ressources : {selectedDemand.resource_count || 1} (parallélisme)</span>
+                <span>Heures : {selectedDemand.estimated_hours ?? "—"} h totales</span>
+                <span>Jours : {selectedDemand.estimated_days ?? "—"} jour(s) actif(s) souhaité(s)</span>
                 <span>Priorité : {selectedDemand.priority || "—"}</span>
                 <span>Confirmation : {selectedDemand.confirmation || "—"}</span>
               </div>
