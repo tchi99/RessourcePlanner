@@ -1,0 +1,149 @@
+.technician-schedule-page {
+  display: grid;
+  gap: 1rem;
+}
+
+.my-schedule-tabs {
+  display: inline-flex;
+  gap: 0.5rem;
+  padding: 0.35rem;
+  border: 1px solid var(--border-color, #d9dde3);
+  border-radius: 0.9rem;
+  background: var(--panel-bg, #fff);
+  width: fit-content;
+}
+
+.my-schedule-tabs button {
+  border: 0;
+  background: transparent;
+  border-radius: 0.65rem;
+  padding: 0.65rem 0.95rem;
+  cursor: pointer;
+  font: inherit;
+}
+
+.my-schedule-tabs button.active {
+  background: #1f2937;
+  color: #fff;
+}
+
+.my-schedule-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.85rem;
+}
+
+.my-schedule-summary article,
+.my-schedule-state,
+.my-schedule-day {
+  border: 1px solid var(--border-color, #d9dde3);
+  border-radius: 1rem;
+  background: var(--panel-bg, #fff);
+}
+
+.my-schedule-summary article {
+  display: grid;
+  gap: 0.25rem;
+  padding: 1rem;
+}
+
+.my-schedule-summary span,
+.my-schedule-summary small {
+  color: var(--muted-text, #667085);
+}
+
+.my-schedule-state {
+  padding: 1.2rem;
+}
+
+.my-schedule-state h2,
+.my-schedule-state p {
+  margin-bottom: 0.35rem;
+}
+
+.my-schedule-days {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.my-schedule-day > header {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: center;
+  padding: 0.85rem 1rem;
+  border-bottom: 1px solid var(--border-color, #d9dde3);
+}
+
+.my-schedule-day__shifts {
+  display: grid;
+  gap: 0.75rem;
+  padding: 0.85rem;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+}
+
+.my-shift-card {
+  display: grid;
+  gap: 0.65rem;
+  padding: 0.95rem;
+  border: 1px solid var(--border-color, #d9dde3);
+  border-radius: 0.85rem;
+  background: #fff;
+}
+
+.my-shift-card__heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  align-items: flex-start;
+}
+
+.my-shift-card__heading > div {
+  display: grid;
+  gap: 0.15rem;
+}
+
+.my-shift-card__heading span,
+.my-shift-card small,
+.my-shift-card p {
+  color: var(--muted-text, #667085);
+}
+
+.my-shift-card p {
+  margin: 0;
+}
+
+.my-shift-card__badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.my-shift-card__badges > span {
+  border-radius: 999px;
+  padding: 0.25rem 0.55rem;
+  background: #f2f4f7;
+  font-size: 0.82rem;
+}
+
+.my-shift-badge--confirmed {
+  background: #ecfdf3 !important;
+}
+
+.my-shift-badge--tentative {
+  background: #fffaeb !important;
+}
+
+@media (max-width: 800px) {
+  .my-schedule-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .my-schedule-tabs {
+    width: 100%;
+  }
+
+  .my-schedule-tabs button {
+    flex: 1;
+  }
+}

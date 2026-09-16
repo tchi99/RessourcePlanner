@@ -74,6 +74,7 @@ class PlannerQueryPort(Protocol):
         start: date | None = None,
         end: date | None = None,
         resource_name: str | None = None,
+        resource_id: str | None = None,
     ) -> Sequence[ShiftReadModel]: ...
 
     def planning_snapshot(
