@@ -133,6 +133,7 @@ class SqlPlanDeltaPreviewTests(unittest.TestCase):
                     description="Besoin déplacé au mardi",
                 )
             )
+            session.flush()
             session.add(
                 ResourceRequirement(
                     id="REQ1",
