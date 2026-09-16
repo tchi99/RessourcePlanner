@@ -33,7 +33,8 @@
   text-align: left;
 }
 
-.segment-card-overallocated {
+.segment-card-overallocated,
+.shift-overallocated {
   box-shadow: inset 3px 0 0 #d97706;
 }
 
