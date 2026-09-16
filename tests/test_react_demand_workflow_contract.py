@@ -25,10 +25,14 @@ class ReactDemandWorkflowContractTests(unittest.TestCase):
             encoding="utf-8"
         )
 
-        self.assertIn('"submit" | "approve" | "correction" | "cancel"', source)
+        self.assertIn(
+            '"submit" | "approve" | "emergency-plan" | "correction" | "cancel"',
+            source,
+        )
         self.assertIn("/api/v1/demands/${encodeURIComponent(number)}/${action}", source)
         self.assertIn('workflowPost(number, "submit")', source)
         self.assertIn('workflowPost(number, "approve", { comment })', source)
+        self.assertIn('workflowPost(number, "emergency-plan", { comment })', source)
         self.assertIn('workflowPost(number, "correction", { comment })', source)
         self.assertIn('workflowPost(number, "cancel")', source)
 
