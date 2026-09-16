@@ -5,17 +5,32 @@ import {
   ApiError,
   ResourceReadModel,
   ShiftReadModel,
-  updateAllocation,
 } from "./api";
+import {
+  OverallocationApiError,
+  OverallocationContext,
+  OverallocationPolicy,
+  overallocationContext,
+  updateAllocationWithOverallocation,
+} from "./manualOverallocationApi";
 import PlanningHistoryPanel from "./PlanningHistoryPanel";
 import SegmentEditor from "./SegmentEditor";
 
 type ConfirmationChoice = "inherit" | "Tentative" | "Confirmée";
+type OverallocationShift = ShiftReadModel & {
+  segment_planned_hours?: number;
+  segment_locked_hours?: number;
+  segment_overallocated_hours?: number;
+};
 
 function confirmationChoice(shift: ShiftReadModel): ConfirmationChoice {
   if (shift.confirmation_override === "Tentative") return "Tentative";
   if (shift.confirmation_override) return "Confirmée";
   return "inherit";
+}
+
+function hoursLabel(value: number | null | undefined) {
+  return new Intl.NumberFormat("fr-CA", { maximumFractionDigits: 2 }).format(Number(value ?? 0));
 }
 
 export default function ShiftEditor({
@@ -40,6 +55,9 @@ export default function ShiftEditor({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [segmentOpen, setSegmentOpen] = useState(false);
+  const [overallocationChoice, setOverallocationChoice] = useState<OverallocationContext | null>(null);
+  const overallocationShift = shift as OverallocationShift;
+  const currentExcess = Number(overallocationShift.segment_overallocated_hours ?? 0);
 
   useEffect(() => {
     if (!canManagePlanning || segmentOpen) return;
@@ -60,8 +78,7 @@ export default function ShiftEditor({
     [resources],
   );
 
-  async function submit(event: FormEvent) {
-    event.preventDefault();
+  async function save(policy: OverallocationPolicy | null = null) {
     if (saving || !canManagePlanning) return;
     const parsedHours = Number(hours);
     if (!technician.trim() || !day || !Number.isFinite(parsedHours) || parsedHours <= 0) {
@@ -72,24 +89,44 @@ export default function ShiftEditor({
     setSaving(true);
     setError(null);
     try {
-      await updateAllocation(shift.allocation_id, {
-        technician,
-        day,
-        hours: parsedHours,
-        outside_standard_hours: outsideStandardHours,
-        note: note.trim(),
-        confirmation: confirmation === "inherit" ? null : confirmation,
-      });
+      await updateAllocationWithOverallocation(
+        shift.allocation_id,
+        {
+          technician,
+          day,
+          hours: parsedHours,
+          outside_standard_hours: outsideStandardHours,
+          note: note.trim(),
+          confirmation: confirmation === "inherit" ? null : confirmation,
+        },
+        policy,
+      );
+      setOverallocationChoice(null);
       onSaved();
     } catch (reason) {
-      if (reason instanceof ApiError) {
+      const context = overallocationContext(reason);
+      if (
+        reason instanceof OverallocationApiError
+        && reason.code === "allocation_overallocation_choice_required"
+        && context
+      ) {
+        setOverallocationChoice(context);
+        setError(null);
+      } else if (reason instanceof ApiError) {
+        setOverallocationChoice(null);
         setError(`${reason.message}${reason.code ? ` (${reason.code})` : ""}`);
       } else {
+        setOverallocationChoice(null);
         setError(reason instanceof Error ? reason.message : "Impossible d'enregistrer le quart.");
       }
     } finally {
       setSaving(false);
     }
+  }
+
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    await save(null);
   }
 
   if (!canManagePlanning) return null;
@@ -136,7 +173,44 @@ export default function ShiftEditor({
             </div>
           )}
 
+          {currentExcess > 0 && (
+            <div className="overallocation-warning" role="status">
+              <strong>⚠ Surallocation manuelle active : +{hoursLabel(currentExcess)} h</strong>
+              <span>
+                {hoursLabel(overallocationShift.segment_locked_hours)} h verrouillées pour {hoursLabel(overallocationShift.segment_planned_hours)} h prévues. Les quarts manuels sont conservés jusqu'à régularisation explicite.
+              </span>
+            </div>
+          )}
+
           {error && <div className="dialog-error">{error}</div>}
+
+          {overallocationChoice && (
+            <div className="overallocation-choice" role="alert">
+              <strong>Ce changement dépasse les heures prévues du segment.</strong>
+              <span>
+                Planifié : {hoursLabel(overallocationChoice.planned_hours)} h · verrouillé après changement : {hoursLabel(overallocationChoice.projected_locked_hours)} h · excédent : +{hoursLabel(overallocationChoice.excess_hours)} h.
+              </span>
+              <div className="overallocation-choice-actions">
+                <button
+                  type="button"
+                  className="primary-button"
+                  disabled={saving}
+                  onClick={() => void save("INCREASE_PLANNED")}
+                >
+                  Augmenter les heures prévues à {hoursLabel(overallocationChoice.projected_locked_hours)} h
+                </button>
+                <button
+                  type="button"
+                  className="secondary-button"
+                  disabled={saving}
+                  onClick={() => void save("KEEP_EXCEPTION")}
+                >
+                  Conserver la dérogation (+{hoursLabel(overallocationChoice.excess_hours)} h)
+                </button>
+              </div>
+              <small>Cette décision sera journalisée avec ton identité. Le moteur ne réduira jamais silencieusement un quart verrouillé.</small>
+            </div>
+          )}
 
           <div className="dialog-context-grid">
             <div><span>Segment</span><strong>{shift.segment_id}</strong></div>
@@ -158,7 +232,7 @@ export default function ShiftEditor({
           <div className="dialog-form-grid">
             <label><span>Technicien</span><select value={technician} onChange={(event) => setTechnician(event.target.value)} required>{sortedResources.map((resource) => <option value={resource.name} key={resource.id}>{resource.name}{resource.resource_class ? ` — ${resource.resource_class}` : ""}</option>)}</select></label>
             <label><span>Date</span><input type="date" value={day} onChange={(event) => setDay(event.target.value)} required /></label>
-            <label><span>Heures</span><input type="number" min="0.25" step="0.25" value={hours} onChange={(event) => setHours(event.target.value)} required /></label>
+            <label><span>Heures</span><input type="number" min="0.25" step="0.25" value={hours} onChange={(event) => { setHours(event.target.value); setOverallocationChoice(null); }} required /></label>
             <label><span>Confirmation</span><select value={confirmation} onChange={(event) => setConfirmation(event.target.value as ConfirmationChoice)}><option value="inherit">Héritée du segment</option><option value="Tentative">Tentative</option><option value="Confirmée">Confirmée</option></select></label>
             <label className="checkbox-field"><input type="checkbox" checked={outsideStandardHours} onChange={(event) => setOutsideStandardHours(event.target.checked)} /><span>Autoriser / marquer hors horaire standard</span></label>
             <label className="span-2"><span>Note</span><textarea value={note} onChange={(event) => setNote(event.target.value)} rows={3} /></label>

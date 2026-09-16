@@ -22,6 +22,7 @@ class AllocationCommandPort(Protocol):
         hors_horaire: bool = False,
         note: str = "",
         confirmation: str | None = None,
+        overallocation_policy: str | None = None,
     ) -> str: ...
 
     def update_manual(
@@ -33,6 +34,7 @@ class AllocationCommandPort(Protocol):
         hors_horaire: bool = False,
         note: str = "",
         confirmation: str | None = None,
+        overallocation_policy: str | None = None,
     ) -> None: ...
 
     def release_manual(self, allocation_id: str) -> None: ...

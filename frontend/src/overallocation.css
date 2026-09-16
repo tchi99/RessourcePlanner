@@ -1,0 +1,43 @@
+.overallocation-warning,
+.overallocation-choice {
+  display: grid;
+  gap: 0.4rem;
+  padding: 0.85rem 1rem;
+  border: 1px solid color-mix(in srgb, #d97706 55%, var(--border-color, #d1d5db));
+  border-radius: 0.75rem;
+  background: color-mix(in srgb, #f59e0b 10%, white);
+  color: #78350f;
+}
+
+.overallocation-warning span,
+.overallocation-choice span,
+.overallocation-choice small {
+  line-height: 1.4;
+}
+
+.overallocation-choice-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  margin-top: 0.25rem;
+}
+
+.overallocation-inline-warning {
+  margin: 0.55rem 0;
+  padding: 0.45rem 0.6rem;
+  border-radius: 0.55rem;
+  background: color-mix(in srgb, #f59e0b 13%, white);
+  color: #92400e;
+  font-size: 0.82rem;
+  font-weight: 700;
+  text-align: left;
+}
+
+.segment-card-overallocated,
+.shift-overallocated {
+  box-shadow: inset 3px 0 0 #d97706;
+}
+
+.overallocation-summary strong {
+  color: #b45309;
+}

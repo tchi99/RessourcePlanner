@@ -18,15 +18,17 @@ from ..application.quick_shift_service import QuickShiftService
 from ..application.segment_service import SegmentService
 from ..application.user_admin import UserAdminService
 from ..infrastructure.sql import (
-    SqlAllocationCommandAdapter,
+    OverallocationAuditedAllocationCommandAdapter,
+    OverallocationAuditedSegmentRepository,
     SqlCommandIdempotencyAdapter,
     SqlDemandPeriodRepository,
     SqlEmergencyDemandRepository,
+    SqlOverallocationAllocationCommandAdapter,
     SqlPeriodAwareApprovedDemandSyncAdapter,
-    SqlPlannerQueryRepositoryWithEmergencyOverride,
+    SqlPlannerQueryRepositoryWithOverallocation,
     SqlPlanningCommandAdapter,
     SqlResourceAdminRepository,
-    SqlSegmentRepository,
+    SqlSegmentRepositoryWithAllocationMetrics,
     SqlUserIdentityRepository,
     SqlWorkPackageRepository,
 )
@@ -35,7 +37,6 @@ from ..infrastructure.sql.emergency_planning_audit import (
     EmergencyAwareApprovedDemandSyncAdapter,
 )
 from ..infrastructure.sql.planning_audit import (
-    AuditedAllocationCommandAdapter,
     AuditedSegmentRepository,
     SqlPlanningAuditJournal,
 )
@@ -52,19 +53,21 @@ def build_sql_facade(
     journal = SqlPlanningAuditJournal(session, actor_name=actor)
     demands = SqlEmergencyDemandRepository(session, actor_name=actor)
     periods = SqlDemandPeriodRepository(session, actor_name=actor)
-    segments = AuditedSegmentRepository(
-        SqlSegmentRepository(session, actor_name=actor),
+    base_segments = SqlSegmentRepositoryWithAllocationMetrics(session, actor_name=actor)
+    segments = OverallocationAuditedSegmentRepository(
+        AuditedSegmentRepository(base_segments, journal),
         journal,
     )
     work_packages = SqlWorkPackageRepository(session)
     resources = SqlResourceAdminRepository(session)
     planning_commands = SqlPlanningCommandAdapter(session)
-    allocation_commands = AuditedAllocationCommandAdapter(
-        SqlAllocationCommandAdapter(
+    allocation_commands = OverallocationAuditedAllocationCommandAdapter(
+        SqlOverallocationAllocationCommandAdapter(
             session,
             planning=planning_commands,
         ),
         journal,
+        session,
     )
     approved_sync = EmergencyAwareApprovedDemandSyncAdapter(
         SqlPeriodAwareApprovedDemandSyncAdapter(session),
@@ -105,7 +108,7 @@ def build_sql_idempotency_executor(
 def build_sql_query_port(session: Session) -> PlannerQueryPort:
     """Compose the canonical read-only query port for one request transaction."""
 
-    return SqlPlannerQueryRepositoryWithEmergencyOverride(session)
+    return SqlPlannerQueryRepositoryWithOverallocation(session)
 
 
 def build_user_admin_service(session: Session) -> UserAdminService:

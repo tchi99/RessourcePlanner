@@ -49,18 +49,25 @@ class ServerArchitectureTests(unittest.TestCase):
     def test_composition_root_is_the_only_server_file_wiring_sql_adapters(self) -> None:
         composition = (SERVER / "composition.py").read_text(encoding="utf-8")
         self.assertIn("SqlEmergencyDemandRepository", composition)
-        self.assertIn("SqlSegmentRepository", composition)
+        self.assertIn("SqlSegmentRepositoryWithAllocationMetrics", composition)
         self.assertIn("SqlPlanningCommandAdapter", composition)
-        self.assertIn("SqlAllocationCommandAdapter", composition)
+        self.assertIn("SqlOverallocationAllocationCommandAdapter", composition)
+        self.assertIn("OverallocationAuditedAllocationCommandAdapter", composition)
+        self.assertIn("OverallocationAuditedSegmentRepository", composition)
         self.assertIn("SqlPeriodAwareApprovedDemandSyncAdapter", composition)
-        self.assertIn("SqlPlannerQueryRepositoryWithEmergencyOverride", composition)
+        self.assertIn("SqlPlannerQueryRepositoryWithOverallocation", composition)
 
+        forbidden_sql_names = (
+            "SqlEmergencyDemandRepository",
+            "SqlSegmentRepositoryWithAllocationMetrics",
+            "SqlPlanningCommandAdapter",
+            "SqlOverallocationAllocationCommandAdapter",
+            "SqlPlannerQueryRepositoryWithOverallocation",
+        )
         for filename in ("http.py", "routes_commands.py", "routes_reads.py"):
             source = (SERVER / filename).read_text(encoding="utf-8")
-            self.assertNotIn("SqlEmergencyDemandRepository", source)
-            self.assertNotIn("SqlSegmentRepository", source)
-            self.assertNotIn("SqlPlanningCommandAdapter", source)
-            self.assertNotIn("SqlPlannerQueryRepositoryWithEmergencyOverride", source)
+            for name in forbidden_sql_names:
+                self.assertNotIn(name, source)
 
         # The HTTP composition boundary owns the request-scoped SQLAlchemy Session,
         # but route modules must remain transport/application-only.

@@ -105,6 +105,9 @@ class ShiftReadModel:
     project_manager: str | None = None
     requester: str | None = None
     emergency_override_active: bool = False
+    segment_planned_hours: float = 0.0
+    segment_locked_hours: float = 0.0
+    segment_overallocated_hours: float = 0.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -137,11 +140,7 @@ class PendingDemandLoadReadModel:
 
 @dataclass(frozen=True, slots=True)
 class MediumTermCapacityBucketReadModel:
-    """One backend-authoritative weekly capacity bucket.
-
-    ``resource_class=None`` is the all-resources total. Replacement proposals are
-    reported separately and are never added to ``exposure_hours``.
-    """
+    """One backend-authoritative weekly capacity bucket."""
 
     week_start: date
     week_end: date

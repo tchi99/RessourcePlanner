@@ -6,6 +6,12 @@ import {
   ResourceReadModel,
   SegmentReadModel,
 } from "./api";
+import {
+  OverallocationApiError,
+  OverallocationContext,
+  overallocationContext,
+  updateSegmentWithOverallocation,
+} from "./manualOverallocationApi";
 import PlanningHistoryPanel from "./PlanningHistoryPanel";
 import {
   SegmentUpdateWrite,
@@ -14,10 +20,14 @@ import {
   cancelSegment,
   createSegment,
   getSegment,
-  updateSegment,
 } from "./segments-api";
 
 type ConfirmationChoice = "inherit" | "Tentative" | "Confirmée";
+type OverallocationSegment = SegmentReadModel & {
+  locked_hours?: number;
+  overallocated_hours?: number;
+  overallocated?: boolean;
+};
 
 type FormState = {
   start_date: string;
@@ -52,6 +62,10 @@ function messageFromError(reason: unknown) {
 function confirmationChoice(segment: SegmentReadModel): ConfirmationChoice {
   if (!segment.confirmation_overridden) return "inherit";
   return segment.confirmation === "Tentative" ? "Tentative" : "Confirmée";
+}
+
+function hoursLabel(value: number | null | undefined) {
+  return new Intl.NumberFormat("fr-CA", { maximumFractionDigits: 2 }).format(Number(value ?? 0));
 }
 
 function formFromDemand(demand: DemandReadModel): FormState {
@@ -108,11 +122,15 @@ export default function SegmentEditor({
   const [saving, setSaving] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [overallocationChoice, setOverallocationChoice] = useState<OverallocationContext | null>(null);
+  const [allowLockedOverallocation, setAllowLockedOverallocation] = useState(false);
   const createRetry = useRef<RetryReceipt | null>(null);
 
   useEffect(() => {
     if (!open) return;
     setError(null);
+    setOverallocationChoice(null);
+    setAllowLockedOverallocation(false);
     createRetry.current = null;
     if (!segmentId) {
       setLoading(false);
@@ -165,6 +183,8 @@ export default function SegmentEditor({
   const effectiveProjectNumber = segment?.project_number ?? demand?.project_number ?? null;
   const effectiveProjectName = segment?.project_name ?? demand?.project_name ?? null;
   const busy = loading || saving || cancelling;
+  const overallocationSegment = segment as OverallocationSegment | null;
+  const currentExcess = Number(overallocationSegment?.overallocated_hours ?? 0);
 
   function setField<K extends keyof FormState>(field: K, value: FormState[K]) {
     setForm((current) => current ? { ...current, [field]: value } : current);
@@ -216,7 +236,11 @@ export default function SegmentEditor({
     try {
       let savedSegmentId = segmentId;
       if (segmentId) {
-        await updateSegment(segmentId, editablePayload);
+        await updateSegmentWithOverallocation(
+          segmentId,
+          editablePayload,
+          allowLockedOverallocation,
+        );
       } else {
         const createPayload: SegmentWrite = {
           demand_number: effectiveDemandNumber,
@@ -248,9 +272,22 @@ export default function SegmentEditor({
       if (savedSegmentId && technicianChanged) {
         await assignSegment(savedSegmentId, selectedTechnician);
       }
+      setAllowLockedOverallocation(false);
+      setOverallocationChoice(null);
       onSaved();
     } catch (reason: unknown) {
-      setError(messageFromError(reason));
+      const context = overallocationContext(reason);
+      if (
+        reason instanceof OverallocationApiError
+        && reason.code === "segment_overallocation_choice_required"
+        && context
+      ) {
+        setOverallocationChoice(context);
+        setAllowLockedOverallocation(false);
+        setError(null);
+      } else {
+        setError(messageFromError(reason));
+      }
     } finally {
       setSaving(false);
     }
@@ -297,6 +334,53 @@ export default function SegmentEditor({
           <form className="segment-form" onSubmit={submit}>
             {error && <div className="dialog-error">{error}</div>}
 
+            {currentExcess > 0 && (
+              <div className="overallocation-warning" role="status">
+                <strong>⚠ Surallocation manuelle active : +{hoursLabel(currentExcess)} h</strong>
+                <span>{hoursLabel(overallocationSegment?.locked_hours)} h verrouillées pour {hoursLabel(segment?.planned_hours)} h prévues. Les quarts verrouillés sont préservés par le moteur.</span>
+              </div>
+            )}
+
+            {overallocationChoice && (
+              <div className="overallocation-choice" role="alert">
+                <strong>Cette réduction créerait ou augmenterait une surallocation manuelle.</strong>
+                <span>
+                  Heures prévues proposées : {hoursLabel(overallocationChoice.planned_hours)} h · quarts verrouillés : {hoursLabel(overallocationChoice.locked_hours)} h · excédent : +{hoursLabel(overallocationChoice.excess_hours)} h.
+                </span>
+                <div className="overallocation-choice-actions">
+                  <button
+                    type="button"
+                    className="primary-button"
+                    onClick={() => {
+                      setField("planned_hours", String(overallocationChoice.locked_hours ?? overallocationChoice.planned_hours));
+                      setOverallocationChoice(null);
+                      setAllowLockedOverallocation(false);
+                    }}
+                  >
+                    Ajuster les heures prévues à {hoursLabel(overallocationChoice.locked_hours)} h
+                  </button>
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    onClick={() => {
+                      setAllowLockedOverallocation(true);
+                      setOverallocationChoice(null);
+                    }}
+                  >
+                    Conserver la dérogation (+{hoursLabel(overallocationChoice.excess_hours)} h)
+                  </button>
+                </div>
+                <small>Après avoir choisi la dérogation, clique sur Enregistrer pour la confirmer et la journaliser.</small>
+              </div>
+            )}
+
+            {allowLockedOverallocation && (
+              <div className="overallocation-warning">
+                <strong>Dérogation de surallocation sélectionnée</strong>
+                <span>L'enregistrement conservera les heures prévues saisies même si elles sont inférieures aux quarts verrouillés.</span>
+              </div>
+            )}
+
             <div className="segment-context-grid">
               <div><span>Segment</span><strong>{segmentId || "Nouveau"}</strong></div>
               <div><span>Demande</span><strong>{effectiveDemandNumber || "—"}</strong></div>
@@ -315,7 +399,11 @@ export default function SegmentEditor({
               </label>
               <label>
                 <span>Heures prévues</span>
-                <input type="number" min="0.25" step="0.25" value={form.planned_hours} onChange={(event) => setField("planned_hours", event.target.value)} required />
+                <input type="number" min="0.25" step="0.25" value={form.planned_hours} onChange={(event) => {
+                  setField("planned_hours", event.target.value);
+                  setOverallocationChoice(null);
+                  setAllowLockedOverallocation(false);
+                }} required />
               </label>
               <label>
                 <span>Statut</span>

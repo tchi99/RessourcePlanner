@@ -138,6 +138,7 @@ class SegmentUpdateCommand:
     priority: str | None | UnsetType = UNSET
     outside_standard_hours: bool | UnsetType = UNSET
     confirmation: str | None | UnsetType = UNSET
+    allow_locked_overallocation: bool = False
 
     def __post_init__(self) -> None:
         required_text(

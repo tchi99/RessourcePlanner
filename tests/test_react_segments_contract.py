@@ -35,6 +35,9 @@ class ReactSegmentsContractTests(unittest.TestCase):
 
     def test_segment_api_uses_existing_fastapi_contract(self) -> None:
         api = (ROOT / "frontend" / "src" / "segments-api.ts").read_text(encoding="utf-8")
+        guarded_api = (ROOT / "frontend" / "src" / "manualOverallocationApi.ts").read_text(
+            encoding="utf-8"
+        )
 
         self.assertIn('"/api/v1/segments"', api)
         self.assertIn("/api/v1/segments/${encodeURIComponent(segmentId)}", api)
@@ -43,17 +46,23 @@ class ReactSegmentsContractTests(unittest.TestCase):
         self.assertIn('"Idempotency-Key"', api)
         self.assertIn('"PATCH"', api)
         self.assertIn("include_cancelled", api)
+        self.assertIn("/api/v1/segments/${encodeURIComponent(segmentId)}", guarded_api)
+        self.assertIn('"PATCH"', guarded_api)
 
     def test_editor_keeps_business_mutations_authoritative_and_patch_partial(self) -> None:
         editor = (ROOT / "frontend" / "src" / "SegmentEditor.tsx").read_text(encoding="utf-8")
 
-        self.assertIn("await updateSegment(segmentId, editablePayload)", editor)
+        self.assertIn("await updateSegmentWithOverallocation(", editor)
+        self.assertIn("segmentId,", editor)
+        self.assertIn("editablePayload,", editor)
+        self.assertIn("allowLockedOverallocation,", editor)
         self.assertIn("const createPayload: SegmentWrite", editor)
         self.assertIn("await createSegment(createPayload, key)", editor)
         self.assertIn("await assignSegment(savedSegmentId, selectedTechnician)", editor)
         self.assertIn("await cancelSegment(segmentId)", editor)
         self.assertIn("source_effort_id: null", editor)
-        self.assertNotIn("source_effort_id", editor.split("await updateSegment(segmentId, editablePayload)")[0].split("const editablePayload", 1)[1])
+        update_block = editor.split("const editablePayload", 1)[1].split("const createPayload: SegmentWrite", 1)[0]
+        self.assertNotIn("source_effort_id", update_block)
         self.assertIn("onSaved()", editor)
         self.assertNotIn("capacity_hours", editor)
         self.assertNotIn("utilization_pct", editor)

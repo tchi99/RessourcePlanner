@@ -132,12 +132,7 @@ class DemandPeriodReadModel:
 
 @dataclass(frozen=True, slots=True)
 class SegmentReadModel:
-    """Storage-independent operational requirement/segment projection.
-
-    Project manager and requester are projections from the owning project/request. They
-    are intentionally not authoritative segment fields, which keeps ownership aligned
-    with the future Acumatica + WorkforceRequest sources of truth.
-    """
+    """Storage-independent operational requirement/segment projection."""
 
     segment_id: str
     demand_number: str | None
@@ -158,9 +153,15 @@ class SegmentReadModel:
     confirmation_overridden: bool = False
     project_manager: str | None = None
     requester: str | None = None
+    locked_hours: float = 0.0
+    overallocated_hours: float = 0.0
+    overallocated: bool = False
 
     @classmethod
     def from_mapping(cls, row: Mapping[str, Any]) -> "SegmentReadModel":
+        locked_hours = _number(row.get("HeuresVerrouillees"))
+        planned_hours = _number(row.get("HeuresPrevues"))
+        overallocated_hours = max(locked_hours - planned_hours, 0.0)
         return cls(
             segment_id=_text(row.get("IDSegment")),
             demand_number=_optional_text(row.get("NoDemande")),
@@ -169,7 +170,7 @@ class SegmentReadModel:
             resource_name=_optional_text(row.get("Technicien")),
             start_date=_date(row.get("DateDebut")),
             end_date=_date(row.get("DateFin")),
-            planned_hours=_number(row.get("HeuresPrevues")),
+            planned_hours=planned_hours,
             status=_text(row.get("Statut")),
             description=_optional_text(row.get("Description")),
             origin=_optional_text(row.get("OrigineSegment")),
@@ -185,4 +186,7 @@ class SegmentReadModel:
             requester=_optional_text(
                 row.get("Requester") or row.get("Demandeur") or row.get("CreePar")
             ),
+            locked_hours=round(locked_hours, 2),
+            overallocated_hours=round(overallocated_hours, 2),
+            overallocated=overallocated_hours > 0.001,
         )

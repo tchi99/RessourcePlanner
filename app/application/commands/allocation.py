@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from datetime import date
 
 from ...domain.confirmation import normalize_confirmation
+from ...domain.manual_overallocation import normalize_overallocation_policy
 from ..errors import ApplicationValidationError
 from .common import date_value, float_value, required_text
 
@@ -21,6 +22,17 @@ def _confirmation(value: object) -> str | None:
         ) from exc
 
 
+def _overallocation_policy(value: object) -> str | None:
+    try:
+        return normalize_overallocation_policy(value)
+    except ValueError as exc:
+        raise ApplicationValidationError(
+            str(exc),
+            code="allocation_overallocation_policy_invalid",
+            context={"field": "overallocation_policy", "value": value},
+        ) from exc
+
+
 @dataclass(frozen=True, slots=True)
 class ManualAllocationCreateCommand:
     segment_id: str
@@ -30,10 +42,13 @@ class ManualAllocationCreateCommand:
     outside_standard_hours: bool = False
     note: str = ""
     confirmation: str | None = None
+    overallocation_policy: str | None = None
 
     def __post_init__(self) -> None:
         if self.confirmation is not None:
             _confirmation(self.confirmation)
+        if self.overallocation_policy is not None:
+            _overallocation_policy(self.overallocation_policy)
 
     @classmethod
     def from_values(
@@ -45,6 +60,7 @@ class ManualAllocationCreateCommand:
         outside_standard_hours: bool = False,
         note: str = "",
         confirmation: object = None,
+        overallocation_policy: object = None,
     ) -> "ManualAllocationCreateCommand":
         return cls(
             segment_id=required_text(
@@ -67,6 +83,7 @@ class ManualAllocationCreateCommand:
             outside_standard_hours=bool(outside_standard_hours),
             note=str(note or ""),
             confirmation=_confirmation(confirmation),
+            overallocation_policy=_overallocation_policy(overallocation_policy),
         )
 
 
@@ -80,6 +97,7 @@ class ManualAllocationUpdateCommand:
     note: str = ""
     confirmation: str | None = None
     clear_confirmation_override: bool = False
+    overallocation_policy: str | None = None
 
     def __post_init__(self) -> None:
         if self.confirmation is not None:
@@ -90,6 +108,8 @@ class ManualAllocationUpdateCommand:
                 code="allocation_confirmation_conflict",
                 context={"field": "confirmation"},
             )
+        if self.overallocation_policy is not None:
+            _overallocation_policy(self.overallocation_policy)
 
     @classmethod
     def from_values(
@@ -101,6 +121,7 @@ class ManualAllocationUpdateCommand:
         outside_standard_hours: bool = False,
         note: str = "",
         confirmation: object = None,
+        overallocation_policy: object = None,
     ) -> "ManualAllocationUpdateCommand":
         return cls(
             allocation_id=required_text(
@@ -125,6 +146,7 @@ class ManualAllocationUpdateCommand:
             confirmation=_confirmation(confirmation),
             # Compatibility callers historically use None to mean "do not touch".
             clear_confirmation_override=False,
+            overallocation_policy=_overallocation_policy(overallocation_policy),
         )
 
 
