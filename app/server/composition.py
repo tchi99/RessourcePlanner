@@ -11,6 +11,7 @@ from ..application import (
     ResourceAdminService,
     WorkPackageService,
 )
+from ..application.communications import CommunicationService
 from ..application.demand_service import DemandService
 from ..application.quick_shift_service import QuickShiftService
 from ..application.segment_service import SegmentService
@@ -27,6 +28,7 @@ from ..infrastructure.sql import (
     SqlUserIdentityRepository,
     SqlWorkPackageRepository,
 )
+from ..infrastructure.sql.communication_repository import SqlCommunicationRepository
 from ..infrastructure.sql.web_query_repository import SqlPlannerQueryRepositoryWeb
 
 
@@ -90,3 +92,9 @@ def build_user_admin_service(session: Session) -> UserAdminService:
     """Compose local identity administration inside the request transaction."""
 
     return UserAdminService(SqlUserIdentityRepository(session))
+
+
+def build_communication_service(session: Session) -> CommunicationService:
+    """Compose controlled communication preparation without any external transport."""
+
+    return CommunicationService(SqlCommunicationRepository(session))
