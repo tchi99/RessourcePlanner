@@ -25,10 +25,10 @@ from ..infrastructure.sql import (
     SqlEmergencyDemandRepository,
     SqlOverallocationAllocationCommandAdapter,
     SqlPeriodAwareApprovedDemandSyncAdapter,
-    SqlPlannerQueryRepositoryWithOverallocation,
+    SqlPlannerQueryRepositoryWithEstimatedDays,
     SqlPlanningCommandAdapter,
     SqlResourceAdminRepository,
-    SqlSegmentRepositoryWithAllocationMetrics,
+    SqlSegmentRepositoryWithActiveDayMetrics,
     SqlUserIdentityRepository,
     SqlWorkPackageRepository,
 )
@@ -53,7 +53,7 @@ def build_sql_facade(
     journal = SqlPlanningAuditJournal(session, actor_name=actor)
     demands = SqlEmergencyDemandRepository(session, actor_name=actor)
     periods = SqlDemandPeriodRepository(session, actor_name=actor)
-    base_segments = SqlSegmentRepositoryWithAllocationMetrics(session, actor_name=actor)
+    base_segments = SqlSegmentRepositoryWithActiveDayMetrics(session, actor_name=actor)
     segments = OverallocationAuditedSegmentRepository(
         AuditedSegmentRepository(base_segments, journal),
         journal,
@@ -108,7 +108,7 @@ def build_sql_idempotency_executor(
 def build_sql_query_port(session: Session) -> PlannerQueryPort:
     """Compose the canonical read-only query port for one request transaction."""
 
-    return SqlPlannerQueryRepositoryWithOverallocation(session)
+    return SqlPlannerQueryRepositoryWithEstimatedDays(session)
 
 
 def build_user_admin_service(session: Session) -> UserAdminService:
