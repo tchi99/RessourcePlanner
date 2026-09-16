@@ -23,7 +23,6 @@ from ..application import (
 )
 from ..application.errors import ApplicationUnavailableError
 from ..application.security import AuthPrincipal, ROLE_ADMIN
-from ..application.user_admin import UserAdminService
 from ..infrastructure.sql import (
     SqlSessionFactory,
     create_session_factory,
@@ -49,7 +48,7 @@ SessionDependency = Callable[[], Iterator[Session]]
 FacadeDependency = Callable[[], Iterator[ApplicationFacade]]
 IdempotencyDependency = Callable[[], Iterator[IdempotentCommandExecutor]]
 QueryDependency = Callable[[], Iterator[PlannerQueryPort]]
-UserAdminDependency = Callable[[], Iterator[UserAdminService]]
+UserAdminDependency = Callable[..., Any]
 
 
 def application_error_status(exc: ApplicationError) -> int:
@@ -147,7 +146,7 @@ def make_user_admin_dependency(
 
     def dependency(
         session: Session = Depends(request_session),
-    ) -> Iterator[UserAdminService]:
+    ) -> Iterator[Any]:
         yield build_user_admin_service(session)
 
     return dependency
