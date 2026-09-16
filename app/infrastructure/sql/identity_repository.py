@@ -9,6 +9,11 @@ from ...application.security import UserIdentityRecord, normalize_roles
 from .identity_models import AppUser
 
 
+def _optional_text(value: object) -> str | None:
+    text = str(value or "").strip()
+    return text or None
+
+
 class SqlUserIdentityRepository:
     def __init__(self, session: Session) -> None:
         self._session = session
@@ -25,6 +30,7 @@ class SqlUserIdentityRepository:
             email=row.email,
             roles=roles,
             active=bool(row.active),
+            employee_external_id=_optional_text(row.employee_external_id),
         )
 
     def list_users(self) -> tuple[UserIdentityRecord, ...]:
@@ -55,6 +61,7 @@ class SqlUserIdentityRepository:
         email: str | None,
         roles: tuple[str, ...] | list[str] | set[str],
         active: bool = True,
+        employee_external_id: str | None = None,
     ) -> UserIdentityRecord:
         issuer_value = str(issuer).strip()
         subject_value = str(subject).strip()
@@ -71,19 +78,22 @@ class SqlUserIdentityRepository:
                 AppUser.subject == subject_value,
             )
         )
+        employee_value = _optional_text(employee_external_id)
         if row is None:
             row = AppUser(
                 issuer=issuer_value,
                 subject=subject_value,
                 display_name=display_name_value,
-                email=str(email).strip() if email else None,
+                email=_optional_text(email),
+                employee_external_id=employee_value,
                 roles_json=json.dumps(list(normalized_roles), separators=(",", ":")),
                 active=bool(active),
             )
             self._session.add(row)
         else:
             row.display_name = display_name_value
-            row.email = str(email).strip() if email else None
+            row.email = _optional_text(email)
+            row.employee_external_id = employee_value
             row.roles_json = json.dumps(list(normalized_roles), separators=(",", ":"))
             row.active = bool(active)
         self._session.flush()
