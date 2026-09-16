@@ -30,6 +30,7 @@ class LoadProfilePlanDeltaTests(unittest.TestCase):
     def test_existing_profile_is_projected_into_proposed_segment_rows(self) -> None:
         with transactional_session(self.factory) as session:
             session.add(Project(id="P1", number="P-14", name="Projet profil"))
+            session.flush()
             session.add(
                 WorkforceRequest(
                     id="D1",
@@ -42,6 +43,7 @@ class LoadProfilePlanDeltaTests(unittest.TestCase):
                     status="Soumise",
                 )
             )
+            session.flush()
             session.add(
                 ResourceRequirement(
                     id="S1",
