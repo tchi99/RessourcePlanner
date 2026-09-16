@@ -104,6 +104,7 @@ class ShiftReadModel:
     project_name: str | None = None
     project_manager: str | None = None
     requester: str | None = None
+    emergency_override_active: bool = False
 
 
 @dataclass(frozen=True, slots=True)
