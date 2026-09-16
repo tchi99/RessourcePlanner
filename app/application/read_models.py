@@ -126,6 +126,7 @@ class DemandPeriodReadModel:
     alternative_group: str | None = None
     proposed_resource: str | None = None
     resource_count: int = 1
+    desired_active_days: int | None = None
     note: str | None = None
     selected: bool = False
 
@@ -156,12 +157,28 @@ class SegmentReadModel:
     locked_hours: float = 0.0
     overallocated_hours: float = 0.0
     overallocated: bool = False
+    desired_active_days: int | None = None
+    planned_active_days: int = 0
+    active_day_target_met: bool | None = None
+    active_day_diagnostic: str | None = None
 
     @classmethod
     def from_mapping(cls, row: Mapping[str, Any]) -> "SegmentReadModel":
         locked_hours = _number(row.get("HeuresVerrouillees"))
         planned_hours = _number(row.get("HeuresPrevues"))
         overallocated_hours = max(locked_hours - planned_hours, 0.0)
+        desired_active_days_value = _optional_number(row.get("JoursActifsCibles"))
+        desired_active_days = (
+            int(desired_active_days_value)
+            if desired_active_days_value is not None and desired_active_days_value > 0
+            else None
+        )
+        planned_active_days = int(_number(row.get("JoursActifsPlanifies")))
+        target_met = (
+            planned_active_days == desired_active_days
+            if desired_active_days is not None
+            else None
+        )
         return cls(
             segment_id=_text(row.get("IDSegment")),
             demand_number=_optional_text(row.get("NoDemande")),
@@ -189,4 +206,8 @@ class SegmentReadModel:
             locked_hours=round(locked_hours, 2),
             overallocated_hours=round(overallocated_hours, 2),
             overallocated=overallocated_hours > 0.001,
+            desired_active_days=desired_active_days,
+            planned_active_days=planned_active_days,
+            active_day_target_met=target_met,
+            active_day_diagnostic=_optional_text(row.get("DiagnosticJoursActifs")),
         )

@@ -49,20 +49,20 @@ class ServerArchitectureTests(unittest.TestCase):
     def test_composition_root_is_the_only_server_file_wiring_sql_adapters(self) -> None:
         composition = (SERVER / "composition.py").read_text(encoding="utf-8")
         self.assertIn("SqlEmergencyDemandRepository", composition)
-        self.assertIn("SqlSegmentRepositoryWithAllocationMetrics", composition)
+        self.assertIn("SqlSegmentRepositoryWithActiveDayMetrics", composition)
         self.assertIn("SqlPlanningCommandAdapter", composition)
         self.assertIn("SqlOverallocationAllocationCommandAdapter", composition)
         self.assertIn("OverallocationAuditedAllocationCommandAdapter", composition)
         self.assertIn("OverallocationAuditedSegmentRepository", composition)
         self.assertIn("SqlPeriodAwareApprovedDemandSyncAdapter", composition)
-        self.assertIn("SqlPlannerQueryRepositoryWithOverallocation", composition)
+        self.assertIn("SqlPlannerQueryRepositoryWithEstimatedDays", composition)
 
         forbidden_sql_names = (
             "SqlEmergencyDemandRepository",
-            "SqlSegmentRepositoryWithAllocationMetrics",
+            "SqlSegmentRepositoryWithActiveDayMetrics",
             "SqlPlanningCommandAdapter",
             "SqlOverallocationAllocationCommandAdapter",
-            "SqlPlannerQueryRepositoryWithOverallocation",
+            "SqlPlannerQueryRepositoryWithEstimatedDays",
         )
         for filename in ("http.py", "routes_commands.py", "routes_reads.py"):
             source = (SERVER / filename).read_text(encoding="utf-8")

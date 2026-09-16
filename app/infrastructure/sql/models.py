@@ -110,7 +110,6 @@ class WorkforceRequest(TimestampMixin, Base):
     project_id: Mapped[str] = mapped_column(
         String(ID_LENGTH), ForeignKey("projects.id"), nullable=False, index=True
     )
-    # Nullable only for migration of current V1 requests that predate WorkPackages.
     work_package_id: Mapped[str | None] = mapped_column(
         String(ID_LENGTH), ForeignKey("work_packages.id"), nullable=True, index=True
     )
@@ -180,8 +179,6 @@ class ResourceAvailabilityRule(TimestampMixin, Base):
 
     id: Mapped[str] = mapped_column(String(ID_LENGTH), primary_key=True, default=new_id)
     legacy_id: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
-    # NULL means a global holiday. Standard schedules/vacations must remain scoped to
-    # one resource; the check constraint above enforces that distinction.
     resource_id: Mapped[str | None] = mapped_column(
         String(ID_LENGTH), ForeignKey("resources.id"), nullable=True, index=True
     )
@@ -223,6 +220,7 @@ class ResourceRequirement(TimestampMixin, Base):
     start_date: Mapped[date] = mapped_column(Date, nullable=False)
     end_date: Mapped[date] = mapped_column(Date, nullable=False)
     planned_hours: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    desired_active_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
     status: Mapped[str] = mapped_column(String(32), nullable=False, server_default=text("'À assigner'"), index=True)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     source_effort_id: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)

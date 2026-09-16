@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from datetime import date, timedelta
 from typing import Mapping, Sequence
 
+from .active_days import normalize_active_day_target
 from .confirmation import normalize_confirmation
 
 
@@ -16,8 +17,9 @@ VALID_PERIOD_KINDS = {PERIOD_KIND_CUMULATIVE, PERIOD_KIND_ALTERNATIVE}
 class DemandPeriodDefinition:
     """One requested work period independent of persistence and UI.
 
-    CUMULATIVE periods add workload. ALTERNATIVE periods belong to an exclusive
-    group: zero or one option from each group may become effective.
+    ``hours`` is the total workforce effort for the period. ``resource_count`` is the
+    desired parallelism and never multiplies that effort. ``desired_active_days`` is a
+    distribution target for flexible planning, not an alternate hours formula.
     """
 
     period_id: str
@@ -29,6 +31,7 @@ class DemandPeriodDefinition:
     confirmation: str = "Tentative"
     proposed_resource: str | None = None
     resource_count: int = 1
+    desired_active_days: int | None = None
     note: str | None = None
 
 
@@ -56,7 +59,12 @@ def validate_period_definitions(periods: Sequence[DemandPeriodDefinition]) -> No
             raise ValueError(
                 f"Le nombre de ressources de la période {identifier} doit être au moins 1."
             )
-        # Confirmation is a business dimension independent from approval.
+        normalize_active_day_target(
+            period.desired_active_days,
+            start=period.start_date,
+            end=period.end_date,
+            field=f"Les jours actifs de la période {identifier}",
+        )
         normalize_confirmation(period.confirmation)
 
         kind = _text(period.kind).upper()
@@ -86,11 +94,7 @@ def effective_period_ids(
     periods: Sequence[DemandPeriodDefinition],
     selections: Mapping[str, str],
 ) -> tuple[str, ...]:
-    """Return periods that may materialize into requirements without double-counting.
-
-    All cumulative periods are effective. For an alternative group, only the selected
-    period is effective. An unresolved group contributes no operational requirement.
-    """
+    """Return periods that may materialize into requirements without double-counting."""
 
     validate_period_definitions(periods)
     period_by_id = {period.period_id: period for period in periods}
@@ -122,23 +126,18 @@ def projected_hours_without_double_counting(
     periods: Sequence[DemandPeriodDefinition],
     selections: Mapping[str, str] | None = None,
 ) -> float:
-    """Project potential workload while counting an exclusive group only once.
-
-    When a group is already resolved, its selected option is used. Otherwise the
-    largest option is used as the conservative projected load for that group.
-    """
+    """Project total workforce effort while counting an exclusive group only once."""
 
     validate_period_definitions(periods)
     chosen = dict(selections or {})
     if chosen:
-        # Also validates selection/group consistency.
         effective_period_ids(periods, chosen)
 
     total = 0.0
     alternatives: dict[str, list[DemandPeriodDefinition]] = {}
     for period in periods:
         if period.kind.upper() == PERIOD_KIND_CUMULATIVE:
-            total += float(period.hours) * period.resource_count
+            total += float(period.hours)
         else:
             alternatives.setdefault(_text(period.alternative_group), []).append(period)
 
@@ -146,9 +145,9 @@ def projected_hours_without_double_counting(
         selected_id = chosen.get(group)
         if selected_id:
             selected = next(period for period in options if period.period_id == selected_id)
-            total += float(selected.hours) * selected.resource_count
+            total += float(selected.hours)
         else:
-            total += max(float(period.hours) * period.resource_count for period in options)
+            total += max(float(period.hours) for period in options)
     return round(total, 2)
 
 
@@ -200,12 +199,7 @@ def projected_period_hours_in_window_without_double_counting(
     window_end: date,
     selections: Mapping[str, str] | None = None,
 ) -> float:
-    """Project period workload into one window without summing exclusive options.
-
-    Cumulative periods add normally. A resolved alternative group contributes only its
-    selected option. An unresolved group contributes the largest possible overlap in
-    the requested window, which is conservative while still counting that group once.
-    """
+    """Project period workload into one window without summing exclusive options."""
 
     validate_period_definitions(periods)
     chosen = dict(selections or {})
@@ -214,7 +208,7 @@ def projected_period_hours_in_window_without_double_counting(
 
     def contribution(period: DemandPeriodDefinition) -> float:
         return projected_hours_in_window(
-            float(period.hours) * period.resource_count,
+            float(period.hours),
             period.start_date,
             period.end_date,
             window_start,

@@ -61,6 +61,11 @@ function optionalNumber(value: string) {
   return Number.isFinite(parsed) ? parsed : Number.NaN;
 }
 
+function inclusiveCalendarDays(start: string, end: string): number {
+  if (!start || !end) return 0;
+  return Math.floor((Date.parse(end) - Date.parse(start)) / 86_400_000) + 1;
+}
+
 function emptyForm(projectNumber = ""): FormState {
   return {
     project_number: projectNumber,
@@ -307,6 +312,22 @@ export default function DemandsPage() {
       setError("Les estimations doivent être numériques.");
       return;
     }
+    if (estimatedHours != null && estimatedHours <= 0) {
+      setError("Les heures estimées totales doivent être supérieures à zéro lorsqu'elles sont renseignées.");
+      return;
+    }
+    if (estimatedDays != null) {
+      if (!Number.isInteger(estimatedDays) || estimatedDays < 1) {
+        setError("Les jours actifs souhaités doivent être un entier supérieur ou égal à 1.");
+        return;
+      }
+      const end = form.desired_end || form.desired_start;
+      const windowDays = inclusiveCalendarDays(form.desired_start, end);
+      if (estimatedDays > windowDays) {
+        setError(`La cible de ${estimatedDays} jours actifs dépasse les ${windowDays} dates de la fenêtre demandée.`);
+        return;
+      }
+    }
 
     const payload: DemandWrite = {
       project_number: selectedProject.number,
@@ -525,8 +546,9 @@ export default function DemandsPage() {
                 </label>
 
                 <label>
-                  <span>Nombre de ressources</span>
+                  <span>Nombre de ressources simultanées</span>
                   <input type="number" min="1" step="1" value={form.resource_count} onChange={(event) => setField("resource_count", event.target.value)} disabled={saving} required />
+                  <small>Décrit le parallélisme; ne multiplie jamais les heures estimées.</small>
                 </label>
 
                 <label>
@@ -535,13 +557,15 @@ export default function DemandsPage() {
                 </label>
 
                 <label>
-                  <span>Heures estimées</span>
-                  <input type="number" min="0" step="0.25" value={form.estimated_hours} onChange={(event) => setField("estimated_hours", event.target.value)} disabled={saving} placeholder="Optionnel" />
+                  <span>Heures estimées totales</span>
+                  <input type="number" min="0.25" step="0.25" value={form.estimated_hours} onChange={(event) => setField("estimated_hours", event.target.value)} disabled={saving} placeholder="Optionnel au brouillon" />
+                  <small>Volume total de main-d’œuvre pour la demande, toutes ressources confondues.</small>
                 </label>
 
                 <label>
-                  <span>Jours estimés</span>
-                  <input type="number" min="0" step="0.25" value={form.estimated_days} onChange={(event) => setField("estimated_days", event.target.value)} disabled={saving} placeholder="Optionnel" />
+                  <span>Jours actifs souhaités</span>
+                  <input type="number" min="1" step="1" value={form.estimated_days} onChange={(event) => setField("estimated_days", event.target.value)} disabled={saving} placeholder="Optionnel" />
+                  <small>Cible de répartition dans la fenêtre. Les jours ne créent pas d'heures; les heures doivent être complétées avant l'approbation.</small>
                 </label>
 
                 <label className="span-2">
@@ -552,7 +576,7 @@ export default function DemandsPage() {
 
               <div className="demand-editor-note">
                 <strong>Approbation ≠ confirmation.</strong>
-                <span>Une demande peut être approuvée tout en demeurant Tentative. Les périodes et le workflow d’approbation seront ajoutés dans les prochaines tranches de #192.</span>
+                <span>Une demande peut être approuvée tout en demeurant Tentative. Les heures représentent toujours le volume total; les jours actifs guident seulement sa répartition selon la capacité disponible.</span>
               </div>
 
               <div className="demand-editor-actions">

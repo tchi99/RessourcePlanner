@@ -83,6 +83,7 @@ class WorkforceRequestPeriod(TimestampMixin, Base):
         String(ID_LENGTH), ForeignKey("resources.id"), nullable=True, index=True
     )
     resource_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("1"))
+    desired_active_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
     note: Mapped[str | None] = mapped_column(Text, nullable=True)
     active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=true(), index=True)
 

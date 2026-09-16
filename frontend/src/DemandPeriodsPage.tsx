@@ -14,7 +14,12 @@ import {
 } from "./api";
 
 type PeriodDraft = DemandPeriodWrite & {
+  desired_active_days: number | null;
   selected: boolean;
+};
+
+type PeriodReadWithActiveDays = DemandPeriodReadModel & {
+  desired_active_days?: number | null;
 };
 
 function errorMessage(reason: unknown): string {
@@ -31,6 +36,7 @@ function newPeriodId(): string {
 }
 
 function fromRead(row: DemandPeriodReadModel): PeriodDraft {
+  const activeDays = (row as PeriodReadWithActiveDays).desired_active_days ?? null;
   return {
     period_id: row.period_id,
     start_date: row.start_date,
@@ -41,6 +47,7 @@ function fromRead(row: DemandPeriodReadModel): PeriodDraft {
     confirmation: row.confirmation,
     proposed_resource: row.proposed_resource,
     resource_count: row.resource_count,
+    desired_active_days: activeDays,
     note: row.note ?? "",
     selected: row.selected,
   };
@@ -49,6 +56,16 @@ function fromRead(row: DemandPeriodReadModel): PeriodDraft {
 function baseDates(demand: DemandReadModel | null): { start: string; end: string } {
   const start = demand?.desired_start ?? new Date().toISOString().slice(0, 10);
   return { start, end: demand?.desired_end ?? start };
+}
+
+function defaultActiveDays(demand: DemandReadModel | null): number | null {
+  const value = demand?.estimated_days;
+  return value != null && Number.isInteger(value) && value > 0 ? value : null;
+}
+
+function inclusiveCalendarDays(start: string, end: string): number {
+  if (!start || !end) return 0;
+  return Math.floor((Date.parse(end) - Date.parse(start)) / 86_400_000) + 1;
 }
 
 function nextAlternativeGroup(periods: PeriodDraft[]): string {
@@ -70,6 +87,15 @@ function validatePeriods(periods: PeriodDraft[]): string | null {
     if (period.end_date < period.start_date) return "La fin d'une période ne peut pas précéder son début.";
     if (!Number.isFinite(period.hours) || period.hours <= 0) return "Les heures de chaque période doivent être supérieures à zéro.";
     if (!Number.isInteger(period.resource_count) || period.resource_count < 1) return "Le nombre de ressources doit être un entier supérieur ou égal à 1.";
+    if (period.desired_active_days != null) {
+      if (!Number.isInteger(period.desired_active_days) || period.desired_active_days < 1) {
+        return "Les jours actifs souhaités doivent être un entier supérieur ou égal à 1.";
+      }
+      const windowDays = inclusiveCalendarDays(period.start_date, period.end_date);
+      if (period.desired_active_days > windowDays) {
+        return `La cible de ${period.desired_active_days} jours actifs dépasse les ${windowDays} dates de la période ${period.period_id}.`;
+      }
+    }
     if (period.kind === "ALTERNATIVE") {
       const group = period.alternative_group?.trim();
       if (!group) return "Chaque option alternative doit appartenir à un groupe.";
@@ -121,12 +147,27 @@ function PeriodFields({
           <input type="date" min={period.start_date} value={period.end_date} disabled={disabled} onChange={(event) => change("end_date", event.target.value)} />
         </label>
         <label>
-          <span>Heures</span>
+          <span>Heures totales</span>
           <input type="number" min="0.25" step="0.25" value={period.hours} disabled={disabled} onChange={(event) => change("hours", Number(event.target.value))} />
+          <small>Volume total de main-d’œuvre, toutes ressources confondues.</small>
         </label>
         <label>
-          <span>Ressources</span>
+          <span>Ressources simultanées</span>
           <input type="number" min="1" step="1" value={period.resource_count} disabled={disabled} onChange={(event) => change("resource_count", Number(event.target.value))} />
+          <small>Parallélisme souhaité; ne multiplie pas les heures.</small>
+        </label>
+        <label>
+          <span>Jours actifs souhaités</span>
+          <input
+            type="number"
+            min="1"
+            step="1"
+            value={period.desired_active_days ?? ""}
+            disabled={disabled}
+            onChange={(event) => change("desired_active_days", event.target.value ? Number(event.target.value) : null)}
+            placeholder="Optionnel"
+          />
+          <small>Cible de répartition; la capacité peut imposer davantage de jours.</small>
         </label>
         <label>
           <span>Confirmation</span>
@@ -143,6 +184,7 @@ function PeriodFields({
               <option value={resource.name} key={resource.id}>{resource.name}{resource.resource_class ? ` — ${resource.resource_class}` : ""}</option>
             ))}
           </select>
+          <small>Si plusieurs ressources sont demandées, cette préférence initialise seulement le premier besoin.</small>
         </label>
         {period.kind === "ALTERNATIVE" && (
           <label className="span-2">
@@ -255,6 +297,7 @@ export default function DemandPeriodsPage() {
         confirmation: (selectedDemand?.confirmation === "Confirmée" ? "Confirmée" : "Tentative"),
         proposed_resource: selectedDemand?.proposed_resource ?? null,
         resource_count: selectedDemand?.resource_count ?? 1,
+        desired_active_days: defaultActiveDays(selectedDemand),
         note: "",
         selected: false,
       },
@@ -275,6 +318,7 @@ export default function DemandPeriodsPage() {
       confirmation: (selectedDemand?.confirmation === "Confirmée" ? "Confirmée" : "Tentative"),
       proposed_resource: selectedDemand?.proposed_resource ?? null,
       resource_count: selectedDemand?.resource_count ?? 1,
+      desired_active_days: defaultActiveDays(selectedDemand),
       note: "",
       selected: false,
     };
@@ -302,6 +346,7 @@ export default function DemandPeriodsPage() {
         confirmation: existing?.confirmation ?? "Tentative",
         proposed_resource: existing?.proposed_resource ?? null,
         resource_count: existing?.resource_count ?? 1,
+        desired_active_days: existing?.desired_active_days ?? defaultActiveDays(selectedDemand),
         note: "",
         selected: false,
       },
@@ -321,7 +366,7 @@ export default function DemandPeriodsPage() {
     setError(null);
     setNotice(null);
     try {
-      const payload: DemandPeriodWrite[] = periods.map(({ selected: _selected, ...row }) => ({
+      const payload = periods.map(({ selected: _selected, ...row }) => ({
         ...row,
         alternative_group: row.kind === "ALTERNATIVE" ? row.alternative_group?.trim() || null : null,
         note: row.note.trim(),
@@ -392,6 +437,9 @@ export default function DemandPeriodsPage() {
           <div><span>Projet</span><strong>{selectedDemand.project_number} — {selectedDemand.project_name || "Projet"}</strong></div>
           <div><span>Statut</span><strong>{selectedDemand.status}</strong></div>
           <div><span>Confirmation demande</span><strong>{selectedDemand.confirmation || "Confirmée"}</strong></div>
+          <div><span>Heures demande</span><strong>{selectedDemand.estimated_hours ?? "—"} h totales</strong></div>
+          <div><span>Jours demande</span><strong>{selectedDemand.estimated_days ?? "—"} jour(s) actif(s)</strong></div>
+          <div><span>Ressources</span><strong>{selectedDemand.resource_count || 1} simultanée(s)</strong></div>
           <div><span>Plage moyen terme</span><strong>{selectedDemand.work_package_name || selectedDemand.work_package_ref || "Aucune"}</strong></div>
         </div>
       )}

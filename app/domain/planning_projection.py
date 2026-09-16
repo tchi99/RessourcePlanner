@@ -20,6 +20,7 @@ PRIORITY_ORDER = {"Urgent": 0, "Élevée": 1, "Normale": 2, "Basse": 3}
 PLAN_TYPES = {"Flexible", "Fixe"}
 TRUE_VALUES = {"oui", "yes", "true", "1", "x", "verrouille", "verrouillée"}
 SEGMENT_OVERTIME_FIELD = "HorsHoraireAutorise"
+SEGMENT_ACTIVE_DAYS_FIELD = "JoursActifsCibles"
 
 
 @dataclass(frozen=True, slots=True)
@@ -48,6 +49,13 @@ def _number(value: Any) -> float:
         return float(str(value).replace(",", "."))
     except (TypeError, ValueError):
         return 0.0
+
+
+def _optional_positive_int(value: Any) -> int | None:
+    numeric = _number(value)
+    if numeric <= 0 or not numeric.is_integer():
+        return None
+    return int(numeric)
 
 
 def _truthy(value: Any) -> bool:
@@ -124,6 +132,7 @@ def _segment_inputs(
                 priority_rank=_priority_rank(row, demands),
                 created_order=str(row.get("DateCreation") or ""),
                 overtime_allowed=_truthy(row.get(SEGMENT_OVERTIME_FIELD)),
+                desired_active_days=_optional_positive_int(row.get(SEGMENT_ACTIVE_DAYS_FIELD)),
             )
         )
 

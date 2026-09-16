@@ -4,6 +4,10 @@ This package contains database infrastructure only. Application services and the
 planning engine must continue to depend on ports/read models rather than SQLAlchemy.
 """
 
+from .active_days_query_repository import (
+    SqlPlannerQueryRepositoryWithEstimatedDays,
+    SqlSegmentRepositoryWithActiveDayMetrics,
+)
 from .auth_session_repository import LoginTransactionRecord, SqlAuthSessionRepository
 from .base import Base, NAMING_CONVENTION, new_id
 from .command_adapters import (
@@ -111,12 +115,14 @@ __all__ = [
     "SqlPeriodAwareApprovedDemandSyncAdapter",
     "SqlPlannerQueryRepository",
     "SqlPlannerQueryRepositoryWithEmergencyOverride",
+    "SqlPlannerQueryRepositoryWithEstimatedDays",
     "SqlPlannerQueryRepositoryWithOverallocation",
     "SqlPlanningCommandAdapter",
     "SqlPlanningReadRepository",
     "SqlProjectSyncRepository",
     "SqlResourceAdminRepository",
     "SqlSegmentRepository",
+    "SqlSegmentRepositoryWithActiveDayMetrics",
     "SqlSegmentRepositoryWithAllocationMetrics",
     "SqlSessionFactory",
     "SqlUserIdentityRepository",

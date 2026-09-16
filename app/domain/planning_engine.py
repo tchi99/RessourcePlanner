@@ -24,6 +24,7 @@ class SegmentInput:
     priority_rank: int = 2
     created_order: str = ""
     overtime_allowed: bool = False
+    desired_active_days: int | None = None
 
 
 @dataclass(frozen=True)
@@ -48,6 +49,15 @@ class PlannedAllocation:
 
 
 @dataclass(frozen=True)
+class ActiveDayDiagnostic:
+    segment_id: str
+    desired_active_days: int
+    planned_active_days: int
+    code: str
+    message: str
+
+
+@dataclass(frozen=True)
 class PlanResult:
     allocations: tuple[PlannedAllocation, ...]
     segment_count: int
@@ -57,6 +67,8 @@ class PlanResult:
     unallocated_hours: float
     overtime_hours: float = 0.0
     missing_allocation_count: int = 0
+    active_day_diagnostics: tuple[ActiveDayDiagnostic, ...] = ()
+
 
 
 def _segment_sort_key(segment: SegmentInput) -> tuple[object, ...]:
@@ -66,6 +78,7 @@ def _segment_sort_key(segment: SegmentInput) -> tuple[object, ...]:
         segment.created_order,
         segment.segment_id,
     )
+
 
 
 def _capacity_window(
@@ -85,6 +98,51 @@ def _capacity_window(
         )
         cursor += timedelta(days=1)
     return result
+
+
+
+def _preferred_active_day_window(
+    segment: SegmentInput,
+    residual: Sequence[tuple[date, float]],
+    *,
+    remaining_hours: float,
+    locked_days: set[date],
+) -> list[tuple[date, float]]:
+    """Prefer a capacity-maximizing set of active days for flexible work.
+
+    Locked/manual days already count toward the requested active-day target. Additional
+    days are chosen by available capacity (date as deterministic tie-breaker), then the
+    set is expanded only when the target-day capacity cannot hold the remaining work.
+    Capacity therefore always wins over the target without silently dropping hours.
+    """
+
+    target = segment.desired_active_days
+    if segment.plan_type == "Fixe" or target is None or target <= 0 or not residual:
+        return list(residual)
+
+    by_day = {day: max(float(room), 0.0) for day, room in residual if room > 0}
+    selected_days = {day for day in locked_days if day in by_day}
+    additional_target = max(int(target) - len(locked_days), 0)
+    candidates = sorted(
+        ((day, room) for day, room in by_day.items() if day not in selected_days),
+        key=lambda item: (-item[1], item[0]),
+    )
+
+    for day, _room in candidates[:additional_target]:
+        selected_days.add(day)
+
+    selected_capacity = sum(by_day.get(day, 0.0) for day in selected_days)
+    if selected_capacity + 0.001 < float(remaining_hours):
+        for day, room in candidates[additional_target:]:
+            if day in selected_days:
+                continue
+            selected_days.add(day)
+            selected_capacity += room
+            if selected_capacity + 0.001 >= float(remaining_hours):
+                break
+
+    return [(day, by_day[day]) for day in sorted(selected_days) if by_day.get(day, 0.0) > 0]
+
 
 
 def _outside_schedule_slots(
@@ -133,6 +191,57 @@ def _outside_schedule_slots(
     return result
 
 
+
+def _active_day_diagnostics(
+    segments: Sequence[SegmentInput],
+    allocations: Sequence[PlannedAllocation],
+) -> tuple[ActiveDayDiagnostic, ...]:
+    diagnostics: list[ActiveDayDiagnostic] = []
+    for segment in segments:
+        target = segment.desired_active_days
+        if segment.plan_type == "Fixe" or target is None or target <= 0:
+            continue
+        rows = [
+            row
+            for row in allocations
+            if row.segment_id == segment.segment_id
+            and row.counts_as_allocated
+            and float(row.hours) > 0
+        ]
+        planned_days = len({row.day for row in rows})
+        if planned_days == target:
+            continue
+        locked_days = len({row.day for row in rows if row.locked})
+        if locked_days > target:
+            code = "LOCKED_DAYS_EXCEED_TARGET"
+            message = (
+                f"{locked_days} jour(s) verrouillé(s) dépassent la cible de {target} jour(s); "
+                "les décisions manuelles sont conservées."
+            )
+        elif planned_days > target:
+            code = "CAPACITY_REQUIRES_MORE_DAYS"
+            message = (
+                f"La capacité disponible exige {planned_days} jour(s) actifs au lieu de la cible de {target}."
+            )
+        else:
+            code = "ACTIVE_DAY_TARGET_UNDERFILLED"
+            message = (
+                f"Le plan utilise {planned_days} jour(s) actifs sur une cible de {target}; "
+                "la capacité ou les heures verrouillées ne permettent pas de matérialiser davantage de jours utiles."
+            )
+        diagnostics.append(
+            ActiveDayDiagnostic(
+                segment_id=segment.segment_id,
+                desired_active_days=int(target),
+                planned_active_days=planned_days,
+                code=code,
+                message=message,
+            )
+        )
+    return tuple(diagnostics)
+
+
+
 def build_allocation_plan(
     segments: Sequence[SegmentInput],
     locked_allocations: Sequence[LockedAllocationInput],
@@ -144,18 +253,18 @@ def build_allocation_plan(
 ) -> PlanResult:
     """Build the current refined allocation policy without Excel or NiceGUI.
 
-    Runtime semantics are intentionally reproduced here before replacing the legacy
-    engine: locked/manual work first, then fixed segments, then flexible segments.
-    Both fixed and flexible work first consume residual standard capacity. Any
-    shortage is proposed in outside-schedule slots; it counts as real allocation only
-    when that segment explicitly allows overtime. Otherwise a non-counting placeholder
-    is retained so the shadow result can match what is persisted in AllocationsMO.
+    Locked/manual work is preserved first, then fixed work, then flexible work. For a
+    flexible segment with ``desired_active_days``, the day count is a distribution
+    target only: the engine first tries to fit the residual hours inside that many
+    useful capacity days and expands to more days only when capacity requires it.
+    Fixed planning keeps its exact-day semantics and ignores this target.
     """
     active_segments = [segment for segment in segments if float(segment.hours) > 0]
     segment_map = {segment.segment_id: segment for segment in active_segments}
 
     preserved: list[PlannedAllocation] = []
     locked_by_segment: dict[str, float] = {}
+    locked_days_by_segment: dict[str, set[date]] = {}
     normal_used: dict[CapacityKey, float] = {}
     for allocation in locked_allocations:
         if allocation.segment_id not in segment_map or float(allocation.hours) <= 0:
@@ -175,6 +284,7 @@ def build_allocation_plan(
         locked_by_segment[allocation.segment_id] = (
             locked_by_segment.get(allocation.segment_id, 0.0) + hours
         )
+        locked_days_by_segment.setdefault(allocation.segment_id, set()).add(allocation.day)
         key = (allocation.resource_id, allocation.day)
         normal_used[key] = normal_used.get(key, 0.0) + hours
 
@@ -211,7 +321,13 @@ def build_allocation_plan(
             if room > 0:
                 residual.append((day, room))
 
-        spread = spread_hours(remaining, residual)
+        preferred = _preferred_active_day_window(
+            segment,
+            residual,
+            remaining_hours=remaining,
+            locked_days=locked_days_by_segment.get(segment.segment_id, set()),
+        )
+        spread = spread_hours(remaining, preferred)
         for day, hours in spread.items():
             key = (segment.resource_id, day)
             normal_used[key] = normal_used.get(key, 0.0) + hours
@@ -268,8 +384,6 @@ def build_allocation_plan(
         if segment.overtime_allowed:
             missing_total += residual_missing
         else:
-            # The refined engine reports the complete shortage even when placeholder
-            # rows successfully represent all suggested outside-schedule slots.
             missing_total += missing
 
     for segment in fixed_segments:
@@ -288,6 +402,7 @@ def build_allocation_plan(
     )
     requested = sum(float(segment.hours) for segment in active_segments)
     allocated = sum(float(item.hours) for item in allocations if item.counts_as_allocated)
+    diagnostics = _active_day_diagnostics(active_segments, allocations)
     return PlanResult(
         allocations=tuple(allocations),
         segment_count=len(active_segments),
@@ -297,4 +412,5 @@ def build_allocation_plan(
         unallocated_hours=round(max(requested - allocated, missing_total), 4),
         overtime_hours=round(overtime_total, 4),
         missing_allocation_count=missing_count,
+        active_day_diagnostics=diagnostics,
     )

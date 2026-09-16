@@ -114,7 +114,7 @@ class DemandCreateRequest(StrictRequest):
     resource_count: int = Field(default=1, ge=1)
     required_competencies: str | None = None
     estimated_hours: float | None = Field(default=None, ge=0)
-    estimated_days: float | None = Field(default=None, ge=0)
+    estimated_days: int | None = Field(default=None, ge=1)
     proposed_technician: str | None = None
 
 
@@ -135,7 +135,7 @@ class DemandUpdateRequest(StrictRequest):
     resource_count: int | None = Field(default=None, ge=1)
     required_competencies: str | None = None
     estimated_hours: float | None = Field(default=None, ge=0)
-    estimated_days: float | None = Field(default=None, ge=0)
+    estimated_days: int | None = Field(default=None, ge=1)
     proposed_technician: str | None = None
     comment: str = "Demande modifiée via API"
 
@@ -150,6 +150,7 @@ class DemandPeriodRequest(StrictRequest):
     confirmation: str = "Tentative"
     proposed_resource: str | None = None
     resource_count: int = Field(default=1, ge=1)
+    desired_active_days: int | None = Field(default=None, ge=1)
     note: str = ""
 
 

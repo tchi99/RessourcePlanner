@@ -1,20 +1,22 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from decimal import Decimal
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ...application.command_ports import ApprovedDemandSyncPort
+from ...domain.active_days import split_total_workforce_hours
 from ...domain.confirmation import CONFIRMATION_CONFIRMED, normalize_confirmation
 from ...domain.demand_periods import PERIOD_KIND_CUMULATIVE
 from .base import utc_now
-from .command_adapters import SqlApprovedDemandSyncAdapter
 from .demand_period_models import (
     WorkforceRequestPeriod,
     WorkforceRequestPeriodRequirement,
     WorkforceRequestPeriodSelection,
 )
+from .estimated_days_sync import SqlEstimatedDaysApprovedDemandSyncAdapter
 from .models import (
     ORIGIN_REQUEST,
     Project,
@@ -36,7 +38,7 @@ class SqlPeriodAwareApprovedDemandSyncAdapter(ApprovedDemandSyncPort):
     def __init__(self, session: Session) -> None:
         self._session = session
         self._segments = SqlSegmentRepository(session)
-        self._legacy = SqlApprovedDemandSyncAdapter(session)
+        self._legacy = SqlEstimatedDaysApprovedDemandSyncAdapter(session)
 
     def _request(self, number: str) -> WorkforceRequest:
         wanted = _text(number)
@@ -107,6 +109,7 @@ class SqlPeriodAwareApprovedDemandSyncAdapter(ApprovedDemandSyncPort):
         project: Project,
         period: WorkforceRequestPeriod,
         proposed: Resource | None,
+        planned_hours: float,
     ) -> ResourceRequirement:
         identifier = self._segments.create(
             {
@@ -115,7 +118,8 @@ class SqlPeriodAwareApprovedDemandSyncAdapter(ApprovedDemandSyncPort):
                 "Technicien": proposed.name if proposed is not None else None,
                 "DateDebut": period.start_date,
                 "DateFin": period.end_date,
-                "HeuresPrevues": period.hours,
+                "HeuresPrevues": planned_hours,
+                "JoursActifsCibles": period.desired_active_days,
                 "Statut": "Planifié" if proposed is not None else "À assigner",
                 "Description": period.note or request.description or "Période approuvée",
                 "CompetenceRequise": request.required_competencies,
@@ -181,6 +185,7 @@ class SqlPeriodAwareApprovedDemandSyncAdapter(ApprovedDemandSyncPort):
 
         for period in effective:
             desired = max(int(period.resource_count or 1), 1)
+            split_hours = split_total_workforce_hours(period.hours, desired)
             rows = by_period.get(period.id, [])
             proposed = (
                 self._session.get(Resource, period.proposed_resource_id)
@@ -193,12 +198,14 @@ class SqlPeriodAwareApprovedDemandSyncAdapter(ApprovedDemandSyncPort):
                 )
 
             while len(rows) < desired:
+                index = len(rows)
                 rows.append(
                     self._create_requirement(
                         request=request,
                         project=project,
                         period=period,
-                        proposed=proposed,
+                        proposed=proposed if index == 0 else None,
+                        planned_hours=split_hours[index],
                     )
                 )
 
@@ -217,12 +224,20 @@ class SqlPeriodAwareApprovedDemandSyncAdapter(ApprovedDemandSyncPort):
                         requirement.status = "Annulé"
                 rows = [row for row in ranked if row.id in keep_ids]
 
+            rows = sorted(
+                rows,
+                key=lambda row: (
+                    0 if row.assigned_resource_id else 1,
+                    row.created_at,
+                    row.id,
+                ),
+            )
             inherited_confirmation = normalize_confirmation(
                 period.confirmation,
                 default=CONFIRMATION_CONFIRMED,
             )
-            for requirement in rows:
-                if proposed is not None and not requirement.assigned_resource_id:
+            for index, requirement in enumerate(rows):
+                if index == 0 and proposed is not None and not requirement.assigned_resource_id:
                     requirement.assigned_resource_id = proposed.id
                 if requirement.assigned_resource_id:
                     requirement.status = "Planifié"
@@ -232,7 +247,8 @@ class SqlPeriodAwareApprovedDemandSyncAdapter(ApprovedDemandSyncPort):
                 requirement.project_id = request.project_id
                 requirement.start_date = period.start_date
                 requirement.end_date = period.end_date
-                requirement.planned_hours = period.hours
+                requirement.planned_hours = Decimal(str(split_hours[index])).quantize(Decimal("0.01"))
+                requirement.desired_active_days = period.desired_active_days
                 requirement.description = period.note or request.description or ""
                 requirement.required_competency = request.required_competencies
                 requirement.priority = request.priority or "Normale"
