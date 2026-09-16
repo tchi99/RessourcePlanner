@@ -57,6 +57,13 @@ from .capacity_query_repository import SqlPlannerQueryRepository
 from .project_sync_repository import SqlProjectSyncRepository
 from .resource_admin_repository import SqlResourceAdminRepository
 from .segment_repository import SqlSegmentRepository
+from .overallocation import (
+    OverallocationAuditedAllocationCommandAdapter,
+    OverallocationAuditedSegmentRepository,
+    SqlOverallocationAllocationCommandAdapter,
+    SqlPlannerQueryRepositoryWithOverallocation,
+    SqlSegmentRepositoryWithAllocationMetrics,
+)
 from .session import (
     SqlSessionFactory,
     create_session_factory,
@@ -80,6 +87,8 @@ __all__ = [
     "ORIGIN_AD_HOC",
     "ORIGIN_QUICK_SHIFT",
     "ORIGIN_REQUEST",
+    "OverallocationAuditedAllocationCommandAdapter",
+    "OverallocationAuditedSegmentRepository",
     "PlanningChangeHistory",
     "Project",
     "RESOURCE_EXTERNAL_ID_INDEX",
@@ -98,14 +107,17 @@ __all__ = [
     "SqlEmergencyDemandRepository",
     "SqlEmployeeSyncRepository",
     "SqlIdentityResourceLinkRepository",
+    "SqlOverallocationAllocationCommandAdapter",
     "SqlPeriodAwareApprovedDemandSyncAdapter",
     "SqlPlannerQueryRepository",
     "SqlPlannerQueryRepositoryWithEmergencyOverride",
+    "SqlPlannerQueryRepositoryWithOverallocation",
     "SqlPlanningCommandAdapter",
     "SqlPlanningReadRepository",
     "SqlProjectSyncRepository",
     "SqlResourceAdminRepository",
     "SqlSegmentRepository",
+    "SqlSegmentRepositoryWithAllocationMetrics",
     "SqlSessionFactory",
     "SqlUserIdentityRepository",
     "SqlWorkPackageRepository",
