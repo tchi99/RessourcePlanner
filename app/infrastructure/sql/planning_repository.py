@@ -68,6 +68,7 @@ class SqlPlanningReadRepository(PlanningReadRepositoryPort):
                 "DateDebut": requirement.start_date,
                 "DateFin": requirement.end_date,
                 "HeuresPrevues": float(requirement.planned_hours),
+                "JoursActifsCibles": requirement.desired_active_days,
                 "Statut": requirement.status,
                 "Description": requirement.description,
                 "SourceEffortID": requirement.source_effort_id,
@@ -161,7 +162,6 @@ class SqlPlanningReadRepository(PlanningReadRepositoryPort):
         return [
             {
                 "ID": _identifier(rule.legacy_id, rule.id),
-                # Blank resource preserves the current meaning of a global holiday.
                 "Technicien": resource.name if resource is not None else "",
                 "Type": rule.availability_type,
                 "DateDebut": rule.start_date,
@@ -192,9 +192,6 @@ class SqlPlanningReadRepository(PlanningReadRepositoryPort):
         ]
 
     def capture(self) -> PlanningSnapshot:
-        # SQLAlchemy keeps these reads inside the current Session transaction. Unlike
-        # the legacy Excel adapter, a failed query propagates and can never be mistaken
-        # for an authoritative empty source.
         return PlanningSnapshot.capture(
             segments=self._segments(),
             demands=self._demands(),
