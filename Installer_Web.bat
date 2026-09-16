@@ -56,14 +56,14 @@ if errorlevel 1 goto :error
 
 echo Installation des dependances React...
 pushd frontend
-npm install --no-audit --no-fund
+call npm install --no-audit --no-fund
 if errorlevel 1 (
     popd
     goto :error
 )
 
 echo Construction du frontend React de production...
-npm run build
+call npm run build
 if errorlevel 1 (
     popd
     goto :error
