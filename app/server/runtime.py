@@ -11,6 +11,10 @@ from ..application.identity_provisioning import AutoProvisioningPolicy
 from ..application.security import AuthPrincipal, ROLE_ADMIN, normalize_roles
 from ..infrastructure.acumatica import AcumaticaProjectSource, AcumaticaProjectSourceSettings
 from ..infrastructure.acumatica.oidc import OidcClient, OidcClientSettings
+from ..infrastructure.m365 import (
+    MicrosoftGraphCommunicationSettings,
+    MicrosoftGraphCommunicationTransport,
+)
 from .embedding import EmbeddingSettings, install_embedding_headers
 from .frontend import FrontendBuildError, attach_frontend
 from .http import create_api_app
@@ -49,6 +53,13 @@ ACUMATICA_CLIENT_FIELD_ENV = "RESOURCEPLANNER_ACUMATICA_PROJECT_CLIENT_FIELD"
 ACUMATICA_MANAGER_FIELD_ENV = "RESOURCEPLANNER_ACUMATICA_PROJECT_MANAGER_FIELD"
 ACUMATICA_STATUS_FIELD_ENV = "RESOURCEPLANNER_ACUMATICA_PROJECT_STATUS_FIELD"
 ACUMATICA_PAGE_SIZE_ENV = "RESOURCEPLANNER_ACUMATICA_PAGE_SIZE"
+M365_TENANT_ID_ENV = "RESOURCEPLANNER_M365_TENANT_ID"
+M365_CLIENT_ID_ENV = "RESOURCEPLANNER_M365_CLIENT_ID"
+M365_CLIENT_SECRET_ENV = "RESOURCEPLANNER_M365_CLIENT_SECRET"
+M365_MAILBOX_ENV = "RESOURCEPLANNER_M365_MAILBOX"
+M365_GRAPH_BASE_URL_ENV = "RESOURCEPLANNER_M365_GRAPH_BASE_URL"
+M365_AUTHORITY_HOST_ENV = "RESOURCEPLANNER_M365_AUTHORITY_HOST"
+M365_TIMEOUT_SECONDS_ENV = "RESOURCEPLANNER_M365_TIMEOUT_SECONDS"
 
 _ALLOWED_LOG_LEVELS = {"critical", "error", "warning", "info", "debug", "trace"}
 _LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "::1"}
@@ -128,6 +139,51 @@ def _acumatica_settings(values: Mapping[str, str]) -> AcumaticaProjectSourceSett
         project_manager_field=_text(values.get(ACUMATICA_MANAGER_FIELD_ENV)) or "ProjectManager",
         status_field=_text(values.get(ACUMATICA_STATUS_FIELD_ENV)) or "Status",
         page_size=_acumatica_page_size(values.get(ACUMATICA_PAGE_SIZE_ENV)),
+    )
+
+
+def _m365_settings(values: Mapping[str, str]) -> MicrosoftGraphCommunicationSettings | None:
+    tenant_id = _text(values.get(M365_TENANT_ID_ENV))
+    client_id = _text(values.get(M365_CLIENT_ID_ENV))
+    client_secret = _text(values.get(M365_CLIENT_SECRET_ENV))
+    mailbox = _text(values.get(M365_MAILBOX_ENV))
+
+    if not any((tenant_id, client_id, client_secret, mailbox)):
+        return None
+
+    missing = [
+        name
+        for name, value in (
+            (M365_TENANT_ID_ENV, tenant_id),
+            (M365_CLIENT_ID_ENV, client_id),
+            (M365_CLIENT_SECRET_ENV, client_secret),
+            (M365_MAILBOX_ENV, mailbox),
+        )
+        if not value
+    ]
+    if missing:
+        raise ServerConfigurationError(
+            "Configuration Microsoft 365 incomplète; variables requises: " + ", ".join(missing)
+        )
+
+    timeout_seconds = _positive_int(
+        values.get(M365_TIMEOUT_SECONDS_ENV),
+        default=20,
+        label=M365_TIMEOUT_SECONDS_ENV,
+        maximum=120,
+    )
+    return MicrosoftGraphCommunicationSettings(
+        tenant_id=tenant_id,
+        client_id=client_id,
+        client_secret=client_secret,
+        mailbox=mailbox,
+        graph_base_url=(
+            _text(values.get(M365_GRAPH_BASE_URL_ENV)) or "https://graph.microsoft.com/v1.0"
+        ),
+        authority_host=(
+            _text(values.get(M365_AUTHORITY_HOST_ENV)) or "https://login.microsoftonline.com"
+        ),
+        timeout_seconds=float(timeout_seconds),
     )
 
 
@@ -212,6 +268,7 @@ class ServerSettings:
     oidc_auto_provision: bool = False
     embedding: EmbeddingSettings = field(default_factory=EmbeddingSettings)
     acumatica: AcumaticaProjectSourceSettings | None = field(default=None, repr=False)
+    m365: MicrosoftGraphCommunicationSettings | None = field(default=None, repr=False)
 
     @classmethod
     def from_environment(cls, environ: Mapping[str, str] | None = None) -> "ServerSettings":
@@ -291,6 +348,7 @@ class ServerSettings:
             oidc_auto_provision=oidc_auto_provision,
             embedding=embedding,
             acumatica=_acumatica_settings(values),
+            m365=_m365_settings(values),
         )
 
 
@@ -301,6 +359,11 @@ def create_configured_app(settings: ServerSettings | None = None) -> FastAPI:
     project_source = (
         AcumaticaProjectSource(resolved.acumatica)
         if resolved.acumatica is not None
+        else None
+    )
+    communication_transport = (
+        MicrosoftGraphCommunicationTransport(resolved.m365)
+        if resolved.m365 is not None
         else None
     )
     oidc_runtime = None
@@ -328,9 +391,11 @@ def create_configured_app(settings: ServerSettings | None = None) -> FastAPI:
         ),
         auth_resolver=auth_resolver,
         oidc_runtime=oidc_runtime,
+        communication_transport=communication_transport,
     )
     app.state.auth_mode = resolved.auth_mode
     app.state.embedding = resolved.embedding
+    app.state.m365 = resolved.m365.safe_summary() if resolved.m365 is not None else {"configured": False}
     install_embedding_headers(app, resolved.embedding)
     if resolved.frontend_dist is not None:
         try:
