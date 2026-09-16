@@ -29,13 +29,15 @@ from ..infrastructure.sql import (
     SqlWorkPackageRepository,
 )
 from ..infrastructure.sql.communication_repository import SqlCommunicationRepository
+from ..infrastructure.sql.plan_delta_query_repository import (
+    SqlPlannerQueryRepositoryWithPlanDelta,
+)
 from ..infrastructure.sql.planning_audit import (
     AuditedAllocationCommandAdapter,
     AuditedApprovedDemandSyncAdapter,
     AuditedSegmentRepository,
     SqlPlanningAuditJournal,
 )
-from ..infrastructure.sql.web_query_repository import SqlPlannerQueryRepositoryWeb
 
 
 def build_sql_facade(
@@ -101,7 +103,7 @@ def build_sql_idempotency_executor(
 def build_sql_query_port(session: Session) -> PlannerQueryPort:
     """Compose the canonical read-only query port for one request transaction."""
 
-    return SqlPlannerQueryRepositoryWeb(session)
+    return SqlPlannerQueryRepositoryWithPlanDelta(session)
 
 
 def build_user_admin_service(session: Session) -> UserAdminService:
