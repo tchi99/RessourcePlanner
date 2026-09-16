@@ -1,0 +1,74 @@
+.planning-history-panel {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border, #d9dee7);
+}
+
+.planning-history-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: .75rem;
+}
+
+.planning-history-heading h3 {
+  margin: .15rem 0 0;
+  font-size: 1rem;
+}
+
+.planning-history-reference,
+.planning-history-actor,
+.planning-history-parent {
+  color: var(--muted, #667085);
+  font-size: .82rem;
+}
+
+.planning-history-empty {
+  padding: .85rem;
+  border-radius: .65rem;
+  background: rgba(127, 127, 127, .08);
+  color: var(--muted, #667085);
+}
+
+.planning-history-timeline {
+  display: grid;
+  gap: .65rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.planning-history-timeline > li {
+  padding: .8rem;
+  border: 1px solid var(--border, #d9dee7);
+  border-radius: .7rem;
+}
+
+.planning-history-event-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.planning-history-event-heading time {
+  white-space: nowrap;
+  color: var(--muted, #667085);
+  font-size: .8rem;
+}
+
+.planning-history-actor,
+.planning-history-parent {
+  display: inline-block;
+  margin-top: .3rem;
+  margin-right: .75rem;
+}
+
+.planning-history-changes {
+  display: grid;
+  gap: .2rem;
+  margin: .6rem 0 0;
+  padding-left: 1.1rem;
+  font-size: .84rem;
+  overflow-wrap: anywhere;
+}
