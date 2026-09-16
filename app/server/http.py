@@ -23,6 +23,7 @@ from ..application import (
 )
 from ..application.errors import ApplicationUnavailableError
 from ..application.security import AuthPrincipal, ROLE_ADMIN
+from ..application.user_admin import UserAdminService
 from ..infrastructure.sql import (
     SqlSessionFactory,
     create_session_factory,
@@ -33,12 +34,14 @@ from .composition import (
     build_sql_facade,
     build_sql_idempotency_executor,
     build_sql_query_port,
+    build_user_admin_service,
 )
 from .oidc import OidcRuntime
 from .routes_auth import build_auth_router
 from .routes_commands import build_command_router
 from .routes_integrations import build_integration_router
 from .routes_reads import build_read_router
+from .routes_user_admin import build_user_admin_router
 from .security import AuthResolver, install_authorization_middleware, static_auth_resolver
 
 
@@ -46,6 +49,7 @@ SessionDependency = Callable[[], Iterator[Session]]
 FacadeDependency = Callable[[], Iterator[ApplicationFacade]]
 IdempotencyDependency = Callable[[], Iterator[IdempotentCommandExecutor]]
 QueryDependency = Callable[[], Iterator[PlannerQueryPort]]
+UserAdminDependency = Callable[[], Iterator[UserAdminService]]
 
 
 def application_error_status(exc: ApplicationError) -> int:
@@ -134,6 +138,21 @@ def make_query_dependency(
     return dependency
 
 
+def make_user_admin_dependency(
+    factory: SqlSessionFactory,
+    *,
+    session_dependency: SessionDependency | None = None,
+) -> UserAdminDependency:
+    request_session = session_dependency or make_session_dependency(factory)
+
+    def dependency(
+        session: Session = Depends(request_session),
+    ) -> Iterator[UserAdminService]:
+        yield build_user_admin_service(session)
+
+    return dependency
+
+
 def _request_validation_response(exc: RequestValidationError) -> JSONResponse:
     details = [
         {
@@ -196,6 +215,10 @@ def create_api_app(
         factory,
         session_dependency=session_dependency,
     )
+    user_admin_dependency = make_user_admin_dependency(
+        factory,
+        session_dependency=session_dependency,
+    )
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
@@ -214,6 +237,7 @@ def create_api_app(
     app.state.facade_dependency = facade_dependency
     app.state.idempotency_dependency = idempotency_dependency
     app.state.query_dependency = query_dependency
+    app.state.user_admin_dependency = user_admin_dependency
 
     install_authorization_middleware(
         app,
@@ -260,6 +284,7 @@ def create_api_app(
         }
 
     app.include_router(build_auth_router(oidc_runtime))
+    app.include_router(build_user_admin_router(user_admin_dependency))
     app.include_router(build_command_router(facade_dependency, idempotency_dependency))
     app.include_router(build_read_router(query_dependency))
     app.include_router(
