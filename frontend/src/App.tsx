@@ -6,8 +6,9 @@ import MediumTermPage from "./MediumTermPage";
 import PlanningPage from "./PlanningPage";
 import ProjectsPage from "./ProjectsPage";
 import ResourcesPage from "./ResourcesPage";
+import UserAdminPage from "./UserAdminPage";
 
-type View = "planning" | "medium-term" | "demands" | "projects" | "resources" | "communications";
+type View = "planning" | "medium-term" | "demands" | "projects" | "resources" | "users" | "communications";
 
 type NavItem = { key: View; label: string; eyebrow: string; permission?: string };
 
@@ -17,6 +18,7 @@ const navItems: NavItem[] = [
   { key: "demands", label: "Demandes", eyebrow: "Main-d’œuvre" },
   { key: "projects", label: "Projets", eyebrow: "Portefeuille" },
   { key: "resources", label: "Ressources", eyebrow: "Administration", permission: "manage_resources" },
+  { key: "users", label: "Utilisateurs", eyebrow: "Sécurité", permission: "admin_users" },
   { key: "communications", label: "Communications", eyebrow: "À venir" },
 ];
 
@@ -171,6 +173,8 @@ export default function App() {
             <ProjectsPage />
           ) : view === "resources" && can("manage_resources") ? (
             <ResourcesPage />
+          ) : view === "users" && can("admin_users") ? (
+            <UserAdminPage />
           ) : (
             <Placeholder view={view} />
           )}
