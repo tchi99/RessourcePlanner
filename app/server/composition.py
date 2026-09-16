@@ -11,7 +11,7 @@ from ..application import (
     ResourceAdminService,
     WorkPackageService,
 )
-from ..application.communications import CommunicationService
+from ..application.communications import CommunicationService, CommunicationTransportPort
 from ..application.demand_service import DemandService
 from ..application.quick_shift_service import QuickShiftService
 from ..application.segment_service import SegmentService
@@ -94,7 +94,11 @@ def build_user_admin_service(session: Session) -> UserAdminService:
     return UserAdminService(SqlUserIdentityRepository(session))
 
 
-def build_communication_service(session: Session) -> CommunicationService:
-    """Compose controlled communication preparation without any external transport."""
+def build_communication_service(
+    session: Session,
+    *,
+    transport: CommunicationTransportPort | None = None,
+) -> CommunicationService:
+    """Compose controlled communication preparation and explicit external draft creation."""
 
-    return CommunicationService(SqlCommunicationRepository(session))
+    return CommunicationService(SqlCommunicationRepository(session), transport=transport)
