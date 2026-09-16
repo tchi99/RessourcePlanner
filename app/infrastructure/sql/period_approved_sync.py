@@ -31,13 +31,7 @@ def _text(value: object) -> str:
 
 
 class SqlPeriodAwareApprovedDemandSyncAdapter(ApprovedDemandSyncPort):
-    """Materialize the approved period definition without summing alternatives.
-
-    Requests that do not define detailed periods are delegated to the established SQL
-    synchronization adapter unchanged. Once detailed periods exist, cumulative periods
-    and the single selected option of each exclusive group are the only definitions
-    allowed to materialize into operational requirements.
-    """
+    """Materialize an approved or explicitly emergency request period definition."""
 
     def __init__(self, session: Session) -> None:
         self._session = session
@@ -55,6 +49,10 @@ class SqlPeriodAwareApprovedDemandSyncAdapter(ApprovedDemandSyncPort):
         if request is None:
             raise KeyError(f"Demande {wanted} introuvable après approbation")
         return request
+
+    @staticmethod
+    def _emergency_materialization(request: WorkforceRequest) -> bool:
+        return bool(request.emergency_override_active) and request.status == "Soumise"
 
     def _active_periods(self, request_id: str) -> list[WorkforceRequestPeriod]:
         return list(
@@ -129,7 +127,6 @@ class SqlPeriodAwareApprovedDemandSyncAdapter(ApprovedDemandSyncPort):
                     period.confirmation,
                     default=CONFIRMATION_CONFIRMED,
                 ),
-                # This value is an inherited approved snapshot, not a user override.
                 "ConfirmationOverride": False,
             }
         )
@@ -251,16 +248,30 @@ class SqlPeriodAwareApprovedDemandSyncAdapter(ApprovedDemandSyncPort):
             }
         )
         unresolved = [group for group in groups if group not in selected]
+        emergency = self._emergency_materialization(request)
         self._session.add(
             WorkforceRequestHistory(
                 workforce_request_id=request.id,
-                action="Synchronisation périodes",
-                status="En planification",
-                comment=(
-                    f"{len(effective)} période(s) effective(s), "
-                    f"{len(unresolved)} groupe(s) alternatif(s) non résolu(s)."
+                action=(
+                    "Synchronisation périodes urgente"
+                    if emergency
+                    else "Synchronisation périodes"
                 ),
-                actor_name=request.approved_by_name,
+                status=request.status,
+                comment=(
+                    f"{len(effective)} période(s) effective(s) matérialisée(s) par dérogation urgente; "
+                    f"{len(unresolved)} groupe(s) alternatif(s) non résolu(s)."
+                    if emergency
+                    else (
+                        f"{len(effective)} période(s) effective(s), "
+                        f"{len(unresolved)} groupe(s) alternatif(s) non résolu(s)."
+                    )
+                ),
+                actor_name=(
+                    request.emergency_override_by_name
+                    if emergency
+                    else request.approved_by_name
+                ),
                 occurred_at=utc_now(),
             )
         )

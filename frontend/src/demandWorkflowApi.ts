@@ -29,7 +29,7 @@ const API_BASE = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/$/, "");
 
 async function workflowPost(
   number: string,
-  action: "submit" | "approve" | "correction" | "cancel",
+  action: "submit" | "approve" | "emergency-plan" | "correction" | "cancel",
   body?: { comment: string },
 ): Promise<DemandWorkflowResult> {
   const response = await fetch(
@@ -67,6 +67,10 @@ export function submitDemand(number: string) {
 
 export function approveDemand(number: string, comment: string) {
   return workflowPost(number, "approve", { comment });
+}
+
+export function emergencyPlanDemand(number: string, comment: string) {
+  return workflowPost(number, "emergency-plan", { comment });
 }
 
 export function requestDemandCorrection(number: string, comment: string) {

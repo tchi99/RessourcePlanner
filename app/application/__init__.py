@@ -49,6 +49,14 @@ from .errors import (
     ApplicationValidationError,
 )
 from .facade import ApplicationFacade
+from .emergency_override import (
+    DemandEmergencyOverrideCommand,
+    EmergencyApplicationFacade,
+    EmergencyDemandService,
+    current_week_window,
+    emergency_override_eligibility,
+    emergency_window,
+)
 from .idempotency import (
     CommandIdempotencyPort,
     IdempotentCommandExecutor,
@@ -146,6 +154,7 @@ __all__ = [
     "DemandCancelCommand",
     "DemandCorrectionCommand",
     "DemandCreateCommand",
+    "DemandEmergencyOverrideCommand",
     "DemandHistoryReadModel",
     "DemandMutationResult",
     "DemandPeriodInput",
@@ -159,6 +168,8 @@ __all__ = [
     "DemandRepositoryPort",
     "DemandSubmitCommand",
     "DemandUpdateCommand",
+    "EmergencyApplicationFacade",
+    "EmergencyDemandService",
     "EmployeeSourcePort",
     "EmployeeSyncRepositoryPort",
     "EmployeeSyncResult",
@@ -210,6 +221,9 @@ __all__ = [
     "WorkPackageRepositoryPort",
     "WorkPackageService",
     "WorkPackageUpdateCommand",
+    "current_week_window",
+    "emergency_override_eligibility",
+    "emergency_window",
     "normalize_idempotency_key",
     "request_fingerprint",
 ]

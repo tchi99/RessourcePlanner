@@ -378,7 +378,7 @@ class SqlAllocationCommandAdapter(AllocationCommandPort):
 
 
 class SqlApprovedDemandSyncAdapter(ApprovedDemandSyncPort):
-    """Synchronize an approved workforce request to SQL resource requirements."""
+    """Synchronize an approved or explicitly emergency-materialized request."""
 
     def __init__(self, session: Session) -> None:
         self._session = session
@@ -395,6 +395,10 @@ class SqlApprovedDemandSyncAdapter(ApprovedDemandSyncPort):
         if request is None:
             raise KeyError(f"Demande {wanted} introuvable après approbation")
         return request
+
+    @staticmethod
+    def _emergency_materialization(request: WorkforceRequest) -> bool:
+        return bool(request.emergency_override_active) and request.status == "Soumise"
 
     def _active_requirements(self, request: WorkforceRequest) -> list[ResourceRequirement]:
         return list(
@@ -511,7 +515,6 @@ class SqlApprovedDemandSyncAdapter(ApprovedDemandSyncPort):
             current.append(created)
 
         if len(current) > desired:
-            # Keep already assigned requirements first, mirroring the V1 policy.
             ranked = sorted(
                 current,
                 key=lambda row: (
@@ -550,15 +553,26 @@ class SqlApprovedDemandSyncAdapter(ApprovedDemandSyncPort):
             if not requirement.confirmation_overridden:
                 requirement.confirmation = inherited_confirmation
 
+        emergency = self._emergency_materialization(request)
         self._session.add(
             WorkforceRequestHistory(
                 workforce_request_id=request.id,
-                action="Synchronisation segments",
-                status="En planification",
-                comment=(
-                    f"Segments synchronisés avec la version approuvée ({desired} ressource(s))."
+                action=(
+                    "Synchronisation segments urgente"
+                    if emergency
+                    else "Synchronisation segments"
                 ),
-                actor_name=request.approved_by_name,
+                status=request.status,
+                comment=(
+                    f"Segments matérialisés par dérogation urgente ({desired} ressource(s))."
+                    if emergency
+                    else f"Segments synchronisés avec la version approuvée ({desired} ressource(s))."
+                ),
+                actor_name=(
+                    request.emergency_override_by_name
+                    if emergency
+                    else request.approved_by_name
+                ),
                 occurred_at=utc_now(),
             )
         )

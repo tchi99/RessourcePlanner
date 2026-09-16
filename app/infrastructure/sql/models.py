@@ -136,6 +136,12 @@ class WorkforceRequest(TimestampMixin, Base):
     approved_by_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     approval_comment: Mapped[str | None] = mapped_column(Text, nullable=True)
+    emergency_override_active: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=false(), index=True
+    )
+    emergency_override_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    emergency_override_by_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    emergency_override_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class WorkforceRequestHistory(Base):

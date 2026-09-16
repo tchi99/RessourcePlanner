@@ -48,19 +48,19 @@ class ServerArchitectureTests(unittest.TestCase):
 
     def test_composition_root_is_the_only_server_file_wiring_sql_adapters(self) -> None:
         composition = (SERVER / "composition.py").read_text(encoding="utf-8")
-        self.assertIn("SqlDemandRepository", composition)
+        self.assertIn("SqlEmergencyDemandRepository", composition)
         self.assertIn("SqlSegmentRepository", composition)
         self.assertIn("SqlPlanningCommandAdapter", composition)
         self.assertIn("SqlAllocationCommandAdapter", composition)
         self.assertIn("SqlPeriodAwareApprovedDemandSyncAdapter", composition)
-        self.assertIn("SqlPlannerQueryRepository", composition)
+        self.assertIn("SqlPlannerQueryRepositoryWithEmergencyOverride", composition)
 
         for filename in ("http.py", "routes_commands.py", "routes_reads.py"):
             source = (SERVER / filename).read_text(encoding="utf-8")
-            self.assertNotIn("SqlDemandRepository", source)
+            self.assertNotIn("SqlEmergencyDemandRepository", source)
             self.assertNotIn("SqlSegmentRepository", source)
             self.assertNotIn("SqlPlanningCommandAdapter", source)
-            self.assertNotIn("SqlPlannerQueryRepository", source)
+            self.assertNotIn("SqlPlannerQueryRepositoryWithEmergencyOverride", source)
 
         # The HTTP composition boundary owns the request-scoped SQLAlchemy Session,
         # but route modules must remain transport/application-only.

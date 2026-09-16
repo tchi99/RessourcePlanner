@@ -13,6 +13,7 @@ from ..application import (
     DemandCancelCommand,
     DemandCorrectionCommand,
     DemandCreateCommand,
+    DemandEmergencyOverrideCommand,
     DemandPeriodInput,
     DemandPeriodsReplaceCommand,
     DemandSubmitCommand,
@@ -260,6 +261,17 @@ def build_command_router(
         facade: ApplicationFacade = Depends(facade_dependency),
     ) -> dict[str, Any]:
         return _payload(facade.approve_demand(DemandApproveCommand(number, body.comment)))
+
+    @router.post("/demands/{number}/emergency-plan")
+    def emergency_plan_demand(
+        number: str,
+        body: RequiredCommentRequest,
+        facade: ApplicationFacade = Depends(facade_dependency),
+    ) -> dict[str, Any]:
+        action = getattr(facade, "emergency_plan_demand", None)
+        if action is None:
+            raise RuntimeError("Emergency demand workflow is not configured")
+        return _payload(action(DemandEmergencyOverrideCommand(number, body.comment)))
 
     @router.post("/demands/{number}/correction")
     def request_demand_correction(

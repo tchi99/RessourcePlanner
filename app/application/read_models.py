@@ -73,6 +73,10 @@ class DemandReadModel:
     estimated_hours: float | None = None
     estimated_days: float | None = None
     proposed_resource: str | None = None
+    emergency_override_active: bool = False
+    emergency_override_reason: str | None = None
+    emergency_override_by: str | None = None
+    emergency_override_at: datetime | None = None
 
     @classmethod
     def from_mapping(cls, row: Mapping[str, Any]) -> "DemandReadModel":
@@ -101,6 +105,9 @@ class DemandReadModel:
             estimated_hours=_optional_number(row.get("TempsEstimeHeures")),
             estimated_days=_optional_number(row.get("TempsEstimeJours")),
             proposed_resource=_optional_text(row.get("TechnicienPropose")),
+            emergency_override_active=bool(row.get("DerogationUrgenceActive") or False),
+            emergency_override_reason=_optional_text(row.get("DerogationUrgenceRaison")),
+            emergency_override_by=_optional_text(row.get("DerogationUrgencePar")),
         )
 
 

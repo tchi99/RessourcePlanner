@@ -6,8 +6,9 @@ import DemandPeriodsPage from "./DemandPeriodsPage";
 import DemandSegmentsPage from "./DemandSegmentsPage";
 import DemandWorkflowPage from "./DemandWorkflowPage";
 import DemandsPage from "./DemandsPage";
+import EmergencyOverridePage from "./EmergencyOverridePage";
 
-type DemandWorkspaceView = "requests" | "segments" | "periods" | "workflow" | "history";
+type DemandWorkspaceView = "requests" | "segments" | "periods" | "workflow" | "emergency" | "history";
 
 export default function DemandsWorkspace() {
   const { can } = useAuth();
@@ -20,6 +21,7 @@ export default function DemandsWorkspace() {
     if (view === "segments" && !canManagePlanning) setView("requests");
     if (view === "periods" && !canManageDemands) setView("requests");
     if (view === "workflow" && !canManageDemands && !canApprove) setView("requests");
+    if (view === "emergency" && !canApprove) setView("requests");
   }, [view, canManagePlanning, canManageDemands, canApprove]);
 
   return (
@@ -59,6 +61,15 @@ export default function DemandsWorkspace() {
             Workflow
           </button>
         )}
+        {canApprove && (
+          <button
+            type="button"
+            className={view === "emergency" ? "active" : ""}
+            onClick={() => setView("emergency")}
+          >
+            Urgence
+          </button>
+        )}
         <button
           type="button"
           className={view === "history" ? "active" : ""}
@@ -75,6 +86,8 @@ export default function DemandsWorkspace() {
         <DemandPeriodsPage />
       ) : view === "workflow" ? (
         <DemandWorkflowPage />
+      ) : view === "emergency" ? (
+        <EmergencyOverridePage />
       ) : (
         <DemandHistoryPage />
       )}
