@@ -23,6 +23,11 @@ import ShiftEditor from "./ShiftEditor";
 
 type ConfirmationFilter = "all" | "confirmed" | "tentative";
 type EmergencyShiftReadModel = ShiftReadModel & { emergency_override_active?: boolean };
+type OverallocationShiftReadModel = ShiftReadModel & {
+  segment_planned_hours?: number;
+  segment_locked_hours?: number;
+  segment_overallocated_hours?: number;
+};
 
 function normalize(value: string | null | undefined) {
   return (value ?? "").trim().toLocaleLowerCase("fr-CA");
@@ -83,23 +88,27 @@ function ProjectLabel({ number, name }: { number: string | null; name: string | 
 function ShiftCard({ shift, onEdit }: { shift: ShiftReadModel; onEdit: (shift: ShiftReadModel) => void }) {
   const confirmation = confirmationKind(shift.confirmation);
   const emergencyOverride = Boolean((shift as EmergencyShiftReadModel).emergency_override_active);
+  const overallocationShift = shift as OverallocationShiftReadModel;
+  const excess = Number(overallocationShift.segment_overallocated_hours ?? 0);
   const meta = [
     shift.allocation_type,
     shift.source !== "AUTO" ? shift.source : null,
     shift.locked ? "Verrouillé" : null,
     shift.outside_standard_hours ? "Hors horaire" : null,
     emergencyOverride ? "⚠ Dérogation urgente" : null,
+    excess > 0 ? `⚠ Surallocation manuelle +${hours(excess)} h` : null,
   ].filter(Boolean);
 
   return (
     <button
       type="button"
-      className={`shift-card shift-${confirmation} ${shift.outside_standard_hours ? "shift-outside" : ""}`}
+      className={`shift-card shift-${confirmation} ${shift.outside_standard_hours ? "shift-outside" : ""} ${excess > 0 ? "shift-overallocated" : ""}`}
       onClick={() => onEdit(shift)}
-      aria-label={`Modifier le quart ${shift.project_number || shift.project_name || shift.allocation_id}, ${hours(shift.hours)} heures${emergencyOverride ? ", dérogation urgente active" : ""}`}
+      aria-label={`Modifier le quart ${shift.project_number || shift.project_name || shift.allocation_id}, ${hours(shift.hours)} heures${emergencyOverride ? ", dérogation urgente active" : ""}${excess > 0 ? `, surallocation manuelle de ${hours(excess)} heures` : ""}`}
       title={[
         "Cliquer pour modifier",
         emergencyOverride ? "⚠ Dérogation d’approbation urgente — régularisation requise" : null,
+        excess > 0 ? `⚠ Surallocation manuelle : ${hours(overallocationShift.segment_locked_hours)} h verrouillées pour ${hours(overallocationShift.segment_planned_hours)} h prévues` : null,
         shift.project_name,
         shift.demand_number ? `Demande ${shift.demand_number}` : null,
         shift.project_manager ? `Responsable: ${shift.project_manager}` : null,
