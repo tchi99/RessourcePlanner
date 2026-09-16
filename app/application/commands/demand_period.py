@@ -25,6 +25,7 @@ class DemandPeriodInput:
     confirmation: str = "Tentative"
     proposed_resource: str | None = None
     resource_count: int = 1
+    desired_active_days: int | None = None
     note: str = ""
 
     def to_definition(self) -> DemandPeriodDefinition:
@@ -38,6 +39,7 @@ class DemandPeriodInput:
             confirmation=self.confirmation,
             proposed_resource=self.proposed_resource,
             resource_count=self.resource_count,
+            desired_active_days=self.desired_active_days,
             note=self.note,
         )
 
