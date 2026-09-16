@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, String, Text, UniqueConstraint, true
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, String, Text, UniqueConstraint, text, true
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .base import Base, TimestampMixin, new_id
@@ -12,6 +12,13 @@ class AppUser(TimestampMixin, Base):
     __tablename__ = "app_users"
     __table_args__ = (
         UniqueConstraint("issuer", "subject", name="uq_app_users_issuer_subject"),
+        Index(
+            "ux_app_users_employee_external_id_not_null",
+            "employee_external_id",
+            unique=True,
+            sqlite_where=text("employee_external_id IS NOT NULL"),
+            mssql_where=text("employee_external_id IS NOT NULL"),
+        ),
     )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
@@ -19,6 +26,7 @@ class AppUser(TimestampMixin, Base):
     subject: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     display_name: Mapped[str] = mapped_column(String(255), nullable=False)
     email: Mapped[str | None] = mapped_column(String(320), nullable=True)
+    employee_external_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
     roles_json: Mapped[str] = mapped_column(Text, nullable=False)
     active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=true(), index=True)
 
