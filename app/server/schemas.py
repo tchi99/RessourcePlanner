@@ -8,6 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 AvailabilityType = Literal["Horaire standard", "Vacances", "Jour férié"]
 OverallocationPolicy = Literal["KEEP_EXCEPTION", "INCREASE_PLANNED"]
+LoadProfile = Literal["UNIFORM", "FRONT_LOADED", "BACK_LOADED", "BELL"]
 
 
 class StrictRequest(BaseModel):
@@ -186,6 +187,7 @@ class SegmentCreateRequest(StrictRequest):
     priority: str = "Normale"
     outside_standard_hours: bool = False
     confirmation: str | None = None
+    load_profile: LoadProfile = "UNIFORM"
 
 
 class SegmentUpdateRequest(StrictRequest):
@@ -204,14 +206,15 @@ class SegmentUpdateRequest(StrictRequest):
     priority: str | None = None
     outside_standard_hours: bool | None = None
     confirmation: str | None = None
+    load_profile: LoadProfile | None = None
     allow_locked_overallocation: bool = False
 
-    @field_validator("outside_standard_hours", mode="before")
+    @field_validator("outside_standard_hours", "load_profile", mode="before")
     @classmethod
-    def reject_null_outside_standard_hours(cls, value: object) -> object:
+    def reject_null_non_nullable_patch_fields(cls, value: object) -> object:
         if value is None:
             raise ValueError(
-                "outside_standard_hours ne peut pas être null; omets le champ pour ne pas le modifier."
+                "Ce champ ne peut pas être null; omets-le pour ne pas le modifier."
             )
         return value
 
