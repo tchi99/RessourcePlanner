@@ -38,6 +38,15 @@ def _decimal(value: object) -> Decimal:
     return Decimal(str(value).replace(",", "."))
 
 
+def _optional_positive_int(value: object) -> int | None:
+    if value in (None, ""):
+        return None
+    numeric = float(value)
+    if numeric <= 0 or not numeric.is_integer():
+        raise ValueError("Les jours actifs cibles doivent être un entier positif.")
+    return int(numeric)
+
+
 def _bool(value: object) -> bool:
     if isinstance(value, bool):
         return value
@@ -96,13 +105,13 @@ class SqlSegmentRepository(SegmentRepositoryPort):
             outside_standard_hours=bool(requirement.outside_standard_hours_allowed),
             confirmation=_optional_text(requirement.confirmation),
             confirmation_overridden=bool(requirement.confirmation_overridden),
-            # Request ownership is projected; ad-hoc work falls back to its creator.
             project_manager=_optional_text(project.project_manager_name),
             requester=(
                 _optional_text(request.requester_name)
                 if request is not None
                 else _optional_text(requirement.created_by_name)
             ),
+            desired_active_days=requirement.desired_active_days,
         )
 
     def list(self, *, include_cancelled: bool = True) -> Sequence[SegmentReadModel]:
@@ -175,9 +184,7 @@ class SqlSegmentRepository(SegmentRepositoryPort):
         resource_name = _text(name)
         if not resource_name:
             return None
-        resource = self._session.scalar(
-            select(Resource).where(Resource.name == resource_name)
-        )
+        resource = self._session.scalar(select(Resource).where(Resource.name == resource_name))
         if resource is None:
             raise KeyError(f"Ressource {resource_name} introuvable")
         return resource
@@ -271,6 +278,7 @@ class SqlSegmentRepository(SegmentRepositoryPort):
             start_date=values.get("DateDebut"),
             end_date=values.get("DateFin") or values.get("DateDebut"),
             planned_hours=_decimal(values.get("HeuresPrevues")),
+            desired_active_days=_optional_positive_int(values.get("JoursActifsCibles")),
             status=_text(values.get("Statut")) or "Planifié",
             description=_optional_text(values.get("Description")),
             source_effort_id=_optional_text(
@@ -318,6 +326,10 @@ class SqlSegmentRepository(SegmentRepositoryPort):
             requirement.end_date = updates.get("DateFin")
         if "HeuresPrevues" in updates:
             requirement.planned_hours = _decimal(updates.get("HeuresPrevues"))
+        if "JoursActifsCibles" in updates:
+            requirement.desired_active_days = _optional_positive_int(
+                updates.get("JoursActifsCibles")
+            )
         if "Statut" in updates:
             requirement.status = _text(updates.get("Statut"))
         if "Description" in updates:
