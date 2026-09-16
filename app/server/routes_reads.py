@@ -10,6 +10,7 @@ from ..application import (
     ApplicationValidationError,
     DemandHistoryReadModel,
     DemandPeriodReadModel,
+    DemandPlanDeltaReadModel,
     DemandReadModel,
     PlannerQueryPort,
     PlanningSnapshotReadModel,
@@ -125,6 +126,20 @@ def build_read_router(query_dependency: QueryProvider) -> APIRouter:
                 context={"demand_number": number},
             )
         return list(queries.list_demand_periods(number))
+
+    @router.get("/demands/{number}/plan-delta")
+    def demand_plan_delta(
+        number: str,
+        queries: PlannerQueryPort = Depends(query_dependency),
+    ) -> DemandPlanDeltaReadModel:
+        row = queries.demand_plan_delta(number)
+        if row is None:
+            raise ApplicationNotFoundError(
+                f"Demande {number} introuvable",
+                code="demand_not_found",
+                context={"demand_number": number},
+            )
+        return row
 
     @router.get("/segments")
     def list_segments(
