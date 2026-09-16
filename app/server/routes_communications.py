@@ -112,6 +112,14 @@ def build_communication_router(service_dependency: CommunicationDependency) -> A
     ) -> CommunicationBatchRecord:
         return service.approve(batch_id=batch_id, actor_name=_actor(request))
 
+    @router.post("/batches/{batch_id}/create-drafts")
+    def create_drafts(
+        batch_id: str,
+        request: Request,
+        service: CommunicationService = Depends(service_dependency),
+    ) -> CommunicationBatchRecord:
+        return service.create_drafts(batch_id=batch_id, actor_name=_actor(request))
+
     @router.post("/batches/{batch_id}/cancel")
     def cancel_batch(
         batch_id: str,

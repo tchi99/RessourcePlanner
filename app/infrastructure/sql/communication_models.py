@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Index, Numeric, String, Text, true
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Index, Integer, Numeric, String, Text, true
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .base import Base, TimestampMixin, new_id
@@ -52,6 +52,10 @@ class CommunicationBatchRow(Base):
     communicated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     cancelled_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
     cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    drafts_provider: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    drafts_created_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    drafts_created_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    drafts_created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class CommunicationMessageRow(Base):

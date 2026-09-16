@@ -14,7 +14,12 @@ from ..domain.communication_planning import (
     snapshot_fingerprint,
 )
 from ..domain.communication_review import DraftReview, apply_manual_review
-from .errors import ApplicationConflictError, ApplicationNotFoundError, ApplicationValidationError
+from .errors import (
+    ApplicationConflictError,
+    ApplicationNotFoundError,
+    ApplicationUnavailableError,
+    ApplicationValidationError,
+)
 
 
 STATUS_PREPARED = "PREPARED"
@@ -61,6 +66,10 @@ class CommunicationBatchRecord:
     communicated_at: datetime | None = None
     cancelled_by: str | None = None
     cancelled_at: datetime | None = None
+    drafts_provider: str | None = None
+    drafts_created_count: int = 0
+    drafts_created_by: str | None = None
+    drafts_created_at: datetime | None = None
     messages: tuple[CommunicationMessageRecord, ...] = ()
     stale: bool = False
 
@@ -159,6 +168,14 @@ class CommunicationRepositoryPort(Protocol):
         status: str,
         actor_name: str,
     ) -> CommunicationBatchRecord: ...
+    def mark_drafts_created(
+        self,
+        *,
+        batch_id: str,
+        provider: str,
+        created_count: int,
+        actor_name: str,
+    ) -> CommunicationBatchRecord: ...
     def has_duplicate_batch(
         self,
         *,
@@ -169,8 +186,13 @@ class CommunicationRepositoryPort(Protocol):
 
 
 class CommunicationService:
-    def __init__(self, repository: CommunicationRepositoryPort) -> None:
+    def __init__(
+        self,
+        repository: CommunicationRepositoryPort,
+        transport: CommunicationTransportPort | None = None,
+    ) -> None:
         self._repository = repository
+        self._transport = transport
 
     @staticmethod
     def _normalize_week_start(value: date) -> date:
@@ -366,6 +388,14 @@ class CommunicationService:
             )
         return row
 
+    def _assert_current_snapshot(self, row: CommunicationBatchRecord, *, message: str) -> None:
+        current = snapshot_fingerprint(self._repository.weekly_assignments(week_start=row.week_start))
+        if current != row.snapshot_fingerprint:
+            raise ApplicationConflictError(
+                message,
+                code="communication_batch_stale",
+            )
+
     def approve(self, *, batch_id: str, actor_name: str) -> CommunicationBatchRecord:
         row = self._batch(batch_id)
         if row.status != STATUS_PREPARED:
@@ -373,15 +403,68 @@ class CommunicationService:
                 "Seul un lot préparé peut être approuvé.",
                 code="communication_batch_not_prepared",
             )
-        current = snapshot_fingerprint(self._repository.weekly_assignments(week_start=row.week_start))
-        if current != row.snapshot_fingerprint:
-            raise ApplicationConflictError(
-                "Le planning a changé depuis la préparation du lot.",
-                code="communication_batch_stale",
-            )
+        self._assert_current_snapshot(
+            row,
+            message="Le planning a changé depuis la préparation du lot.",
+        )
         return self._repository.set_batch_status(
             batch_id=row.id,
             status=STATUS_APPROVED,
+            actor_name=actor_name,
+        )
+
+    def create_drafts(self, *, batch_id: str, actor_name: str) -> CommunicationBatchRecord:
+        row = self._batch(batch_id)
+        if row.status != STATUS_APPROVED:
+            raise ApplicationConflictError(
+                "Le lot doit être approuvé avant de créer les brouillons M365.",
+                code="communication_batch_not_approved",
+            )
+        if row.drafts_created_at is not None:
+            raise ApplicationConflictError(
+                "Les brouillons M365 ont déjà été créés pour ce lot.",
+                code="communication_drafts_already_created",
+            )
+        self._assert_current_snapshot(
+            row,
+            message="Le planning a changé depuis l'approbation; préparez un nouveau lot.",
+        )
+        if self._transport is None:
+            raise ApplicationUnavailableError(
+                "Le transport Microsoft 365 n'est pas configuré sur ce serveur.",
+                code="communication_transport_unavailable",
+            )
+        messages = tuple(
+            CommunicationTransportMessage(
+                audience=message.audience,
+                recipient_id=message.recipient_id,
+                recipient_email=message.recipient_email,
+                subject=message.subject,
+                body=message.body,
+            )
+            for message in row.messages
+            if message.included
+        )
+        if not messages:
+            raise ApplicationValidationError(
+                "Aucun message inclus n'est disponible pour la création de brouillons.",
+                code="communication_no_included_messages",
+            )
+        result = self._transport.create_drafts(messages)
+        if result.created_count != len(messages):
+            raise ApplicationUnavailableError(
+                "Le transport M365 n'a pas confirmé la création de tous les brouillons.",
+                code="communication_transport_incomplete",
+                context={
+                    "expected_count": len(messages),
+                    "created_count": result.created_count,
+                    "provider": result.provider,
+                },
+            )
+        return self._repository.mark_drafts_created(
+            batch_id=row.id,
+            provider=result.provider,
+            created_count=result.created_count,
             actor_name=actor_name,
         )
 
@@ -405,12 +488,10 @@ class CommunicationService:
                 "Le lot doit être approuvé avant d'être confirmé comme communiqué.",
                 code="communication_batch_not_approved",
             )
-        current = snapshot_fingerprint(self._repository.weekly_assignments(week_start=row.week_start))
-        if current != row.snapshot_fingerprint:
-            raise ApplicationConflictError(
-                "Le planning a changé depuis l'approbation; préparez un nouveau lot.",
-                code="communication_batch_stale",
-            )
+        self._assert_current_snapshot(
+            row,
+            message="Le planning a changé depuis l'approbation; préparez un nouveau lot.",
+        )
         return self._repository.set_batch_status(
             batch_id=row.id,
             status=STATUS_COMMUNICATED,

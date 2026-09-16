@@ -21,7 +21,7 @@ from ..application import (
     PlannerQueryPort,
     ProjectSourcePort,
 )
-from ..application.communications import CommunicationService
+from ..application.communications import CommunicationService, CommunicationTransportPort
 from ..application.errors import ApplicationUnavailableError
 from ..application.security import AuthPrincipal, ROLE_ADMIN
 from ..infrastructure.sql import (
@@ -161,13 +161,14 @@ def make_communication_dependency(
     factory: SqlSessionFactory,
     *,
     session_dependency: SessionDependency | None = None,
+    transport: CommunicationTransportPort | None = None,
 ) -> CommunicationDependency:
     request_session = session_dependency or make_session_dependency(factory)
 
     def dependency(
         session: Session = Depends(request_session),
     ) -> Iterator[CommunicationService]:
-        yield build_communication_service(session)
+        yield build_communication_service(session, transport=transport)
 
     return dependency
 
@@ -214,6 +215,7 @@ def create_api_app(
     acumatica_info: dict[str, Any] | None = None,
     auth_resolver: AuthResolver | None = None,
     oidc_runtime: OidcRuntime | None = None,
+    communication_transport: CommunicationTransportPort | None = None,
 ) -> FastAPI:
     engine = create_sql_engine(database_url)
     factory = create_session_factory(engine)
@@ -239,6 +241,7 @@ def create_api_app(
     communication_dependency = make_communication_dependency(
         factory,
         session_dependency=session_dependency,
+        transport=communication_transport,
     )
 
     @asynccontextmanager

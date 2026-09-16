@@ -50,6 +50,7 @@ jobs:
           app/domain
           app/infrastructure/sql
           app/infrastructure/acumatica
+          app/infrastructure/m365
           app/server
           migrations
           tools/check_server_dependency_isolation.py

@@ -23,12 +23,18 @@ CANONICAL_LAYERS: dict[str, tuple[str, ...]] = {
         "app.application",
         "app.domain",
     ),
+    "app/infrastructure/m365": (
+        "app.infrastructure.m365",
+        "app.application",
+        "app.domain",
+    ),
     "app/server": (
         "app.server",
         "app.application",
         "app.domain",
         "app.infrastructure.sql",
         "app.infrastructure.acumatica",
+        "app.infrastructure.m365",
     ),
 }
 

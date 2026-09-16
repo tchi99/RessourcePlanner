@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 from decimal import Decimal
+from typing import Sequence
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -216,6 +217,10 @@ class SqlCommunicationRepository(CommunicationRepositoryPort):
             communicated_at=row.communicated_at,
             cancelled_by=_optional_text(row.cancelled_by),
             cancelled_at=row.cancelled_at,
+            drafts_provider=_optional_text(row.drafts_provider),
+            drafts_created_count=int(row.drafts_created_count or 0),
+            drafts_created_by=_optional_text(row.drafts_created_by),
+            drafts_created_at=row.drafts_created_at,
             messages=self._messages(row.id),
         )
 
@@ -369,5 +374,23 @@ class SqlCommunicationRepository(CommunicationRepositoryPort):
         elif status == STATUS_CANCELLED:
             row.cancelled_by = actor
             row.cancelled_at = now
+        self._session.flush()
+        return self._batch(row)
+
+    def mark_drafts_created(
+        self,
+        *,
+        batch_id: str,
+        provider: str,
+        created_count: int,
+        actor_name: str,
+    ) -> CommunicationBatchRecord:
+        row = self._session.get(CommunicationBatchRow, batch_id)
+        if row is None:
+            raise KeyError(batch_id)
+        row.drafts_provider = _optional_text(provider)
+        row.drafts_created_count = max(0, int(created_count))
+        row.drafts_created_by = _optional_text(actor_name)
+        row.drafts_created_at = utc_now()
         self._session.flush()
         return self._batch(row)
