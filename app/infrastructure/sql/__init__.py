@@ -25,6 +25,8 @@ from .demand_period_models import (
 )
 from .demand_period_repository import SqlDemandPeriodRepository
 from .demand_repository import SqlDemandRepository
+from .emergency_demand_repository import SqlEmergencyDemandRepository
+from .emergency_query_repository import SqlPlannerQueryRepositoryWithEmergencyOverride
 from .employee_sync_repository import SqlEmployeeSyncRepository
 from .idempotency import CommandIdempotencyReceipt, SqlCommandIdempotencyAdapter
 from .identity_models import AppUser, AuthLoginTransaction, AuthSession
@@ -93,10 +95,12 @@ __all__ = [
     "SqlCommunicationRepository",
     "SqlDemandPeriodRepository",
     "SqlDemandRepository",
+    "SqlEmergencyDemandRepository",
     "SqlEmployeeSyncRepository",
     "SqlIdentityResourceLinkRepository",
     "SqlPeriodAwareApprovedDemandSyncAdapter",
     "SqlPlannerQueryRepository",
+    "SqlPlannerQueryRepositoryWithEmergencyOverride",
     "SqlPlanningCommandAdapter",
     "SqlPlanningReadRepository",
     "SqlProjectSyncRepository",
