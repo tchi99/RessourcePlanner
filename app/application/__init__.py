@@ -34,6 +34,13 @@ from .command_ports import (
     ApprovedDemandSyncPort,
     PlanningCommandPort,
 )
+from .employee_sync import (
+    EmployeeSourcePort,
+    EmployeeSyncRepositoryPort,
+    EmployeeSyncResult,
+    EmployeeSyncService,
+    ExternalEmployeeRecord,
+)
 from .errors import (
     ApplicationConflictError,
     ApplicationError,
@@ -47,6 +54,15 @@ from .idempotency import (
     IdempotentCommandExecutor,
     normalize_idempotency_key,
     request_fingerprint,
+)
+from .identity_provisioning import (
+    AutoProvisioningPolicy,
+    IdentityProvisioningRepositoryPort,
+    IdentityProvisioningService,
+)
+from .identity_resource_link import (
+    IdentityResourceLinkRepositoryPort,
+    IdentityResourceLinkService,
 )
 from .planning_service import PlanningService
 from .project_sync import (
@@ -117,6 +133,7 @@ __all__ = [
     "ApplicationResult",
     "ApplicationValidationError",
     "ApprovedDemandSyncPort",
+    "AutoProvisioningPolicy",
     "AvailabilityRuleCreateCommand",
     "AvailabilityRuleMutationResult",
     "AvailabilityRuleUpdateCommand",
@@ -137,7 +154,16 @@ __all__ = [
     "DemandRepositoryPort",
     "DemandSubmitCommand",
     "DemandUpdateCommand",
+    "EmployeeSourcePort",
+    "EmployeeSyncRepositoryPort",
+    "EmployeeSyncResult",
+    "EmployeeSyncService",
+    "ExternalEmployeeRecord",
     "ExternalProjectRecord",
+    "IdentityProvisioningRepositoryPort",
+    "IdentityProvisioningService",
+    "IdentityResourceLinkRepositoryPort",
+    "IdentityResourceLinkService",
     "IdempotentCommandExecutor",
     "ManualAllocationCreateCommand",
     "ManualAllocationDeleteCommand",
