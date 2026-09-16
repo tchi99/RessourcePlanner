@@ -8,6 +8,12 @@ import {
   submitDemand,
   type DemandWorkflowResult,
 } from "./demandWorkflowApi";
+import {
+  getDemandPlanDelta,
+  type DemandPlanDelta,
+  type DemandPlanDeltaItem,
+} from "./planDeltaApi";
+import "./planDelta.css";
 
 type WorkflowAction = "submit" | "approve" | "correction" | "cancel";
 
@@ -44,6 +50,41 @@ function actionLabel(action: WorkflowAction): string {
   }
 }
 
+function deltaLabel(change: DemandPlanDeltaItem["change"]): string {
+  switch (change) {
+    case "ADD": return "À ajouter";
+    case "MOVE": return "À déplacer";
+    case "MODIFY": return "À modifier";
+    case "CANCEL": return "À annuler";
+  }
+}
+
+function deltaSide(
+  resource: string | null,
+  day: string | null,
+  hours: number,
+  allocationType: string | null,
+  outside: boolean,
+): string {
+  if (!day || !resource || hours <= 0) return "—";
+  const suffix = outside ? " · hors horaire" : "";
+  return `${day} · ${resource} · ${hours} h${allocationType ? ` · ${allocationType}` : ""}${suffix}`;
+}
+
+function unavailableDeltaMessage(reason: string | null): string {
+  switch (reason) {
+    case "NO_CURRENT_PLAN":
+      return "Aucun plan approuvé antérieur : cette approbation créera le premier plan de la demande.";
+    case "PROPOSAL_INCOMPLETE":
+      return "Le plan proposé est incomplet; le delta ne peut pas encore être calculé.";
+    case "CURRENT_PLAN_UNSUPPORTED":
+    case "PROPOSED_PLAN_UNSUPPORTED":
+      return "Le moteur ne peut pas comparer cette demande tant qu’un segment non supporté est présent.";
+    default:
+      return "Le delta n’est pas disponible pour cette demande.";
+  }
+}
+
 export default function DemandWorkflowPage() {
   const [demands, setDemands] = useState<DemandReadModel[]>([]);
   const [selectedNumber, setSelectedNumber] = useState("");
@@ -54,6 +95,9 @@ export default function DemandWorkflowPage() {
   const [pendingAction, setPendingAction] = useState<WorkflowAction | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [planDelta, setPlanDelta] = useState<DemandPlanDelta | null>(null);
+  const [planDeltaLoading, setPlanDeltaLoading] = useState(false);
+  const [planDeltaError, setPlanDeltaError] = useState<string | null>(null);
 
   async function refresh(number?: string) {
     const rows = await getDemands();
@@ -105,6 +149,32 @@ export default function DemandWorkflowPage() {
       });
     return () => { active = false; };
   }, [selectedNumber, loading]);
+
+  useEffect(() => {
+    if (!selectedDemand || normalStatus(selectedDemand.status) !== "soumise") {
+      setPlanDelta(null);
+      setPlanDeltaError(null);
+      setPlanDeltaLoading(false);
+      return;
+    }
+    let active = true;
+    setPlanDeltaLoading(true);
+    setPlanDeltaError(null);
+    getDemandPlanDelta(selectedDemand.number)
+      .then((delta) => {
+        if (active) setPlanDelta(delta);
+      })
+      .catch((reason: unknown) => {
+        if (active) {
+          setPlanDelta(null);
+          setPlanDeltaError(errorMessage(reason));
+        }
+      })
+      .finally(() => {
+        if (active) setPlanDeltaLoading(false);
+      });
+    return () => { active = false; };
+  }, [selectedDemand?.number, selectedDemand?.status]);
 
   const actions = useMemo(
     () => expectedActions(selectedDemand?.status ?? ""),
@@ -224,6 +294,71 @@ export default function DemandWorkflowPage() {
                 <strong>Approbation ≠ confirmation.</strong>
                 <span>Une demande peut être approuvée tout en restant Tentative; les deux concepts ne sont jamais fusionnés par l’interface.</span>
               </div>
+
+              {normalStatus(selectedDemand.status) === "soumise" && (
+                <div className="plan-delta-panel" data-testid="plan-delta-preview">
+                  <div className="plan-delta-heading">
+                    <div>
+                      <span className="eyebrow">Impact de l’approbation</span>
+                      <h3>Plan actuel → plan proposé</h3>
+                      <p>Prévisualisation en lecture seule calculée avec le moteur de planification. Aucun quart n’est modifié avant l’approbation.</p>
+                    </div>
+                    {planDelta?.available && (
+                      <strong>{planDelta.net_hours >= 0 ? "+" : ""}{planDelta.net_hours} h touchées nettes</strong>
+                    )}
+                  </div>
+
+                  {planDeltaLoading && <div className="plan-delta-empty">Calcul du delta…</div>}
+                  {planDeltaError && <div className="plan-delta-unavailable">{planDeltaError}</div>}
+
+                  {!planDeltaLoading && planDelta && !planDelta.available && (
+                    <div className="plan-delta-unavailable">{unavailableDeltaMessage(planDelta.reason)}</div>
+                  )}
+
+                  {!planDeltaLoading && planDelta?.available && (
+                    <>
+                      <div className="plan-delta-summary">
+                        <span className="plan-delta-badge">{planDelta.add_count} ajout(s)</span>
+                        <span className="plan-delta-badge">{planDelta.move_count} déplacement(s)</span>
+                        <span className="plan-delta-badge">{planDelta.modify_count} modification(s)</span>
+                        <span className="plan-delta-badge">{planDelta.cancel_count} annulation(s)</span>
+                      </div>
+
+                      {!planDelta.has_changes ? (
+                        <div className="plan-delta-empty">L’approbation ne changerait aucun quart du plan actuel.</div>
+                      ) : (
+                        <div className="plan-delta-list">
+                          {planDelta.items.map((item, index) => (
+                            <div className="plan-delta-row" key={`${item.segment_id}-${item.change}-${index}`}>
+                              <strong>{deltaLabel(item.change)}</strong>
+                              <div className="plan-delta-side">
+                                <small>Actuel</small>
+                                <span>{deltaSide(
+                                  item.current_resource_name,
+                                  item.current_date,
+                                  item.current_hours,
+                                  item.current_allocation_type,
+                                  item.current_outside_standard_hours,
+                                )}</span>
+                              </div>
+                              <div className="plan-delta-side">
+                                <small>Proposé</small>
+                                <span>{deltaSide(
+                                  item.proposed_resource_name,
+                                  item.proposed_date,
+                                  item.proposed_hours,
+                                  item.proposed_allocation_type,
+                                  item.proposed_outside_standard_hours,
+                                )}</span>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
 
               {actions.includes("approve") && (
                 <label className="workflow-comment-field">
