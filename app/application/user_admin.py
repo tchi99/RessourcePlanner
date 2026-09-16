@@ -60,6 +60,7 @@ class UserAdminRepositoryPort(Protocol):
         email: str | None,
         roles: tuple[str, ...] | list[str] | set[str],
         active: bool = True,
+        employee_external_id: str | None = None,
     ) -> UserIdentityRecord: ...
 
 
@@ -134,6 +135,7 @@ class UserAdminService:
             email=str(email).strip() if email else None,
             roles=normalized_roles,
             active=bool(active),
+            employee_external_id=None,
         )
 
     def update_user(
@@ -176,4 +178,5 @@ class UserAdminService:
             email=str(email).strip() if email else None,
             roles=normalized_roles,
             active=active_value,
+            employee_external_id=existing.employee_external_id,
         )
