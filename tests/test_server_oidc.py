@@ -73,12 +73,19 @@ class ServerOidcTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.temp.cleanup()
 
-    def _app(self, fake_client: FakeOidcClient):
+    def _app(
+        self,
+        fake_client: FakeOidcClient,
+        *,
+        secure_cookie: bool = False,
+        cookie_samesite: str = "lax",
+    ):
         runtime = OidcRuntime(
             client=fake_client,  # type: ignore[arg-type]
             cookie_name=COOKIE,
             session_hours=8,
-            secure_cookie=False,
+            secure_cookie=secure_cookie,
+            cookie_samesite=cookie_samesite,
         )
         return create_api_app(
             self.database_url,
@@ -134,6 +141,30 @@ class ServerOidcTests(unittest.TestCase):
         self.assertEqual(before.status_code, 401)
         self.assertEqual(before.json()["error"]["code"], "authentication_required")
         self.assertEqual(after.status_code, 401)
+
+    def test_cross_site_cookie_mode_sets_none_and_secure(self) -> None:
+        fake = FakeOidcClient(
+            OidcIdentity(
+                issuer=ISSUER,
+                subject="subject-1",
+                display_name="Technicien OIDC",
+                email=None,
+            )
+        )
+        app = self._app(fake, secure_cookie=True, cookie_samesite="none")
+        with TestClient(app, base_url="https://planner.example.invalid") as client:
+            login = client.get("/api/v1/auth/login", follow_redirects=False)
+            state = parse_qs(urlparse(login.headers["location"]).query)["state"][0]
+            callback = client.get(
+                f"/api/v1/auth/callback?code=valid-code&state={state}",
+                follow_redirects=False,
+            )
+
+        self.assertEqual(callback.status_code, 303)
+        set_cookie = callback.headers["set-cookie"].lower()
+        self.assertIn("httponly", set_cookie)
+        self.assertIn("secure", set_cookie)
+        self.assertIn("samesite=none", set_cookie)
 
     def test_callback_rejects_identity_not_registered_locally(self) -> None:
         fake = FakeOidcClient(
