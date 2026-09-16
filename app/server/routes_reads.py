@@ -20,6 +20,7 @@ from ..application import (
     ShiftReadModel,
     WorkPackageReadModel,
 )
+from ..application.query_models import PlanningHistoryReadModel
 
 
 QueryProvider = Callable[..., Any]
@@ -151,6 +152,19 @@ def build_read_router(query_dependency: QueryProvider) -> APIRouter:
             )
         return row
 
+    @router.get("/segments/{segment_id}/history")
+    def list_segment_history(
+        segment_id: str,
+        queries: PlannerQueryPort = Depends(query_dependency),
+    ) -> list[PlanningHistoryReadModel]:
+        if queries.get_segment(segment_id) is None:
+            raise ApplicationNotFoundError(
+                f"Segment {segment_id} introuvable",
+                code="segment_not_found",
+                context={"segment_id": segment_id},
+            )
+        return list(queries.list_planning_history("SEGMENT", segment_id))
+
     @router.get("/shifts")
     def list_shifts(
         start: date | None = Query(default=None),
@@ -162,6 +176,13 @@ def build_read_router(query_dependency: QueryProvider) -> APIRouter:
         return list(
             queries.list_shifts(start=start, end=end, resource_name=resource_name)
         )
+
+    @router.get("/shifts/{allocation_id}/history")
+    def list_shift_history(
+        allocation_id: str,
+        queries: PlannerQueryPort = Depends(query_dependency),
+    ) -> list[PlanningHistoryReadModel]:
+        return list(queries.list_planning_history("SHIFT", allocation_id))
 
     @router.get("/planning/snapshot")
     def planning_snapshot(
