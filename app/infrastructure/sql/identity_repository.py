@@ -93,7 +93,8 @@ class SqlUserIdentityRepository:
         else:
             row.display_name = display_name_value
             row.email = _optional_text(email)
-            row.employee_external_id = employee_value
+            if employee_value is not None:
+                row.employee_external_id = employee_value
             row.roles_json = json.dumps(list(normalized_roles), separators=(",", ":"))
             row.active = bool(active)
         self._session.flush()
