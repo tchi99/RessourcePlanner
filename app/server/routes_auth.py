@@ -6,7 +6,8 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, RedirectResponse, Response
 import httpx
 
-from ..application.security import AuthPrincipal, IdentityService
+from ..application.identity_provisioning import IdentityProvisioningService
+from ..application.security import AuthPrincipal
 from ..infrastructure.acumatica.oidc import OidcProtocolError
 from ..infrastructure.sql import SqlUserIdentityRepository
 from .oidc import (
@@ -87,10 +88,15 @@ def build_auth_router(oidc_runtime: OidcRuntime | None = None) -> APIRouter:
                 "La réponse OIDC n'a pas pu être validée.",
             )
 
-        with factory() as session:
-            principal = IdentityService(SqlUserIdentityRepository(session)).resolve(
+        with factory.begin() as session:
+            principal = IdentityProvisioningService(
+                SqlUserIdentityRepository(session),
+                oidc_runtime.auto_provisioning,
+            ).resolve_or_provision(
                 issuer=identity.issuer,
                 subject=identity.subject,
+                display_name=identity.display_name,
+                email=identity.email,
                 auth_mode="oidc",
             )
         if principal is None or principal.local_user_id is None:
