@@ -9,6 +9,7 @@ import unittest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
+from app.application.identity_provisioning import AutoProvisioningPolicy
 from app.application.security import ROLE_TECHNICIAN
 from app.infrastructure.acumatica.oidc import OidcIdentity
 from app.infrastructure.sql import (
@@ -79,6 +80,7 @@ class ServerOidcTests(unittest.TestCase):
         *,
         secure_cookie: bool = False,
         cookie_samesite: str = "lax",
+        auto_provision: bool = False,
     ):
         runtime = OidcRuntime(
             client=fake_client,  # type: ignore[arg-type]
@@ -86,11 +88,20 @@ class ServerOidcTests(unittest.TestCase):
             session_hours=8,
             secure_cookie=secure_cookie,
             cookie_samesite=cookie_samesite,
+            auto_provisioning=AutoProvisioningPolicy(enabled=auto_provision),
         )
         return create_api_app(
             self.database_url,
             auth_resolver=oidc_session_auth_resolver(COOKIE),
             oidc_runtime=runtime,
+        )
+
+    def _login_callback(self, client: TestClient) -> object:
+        login = client.get("/api/v1/auth/login", follow_redirects=False)
+        state = parse_qs(urlparse(login.headers["location"]).query)["state"][0]
+        return client.get(
+            f"/api/v1/auth/callback?code=valid-code&state={state}",
+            follow_redirects=False,
         )
 
     def test_login_callback_creates_opaque_session_then_logout_revokes_it(self) -> None:
@@ -126,6 +137,7 @@ class ServerOidcTests(unittest.TestCase):
             self.assertEqual(me.json()["display_name"], "Technicien OIDC")
             self.assertEqual(me.json()["roles"], [ROLE_TECHNICIAN])
             self.assertEqual(me.json()["auth_mode"], "oidc")
+            self.assertIsNone(me.json()["employee_external_id"])
 
             with app.state.session_factory.begin() as session:
                 stored = session.scalar(select(AuthSession))
@@ -153,12 +165,7 @@ class ServerOidcTests(unittest.TestCase):
         )
         app = self._app(fake, secure_cookie=True, cookie_samesite="none")
         with TestClient(app, base_url="https://planner.example.invalid") as client:
-            login = client.get("/api/v1/auth/login", follow_redirects=False)
-            state = parse_qs(urlparse(login.headers["location"]).query)["state"][0]
-            callback = client.get(
-                f"/api/v1/auth/callback?code=valid-code&state={state}",
-                follow_redirects=False,
-            )
+            callback = self._login_callback(client)
 
         self.assertEqual(callback.status_code, 303)
         set_cookie = callback.headers["set-cookie"].lower()
@@ -166,7 +173,7 @@ class ServerOidcTests(unittest.TestCase):
         self.assertIn("secure", set_cookie)
         self.assertIn("samesite=none", set_cookie)
 
-    def test_callback_rejects_identity_not_registered_locally(self) -> None:
+    def test_callback_rejects_identity_not_registered_locally_by_default(self) -> None:
         fake = FakeOidcClient(
             OidcIdentity(
                 issuer=ISSUER,
@@ -177,15 +184,37 @@ class ServerOidcTests(unittest.TestCase):
         )
         app = self._app(fake)
         with TestClient(app) as client:
-            login = client.get("/api/v1/auth/login", follow_redirects=False)
-            state = parse_qs(urlparse(login.headers["location"]).query)["state"][0]
-            callback = client.get(
-                f"/api/v1/auth/callback?code=valid-code&state={state}",
-                follow_redirects=False,
-            )
+            callback = self._login_callback(client)
 
         self.assertEqual(callback.status_code, 403)
         self.assertEqual(callback.json()["error"]["code"], "oidc_user_not_registered")
+
+    def test_callback_can_auto_provision_unknown_identity_when_explicitly_enabled(self) -> None:
+        fake = FakeOidcClient(
+            OidcIdentity(
+                issuer=ISSUER,
+                subject="auto-subject",
+                display_name="Utilisateur auto",
+                email=None,
+            )
+        )
+        app = self._app(fake, auto_provision=True)
+        with TestClient(app) as client:
+            callback = self._login_callback(client)
+            self.assertEqual(callback.status_code, 303)
+            me = client.get("/api/v1/auth/me")
+            self.assertEqual(me.status_code, 200)
+            self.assertEqual(me.json()["roles"], [ROLE_TECHNICIAN])
+            self.assertEqual(me.json()["permissions"], ["read"])
+            self.assertIsNone(me.json()["employee_external_id"])
+
+        with app.state.session_factory() as session:
+            stored = SqlUserIdentityRepository(session).get_by_external_identity(
+                ISSUER,
+                "auto-subject",
+            )
+            assert stored is not None
+            self.assertEqual(stored.roles, (ROLE_TECHNICIAN,))
 
     def test_login_state_is_one_time_use(self) -> None:
         fake = FakeOidcClient(
