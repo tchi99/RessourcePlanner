@@ -3,8 +3,19 @@ from __future__ import annotations
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ...application import ResourceAvailabilityRuleReadModel, WorkPackageReadModel
-from .models import Project, Resource, ResourceAvailabilityRule, WorkPackage
+from ...application import (
+    DemandHistoryReadModel,
+    ResourceAvailabilityRuleReadModel,
+    WorkPackageReadModel,
+)
+from .models import (
+    Project,
+    Resource,
+    ResourceAvailabilityRule,
+    WorkforceRequest,
+    WorkforceRequestHistory,
+    WorkPackage,
+)
 from .query_repository import SqlPlannerQueryRepository
 
 
@@ -127,4 +138,38 @@ class SqlPlannerQueryRepositoryWeb(SqlPlannerQueryRepository):
                 active=bool(rule.active),
             )
             for rule, resource in rows
+        )
+
+    def list_demand_history(self, number: str) -> tuple[DemandHistoryReadModel, ...]:
+        wanted = _text(number)
+        if not wanted:
+            return ()
+        statement = (
+            select(WorkforceRequestHistory, WorkforceRequest)
+            .join(
+                WorkforceRequest,
+                WorkforceRequestHistory.workforce_request_id == WorkforceRequest.id,
+            )
+            .where(
+                (WorkforceRequest.legacy_demand_number == wanted)
+                | (WorkforceRequest.id == wanted)
+            )
+            .order_by(
+                WorkforceRequestHistory.occurred_at.desc(),
+                WorkforceRequestHistory.id.desc(),
+            )
+        )
+        rows = self._web_session.execute(statement).all()
+        return tuple(
+            DemandHistoryReadModel(
+                demand_number=_optional_text(request.legacy_demand_number) or request.id,
+                action=_text(history.action) or "Événement",
+                occurred_at=history.occurred_at,
+                previous_status=_optional_text(history.previous_status),
+                status=_optional_text(history.status),
+                comment=_optional_text(history.comment),
+                details=_optional_text(history.details),
+                actor_name=_optional_text(history.actor_name),
+            )
+            for history, request in rows
         )

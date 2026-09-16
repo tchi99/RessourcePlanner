@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, Query
 from ..application import (
     ApplicationNotFoundError,
     ApplicationValidationError,
+    DemandHistoryReadModel,
     DemandPeriodReadModel,
     DemandReadModel,
     PlannerQueryPort,
@@ -97,6 +98,19 @@ def build_read_router(query_dependency: QueryProvider) -> APIRouter:
                 context={"demand_number": number},
             )
         return row
+
+    @router.get("/demands/{number}/history")
+    def list_demand_history(
+        number: str,
+        queries: PlannerQueryPort = Depends(query_dependency),
+    ) -> list[DemandHistoryReadModel]:
+        if queries.get_demand(number) is None:
+            raise ApplicationNotFoundError(
+                f"Demande {number} introuvable",
+                code="demand_not_found",
+                context={"demand_number": number},
+            )
+        return list(queries.list_demand_history(number))
 
     @router.get("/demands/{number}/periods")
     def list_demand_periods(
