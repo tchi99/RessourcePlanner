@@ -18,9 +18,11 @@ from .demand_period_models import (
 )
 from .demand_period_repository import SqlDemandPeriodRepository
 from .demand_repository import SqlDemandRepository
+from .employee_sync_repository import SqlEmployeeSyncRepository
 from .idempotency import CommandIdempotencyReceipt, SqlCommandIdempotencyAdapter
 from .identity_models import AppUser, AuthLoginTransaction, AuthSession
 from .identity_repository import SqlUserIdentityRepository
+from .identity_resource_link_repository import SqlIdentityResourceLinkRepository
 from .models import (
     ORIGIN_AD_HOC,
     ORIGIN_QUICK_SHIFT,
@@ -38,6 +40,7 @@ from .identity_constraints import (
     RESOURCE_REQUIREMENT_NUMBER_INDEX,
     WORKFORCE_REQUEST_NUMBER_INDEX,
 )
+from .resource_identity_constraints import RESOURCE_EXTERNAL_ID_INDEX
 from .period_approved_sync import SqlPeriodAwareApprovedDemandSyncAdapter
 from .planning_repository import SqlPlanningReadRepository
 from .capacity_query_repository import SqlPlannerQueryRepository
@@ -64,6 +67,7 @@ __all__ = [
     "ORIGIN_QUICK_SHIFT",
     "ORIGIN_REQUEST",
     "Project",
+    "RESOURCE_EXTERNAL_ID_INDEX",
     "RESOURCE_REQUIREMENT_NUMBER_INDEX",
     "Resource",
     "ResourceAvailabilityRule",
@@ -75,6 +79,8 @@ __all__ = [
     "SqlCommandIdempotencyAdapter",
     "SqlDemandPeriodRepository",
     "SqlDemandRepository",
+    "SqlEmployeeSyncRepository",
+    "SqlIdentityResourceLinkRepository",
     "SqlPeriodAwareApprovedDemandSyncAdapter",
     "SqlPlannerQueryRepository",
     "SqlPlanningCommandAdapter",
