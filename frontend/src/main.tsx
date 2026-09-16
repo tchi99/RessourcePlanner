@@ -20,6 +20,7 @@ import "./segment-parent.css";
 import "./technician-schedule.css";
 import "./communications.css";
 import "./planning-history.css";
+import "./overallocation.css";
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
