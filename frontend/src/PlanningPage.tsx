@@ -22,6 +22,7 @@ import QuickShiftEditor from "./QuickShiftEditor";
 import ShiftEditor from "./ShiftEditor";
 
 type ConfirmationFilter = "all" | "confirmed" | "tentative";
+type EmergencyShiftReadModel = ShiftReadModel & { emergency_override_active?: boolean };
 
 function normalize(value: string | null | undefined) {
   return (value ?? "").trim().toLocaleLowerCase("fr-CA");
@@ -81,11 +82,13 @@ function ProjectLabel({ number, name }: { number: string | null; name: string | 
 
 function ShiftCard({ shift, onEdit }: { shift: ShiftReadModel; onEdit: (shift: ShiftReadModel) => void }) {
   const confirmation = confirmationKind(shift.confirmation);
+  const emergencyOverride = Boolean((shift as EmergencyShiftReadModel).emergency_override_active);
   const meta = [
     shift.allocation_type,
     shift.source !== "AUTO" ? shift.source : null,
     shift.locked ? "Verrouillé" : null,
     shift.outside_standard_hours ? "Hors horaire" : null,
+    emergencyOverride ? "⚠ Dérogation urgente" : null,
   ].filter(Boolean);
 
   return (
@@ -93,9 +96,10 @@ function ShiftCard({ shift, onEdit }: { shift: ShiftReadModel; onEdit: (shift: S
       type="button"
       className={`shift-card shift-${confirmation} ${shift.outside_standard_hours ? "shift-outside" : ""}`}
       onClick={() => onEdit(shift)}
-      aria-label={`Modifier le quart ${shift.project_number || shift.project_name || shift.allocation_id}, ${hours(shift.hours)} heures`}
+      aria-label={`Modifier le quart ${shift.project_number || shift.project_name || shift.allocation_id}, ${hours(shift.hours)} heures${emergencyOverride ? ", dérogation urgente active" : ""}`}
       title={[
         "Cliquer pour modifier",
+        emergencyOverride ? "⚠ Dérogation d’approbation urgente — régularisation requise" : null,
         shift.project_name,
         shift.demand_number ? `Demande ${shift.demand_number}` : null,
         shift.project_manager ? `Responsable: ${shift.project_manager}` : null,
