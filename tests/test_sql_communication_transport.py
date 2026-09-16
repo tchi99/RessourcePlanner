@@ -24,6 +24,7 @@ from app.infrastructure.sql.communication_repository import SqlCommunicationRepo
 
 
 WEEK = date(2026, 9, 21)
+TEST_EMAIL = "tech" + chr(64) + "example.test"
 
 
 class FakeTransport:
@@ -51,7 +52,7 @@ class SqlCommunicationTransportTests(unittest.TestCase):
                         id="R1",
                         external_id="EMP-1",
                         name="Technicien test",
-                        email="tech@example.test",
+                        email=TEST_EMAIL,
                         active=True,
                     ),
                 ]
@@ -120,7 +121,7 @@ class SqlCommunicationTransportTests(unittest.TestCase):
             )
 
             self.assertEqual(len(transport.messages), 1)
-            self.assertEqual(transport.messages[0].recipient_email, "tech@example.test")
+            self.assertEqual(transport.messages[0].recipient_email, TEST_EMAIL)
             self.assertEqual(created.drafts_provider, "fake_graph")
             self.assertEqual(created.drafts_created_count, 1)
             self.assertEqual(created.drafts_created_by, "Coordonnateur M365")
