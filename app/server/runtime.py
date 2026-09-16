@@ -7,6 +7,7 @@ import os
 from fastapi import FastAPI
 import uvicorn
 
+from ..application.identity_provisioning import AutoProvisioningPolicy
 from ..application.security import AuthPrincipal, ROLE_ADMIN, normalize_roles
 from ..infrastructure.acumatica import AcumaticaProjectSource, AcumaticaProjectSourceSettings
 from ..infrastructure.acumatica.oidc import OidcClient, OidcClientSettings
@@ -36,6 +37,7 @@ OIDC_SCOPES_ENV = "RESOURCEPLANNER_OIDC_SCOPES"
 OIDC_COOKIE_NAME_ENV = "RESOURCEPLANNER_OIDC_COOKIE_NAME"
 OIDC_SESSION_HOURS_ENV = "RESOURCEPLANNER_OIDC_SESSION_HOURS"
 OIDC_SECURE_COOKIE_ENV = "RESOURCEPLANNER_OIDC_SECURE_COOKIE"
+OIDC_AUTO_PROVISION_ENV = "RESOURCEPLANNER_OIDC_AUTO_PROVISION"
 ACUMATICA_BASE_URL_ENV = "RESOURCEPLANNER_ACUMATICA_BASE_URL"
 ACUMATICA_ACCESS_TOKEN_ENV = "RESOURCEPLANNER_ACUMATICA_ACCESS_TOKEN"
 ACUMATICA_ENDPOINT_ENV = "RESOURCEPLANNER_ACUMATICA_ENDPOINT"
@@ -207,6 +209,7 @@ class ServerSettings:
     oidc_cookie_name: str = "resourceplanner_session"
     oidc_session_hours: int = 8
     oidc_secure_cookie: bool = True
+    oidc_auto_provision: bool = False
     embedding: EmbeddingSettings = field(default_factory=EmbeddingSettings)
     acumatica: AcumaticaProjectSourceSettings | None = field(default=None, repr=False)
 
@@ -243,6 +246,7 @@ class ServerSettings:
             maximum=168,
         )
         oidc_secure_cookie = True
+        oidc_auto_provision = False
 
         if auth_mode == "local":
             allow_network = _bool(values.get(ALLOW_LOCAL_AUTH_NETWORK_ENV), default=False)
@@ -257,6 +261,10 @@ class ServerSettings:
             oidc_secure_cookie = _bool(
                 values.get(OIDC_SECURE_COOKIE_ENV),
                 default=oidc.redirect_uri.casefold().startswith("https://"),
+            )
+            oidc_auto_provision = _bool(
+                values.get(OIDC_AUTO_PROVISION_ENV),
+                default=False,
             )
 
         try:
@@ -280,6 +288,7 @@ class ServerSettings:
             oidc_cookie_name=oidc_cookie_name,
             oidc_session_hours=oidc_session_hours,
             oidc_secure_cookie=oidc_secure_cookie,
+            oidc_auto_provision=oidc_auto_provision,
             embedding=embedding,
             acumatica=_acumatica_settings(values),
         )
@@ -304,6 +313,7 @@ def create_configured_app(settings: ServerSettings | None = None) -> FastAPI:
             session_hours=resolved.oidc_session_hours,
             secure_cookie=resolved.oidc_secure_cookie,
             cookie_samesite=resolved.embedding.oidc_cookie_samesite,
+            auto_provisioning=AutoProvisioningPolicy(enabled=resolved.oidc_auto_provision),
         )
         auth_resolver = oidc_session_auth_resolver(resolved.oidc_cookie_name)
     else:
