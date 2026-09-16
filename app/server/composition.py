@@ -25,7 +25,7 @@ from ..infrastructure.sql import (
     SqlEmergencyDemandRepository,
     SqlOverallocationAllocationCommandAdapter,
     SqlPeriodAwareApprovedDemandSyncAdapter,
-    SqlPlannerQueryRepositoryWithEstimatedDays,
+    SqlPlannerQueryRepositoryWithLoadProfiles,
     SqlPlanningCommandAdapter,
     SqlResourceAdminRepository,
     SqlSegmentRepositoryWithActiveDayMetrics,
@@ -108,7 +108,7 @@ def build_sql_idempotency_executor(
 def build_sql_query_port(session: Session) -> PlannerQueryPort:
     """Compose the canonical read-only query port for one request transaction."""
 
-    return SqlPlannerQueryRepositoryWithEstimatedDays(session)
+    return SqlPlannerQueryRepositoryWithLoadProfiles(session)
 
 
 def build_user_admin_service(session: Session) -> UserAdminService:
