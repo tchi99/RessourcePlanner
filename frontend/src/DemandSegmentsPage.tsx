@@ -19,6 +19,7 @@ type PlanningSegment = SegmentReadModel & {
   planned_active_days?: number;
   active_day_target_met?: boolean | null;
   active_day_diagnostic?: string | null;
+  load_profile?: string;
 };
 
 function normalize(value: string | null | undefined) {
@@ -32,7 +33,17 @@ function messageFromError(reason: unknown) {
   return reason instanceof Error ? reason.message : "Impossible de charger les segments.";
 }
 
+function loadProfileLabel(value: string | null | undefined) {
+  switch (value) {
+    case "FRONT_LOADED": return "Charge en début";
+    case "BACK_LOADED": return "Charge en fin";
+    case "BELL": return "Charge en cloche";
+    default: return "Charge uniforme";
+  }
+}
+
 function segmentSearchText(segment: SegmentReadModel) {
+  const planning = segment as PlanningSegment;
   return normalize([
     segment.segment_id,
     segment.demand_number,
@@ -44,6 +55,8 @@ function segmentSearchText(segment: SegmentReadModel) {
     segment.required_competency,
     segment.planning_type,
     segment.priority,
+    planning.load_profile,
+    loadProfileLabel(planning.load_profile),
   ].filter(Boolean).join(" "));
 }
 
@@ -82,6 +95,7 @@ function SegmentCard({ segment, onOpen }: { segment: SegmentReadModel; onOpen: (
         <span>{segment.start_date || "—"}{segment.end_date && segment.end_date !== segment.start_date ? ` → ${segment.end_date}` : ""}</span>
         <span>{segment.status || "—"}</span>
         <span>{segment.planning_type || "—"}</span>
+        <span>{loadProfileLabel(planning.load_profile)}</span>
         {segment.outside_standard_hours && <span>Hors horaire</span>}
       </div>
       <div className="segment-card-footer">
