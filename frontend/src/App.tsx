@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { useAuth } from "./AuthContext";
+import CommunicationsPage from "./CommunicationsPage";
 import DemandsWorkspace from "./DemandsWorkspace";
 import MediumTermPage from "./MediumTermPage";
 import PlanningPage from "./PlanningPage";
@@ -19,9 +20,9 @@ const navItems: NavItem[] = [
   { key: "medium-term", label: "Moyen terme", eyebrow: "Capacité" },
   { key: "demands", label: "Demandes", eyebrow: "Main-d’œuvre" },
   { key: "projects", label: "Projets", eyebrow: "Portefeuille" },
+  { key: "communications", label: "Communications", eyebrow: "Révision", permission: "manage_communications" },
   { key: "resources", label: "Ressources", eyebrow: "Administration", permission: "manage_resources" },
   { key: "users", label: "Utilisateurs", eyebrow: "Sécurité", permission: "admin_users" },
-  { key: "communications", label: "Communications", eyebrow: "À venir" },
 ];
 
 function Placeholder({ view }: { view: View }) {
@@ -184,6 +185,8 @@ export default function App() {
             <DemandsWorkspace />
           ) : view === "projects" ? (
             <ProjectsPage />
+          ) : view === "communications" && can("manage_communications") ? (
+            <CommunicationsPage />
           ) : view === "resources" && can("manage_resources") ? (
             <ResourcesPage />
           ) : view === "users" && can("admin_users") ? (
