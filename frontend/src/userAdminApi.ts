@@ -6,6 +6,7 @@ export type UserAdminReadModel = {
   subject: string;
   display_name: string;
   email: string | null;
+  employee_external_id: string | null;
   roles: string[];
   active: boolean;
 };
