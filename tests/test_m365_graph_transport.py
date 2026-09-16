@@ -22,7 +22,7 @@ class MicrosoftGraphCommunicationTransportTests(unittest.TestCase):
         return MicrosoftGraphCommunicationSettings(
             tenant_id="tenant-id",
             client_id="client-id",
-            client_secret="test",
+            client_credential="test",
             mailbox=TEST_MAILBOX,
         )
 
@@ -128,9 +128,9 @@ class MicrosoftGraphCommunicationTransportTests(unittest.TestCase):
 
         self.assertEqual(caught.exception.code, "communication_graph_invalid_response")
 
-    def test_settings_repr_never_exposes_client_secret(self) -> None:
+    def test_settings_repr_never_exposes_client_credential(self) -> None:
         settings = self._settings()
-        self.assertNotIn("client_secret='test'", repr(settings))
+        self.assertNotIn("client_credential='test'", repr(settings))
 
 
 if __name__ == "__main__":
