@@ -10,6 +10,7 @@ from .availability_rules import (
     has_standard_schedule,
     outside_schedule_eligible_for_day,
 )
+from .load_profiles import normalize_load_profile
 from .plan_comparison import AllocationProjection
 from .planning_engine import CapacityKey, LockedAllocationInput, SegmentInput
 from .planning_snapshot import PlanningSnapshot
@@ -21,6 +22,7 @@ PLAN_TYPES = {"Flexible", "Fixe"}
 TRUE_VALUES = {"oui", "yes", "true", "1", "x", "verrouille", "verrouillée"}
 SEGMENT_OVERTIME_FIELD = "HorsHoraireAutorise"
 SEGMENT_ACTIVE_DAYS_FIELD = "JoursActifsCibles"
+SEGMENT_LOAD_PROFILE_FIELD = "ProfilCharge"
 
 
 @dataclass(frozen=True, slots=True)
@@ -120,6 +122,11 @@ def _segment_inputs(
             if segment_id:
                 unsupported.append(segment_id)
             continue
+        try:
+            load_profile = normalize_load_profile(row.get(SEGMENT_LOAD_PROFILE_FIELD))
+        except ValueError:
+            unsupported.append(segment_id)
+            continue
 
         inputs.append(
             SegmentInput(
@@ -133,6 +140,7 @@ def _segment_inputs(
                 created_order=str(row.get("DateCreation") or ""),
                 overtime_allowed=_truthy(row.get(SEGMENT_OVERTIME_FIELD)),
                 desired_active_days=_optional_positive_int(row.get(SEGMENT_ACTIVE_DAYS_FIELD)),
+                load_profile=load_profile,
             )
         )
 
