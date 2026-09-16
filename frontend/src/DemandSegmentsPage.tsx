@@ -11,6 +11,12 @@ import {
 import { getSegments } from "./segments-api";
 import SegmentEditor from "./SegmentEditor";
 
+type OverallocationSegment = SegmentReadModel & {
+  locked_hours?: number;
+  overallocated_hours?: number;
+  overallocated?: boolean;
+};
+
 function normalize(value: string | null | undefined) {
   return (value ?? "").trim().toLocaleLowerCase("fr-CA");
 }
@@ -43,8 +49,10 @@ function hours(value: number | null | undefined) {
 
 function SegmentCard({ segment, onOpen }: { segment: SegmentReadModel; onOpen: () => void }) {
   const cancelled = normalize(segment.status).startsWith("annul");
+  const overallocation = segment as OverallocationSegment;
+  const excess = Number(overallocation.overallocated_hours ?? 0);
   return (
-    <button type="button" className={`segment-card ${cancelled ? "segment-card-cancelled" : ""}`} onClick={onOpen}>
+    <button type="button" className={`segment-card ${cancelled ? "segment-card-cancelled" : ""} ${excess > 0 ? "segment-card-overallocated" : ""}`} onClick={onOpen}>
       <div className="segment-card-heading">
         <div>
           <span className="segment-card-id">{segment.segment_id}</span>
@@ -52,6 +60,11 @@ function SegmentCard({ segment, onOpen }: { segment: SegmentReadModel; onOpen: (
         </div>
         <strong>{hours(segment.planned_hours)} h</strong>
       </div>
+      {excess > 0 && (
+        <div className="overallocation-inline-warning">
+          ⚠ Surallocation manuelle +{hours(excess)} h · {hours(overallocation.locked_hours)} h verrouillées / {hours(segment.planned_hours)} h prévues
+        </div>
+      )}
       <div className="segment-card-meta">
         <span>{segment.start_date || "—"}{segment.end_date && segment.end_date !== segment.start_date ? ` → ${segment.end_date}` : ""}</span>
         <span>{segment.status || "—"}</span>
@@ -143,6 +156,10 @@ export default function DemandSegmentsPage() {
   }, [segments, selectedDemandNumber, includeCancelled, search, selectedDemand]);
 
   const totalHours = selectedSegments.reduce((sum, segment) => sum + Number(segment.planned_hours || 0), 0);
+  const totalOverallocation = selectedSegments.reduce(
+    (sum, segment) => sum + Number((segment as OverallocationSegment).overallocated_hours ?? 0),
+    0,
+  );
 
   function createForSelectedDemand() {
     if (!selectedDemand) return;
@@ -219,6 +236,7 @@ export default function DemandSegmentsPage() {
                 <div className="segment-summary-metrics">
                   <div><span>Segments affichés</span><strong>{selectedSegments.length}</strong></div>
                   <div><span>Heures prévues</span><strong>{hours(totalHours)} h</strong></div>
+                  {totalOverallocation > 0 && <div className="overallocation-summary"><span>Surallocation manuelle</span><strong>+{hours(totalOverallocation)} h</strong></div>}
                 </div>
               </div>
 
