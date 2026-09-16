@@ -1,0 +1,186 @@
+.user-admin-page {
+  display: grid;
+  gap: 1rem;
+}
+
+.user-admin-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.user-admin-heading h2,
+.user-admin-editor h3 {
+  margin: 0.2rem 0;
+}
+
+.user-admin-heading p {
+  margin: 0.35rem 0 0;
+  max-width: 780px;
+}
+
+.user-admin-layout {
+  display: grid;
+  grid-template-columns: minmax(280px, 0.85fr) minmax(420px, 1.65fr);
+  gap: 1rem;
+  align-items: start;
+}
+
+.user-admin-list-panel,
+.user-admin-editor {
+  border: 1px solid var(--border, #d9dde5);
+  border-radius: 14px;
+  background: var(--surface, #fff);
+  padding: 1rem;
+}
+
+.user-admin-filters {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.65rem;
+  margin-bottom: 0.8rem;
+}
+
+.user-admin-filters input,
+.user-admin-filters select,
+.user-admin-editor input {
+  min-height: 38px;
+  border: 1px solid var(--border, #d9dde5);
+  border-radius: 8px;
+  padding: 0.55rem 0.65rem;
+  background: var(--surface, #fff);
+}
+
+.user-admin-user-list {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.user-admin-user-list > button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  width: 100%;
+  text-align: left;
+  border: 1px solid var(--border, #d9dde5);
+  border-radius: 10px;
+  padding: 0.75rem;
+  background: transparent;
+  cursor: pointer;
+}
+
+.user-admin-user-list > button.selected {
+  border-color: #7d94bd;
+  background: #f3f6fb;
+}
+
+.user-admin-user-list button span:first-child {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.user-admin-user-list small,
+.user-role-grid small,
+.user-active-toggle small {
+  color: var(--muted, #667085);
+}
+
+.user-status {
+  border-radius: 999px;
+  padding: 0.2rem 0.55rem;
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
+
+.user-status.active {
+  background: #eef8f1;
+}
+
+.user-status.inactive {
+  background: #f2f3f5;
+}
+
+.user-admin-editor {
+  display: grid;
+  gap: 1rem;
+}
+
+.user-admin-editor label {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.user-role-fieldset {
+  border: 1px solid var(--border, #d9dde5);
+  border-radius: 10px;
+  padding: 0.8rem;
+}
+
+.user-role-grid {
+  display: grid;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.user-role-grid > label {
+  border: 1px solid var(--border, #d9dde5);
+  border-radius: 9px;
+  padding: 0.65rem;
+}
+
+.user-role-grid > label.selected {
+  border-color: #7d94bd;
+  background: #f3f6fb;
+}
+
+.user-role-choice,
+.user-active-toggle {
+  display: flex !important;
+  align-items: flex-start;
+  gap: 0.55rem;
+}
+
+.user-role-choice input,
+.user-active-toggle input {
+  min-height: auto;
+  margin-top: 0.18rem;
+}
+
+.user-active-toggle {
+  border: 1px solid var(--border, #d9dde5);
+  border-radius: 10px;
+  padding: 0.8rem;
+}
+
+.user-active-toggle span {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.user-admin-self,
+.user-admin-notice {
+  border-radius: 999px;
+  background: #eef3fb;
+  padding: 0.28rem 0.65rem;
+  font-size: 0.8rem;
+}
+
+.user-admin-notice {
+  justify-self: start;
+}
+
+.user-admin-empty {
+  color: var(--muted, #667085);
+}
+
+@media (max-width: 900px) {
+  .user-admin-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .user-admin-heading {
+    flex-direction: column;
+  }
+}
