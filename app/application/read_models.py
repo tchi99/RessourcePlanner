@@ -161,6 +161,7 @@ class SegmentReadModel:
     planned_active_days: int = 0
     active_day_target_met: bool | None = None
     active_day_diagnostic: str | None = None
+    load_profile: str = "UNIFORM"
 
     @classmethod
     def from_mapping(cls, row: Mapping[str, Any]) -> "SegmentReadModel":
@@ -210,4 +211,5 @@ class SegmentReadModel:
             planned_active_days=planned_active_days,
             active_day_target_met=target_met,
             active_day_diagnostic=_optional_text(row.get("DiagnosticJoursActifs")),
+            load_profile=_text(row.get("ProfilCharge")) or "UNIFORM",
         )
