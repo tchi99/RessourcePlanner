@@ -5,6 +5,7 @@ from datetime import date
 from typing import Protocol
 
 from .query_models import (
+    DemandHistoryReadModel,
     PendingDemandLoadReadModel,
     PlanningSnapshotReadModel,
     ProjectReadModel,
@@ -48,6 +49,8 @@ class PlannerQueryPort(Protocol):
     def list_demands(self) -> Sequence[DemandReadModel]: ...
 
     def get_demand(self, number: str) -> DemandReadModel | None: ...
+
+    def list_demand_history(self, number: str) -> Sequence[DemandHistoryReadModel]: ...
 
     def list_demand_periods(self, number: str) -> Sequence[DemandPeriodReadModel]: ...
 
