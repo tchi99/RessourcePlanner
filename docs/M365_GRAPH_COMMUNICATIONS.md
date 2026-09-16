@@ -33,7 +33,7 @@ Les quatre variables suivantes sont requises ensemble pour activer le transport 
 RESOURCEPLANNER_M365_TENANT_ID=<tenant-guid>
 RESOURCEPLANNER_M365_CLIENT_ID=<app-registration-client-id>
 RESOURCEPLANNER_M365_CLIENT_SECRET=<secret>
-RESOURCEPLANNER_M365_MAILBOX=planning@entreprise.tld
+RESOURCEPLANNER_M365_MAILBOX=<mailbox-upn>
 ```
 
 Variables optionnelles :
