@@ -5,6 +5,8 @@ from sqlalchemy.orm import Session
 from ..application import (
     AllocationService,
     ApplicationFacade,
+    EmergencyApplicationFacade,
+    EmergencyDemandService,
     IdempotentCommandExecutor,
     PlannerQueryPort,
     PlanningService,
@@ -12,7 +14,6 @@ from ..application import (
     WorkPackageService,
 )
 from ..application.communications import CommunicationService, CommunicationTransportPort
-from ..application.demand_service import DemandService
 from ..application.quick_shift_service import QuickShiftService
 from ..application.segment_service import SegmentService
 from ..application.user_admin import UserAdminService
@@ -20,8 +21,9 @@ from ..infrastructure.sql import (
     SqlAllocationCommandAdapter,
     SqlCommandIdempotencyAdapter,
     SqlDemandPeriodRepository,
-    SqlDemandRepository,
+    SqlEmergencyDemandRepository,
     SqlPeriodAwareApprovedDemandSyncAdapter,
+    SqlPlannerQueryRepositoryWithEmergencyOverride,
     SqlPlanningCommandAdapter,
     SqlResourceAdminRepository,
     SqlSegmentRepository,
@@ -29,9 +31,6 @@ from ..infrastructure.sql import (
     SqlWorkPackageRepository,
 )
 from ..infrastructure.sql.communication_repository import SqlCommunicationRepository
-from ..infrastructure.sql.plan_delta_query_repository import (
-    SqlPlannerQueryRepositoryWithPlanDelta,
-)
 from ..infrastructure.sql.planning_audit import (
     AuditedAllocationCommandAdapter,
     AuditedApprovedDemandSyncAdapter,
@@ -49,7 +48,7 @@ def build_sql_facade(
 
     actor = str(actor_name or "api").strip() or "api"
     journal = SqlPlanningAuditJournal(session, actor_name=actor)
-    demands = SqlDemandRepository(session, actor_name=actor)
+    demands = SqlEmergencyDemandRepository(session, actor_name=actor)
     periods = SqlDemandPeriodRepository(session, actor_name=actor)
     segments = AuditedSegmentRepository(
         SqlSegmentRepository(session, actor_name=actor),
@@ -70,8 +69,8 @@ def build_sql_facade(
         journal,
     )
 
-    return ApplicationFacade(
-        demands=DemandService(
+    return EmergencyApplicationFacade(
+        demands=EmergencyDemandService(
             demands,
             planning_commands,
             approved_sync,
@@ -103,7 +102,7 @@ def build_sql_idempotency_executor(
 def build_sql_query_port(session: Session) -> PlannerQueryPort:
     """Compose the canonical read-only query port for one request transaction."""
 
-    return SqlPlannerQueryRepositoryWithPlanDelta(session)
+    return SqlPlannerQueryRepositoryWithEmergencyOverride(session)
 
 
 def build_user_admin_service(session: Session) -> UserAdminService:
