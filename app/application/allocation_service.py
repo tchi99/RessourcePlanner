@@ -78,6 +78,12 @@ class AllocationService:
                 bool(command.outside_standard_hours),
                 str(command.note or ""),
             )
+            if command.overallocation_policy is not None:
+                return self._commands.create_manual(
+                    *base,
+                    command.confirmation,
+                    command.overallocation_policy,
+                )
             if command.confirmation is None:
                 # Keep compatibility with the V1 adapter/fakes until that runtime is retired.
                 return self._commands.create_manual(*base)
@@ -112,6 +118,14 @@ class AllocationService:
                 bool(command.outside_standard_hours),
                 str(command.note or ""),
             )
+            if command.overallocation_policy is not None:
+                # The Web/API PUT explicitly supplies the nullable confirmation state.
+                self._commands.update_manual(
+                    *base,
+                    command.confirmation,
+                    command.overallocation_policy,
+                )
+                return
             if command.clear_confirmation_override:
                 # Canonical Web/API intent: explicitly clear the nullable shift override.
                 self._commands.update_manual(*base, None)
