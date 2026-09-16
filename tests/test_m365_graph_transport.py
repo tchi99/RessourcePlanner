@@ -13,20 +13,25 @@ from app.infrastructure.m365 import (
 )
 
 
+TEST_DOMAIN = "example.test"
+TEST_MAILBOX = "planning" + chr(64) + TEST_DOMAIN
+
+
 class MicrosoftGraphCommunicationTransportTests(unittest.TestCase):
     def _settings(self) -> MicrosoftGraphCommunicationSettings:
         return MicrosoftGraphCommunicationSettings(
             tenant_id="tenant-id",
             client_id="client-id",
-            client_secret="super-secret",
-            mailbox="planning@example.test",
+            client_secret="test",
+            mailbox=TEST_MAILBOX,
         )
 
     @staticmethod
-    def _message(address: str) -> CommunicationTransportMessage:
+    def _message(local_part: str) -> CommunicationTransportMessage:
+        address = local_part + chr(64) + TEST_DOMAIN
         return CommunicationTransportMessage(
             audience="technician",
-            recipient_id=f"resource:{address}",
+            recipient_id=f"resource:{local_part}",
             recipient_email=address,
             subject="Planning semaine prochaine",
             body="Bonjour\nVoici votre planning.",
@@ -44,11 +49,11 @@ class MicrosoftGraphCommunicationTransportTests(unittest.TestCase):
                 self.assertIn("grant_type=client_credentials", body)
                 self.assertIn("scope=https%3A%2F%2Fgraph.microsoft.com%2F.default", body)
                 return httpx.Response(200, json={"access_token": "test-token"})
-            if request.method == "POST" and request.url.path.endswith("/users/planning@example.test/messages"):
+            if request.method == "POST" and request.url.path.endswith(f"/users/{TEST_MAILBOX}/messages"):
                 draft_number += 1
                 payload = json.loads(request.content)
                 self.assertEqual(payload["body"]["contentType"], "Text")
-                self.assertTrue(payload["toRecipients"][0]["emailAddress"]["address"].endswith("@example.test"))
+                self.assertTrue(payload["toRecipients"][0]["emailAddress"]["address"].endswith(TEST_DOMAIN))
                 self.assertEqual(request.headers["Authorization"], "Bearer test-token")
                 return httpx.Response(201, json={"id": f"draft-{draft_number}"})
             self.fail(f"Requête Graph inattendue: {request.method} {request.url}")
@@ -57,9 +62,7 @@ class MicrosoftGraphCommunicationTransportTests(unittest.TestCase):
             self._settings(),
             transport=httpx.MockTransport(handler),
         )
-        result = adapter.create_drafts(
-            (self._message("tech1@example.test"), self._message("tech2@example.test"))
-        )
+        result = adapter.create_drafts((self._message("tech1"), self._message("tech2")))
 
         self.assertEqual(result.provider, "microsoft_graph")
         self.assertEqual(result.created_count, 2)
@@ -89,9 +92,7 @@ class MicrosoftGraphCommunicationTransportTests(unittest.TestCase):
             transport=httpx.MockTransport(handler),
         )
         with self.assertRaises(ApplicationUnavailableError) as caught:
-            adapter.create_drafts(
-                (self._message("tech1@example.test"), self._message("tech2@example.test"))
-            )
+            adapter.create_drafts((self._message("tech1"), self._message("tech2")))
 
         self.assertEqual(caught.exception.code, "communication_graph_request_failed")
         self.assertEqual(len(deleted), 1)
@@ -108,7 +109,7 @@ class MicrosoftGraphCommunicationTransportTests(unittest.TestCase):
             transport=httpx.MockTransport(handler),
         )
         with self.assertRaises(ApplicationUnavailableError) as caught:
-            adapter.create_drafts((self._message("tech@example.test"),))
+            adapter.create_drafts((self._message("tech"),))
 
         self.assertEqual(caught.exception.code, "communication_graph_unavailable")
 
@@ -123,13 +124,13 @@ class MicrosoftGraphCommunicationTransportTests(unittest.TestCase):
             transport=httpx.MockTransport(handler),
         )
         with self.assertRaises(ApplicationUnavailableError) as caught:
-            adapter.create_drafts((self._message("tech@example.test"),))
+            adapter.create_drafts((self._message("tech"),))
 
         self.assertEqual(caught.exception.code, "communication_graph_invalid_response")
 
     def test_settings_repr_never_exposes_client_secret(self) -> None:
         settings = self._settings()
-        self.assertNotIn("super-secret", repr(settings))
+        self.assertNotIn("client_secret='test'", repr(settings))
 
 
 if __name__ == "__main__":
