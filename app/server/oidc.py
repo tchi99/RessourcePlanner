@@ -20,6 +20,7 @@ class OidcRuntime:
     cookie_name: str = "resourceplanner_session"
     session_hours: int = 8
     secure_cookie: bool = True
+    cookie_samesite: str = "lax"
 
     @property
     def login_ttl(self) -> timedelta:
