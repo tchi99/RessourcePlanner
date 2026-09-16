@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from ...application.read_models import DemandPeriodReadModel
 from ...application.repository_ports import DemandPeriodRepositoryPort
+from ...domain.active_days import normalize_active_day_target
 from ...domain.confirmation import normalize_confirmation
 from ...domain.demand_periods import DemandPeriodDefinition, validate_period_definitions
 from .base import utc_now
@@ -99,6 +100,7 @@ class SqlDemandPeriodRepository(DemandPeriodRepositoryPort):
                 confirmation=row.confirmation,
                 proposed_resource=resource_names.get(row.proposed_resource_id),
                 resource_count=row.resource_count,
+                desired_active_days=row.desired_active_days,
                 note=row.note,
                 selected=(
                     bool(row.alternative_group)
@@ -116,8 +118,6 @@ class SqlDemandPeriodRepository(DemandPeriodRepositoryPort):
         validate_period_definitions(periods)
         request = self._request(demand_number)
 
-        # Previous physical rows are retained for audit/history. Stable period keys
-        # may therefore be reused by a newer request version without a PK collision.
         current = self._session.scalars(
             select(WorkforceRequestPeriod).where(
                 WorkforceRequestPeriod.workforce_request_id == request.id,
@@ -151,6 +151,12 @@ class SqlDemandPeriodRepository(DemandPeriodRepositoryPort):
                     confirmation=normalize_confirmation(period.confirmation),
                     proposed_resource_id=resource.id if resource is not None else None,
                     resource_count=int(period.resource_count),
+                    desired_active_days=normalize_active_day_target(
+                        period.desired_active_days,
+                        start=period.start_date,
+                        end=period.end_date,
+                        field=f"Les jours actifs de la période {period.period_id}",
+                    ),
                     note=_text(period.note) or None,
                     active=True,
                 )
