@@ -18,6 +18,7 @@ from ..application.quick_shift_service import QuickShiftService
 from ..application.segment_service import SegmentService
 from ..application.user_admin import UserAdminService
 from ..infrastructure.sql import (
+    LoadProfileAuditedSegmentRepository,
     OverallocationAuditedAllocationCommandAdapter,
     OverallocationAuditedSegmentRepository,
     SqlCommandIdempotencyAdapter,
@@ -55,7 +56,10 @@ def build_sql_facade(
     periods = SqlDemandPeriodRepository(session, actor_name=actor)
     base_segments = SqlSegmentRepositoryWithActiveDayMetrics(session, actor_name=actor)
     segments = OverallocationAuditedSegmentRepository(
-        AuditedSegmentRepository(base_segments, journal),
+        LoadProfileAuditedSegmentRepository(
+            AuditedSegmentRepository(base_segments, journal),
+            journal,
+        ),
         journal,
     )
     work_packages = SqlWorkPackageRepository(session)
