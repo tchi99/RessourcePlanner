@@ -31,6 +31,7 @@ function formatDateTime(value: string | null) {
 }
 
 type DraftState = CommunicationReview & { recipient_email: string };
+type BatchAction = "approve" | "create-drafts" | "cancel" | "mark-communicated";
 
 export default function CommunicationsPage() {
   const [weekStart, setWeekStart] = useState(nextMondayIso);
@@ -125,21 +126,29 @@ export default function CommunicationsPage() {
     }
   }
 
-  async function batchAction(
-    batch: CommunicationBatch,
-    action: "approve" | "cancel" | "mark-communicated",
-  ) {
+  async function batchAction(batch: CommunicationBatch, action: BatchAction) {
+    if (action === "create-drafts") {
+      const included = batch.messages.filter((message) => message.included).length;
+      const confirmed = window.confirm(
+        `Créer ${included} brouillon(s) dans Microsoft 365 ?\n\n` +
+        "Aucun courriel ne sera envoyé. Les brouillons devront encore être vérifiés dans Outlook/M365.",
+      );
+      if (!confirmed) return;
+    }
+
     setBusy(true);
     setError(null);
     setNotice(null);
     try {
-      await communicationBatchAction(batch.id, action);
+      const updated = await communicationBatchAction(batch.id, action);
       setNotice(
         action === "approve"
           ? "Lot approuvé. Aucun message n’a été envoyé."
-          : action === "mark-communicated"
-            ? "Lot confirmé comme communiqué."
-            : "Lot annulé.",
+          : action === "create-drafts"
+            ? `${updated.drafts_created_count} brouillon(s) M365 créé(s). Aucun courriel n’a été envoyé.`
+            : action === "mark-communicated"
+              ? "Lot confirmé comme communiqué."
+              : "Lot annulé.",
       );
       await reloadLists();
     } catch (reason) {
@@ -156,8 +165,8 @@ export default function CommunicationsPage() {
           <span className="eyebrow">Révision manuelle</span>
           <h2>Communications de planification</h2>
           <p>
-            Préparez, révisez et approuvez les messages. Cette version ne transmet aucun
-            courriel et ne crée aucun brouillon M365 automatiquement.
+            Préparez, révisez et approuvez les messages. Après approbation, une action séparée peut
+            créer les brouillons dans Microsoft 365. Aucun courriel n’est envoyé automatiquement.
           </p>
         </div>
         <label>
@@ -316,6 +325,12 @@ export default function CommunicationsPage() {
                     <strong>{batch.kind === "weekly_plan" ? "Plan hebdomadaire" : "Modification"}</strong>
                     <span>{batch.status} · {included}/{batch.messages.length} message(s) inclus</span>
                     <small>Préparé {formatDateTime(batch.prepared_at)} par {batch.prepared_by ?? "—"}</small>
+                    {batch.drafts_created_at && (
+                      <small>
+                        Brouillons M365 : {batch.drafts_created_count} créé(s) {formatDateTime(batch.drafts_created_at)}
+                        {batch.drafts_created_by ? ` par ${batch.drafts_created_by}` : ""}
+                      </small>
+                    )}
                     {batch.stale && <small className="stale-label">Le planning a changé depuis ce lot.</small>}
                   </div>
                   <div className="batch-actions">
@@ -324,6 +339,9 @@ export default function CommunicationsPage() {
                     )}
                     {(batch.status === "PREPARED" || batch.status === "APPROVED") && (
                       <button type="button" className="secondary" disabled={busy} onClick={() => void batchAction(batch, "cancel")}>Annuler</button>
+                    )}
+                    {batch.status === "APPROVED" && !batch.drafts_created_at && (
+                      <button type="button" disabled={busy || batch.stale} onClick={() => void batchAction(batch, "create-drafts")}>Créer brouillons M365</button>
                     )}
                     {batch.status === "APPROVED" && (
                       <button type="button" disabled={busy || batch.stale} onClick={() => void batchAction(batch, "mark-communicated")}>Confirmer communiqué</button>
@@ -335,7 +353,8 @@ export default function CommunicationsPage() {
           </div>
         )}
         <p className="communications-help">
-          « Confirmer communiqué » enregistre uniquement le snapshot de référence pour détecter les futurs changements. Aucun transport n’est exécuté.
+          « Créer brouillons M365 » est une action externe explicite qui ne transmet aucun courriel.
+          « Confirmer communiqué » enregistre le snapshot de référence pour détecter les futurs changements.
         </p>
       </section>
     </section>
