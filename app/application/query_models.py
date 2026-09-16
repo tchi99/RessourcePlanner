@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date, time
+from datetime import date, datetime, time
 
 from .read_models import DemandPeriodReadModel, DemandReadModel, SegmentReadModel
 
@@ -58,6 +58,18 @@ class ResourceAvailabilityRuleReadModel:
     end_time: time | None = None
     note: str | None = None
     active: bool = True
+
+
+@dataclass(frozen=True, slots=True)
+class DemandHistoryReadModel:
+    demand_number: str
+    action: str
+    occurred_at: datetime
+    previous_status: str | None = None
+    status: str | None = None
+    comment: str | None = None
+    details: str | None = None
+    actor_name: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
