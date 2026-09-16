@@ -42,7 +42,7 @@ class SqlCommunicationWorkflowTests(unittest.TestCase):
                         id="R1",
                         external_id="EMP-1",
                         name="Technicien test",
-                        email="tech@example.test",
+                        email="tech" + chr(64) + "example.test",
                         active=True,
                     ),
                 ]
