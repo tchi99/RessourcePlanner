@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { useAuth } from "./AuthContext";
 import DemandsWorkspace from "./DemandsWorkspace";
@@ -6,13 +6,15 @@ import MediumTermPage from "./MediumTermPage";
 import PlanningPage from "./PlanningPage";
 import ProjectsPage from "./ProjectsPage";
 import ResourcesPage from "./ResourcesPage";
+import TechnicianSchedulePage from "./TechnicianSchedulePage";
 import UserAdminPage from "./UserAdminPage";
 
-type View = "planning" | "medium-term" | "demands" | "projects" | "resources" | "users" | "communications";
+type View = "my-schedule" | "planning" | "medium-term" | "demands" | "projects" | "resources" | "users" | "communications";
 
 type NavItem = { key: View; label: string; eyebrow: string; permission?: string };
 
 const navItems: NavItem[] = [
+  { key: "my-schedule", label: "Mon horaire", eyebrow: "Personnel" },
   { key: "planning", label: "Planning opérationnel", eyebrow: "Semaine" },
   { key: "medium-term", label: "Moyen terme", eyebrow: "Capacité" },
   { key: "demands", label: "Demandes", eyebrow: "Main-d’œuvre" },
@@ -47,7 +49,16 @@ export default function App() {
     logout,
   } = useAuth();
   const [view, setView] = useState<View>("planning");
+  const [initialViewResolved, setInitialViewResolved] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  useEffect(() => {
+    if (!principal || initialViewResolved) return;
+    if (principal.roles.length === 1 && principal.roles.includes("TECHNICIAN")) {
+      setView("my-schedule");
+    }
+    setInitialViewResolved(true);
+  }, [principal, initialViewResolved]);
 
   const visibleNavItems = useMemo(
     () => navItems.filter((item) => !item.permission || can(item.permission)),
@@ -163,7 +174,9 @@ export default function App() {
         </header>
 
         <main className="main-content">
-          {view === "planning" ? (
+          {view === "my-schedule" ? (
+            <TechnicianSchedulePage />
+          ) : view === "planning" ? (
             <PlanningPage />
           ) : view === "medium-term" ? (
             <MediumTermPage onOpenDemands={() => setView("demands")} />
