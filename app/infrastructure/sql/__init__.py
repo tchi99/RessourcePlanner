@@ -49,6 +49,7 @@ from .identity_constraints import (
 )
 from .resource_identity_constraints import RESOURCE_EXTERNAL_ID_INDEX
 from .period_approved_sync import SqlPeriodAwareApprovedDemandSyncAdapter
+from .planning_audit import PlanningChangeHistory
 from .planning_repository import SqlPlanningReadRepository
 from .capacity_query_repository import SqlPlannerQueryRepository
 from .project_sync_repository import SqlProjectSyncRepository
@@ -77,6 +78,7 @@ __all__ = [
     "ORIGIN_AD_HOC",
     "ORIGIN_QUICK_SHIFT",
     "ORIGIN_REQUEST",
+    "PlanningChangeHistory",
     "Project",
     "RESOURCE_EXTERNAL_ID_INDEX",
     "RESOURCE_REQUIREMENT_NUMBER_INDEX",
