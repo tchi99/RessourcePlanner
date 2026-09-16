@@ -73,6 +73,7 @@ from .project_sync import (
     ProjectSyncService,
 )
 from .query_models import (
+    DemandHistoryReadModel,
     PendingDemandLoadReadModel,
     PlanningSnapshotReadModel,
     ProjectReadModel,
@@ -144,6 +145,7 @@ __all__ = [
     "DemandCancelCommand",
     "DemandCorrectionCommand",
     "DemandCreateCommand",
+    "DemandHistoryReadModel",
     "DemandMutationResult",
     "DemandPeriodInput",
     "DemandPeriodReadModel",
