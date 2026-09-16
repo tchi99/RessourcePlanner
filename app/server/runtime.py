@@ -10,6 +10,7 @@ import uvicorn
 from ..application.security import AuthPrincipal, ROLE_ADMIN, normalize_roles
 from ..infrastructure.acumatica import AcumaticaProjectSource, AcumaticaProjectSourceSettings
 from ..infrastructure.acumatica.oidc import OidcClient, OidcClientSettings
+from .embedding import EmbeddingSettings, install_embedding_headers
 from .frontend import FrontendBuildError, attach_frontend
 from .http import create_api_app
 from .oidc import OidcRuntime, oidc_session_auth_resolver
@@ -206,6 +207,7 @@ class ServerSettings:
     oidc_cookie_name: str = "resourceplanner_session"
     oidc_session_hours: int = 8
     oidc_secure_cookie: bool = True
+    embedding: EmbeddingSettings = field(default_factory=EmbeddingSettings)
     acumatica: AcumaticaProjectSourceSettings | None = field(default=None, repr=False)
 
     @classmethod
@@ -257,6 +259,14 @@ class ServerSettings:
                 default=oidc.redirect_uri.casefold().startswith("https://"),
             )
 
+        try:
+            embedding = EmbeddingSettings.from_environment(
+                values,
+                secure_cookie=oidc_secure_cookie,
+            )
+        except ValueError as exc:
+            raise ServerConfigurationError(str(exc)) from exc
+
         return cls(
             database_url=database_url,
             host=host,
@@ -270,6 +280,7 @@ class ServerSettings:
             oidc_cookie_name=oidc_cookie_name,
             oidc_session_hours=oidc_session_hours,
             oidc_secure_cookie=oidc_secure_cookie,
+            embedding=embedding,
             acumatica=_acumatica_settings(values),
         )
 
@@ -292,6 +303,7 @@ def create_configured_app(settings: ServerSettings | None = None) -> FastAPI:
             cookie_name=resolved.oidc_cookie_name,
             session_hours=resolved.oidc_session_hours,
             secure_cookie=resolved.oidc_secure_cookie,
+            cookie_samesite=resolved.embedding.oidc_cookie_samesite,
         )
         auth_resolver = oidc_session_auth_resolver(resolved.oidc_cookie_name)
     else:
@@ -308,6 +320,8 @@ def create_configured_app(settings: ServerSettings | None = None) -> FastAPI:
         oidc_runtime=oidc_runtime,
     )
     app.state.auth_mode = resolved.auth_mode
+    app.state.embedding = resolved.embedding
+    install_embedding_headers(app, resolved.embedding)
     if resolved.frontend_dist is not None:
         try:
             attach_frontend(app, resolved.frontend_dist, required=True)

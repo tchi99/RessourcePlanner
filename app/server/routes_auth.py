@@ -112,7 +112,7 @@ def build_auth_router(oidc_runtime: OidcRuntime | None = None) -> APIRouter:
             max_age=int(oidc_runtime.session_ttl.total_seconds()),
             httponly=True,
             secure=oidc_runtime.secure_cookie,
-            samesite="lax",
+            samesite=oidc_runtime.cookie_samesite,
             path="/",
         )
         return response
@@ -131,7 +131,7 @@ def build_auth_router(oidc_runtime: OidcRuntime | None = None) -> APIRouter:
             path="/",
             secure=oidc_runtime.secure_cookie,
             httponly=True,
-            samesite="lax",
+            samesite=oidc_runtime.cookie_samesite,
         )
         return response
 
