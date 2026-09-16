@@ -85,6 +85,7 @@ class AuthPrincipal:
     subject: str
     display_name: str
     email: str | None
+    employee_external_id: str | None
     roles: tuple[str, ...]
     permissions: tuple[str, ...]
     auth_mode: str
@@ -100,6 +101,7 @@ class AuthPrincipal:
         email: str | None,
         roles: tuple[str, ...] | list[str] | set[str],
         auth_mode: str,
+        employee_external_id: str | None = None,
     ) -> "AuthPrincipal":
         normalized_roles = normalize_roles(roles)
         return cls(
@@ -108,6 +110,9 @@ class AuthPrincipal:
             subject=str(subject).strip(),
             display_name=str(display_name).strip(),
             email=str(email).strip() if email else None,
+            employee_external_id=(
+                str(employee_external_id).strip() if employee_external_id else None
+            ),
             roles=normalized_roles,
             permissions=permissions_for_roles(normalized_roles),
             auth_mode=str(auth_mode).strip(),
@@ -123,6 +128,7 @@ class AuthPrincipal:
             "subject": self.subject,
             "display_name": self.display_name,
             "email": self.email,
+            "employee_external_id": self.employee_external_id,
             "roles": list(self.roles),
             "permissions": list(self.permissions),
             "auth_mode": self.auth_mode,
@@ -138,6 +144,7 @@ class UserIdentityRecord:
     email: str | None
     roles: tuple[str, ...]
     active: bool
+    employee_external_id: str | None = None
 
 
 class UserIdentityRepositoryPort(Protocol):
@@ -158,6 +165,7 @@ class IdentityService:
             subject=record.subject,
             display_name=record.display_name,
             email=record.email,
+            employee_external_id=record.employee_external_id,
             roles=record.roles,
             auth_mode=auth_mode,
         )
