@@ -55,7 +55,11 @@ def required_permission(method: str, path: str) -> str | None:
     if path.startswith("/api/v1/work-packages"):
         return PERMISSION_MANAGE_WORK_PACKAGES
     if path.startswith("/api/v1/demands"):
-        if path.endswith("/approve") or path.endswith("/correction"):
+        if (
+            path.endswith("/approve")
+            or path.endswith("/correction")
+            or path.endswith("/emergency-plan")
+        ):
             return PERMISSION_APPROVE_DEMANDS
         return PERMISSION_MANAGE_DEMANDS
     if (
