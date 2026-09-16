@@ -11,6 +11,7 @@ from ..application.security import (
     AuthPrincipal,
     PERMISSION_ADMIN_USERS,
     PERMISSION_APPROVE_DEMANDS,
+    PERMISSION_MANAGE_COMMUNICATIONS,
     PERMISSION_MANAGE_DEMANDS,
     PERMISSION_MANAGE_PLANNING,
     PERMISSION_MANAGE_RESOURCES,
@@ -45,6 +46,8 @@ def required_permission(method: str, path: str) -> str | None:
         return None
     if path.startswith("/api/v1/admin/users"):
         return PERMISSION_ADMIN_USERS
+    if path.startswith("/api/v1/communications"):
+        return PERMISSION_MANAGE_COMMUNICATIONS
     if verb == "GET":
         return PERMISSION_READ
     if path.startswith("/api/v1/resources") or path.startswith("/api/v1/availability-rules"):
@@ -64,7 +67,6 @@ def required_permission(method: str, path: str) -> str | None:
         return PERMISSION_MANAGE_PLANNING
     if path == "/api/v1/integrations/acumatica/projects/sync":
         return PERMISSION_SYNC_PROJECTS
-    # Fail closed for future mutating API routes until a permission is assigned.
     return "__unassigned_mutation__"
 
 

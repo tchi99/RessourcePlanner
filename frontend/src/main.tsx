@@ -18,6 +18,7 @@ import "./resource-admin.css";
 import "./segments.css";
 import "./segment-parent.css";
 import "./technician-schedule.css";
+import "./communications.css";
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>

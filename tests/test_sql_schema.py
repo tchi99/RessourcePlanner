@@ -23,6 +23,10 @@ EXPECTED_TABLES = {
     "auth_login_transactions",
     "auth_sessions",
     "command_idempotency_receipts",
+    "communication_batches",
+    "communication_contacts",
+    "communication_messages",
+    "communication_snapshot_lines",
     "projects",
     "resources",
     "work_packages",
@@ -50,6 +54,10 @@ class SqlSchemaTests(unittest.TestCase):
         users = Base.metadata.tables["app_users"].c
         login_transactions = Base.metadata.tables["auth_login_transactions"].c
         auth_sessions = Base.metadata.tables["auth_sessions"].c
+        communication_contacts = Base.metadata.tables["communication_contacts"].c
+        communication_batches = Base.metadata.tables["communication_batches"].c
+        communication_messages = Base.metadata.tables["communication_messages"].c
+        communication_snapshots = Base.metadata.tables["communication_snapshot_lines"].c
 
         self.assertFalse(requirements.project_id.nullable)
         self.assertTrue(requirements.workforce_request_id.nullable)
@@ -81,6 +89,14 @@ class SqlSchemaTests(unittest.TestCase):
         self.assertFalse(auth_sessions.user_id.nullable)
         self.assertFalse(auth_sessions.expires_at.nullable)
         self.assertTrue(auth_sessions.revoked_at.nullable)
+        self.assertFalse(communication_contacts.recipient_id.nullable)
+        self.assertTrue(communication_contacts.email.nullable)
+        self.assertFalse(communication_batches.snapshot_fingerprint.nullable)
+        self.assertFalse(communication_batches.status.nullable)
+        self.assertFalse(communication_messages.batch_id.nullable)
+        self.assertFalse(communication_messages.included.nullable)
+        self.assertFalse(communication_snapshots.batch_id.nullable)
+        self.assertFalse(communication_snapshots.resource_id.nullable)
 
     def test_metadata_creates_all_tables_on_sqlite_memory(self) -> None:
         engine = create_engine("sqlite+pysqlite:///:memory:")
