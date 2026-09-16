@@ -11,6 +11,13 @@ from .command_adapters import (
     SqlApprovedDemandSyncAdapter,
     SqlPlanningCommandAdapter,
 )
+from .communication_models import (
+    CommunicationBatchRow,
+    CommunicationContact,
+    CommunicationMessageRow,
+    CommunicationSnapshotLine,
+)
+from .communication_repository import SqlCommunicationRepository
 from .demand_period_models import (
     WorkforceRequestPeriod,
     WorkforceRequestPeriodRequirement,
@@ -61,6 +68,10 @@ __all__ = [
     "AuthSession",
     "Base",
     "CommandIdempotencyReceipt",
+    "CommunicationBatchRow",
+    "CommunicationContact",
+    "CommunicationMessageRow",
+    "CommunicationSnapshotLine",
     "LoginTransactionRecord",
     "NAMING_CONVENTION",
     "ORIGIN_AD_HOC",
@@ -77,6 +88,7 @@ __all__ = [
     "SqlApprovedDemandSyncAdapter",
     "SqlAuthSessionRepository",
     "SqlCommandIdempotencyAdapter",
+    "SqlCommunicationRepository",
     "SqlDemandPeriodRepository",
     "SqlDemandRepository",
     "SqlEmployeeSyncRepository",
