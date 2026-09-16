@@ -16,10 +16,12 @@ class FrontendCommunicationsContractTests(unittest.TestCase):
         self.assertIn('import CommunicationsPage from "./CommunicationsPage"', app)
         self.assertIn('<CommunicationsPage />', app)
 
-    def test_page_keeps_manual_review_and_no_send_language(self) -> None:
+    def test_page_keeps_manual_review_and_explicit_draft_creation(self) -> None:
         page = PAGE.read_text(encoding="utf-8")
         self.assertIn("Préparer le lot", page)
         self.assertIn("Approuver", page)
+        self.assertIn("Créer brouillons M365", page)
+        self.assertIn("window.confirm", page)
         self.assertIn("Confirmer communiqué", page)
         self.assertIn("Aucun message n’a été envoyé", page)
         self.assertIn("included", page)
@@ -29,8 +31,10 @@ class FrontendCommunicationsContractTests(unittest.TestCase):
         self.assertIn("/api/v1/communications/contacts", api)
         self.assertIn("/api/v1/communications/preview", api)
         self.assertIn("/api/v1/communications/batches", api)
+        self.assertIn('"create-drafts"', api)
         self.assertNotIn("graph.microsoft", api.lower())
         self.assertNotIn("outlook", api.lower())
+        self.assertNotIn('"send"', api.lower())
 
     def test_stylesheet_is_loaded(self) -> None:
         main = MAIN.read_text(encoding="utf-8")
