@@ -103,6 +103,27 @@ class SegmentService:
                 code="segment_hours_invalid",
                 context={"field": "planned_hours", "value": values["HeuresPrevues"]},
             )
+        if "HeuresPrevues" in values:
+            proposed_hours = float(values["HeuresPrevues"])
+            locked_hours = float(existing.locked_hours or 0.0)
+            current_excess = max(locked_hours - float(existing.planned_hours), 0.0)
+            proposed_excess = max(locked_hours - proposed_hours, 0.0)
+            if (
+                proposed_excess > current_excess + 0.001
+                and not command.allow_locked_overallocation
+            ):
+                raise ApplicationValidationError(
+                    "Les heures prévues seraient inférieures aux quarts manuels verrouillés. Choisis explicitement d'ajuster les heures prévues ou de conserver la surallocation comme dérogation.",
+                    code="segment_overallocation_choice_required",
+                    context={
+                        "segment_id": identifier,
+                        "planned_hours": round(proposed_hours, 2),
+                        "current_planned_hours": round(float(existing.planned_hours), 2),
+                        "locked_hours": round(locked_hours, 2),
+                        "current_excess_hours": round(current_excess, 2),
+                        "excess_hours": round(proposed_excess, 2),
+                    },
+                )
         start = values.get("DateDebut", existing.start_date)
         end = values.get("DateFin", existing.end_date)
         self._validate_window(
