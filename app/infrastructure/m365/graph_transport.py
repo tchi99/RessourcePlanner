@@ -18,7 +18,7 @@ from ...application.errors import ApplicationUnavailableError
 class MicrosoftGraphCommunicationSettings:
     tenant_id: str
     client_id: str
-    client_secret: str = field(repr=False)
+    client_credential: str = field(repr=False)
     mailbox: str
     graph_base_url: str = "https://graph.microsoft.com/v1.0"
     authority_host: str = "https://login.microsoftonline.com"
@@ -102,7 +102,7 @@ class MicrosoftGraphCommunicationTransport(CommunicationTransportPort):
                 url,
                 data={
                     "client_id": self._settings.client_id,
-                    "client_secret": self._settings.client_secret,
+                    "client_secret": self._settings.client_credential,
                     "scope": "https://graph.microsoft.com/.default",
                     "grant_type": "client_credentials",
                 },
