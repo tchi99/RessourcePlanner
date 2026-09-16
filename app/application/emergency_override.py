@@ -1,11 +1,16 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
-from datetime import date, datetime, timedelta
+from dataclasses import dataclass
+from datetime import date, datetime, timedelta, timezone
 from typing import Callable, Protocol, Sequence, cast
 
 from .demand_service import DemandService
-from .errors import ApplicationConflictError, ApplicationOperationError, ApplicationValidationError, call_application_port
+from .errors import (
+    ApplicationConflictError,
+    ApplicationOperationError,
+    ApplicationValidationError,
+    call_application_port,
+)
 from .facade import ApplicationFacade
 from .read_models import DemandPeriodReadModel, DemandReadModel
 from .results import DemandMutationResult, PlanningResult
@@ -36,14 +41,20 @@ def current_week_window(today: date) -> tuple[date, date]:
     return start, start + timedelta(days=6)
 
 
+def _effective_periods(
+    periods: Sequence[DemandPeriodReadModel],
+) -> tuple[DemandPeriodReadModel, ...]:
+    return tuple(
+        row for row in periods if row.kind == "CUMULATIVE" or row.selected
+    )
+
+
 def emergency_window(
     demand: DemandReadModel,
     periods: Sequence[DemandPeriodReadModel] = (),
 ) -> tuple[date, date] | None:
     if periods:
-        effective = tuple(
-            row for row in periods if row.kind == "CUMULATIVE" or row.selected
-        )
+        effective = _effective_periods(periods)
         if not effective:
             return None
         return (
@@ -67,10 +78,22 @@ def emergency_override_eligibility(
         return False, "STATUS_NOT_SUBMITTED"
     if str(demand.priority or "").strip().casefold() != "urgent":
         return False, "NOT_URGENT"
-    window = emergency_window(demand, periods)
+
+    week_start, week_end = current_week_window(today)
+    if periods:
+        effective = _effective_periods(periods)
+        if not effective:
+            return False, "WINDOW_INCOMPLETE"
+        if not any(
+            period.end_date >= week_start and period.start_date <= week_end
+            for period in effective
+        ):
+            return False, "OUTSIDE_CURRENT_WEEK"
+        return True, None
+
+    window = emergency_window(demand)
     if window is None:
         return False, "WINDOW_INCOMPLETE"
-    week_start, week_end = current_week_window(today)
     start, end = window
     if end < week_start or start > week_end:
         return False, "OUTSIDE_CURRENT_WEEK"
@@ -140,13 +163,16 @@ class EmergencyDemandService(DemandService):
                 "OUTSIDE_CURRENT_WEEK": "La dérogation urgente est limitée aux besoins qui chevauchent la semaine courante.",
             }
             raise ApplicationValidationError(
-                messages.get(eligibility_reason, "La demande n'est pas admissible à la dérogation urgente."),
+                messages.get(
+                    eligibility_reason,
+                    "La demande n'est pas admissible à la dérogation urgente.",
+                ),
                 code=f"demand_emergency_{str(eligibility_reason or 'not_eligible').lower()}",
                 context={"demand_number": number},
             )
 
         repository = self._emergency_repository()
-        now = datetime.now()
+        now = datetime.now(timezone.utc)
         with self._context("emergency demand override"):
             call_application_port(
                 lambda: repository.activate_emergency_override(
@@ -175,7 +201,9 @@ class EmergencyDemandService(DemandService):
         summary = super().approve_command(command)
         repository = self._emergency_repository()
         call_application_port(
-            lambda: repository.clear_emergency_override(str(command.number or "").strip()),
+            lambda: repository.clear_emergency_override(
+                str(command.number or "").strip()
+            ),
             code_prefix="demand_emergency_regularize",
             context={"demand_number": str(command.number or "").strip()},
         )
