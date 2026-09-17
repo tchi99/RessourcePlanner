@@ -3,8 +3,11 @@ from __future__ import annotations
 from collections import Counter
 from contextlib import contextmanager
 from contextvars import ContextVar
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
+from datetime import datetime, timezone
 import hashlib
+import json
+import os
 from pathlib import Path
 from time import perf_counter
 from typing import Any, Iterator
@@ -15,12 +18,123 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import Engine, event
 from starlette.routing import Match
 
-from ..performance_diagnostics import PerformanceSample, append_performance_sample
 
-
+_PERFORMANCE_LOG_MAX_BYTES = 1_000_000
+_PERFORMANCE_LOG_BACKUPS = 3
 _DB_SLOW_QUERY_SECONDS = 0.250
 _DB_N_PLUS_ONE_REPEAT_THRESHOLD = 5
 _ALLOWED_PHASES = {"auth", "compute", "serialization", "external"}
+
+
+@dataclass(frozen=True, slots=True)
+class ServerPerformanceSample:
+    operation: str
+    status: str
+    total_seconds: float
+    auth_seconds: float = 0.0
+    api_seconds: float = 0.0
+    db_seconds: float = 0.0
+    compute_seconds: float = 0.0
+    serialization_seconds: float = 0.0
+    external_seconds: float = 0.0
+    db_query_count: int = 0
+    db_select_count: int = 0
+    db_repeated_query_max: int = 0
+    db_slow_query_count: int = 0
+    db_slowest_query_seconds: float = 0.0
+    db_n_plus_one_suspected: bool = False
+    external_call_count: int = 0
+    external_item_count: int = 0
+    engine: str = "fastapi-v2"
+    error_type: str = ""
+    timestamp_utc: str = ""
+
+    def normalized(self) -> "ServerPerformanceSample":
+        return ServerPerformanceSample(
+            operation=str(self.operation or "unknown"),
+            status=str(self.status or "unknown"),
+            total_seconds=_seconds(self.total_seconds),
+            auth_seconds=_seconds(self.auth_seconds),
+            api_seconds=_seconds(self.api_seconds),
+            db_seconds=_seconds(self.db_seconds),
+            compute_seconds=_seconds(self.compute_seconds),
+            serialization_seconds=_seconds(self.serialization_seconds),
+            external_seconds=_seconds(self.external_seconds),
+            db_query_count=max(int(self.db_query_count), 0),
+            db_select_count=max(int(self.db_select_count), 0),
+            db_repeated_query_max=max(int(self.db_repeated_query_max), 0),
+            db_slow_query_count=max(int(self.db_slow_query_count), 0),
+            db_slowest_query_seconds=_seconds(self.db_slowest_query_seconds),
+            db_n_plus_one_suspected=bool(self.db_n_plus_one_suspected),
+            external_call_count=max(int(self.external_call_count), 0),
+            external_item_count=max(int(self.external_item_count), 0),
+            engine="fastapi-v2",
+            error_type=str(self.error_type or ""),
+            timestamp_utc=self.timestamp_utc
+            or datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self.normalized())
+
+
+def _seconds(value: object) -> float:
+    try:
+        return round(max(float(value or 0.0), 0.0), 6)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _default_performance_log_path() -> Path:
+    local_app_data = os.getenv("LOCALAPPDATA")
+    root = (
+        Path(local_app_data) / "RessourcePlanner"
+        if local_app_data
+        else Path.home() / ".resourceplanner"
+    )
+    return root / "logs" / "performance.jsonl"
+
+
+def _rotate_log(path: Path) -> None:
+    if not path.exists():
+        return
+    try:
+        if path.stat().st_size < _PERFORMANCE_LOG_MAX_BYTES:
+            return
+    except OSError:
+        return
+    oldest = path.with_name(f"{path.name}.{_PERFORMANCE_LOG_BACKUPS}")
+    try:
+        if oldest.exists():
+            oldest.unlink()
+    except OSError:
+        pass
+    for index in range(_PERFORMANCE_LOG_BACKUPS - 1, 0, -1):
+        source = path.with_name(f"{path.name}.{index}")
+        if not source.exists():
+            continue
+        try:
+            source.replace(path.with_name(f"{path.name}.{index + 1}"))
+        except OSError:
+            pass
+    try:
+        path.replace(path.with_name(f"{path.name}.1"))
+    except OSError:
+        pass
+
+
+def _append_performance_sample(
+    sample: ServerPerformanceSample, *, path: Path | None = None
+) -> None:
+    target = path or _default_performance_log_path()
+    try:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        _rotate_log(target)
+        with target.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(sample.to_dict(), ensure_ascii=False, sort_keys=True))
+            handle.write("\n")
+    except OSError:
+        return
 
 
 @dataclass(slots=True)
@@ -72,7 +186,7 @@ class RequestPerformanceContext:
         status: str,
         total_seconds: float,
         error_type: str = "",
-    ) -> PerformanceSample:
+    ) -> ServerPerformanceSample:
         total = max(float(total_seconds), 0.0)
         auth = self.durations.get("auth", 0.0)
         db = self.durations.get("db", 0.0)
@@ -80,7 +194,7 @@ class RequestPerformanceContext:
         serialization = self.durations.get("serialization", 0.0)
         external = self.durations.get("external", 0.0)
         api = max(total - auth - db - compute - serialization - external, 0.0)
-        return PerformanceSample(
+        return ServerPerformanceSample(
             operation=operation,
             status=status,
             total_seconds=total,
@@ -176,7 +290,7 @@ def _safe_operation(request: Request, app: Any) -> str:
     return f"http {request.method.upper()} {template}"
 
 
-def _server_timing(sample: PerformanceSample) -> str:
+def _server_timing(sample: ServerPerformanceSample) -> str:
     timings = (
         ("auth", sample.auth_seconds),
         ("api", sample.api_seconds),
@@ -219,7 +333,7 @@ def install_performance_middleware(app: Any, *, log_path: Path | None = None) ->
             ).normalized()
             if response is not None:
                 response.headers["Server-Timing"] = _server_timing(sample)
-            append_performance_sample(sample, path=log_path)
+            _append_performance_sample(sample, path=log_path)
             _CURRENT_REQUEST.reset(token)
 
 
