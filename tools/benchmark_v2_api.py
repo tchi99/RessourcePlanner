@@ -211,9 +211,6 @@ def _seed(database_url: str, spec: DatasetSpec) -> None:
 
 def _exercise(client: TestClient, *, iterations: int) -> None:
     for endpoint in ENDPOINTS:
-        response = client.get(endpoint)
-        response.raise_for_status()
-    for endpoint in ENDPOINTS:
         for _ in range(iterations):
             response = client.get(endpoint)
             response.raise_for_status()
@@ -237,7 +234,7 @@ def run_dataset(name: str, *, iterations: int, root: Path) -> dict[str, object]:
 
     samples = read_performance_samples(
         path=log_path,
-        limit=(len(ENDPOINTS) * iterations) + len(ENDPOINTS) + 10,
+        limit=(len(ENDPOINTS) * iterations) + 10,
     )
     return aggregate_dataset(samples, dataset=name, shape=spec.shape())
 
