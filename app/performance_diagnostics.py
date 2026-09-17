@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
@@ -30,6 +31,19 @@ class PerformanceSample:
     write_seconds: float = 0.0
     save_seconds: float = 0.0
     render_seconds: float = 0.0
+    auth_seconds: float = 0.0
+    api_seconds: float = 0.0
+    db_seconds: float = 0.0
+    serialization_seconds: float = 0.0
+    external_seconds: float = 0.0
+    db_query_count: int = 0
+    db_select_count: int = 0
+    db_repeated_query_max: int = 0
+    db_slow_query_count: int = 0
+    db_slowest_query_seconds: float = 0.0
+    db_n_plus_one_suspected: bool = False
+    external_call_count: int = 0
+    external_item_count: int = 0
     sheet_reads: int = 0
     range_reads: int = 0
     range_writes: int = 0
@@ -53,6 +67,19 @@ class PerformanceSample:
             write_seconds=_seconds(self.write_seconds),
             save_seconds=_seconds(self.save_seconds),
             render_seconds=_seconds(self.render_seconds),
+            auth_seconds=_seconds(self.auth_seconds),
+            api_seconds=_seconds(self.api_seconds),
+            db_seconds=_seconds(self.db_seconds),
+            serialization_seconds=_seconds(self.serialization_seconds),
+            external_seconds=_seconds(self.external_seconds),
+            db_query_count=max(int(self.db_query_count), 0),
+            db_select_count=max(int(self.db_select_count), 0),
+            db_repeated_query_max=max(int(self.db_repeated_query_max), 0),
+            db_slow_query_count=max(int(self.db_slow_query_count), 0),
+            db_slowest_query_seconds=_seconds(self.db_slowest_query_seconds),
+            db_n_plus_one_suspected=bool(self.db_n_plus_one_suspected),
+            external_call_count=max(int(self.external_call_count), 0),
+            external_item_count=max(int(self.external_item_count), 0),
             sheet_reads=max(int(self.sheet_reads), 0),
             range_reads=max(int(self.range_reads), 0),
             range_writes=max(int(self.range_writes), 0),
@@ -161,6 +188,61 @@ def read_performance_samples(
     return result
 
 
+def _percentile(values: Iterable[object], percentile: float) -> float:
+    numeric = sorted(_seconds(value) for value in values)
+    if not numeric:
+        return 0.0
+    if len(numeric) == 1:
+        return numeric[0]
+    rank = (len(numeric) - 1) * min(max(float(percentile), 0.0), 1.0)
+    lower = math.floor(rank)
+    upper = math.ceil(rank)
+    if lower == upper:
+        return numeric[lower]
+    weight = rank - lower
+    return round(numeric[lower] * (1.0 - weight) + numeric[upper] * weight, 6)
+
+
+def format_http_percentile_report(samples: Iterable[dict[str, Any]]) -> str:
+    """Aggregate safe HTTP latency percentiles by route template."""
+    groups: dict[str, list[dict[str, Any]]] = {}
+    for row in samples:
+        operation = str(row.get("operation") or "")
+        if not operation.startswith("http "):
+            continue
+        groups.setdefault(operation, []).append(row)
+    if not groups:
+        return ""
+
+    lines = [
+        "FastAPI V2 — percentiles HTTP",
+        "operation | n | p50 | p95 | p99 | auth p95 | api p95 | db p95 | compute p95 | serialization p95 | external p95 | db queries p95 | n+1 suspect",
+    ]
+    for operation in sorted(groups):
+        rows = groups[operation]
+        total = [row.get("total_seconds", 0.0) for row in rows]
+        lines.append(
+            "{operation} | {count} | {p50:.3f}s | {p95:.3f}s | {p99:.3f}s | "
+            "{auth:.3f}s | {api:.3f}s | {db:.3f}s | {compute:.3f}s | {serialization:.3f}s | "
+            "{external:.3f}s | {queries:.1f} | {n_plus_one}".format(
+                operation=operation,
+                count=len(rows),
+                p50=_percentile(total, 0.50),
+                p95=_percentile(total, 0.95),
+                p99=_percentile(total, 0.99),
+                auth=_percentile((row.get("auth_seconds", 0.0) for row in rows), 0.95),
+                api=_percentile((row.get("api_seconds", 0.0) for row in rows), 0.95),
+                db=_percentile((row.get("db_seconds", 0.0) for row in rows), 0.95),
+                compute=_percentile((row.get("compute_seconds", 0.0) for row in rows), 0.95),
+                serialization=_percentile((row.get("serialization_seconds", 0.0) for row in rows), 0.95),
+                external=_percentile((row.get("external_seconds", 0.0) for row in rows), 0.95),
+                queries=_percentile((row.get("db_query_count", 0.0) for row in rows), 0.95),
+                n_plus_one=sum(bool(row.get("db_n_plus_one_suspected")) for row in rows),
+            )
+        )
+    return "\n".join(lines)
+
+
 def format_performance_report(samples: Iterable[dict[str, Any]]) -> str:
     """Format copy/paste diagnostics containing technical metrics only."""
     rows = list(samples)
@@ -193,7 +275,30 @@ def format_performance_report(samples: Iterable[dict[str, Any]]) -> str:
                 allocations=int(row.get("allocation_output_count") or 0),
             )
         )
+        if str(row.get("operation") or "").startswith("http "):
+            lines.append(
+                "  v2 auth={auth:.3f}s api={api:.3f}s db={db:.3f}s compute={compute:.3f}s "
+                "serialization={serialization:.3f}s external={external:.3f}s db_queries={queries} "
+                "repeated_max={repeated} slow={slow} n_plus_one={n_plus_one} external_calls={calls} external_items={items}".format(
+                    auth=float(row.get("auth_seconds") or 0.0),
+                    api=float(row.get("api_seconds") or 0.0),
+                    db=float(row.get("db_seconds") or 0.0),
+                    compute=float(row.get("compute_seconds") or 0.0),
+                    serialization=float(row.get("serialization_seconds") or 0.0),
+                    external=float(row.get("external_seconds") or 0.0),
+                    queries=int(row.get("db_query_count") or 0),
+                    repeated=int(row.get("db_repeated_query_max") or 0),
+                    slow=int(row.get("db_slow_query_count") or 0),
+                    n_plus_one=bool(row.get("db_n_plus_one_suspected")),
+                    calls=int(row.get("external_call_count") or 0),
+                    items=int(row.get("external_item_count") or 0),
+                )
+            )
         error_type = str(row.get("error_type") or "").strip()
         if error_type:
             lines.append(f"  error_type={error_type}")
+
+    percentile_report = format_http_percentile_report(rows)
+    if percentile_report:
+        lines.extend(("", percentile_report))
     return "\n".join(lines)
