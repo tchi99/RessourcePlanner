@@ -9,7 +9,7 @@ export default defineConfig({
   retries: 0,
   timeout: 180_000,
   expect: { timeout: 10_000 },
-  reporter: process.env.CI ? [["line"], ["html", { open: "never" }]] : "list",
+  reporter: process.env.CI ? "line" : "list",
   use: {
     baseURL,
     trace: "retain-on-failure",
