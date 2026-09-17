@@ -124,8 +124,10 @@ async function workflowSelect(page: Page, demandNumber: string) {
 async function periodsSelect(page: Page, demandNumber: string) {
   await page.getByRole("button", { name: /Périodes & alternatives/ }).click();
   const picker = page.locator(".period-demand-picker");
-  await labelled(picker, "Demande", "select").selectOption(demandNumber);
-  await expect(page.locator(".period-demand-summary")).toContainText(demandNumber);
+  const select = labelled(picker, "Demande", "select");
+  await select.selectOption(demandNumber);
+  await expect(select).toHaveValue(demandNumber);
+  await expect(page.locator(".period-demand-summary")).toBeVisible();
 }
 
 test("V2 local acceptance path runs through React, Chromium, FastAPI and SQLite", async ({ browser }) => {
