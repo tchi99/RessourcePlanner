@@ -9,9 +9,22 @@ from sqlalchemy.orm import Session
 from ..application import ProjectSourcePort, ProjectSyncResult, ProjectSyncService
 from ..application.errors import ApplicationUnavailableError
 from ..infrastructure.sql import SqlProjectSyncRepository
+from .performance import performance_phase, record_external_call, record_external_items
 
 
 SessionProvider = Callable[[], Iterator[Session]]
+
+
+class _InstrumentedProjectSource:
+    def __init__(self, source: ProjectSourcePort) -> None:
+        self._source = source
+
+    def list_projects(self):
+        record_external_call()
+        with performance_phase("external"):
+            rows = tuple(self._source.list_projects())
+        record_external_items(len(rows))
+        return rows
 
 
 def build_integration_router(
@@ -39,9 +52,10 @@ def build_integration_router(
                 "L'intégration Acumatica n'est pas configurée sur ce serveur.",
                 code="acumatica_not_configured",
             )
-        return ProjectSyncService(
-            project_source,
-            SqlProjectSyncRepository(session),
-        ).synchronize()
+        with performance_phase("compute"):
+            return ProjectSyncService(
+                _InstrumentedProjectSource(project_source),
+                SqlProjectSyncRepository(session),
+            ).synchronize()
 
     return router
