@@ -221,6 +221,9 @@ class ResourceRequirement(TimestampMixin, Base):
     end_date: Mapped[date] = mapped_column(Date, nullable=False)
     planned_hours: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
     desired_active_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    load_profile: Mapped[str] = mapped_column(
+        String(32), nullable=False, server_default=text("'UNIFORM'")
+    )
     status: Mapped[str] = mapped_column(String(32), nullable=False, server_default=text("'À assigner'"), index=True)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     source_effort_id: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)

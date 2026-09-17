@@ -18,6 +18,7 @@ from ..application.quick_shift_service import QuickShiftService
 from ..application.segment_service import SegmentService
 from ..application.user_admin import UserAdminService
 from ..infrastructure.sql import (
+    LoadProfileAuditedSegmentRepository,
     OverallocationAuditedAllocationCommandAdapter,
     OverallocationAuditedSegmentRepository,
     SqlCommandIdempotencyAdapter,
@@ -25,7 +26,7 @@ from ..infrastructure.sql import (
     SqlEmergencyDemandRepository,
     SqlOverallocationAllocationCommandAdapter,
     SqlPeriodAwareApprovedDemandSyncAdapter,
-    SqlPlannerQueryRepositoryWithEstimatedDays,
+    SqlPlannerQueryRepositoryWithLoadProfiles,
     SqlPlanningCommandAdapter,
     SqlResourceAdminRepository,
     SqlSegmentRepositoryWithActiveDayMetrics,
@@ -55,7 +56,10 @@ def build_sql_facade(
     periods = SqlDemandPeriodRepository(session, actor_name=actor)
     base_segments = SqlSegmentRepositoryWithActiveDayMetrics(session, actor_name=actor)
     segments = OverallocationAuditedSegmentRepository(
-        AuditedSegmentRepository(base_segments, journal),
+        LoadProfileAuditedSegmentRepository(
+            AuditedSegmentRepository(base_segments, journal),
+            journal,
+        ),
         journal,
     )
     work_packages = SqlWorkPackageRepository(session)
@@ -108,7 +112,7 @@ def build_sql_idempotency_executor(
 def build_sql_query_port(session: Session) -> PlannerQueryPort:
     """Compose the canonical read-only query port for one request transaction."""
 
-    return SqlPlannerQueryRepositoryWithEstimatedDays(session)
+    return SqlPlannerQueryRepositoryWithLoadProfiles(session)
 
 
 def build_user_admin_service(session: Session) -> UserAdminService:

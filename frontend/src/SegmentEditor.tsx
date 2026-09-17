@@ -14,6 +14,7 @@ import {
 } from "./manualOverallocationApi";
 import PlanningHistoryPanel from "./PlanningHistoryPanel";
 import {
+  LoadProfile,
   SegmentUpdateWrite,
   SegmentWrite,
   assignSegment,
@@ -23,10 +24,11 @@ import {
 } from "./segments-api";
 
 type ConfirmationChoice = "inherit" | "Tentative" | "Confirmée";
-type OverallocationSegment = SegmentReadModel & {
+type PlanningSegment = SegmentReadModel & {
   locked_hours?: number;
   overallocated_hours?: number;
   overallocated?: boolean;
+  load_profile?: LoadProfile;
 };
 
 type FormState = {
@@ -41,6 +43,7 @@ type FormState = {
   outside_standard_hours: boolean;
   confirmation: ConfirmationChoice;
   technician: string;
+  load_profile: LoadProfile;
 };
 
 type RetryReceipt = { fingerprint: string; key: string };
@@ -82,10 +85,12 @@ function formFromDemand(demand: DemandReadModel): FormState {
     outside_standard_hours: false,
     confirmation: "inherit",
     technician: demand.proposed_resource ?? "",
+    load_profile: "UNIFORM",
   };
 }
 
 function formFromSegment(segment: SegmentReadModel): FormState {
+  const planning = segment as PlanningSegment;
   return {
     start_date: segment.start_date ?? "",
     end_date: segment.end_date ?? segment.start_date ?? "",
@@ -98,6 +103,7 @@ function formFromSegment(segment: SegmentReadModel): FormState {
     outside_standard_hours: segment.outside_standard_hours,
     confirmation: confirmationChoice(segment),
     technician: segment.resource_name ?? "",
+    load_profile: planning.load_profile ?? "UNIFORM",
   };
 }
 
@@ -183,8 +189,8 @@ export default function SegmentEditor({
   const effectiveProjectNumber = segment?.project_number ?? demand?.project_number ?? null;
   const effectiveProjectName = segment?.project_name ?? demand?.project_name ?? null;
   const busy = loading || saving || cancelling;
-  const overallocationSegment = segment as OverallocationSegment | null;
-  const currentExcess = Number(overallocationSegment?.overallocated_hours ?? 0);
+  const planningSegment = segment as PlanningSegment | null;
+  const currentExcess = Number(planningSegment?.overallocated_hours ?? 0);
 
   function setField<K extends keyof FormState>(field: K, value: FormState[K]) {
     setForm((current) => current ? { ...current, [field]: value } : current);
@@ -230,6 +236,7 @@ export default function SegmentEditor({
       priority: form.priority.trim() || "Normale",
       outside_standard_hours: form.outside_standard_hours,
       confirmation: form.confirmation === "inherit" ? null : form.confirmation,
+      load_profile: form.load_profile,
     };
 
     setSaving(true);
@@ -257,6 +264,7 @@ export default function SegmentEditor({
           planning_type: form.planning_type.trim() || "Flexible",
           priority: form.priority.trim() || "Normale",
           outside_standard_hours: form.outside_standard_hours,
+          load_profile: form.load_profile,
         };
         const fingerprint = JSON.stringify(createPayload);
         const previous = createRetry.current;
@@ -337,7 +345,7 @@ export default function SegmentEditor({
             {currentExcess > 0 && (
               <div className="overallocation-warning" role="status">
                 <strong>⚠ Surallocation manuelle active : +{hoursLabel(currentExcess)} h</strong>
-                <span>{hoursLabel(overallocationSegment?.locked_hours)} h verrouillées pour {hoursLabel(segment?.planned_hours)} h prévues. Les quarts verrouillés sont préservés par le moteur.</span>
+                <span>{hoursLabel(planningSegment?.locked_hours)} h verrouillées pour {hoursLabel(segment?.planned_hours)} h prévues. Les quarts verrouillés sont préservés par le moteur.</span>
               </div>
             )}
 
@@ -418,6 +426,15 @@ export default function SegmentEditor({
                 </select>
               </label>
               <label>
+                <span>Profil de charge</span>
+                <select value={form.load_profile} onChange={(event) => setField("load_profile", event.target.value as LoadProfile)}>
+                  <option value="UNIFORM">Uniforme — charge régulière</option>
+                  <option value="FRONT_LOADED">Début — concentrer le travail tôt</option>
+                  <option value="BACK_LOADED">Fin — concentrer le travail tard</option>
+                  <option value="BELL">En cloche — pic au milieu</option>
+                </select>
+              </label>
+              <label>
                 <span>Priorité</span>
                 <select value={form.priority} onChange={(event) => setField("priority", event.target.value)}>
                   {!['Basse', 'Normale', 'Haute', 'Urgente'].includes(form.priority) && <option value={form.priority}>{form.priority}</option>}
@@ -465,6 +482,7 @@ export default function SegmentEditor({
 
             <div className="segment-help">
               <strong>Segment = besoin ressource; quart = affectation opérationnelle datée.</strong>
+              <span>Le profil de charge influence seulement le reliquat automatique : les quarts manuels/verrouillés restent prioritaires, et la capacité/disponibilité demeure autoritaire.</span>
               <span>Les règles de validation et le recalcul du planning restent dans FastAPI. Une affectation choisie ici utilise la commande backend d'assignation du segment.</span>
             </div>
 

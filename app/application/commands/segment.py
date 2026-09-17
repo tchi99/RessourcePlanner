@@ -5,6 +5,7 @@ from datetime import date
 from typing import Any, Mapping
 
 from ...domain.confirmation import normalize_confirmation
+from ...domain.load_profiles import normalize_load_profile
 from ..errors import ApplicationValidationError
 from .common import (
     UNSET,
@@ -32,6 +33,17 @@ def _confirmation(value: object, *, allow_none: bool = False) -> str | None:
         ) from exc
 
 
+def _load_profile(value: object) -> str:
+    try:
+        return normalize_load_profile(value)
+    except ValueError as exc:
+        raise ApplicationValidationError(
+            str(exc),
+            code="segment_load_profile_invalid",
+            context={"field": "load_profile", "value": value},
+        ) from exc
+
+
 @dataclass(frozen=True, slots=True)
 class SegmentCreateCommand:
     demand_number: str
@@ -49,6 +61,7 @@ class SegmentCreateCommand:
     priority: str = "Normale"
     outside_standard_hours: bool = False
     confirmation: str | None = None
+    load_profile: str = "UNIFORM"
 
     def __post_init__(self) -> None:
         required_text(
@@ -65,6 +78,7 @@ class SegmentCreateCommand:
             )
         if self.confirmation is not None:
             _confirmation(self.confirmation)
+        _load_profile(self.load_profile)
 
     @classmethod
     def from_mapping(cls, values: Mapping[str, Any]) -> "SegmentCreateCommand":
@@ -96,6 +110,7 @@ class SegmentCreateCommand:
             priority=text(values.get("Priorite")) or "Normale",
             outside_standard_hours=bool_value(values.get("HorsHoraireAutorise")),
             confirmation=_confirmation(values.get("Confirmation"), allow_none=True),
+            load_profile=_load_profile(values.get("ProfilCharge")),
         )
 
     def to_repository_values(self) -> dict[str, Any]:
@@ -117,6 +132,7 @@ class SegmentCreateCommand:
             "Confirmation": (
                 _confirmation(self.confirmation) if self.confirmation is not None else None
             ),
+            "ProfilCharge": _load_profile(self.load_profile),
         }
 
 
@@ -138,6 +154,7 @@ class SegmentUpdateCommand:
     priority: str | None | UnsetType = UNSET
     outside_standard_hours: bool | UnsetType = UNSET
     confirmation: str | None | UnsetType = UNSET
+    load_profile: str | UnsetType = UNSET
     allow_locked_overallocation: bool = False
 
     def __post_init__(self) -> None:
@@ -156,6 +173,8 @@ class SegmentUpdateCommand:
             )
         if self.confirmation is not UNSET and self.confirmation is not None:
             _confirmation(self.confirmation)
+        if self.load_profile is not UNSET:
+            _load_profile(self.load_profile)
 
     @classmethod
     def from_mapping(
@@ -179,6 +198,7 @@ class SegmentUpdateCommand:
             "Priorite",
             "HorsHoraireAutorise",
             "Confirmation",
+            "ProfilCharge",
         }
         unknown = sorted(set(updates) - known)
         if unknown:
@@ -239,6 +259,11 @@ class SegmentUpdateCommand:
                 if "Confirmation" in updates
                 else UNSET
             ),
+            load_profile=(
+                _load_profile(updates["ProfilCharge"])
+                if "ProfilCharge" in updates
+                else UNSET
+            ),
         )
 
     def to_repository_values(self) -> dict[str, Any]:
@@ -266,6 +291,11 @@ class SegmentUpdateCommand:
             "Confirmation": (
                 _confirmation(self.confirmation, allow_none=True)
                 if self.confirmation is not UNSET
+                else UNSET
+            ),
+            "ProfilCharge": (
+                _load_profile(self.load_profile)
+                if self.load_profile is not UNSET
                 else UNSET
             ),
         }

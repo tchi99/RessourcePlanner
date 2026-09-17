@@ -5,6 +5,14 @@ from datetime import date, timedelta
 from typing import Mapping, Sequence
 
 from .allocation_rules import remaining_segment_hours, spread_hours
+from .load_profiles import (
+    LOAD_PROFILE_BACK_LOADED,
+    LOAD_PROFILE_BELL,
+    LOAD_PROFILE_FRONT_LOADED,
+    LOAD_PROFILE_UNIFORM,
+    normalize_load_profile,
+    spread_profile_hours,
+)
 
 
 CapacityKey = tuple[str, date]
@@ -25,6 +33,7 @@ class SegmentInput:
     created_order: str = ""
     overtime_allowed: bool = False
     desired_active_days: int | None = None
+    load_profile: str = LOAD_PROFILE_UNIFORM
 
 
 @dataclass(frozen=True)
@@ -101,6 +110,23 @@ def _capacity_window(
 
 
 
+def _profile_day_sort_key(
+    segment: SegmentInput,
+    day: date,
+    room: float,
+) -> tuple[object, ...]:
+    profile = normalize_load_profile(segment.load_profile)
+    if profile == LOAD_PROFILE_FRONT_LOADED:
+        return (0, day, -room)
+    if profile == LOAD_PROFILE_BACK_LOADED:
+        return (0, -day.toordinal(), -room)
+    if profile == LOAD_PROFILE_BELL:
+        midpoint = (segment.start.toordinal() + segment.end.toordinal()) / 2.0
+        return (0, abs(day.toordinal() - midpoint), day, -room)
+    return (0, -room, day)
+
+
+
 def _preferred_active_day_window(
     segment: SegmentInput,
     residual: Sequence[tuple[date, float]],
@@ -108,12 +134,13 @@ def _preferred_active_day_window(
     remaining_hours: float,
     locked_days: set[date],
 ) -> list[tuple[date, float]]:
-    """Prefer a capacity-maximizing set of active days for flexible work.
+    """Prefer a profile-aware set of active days for flexible work.
 
-    Locked/manual days already count toward the requested active-day target. Additional
-    days are chosen by available capacity (date as deterministic tie-breaker), then the
-    set is expanded only when the target-day capacity cannot hold the remaining work.
-    Capacity therefore always wins over the target without silently dropping hours.
+    Locked/manual days already count toward the requested active-day target. For
+    ``UNIFORM`` the historical capacity-first selection is preserved. Other profiles
+    choose their preferred chronological region first, then the set is expanded only
+    when those target days cannot hold the remaining work. Capacity therefore still
+    wins over the target without silently dropping hours.
     """
 
     target = segment.desired_active_days
@@ -125,7 +152,7 @@ def _preferred_active_day_window(
     additional_target = max(int(target) - len(locked_days), 0)
     candidates = sorted(
         ((day, room) for day, room in by_day.items() if day not in selected_days),
-        key=lambda item: (-item[1], item[0]),
+        key=lambda item: _profile_day_sort_key(segment, item[0], item[1]),
     )
 
     for day, _room in candidates[:additional_target]:
@@ -155,15 +182,15 @@ def _outside_schedule_slots(
 ) -> list[tuple[date, float]]:
     """Mirror the refined V1.5 fallback slots without embedding Excel concepts.
 
-    Days with no standard capacity are preferred before standard-capacity days, then
-    dates are ordered chronologically. The adapter can mark individual days as
-    ineligible (for example vacation); when no eligibility map is supplied every day
-    in the segment window is considered eligible.
+    Days with no standard capacity are preferred before standard-capacity days. Within
+    each capacity class, the selected load profile determines chronological preference.
+    The adapter can mark individual days as ineligible (for example vacation); when no
+    eligibility map is supplied every day in the segment window is considered eligible.
     """
     if hours <= 0 or segment.end < segment.start:
         return []
 
-    candidates: list[tuple[int, date]] = []
+    candidates: list[tuple[int, date, float]] = []
     cursor = segment.start
     while cursor <= segment.end:
         key = (segment.resource_id, cursor)
@@ -175,13 +202,18 @@ def _outside_schedule_slots(
         if eligible:
             standard_capacity = max(float(capacity_by_resource_day.get(key, 0.0)), 0.0)
             priority = 0 if standard_capacity <= 0 else 1
-            candidates.append((priority, cursor))
+            candidates.append((priority, cursor, standard_capacity))
         cursor += timedelta(days=1)
 
-    candidates.sort(key=lambda item: (item[0], item[1]))
+    candidates.sort(
+        key=lambda item: (
+            item[0],
+            *_profile_day_sort_key(segment, item[1], item[2]),
+        )
+    )
     remaining = float(hours)
     result: list[tuple[date, float]] = []
-    for _priority, day in candidates:
+    for _priority, day, _capacity in candidates:
         if remaining <= 0.001:
             break
         amount = min(float(daily_limit), remaining)
@@ -255,9 +287,9 @@ def build_allocation_plan(
 
     Locked/manual work is preserved first, then fixed work, then flexible work. For a
     flexible segment with ``desired_active_days``, the day count is a distribution
-    target only: the engine first tries to fit the residual hours inside that many
-    useful capacity days and expands to more days only when capacity requires it.
-    Fixed planning keeps its exact-day semantics and ignores this target.
+    target only. The load profile then shapes the residual automatic work inside the
+    selected days. ``UNIFORM`` intentionally keeps the historical proportional spread.
+    Capacity and explicit manual decisions always take precedence over profile shape.
     """
     active_segments = [segment for segment in segments if float(segment.hours) > 0]
     segment_map = {segment.segment_id: segment for segment in active_segments}
@@ -311,6 +343,7 @@ def build_allocation_plan(
         if remaining <= 0 or segment.end < segment.start:
             return
 
+        profile = normalize_load_profile(segment.load_profile)
         window = _capacity_window(segment, capacity_by_resource_day)
         residual: list[tuple[date, float]] = []
         for day, raw_capacity in window:
@@ -327,7 +360,11 @@ def build_allocation_plan(
             remaining_hours=remaining,
             locked_days=locked_days_by_segment.get(segment.segment_id, set()),
         )
-        spread = spread_hours(remaining, preferred)
+        spread = (
+            spread_hours(remaining, preferred)
+            if profile == LOAD_PROFILE_UNIFORM
+            else spread_profile_hours(remaining, preferred, profile)
+        )
         for day, hours in spread.items():
             key = (segment.resource_id, day)
             normal_used[key] = normal_used.get(key, 0.0) + hours

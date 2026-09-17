@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from ...application.read_models import SegmentReadModel
 from ...application.repository_ports import SegmentRepositoryPort
 from ...domain.confirmation import CONFIRMATION_CONFIRMED, normalize_confirmation
+from ...domain.load_profiles import normalize_load_profile
 from .demand_period_models import WorkforceRequestPeriod, WorkforceRequestPeriodRequirement
 from .models import (
     ORIGIN_REQUEST,
@@ -112,6 +113,7 @@ class SqlSegmentRepository(SegmentRepositoryPort):
                 else _optional_text(requirement.created_by_name)
             ),
             desired_active_days=requirement.desired_active_days,
+            load_profile=normalize_load_profile(requirement.load_profile),
         )
 
     def list(self, *, include_cancelled: bool = True) -> Sequence[SegmentReadModel]:
@@ -279,6 +281,7 @@ class SqlSegmentRepository(SegmentRepositoryPort):
             end_date=values.get("DateFin") or values.get("DateDebut"),
             planned_hours=_decimal(values.get("HeuresPrevues")),
             desired_active_days=_optional_positive_int(values.get("JoursActifsCibles")),
+            load_profile=normalize_load_profile(values.get("ProfilCharge")),
             status=_text(values.get("Statut")) or "Planifié",
             description=_optional_text(values.get("Description")),
             source_effort_id=_optional_text(
@@ -330,6 +333,8 @@ class SqlSegmentRepository(SegmentRepositoryPort):
             requirement.desired_active_days = _optional_positive_int(
                 updates.get("JoursActifsCibles")
             )
+        if "ProfilCharge" in updates:
+            requirement.load_profile = normalize_load_profile(updates.get("ProfilCharge"))
         if "Statut" in updates:
             requirement.status = _text(updates.get("Statut"))
         if "Description" in updates:

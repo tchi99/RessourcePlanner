@@ -69,6 +69,7 @@ class SqlPlanningReadRepository(PlanningReadRepositoryPort):
                 "DateFin": requirement.end_date,
                 "HeuresPrevues": float(requirement.planned_hours),
                 "JoursActifsCibles": requirement.desired_active_days,
+                "ProfilCharge": requirement.load_profile,
                 "Statut": requirement.status,
                 "Description": requirement.description,
                 "SourceEffortID": requirement.source_effort_id,

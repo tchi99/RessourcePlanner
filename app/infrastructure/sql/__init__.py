@@ -36,6 +36,8 @@ from .idempotency import CommandIdempotencyReceipt, SqlCommandIdempotencyAdapter
 from .identity_models import AppUser, AuthLoginTransaction, AuthSession
 from .identity_repository import SqlUserIdentityRepository
 from .identity_resource_link_repository import SqlIdentityResourceLinkRepository
+from .load_profile_audit import LoadProfileAuditedSegmentRepository
+from .load_profile_query_repository import SqlPlannerQueryRepositoryWithLoadProfiles
 from .models import (
     ORIGIN_AD_HOC,
     ORIGIN_QUICK_SHIFT,
@@ -86,6 +88,7 @@ __all__ = [
     "CommunicationContact",
     "CommunicationMessageRow",
     "CommunicationSnapshotLine",
+    "LoadProfileAuditedSegmentRepository",
     "LoginTransactionRecord",
     "NAMING_CONVENTION",
     "ORIGIN_AD_HOC",
@@ -116,6 +119,7 @@ __all__ = [
     "SqlPlannerQueryRepository",
     "SqlPlannerQueryRepositoryWithEmergencyOverride",
     "SqlPlannerQueryRepositoryWithEstimatedDays",
+    "SqlPlannerQueryRepositoryWithLoadProfiles",
     "SqlPlannerQueryRepositoryWithOverallocation",
     "SqlPlanningCommandAdapter",
     "SqlPlanningReadRepository",

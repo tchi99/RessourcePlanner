@@ -1,5 +1,7 @@
 import { ApiError, SegmentReadModel } from "./api";
 
+export type LoadProfile = "UNIFORM" | "FRONT_LOADED" | "BACK_LOADED" | "BELL";
+
 export type SegmentWrite = {
   demand_number: string;
   start_date: string;
@@ -16,6 +18,7 @@ export type SegmentWrite = {
   priority?: string;
   outside_standard_hours?: boolean;
   confirmation?: string | null;
+  load_profile?: LoadProfile;
 };
 
 export type SegmentUpdateWrite = Partial<SegmentWrite>;
