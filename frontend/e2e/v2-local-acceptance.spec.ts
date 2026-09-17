@@ -48,14 +48,20 @@ async function openAs(browser: Browser, role?: Role) {
   });
   const page = await context.newPage();
   await page.goto("/");
-  if (role) {
-    await expect(page.locator(".sidebar-footer")).toContainText(DISPLAY_NAMES[role]);
-  }
+  if (role) await expect(page.locator(".sidebar-footer")).toContainText(DISPLAY_NAMES[role]);
   return { context, page };
+}
+
+async function closeContext(context: BrowserContext) {
+  await context.close();
 }
 
 async function navigateMain(page: Page, label: string) {
   await page.locator(".main-nav").getByRole("button", { name: new RegExp(label, "i") }).click();
+}
+
+function labelled(scope: Locator, label: string, control: "select" | "input" | "textarea") {
+  return scope.locator("label").filter({ hasText: label }).first().locator(control);
 }
 
 async function selectOptionContaining(select: Locator, text: string) {
@@ -91,40 +97,35 @@ async function createDemand(
   const editor = page.locator(".demand-editor-form");
   await expect(editor.getByRole("heading", { name: "Nouvelle demande" })).toBeVisible();
 
-  await editor.getByLabel(/^Projet$/).selectOption("P-251");
+  await labelled(editor, "Projet", "select").selectOption("P-251");
   if (input.workPackage) {
-    const workPackage = editor.getByLabel(/Plage moyen terme/);
-    await selectOptionContaining(workPackage, input.workPackage);
+    await selectOptionContaining(labelled(editor, "Plage moyen terme", "select"), input.workPackage);
   }
-  await editor.getByLabel(/^Priorité$/).selectOption(input.priority || "Normale");
-  await editor.getByLabel(/^Confirmation$/).selectOption("Confirmée");
-  await editor.getByLabel(/Début souhaité/).fill(input.start);
-  await editor.getByLabel(/Fin souhaitée/).fill(input.end);
-  await editor.getByLabel(/Heures estimées totales/).fill(input.hours);
-  await editor.getByLabel(/Jours actifs souhaités/).fill(input.activeDays);
-  await editor.getByLabel(/^Description$/).fill(input.description);
+  await labelled(editor, "Priorité", "select").selectOption(input.priority || "Normale");
+  await labelled(editor, "Confirmation", "select").selectOption("Confirmée");
+  await labelled(editor, "Début souhaité", "input").fill(input.start);
+  await labelled(editor, "Fin souhaitée", "input").fill(input.end);
+  await labelled(editor, "Heures estimées totales", "input").fill(input.hours);
+  await labelled(editor, "Jours actifs souhaités", "input").fill(input.activeDays);
+  await labelled(editor, "Description", "textarea").fill(input.description);
   if (input.proposedResource) {
-    await editor.getByLabel(/Ressource proposée/).selectOption(input.proposedResource);
+    await labelled(editor, "Ressource proposée", "select").selectOption(input.proposedResource);
   }
   return editor;
 }
 
 async function workflowSelect(page: Page, demandNumber: string) {
   await page.getByRole("button", { name: "Workflow", exact: true }).click();
-  const picker = page.locator(".workflow-list-panel").getByLabel("Demande");
-  await picker.selectOption(demandNumber);
+  const panel = page.locator(".workflow-list-panel");
+  await labelled(panel, "Demande", "select").selectOption(demandNumber);
   await expect(page.locator(".workflow-summary-card")).toContainText(demandNumber);
 }
 
 async function periodsSelect(page: Page, demandNumber: string) {
   await page.getByRole("button", { name: /Périodes & alternatives/ }).click();
-  const picker = page.locator(".period-demand-picker").getByLabel("Demande");
-  await picker.selectOption(demandNumber);
+  const picker = page.locator(".period-demand-picker");
+  await labelled(picker, "Demande", "select").selectOption(demandNumber);
   await expect(page.locator(".period-demand-summary")).toContainText(demandNumber);
-}
-
-async function closeContext(context: BrowserContext) {
-  await context.close();
 }
 
 test("V2 local acceptance path runs through React, Chromium, FastAPI and SQLite", async ({ browser }) => {
@@ -156,13 +157,13 @@ test("V2 local acceptance path runs through React, Chromium, FastAPI and SQLite"
     await navigateMain(page, "Moyen terme");
     await page.getByRole("button", { name: /WorkPackage/ }).click();
     const workPackageDialog = page.getByRole("dialog", { name: "Créer un lot" });
-    await workPackageDialog.getByLabel(/Projet/).selectOption("P-251");
-    await workPackageDialog.getByLabel(/^Code$/).fill("WP-E2E");
-    await workPackageDialog.getByLabel(/Nom/).fill("Lot acceptation Playwright");
-    await workPackageDialog.getByLabel(/^Début$/).fill(d1);
-    await workPackageDialog.getByLabel(/^Fin$/).fill(d5);
-    await workPackageDialog.getByLabel(/Heures prévues/).fill("40");
-    await workPackageDialog.getByLabel(/^Description$/).fill("Parcours React V2 avec Chromium");
+    await labelled(workPackageDialog, "Projet", "select").selectOption("P-251");
+    await labelled(workPackageDialog, "Code", "input").fill("WP-E2E");
+    await labelled(workPackageDialog, "Nom", "input").fill("Lot acceptation Playwright");
+    await labelled(workPackageDialog, "Début", "input").fill(d1);
+    await labelled(workPackageDialog, "Fin", "input").fill(d5);
+    await labelled(workPackageDialog, "Heures prévues", "input").fill("40");
+    await labelled(workPackageDialog, "Description", "textarea").fill("Parcours React V2 avec Chromium");
     await workPackageDialog.getByRole("button", { name: "Créer le WorkPackage" }).click();
     await expect(workPackageDialog).toBeHidden();
     await expect(page.getByText("WP-E2E", { exact: true }).first()).toBeVisible();
@@ -179,7 +180,7 @@ test("V2 local acceptance path runs through React, Chromium, FastAPI and SQLite"
     await editor.getByRole("button", { name: "Créer le brouillon" }).click();
     await expect(page.locator(".error-panel")).toContainText("cible de 6 jours actifs dépasse les 5 dates");
 
-    await editor.getByLabel(/Jours actifs souhaités/).fill("4");
+    await labelled(editor, "Jours actifs souhaités", "input").fill("4");
     await editor.getByRole("button", { name: "Créer le brouillon" }).click();
     const createdNotice = page.locator(".demand-notice");
     await expect(createdNotice).toContainText("créée en brouillon");
@@ -191,29 +192,27 @@ test("V2 local acceptance path runs through React, Chromium, FastAPI and SQLite"
     await page.getByRole("button", { name: /Groupe alternatif/ }).click();
 
     const cumulative = page.locator(".period-card.cumulative").first();
-    await cumulative.getByLabel(/^Début$/).fill(d1);
-    await cumulative.getByLabel(/^Fin$/).fill(d3);
-    await cumulative.getByLabel(/Heures totales/).fill("12");
-    await cumulative.getByLabel(/Ressources simultanées/).fill("1");
-    await cumulative.getByLabel(/Jours actifs souhaités/).fill("3");
-    await cumulative.getByLabel(/^Confirmation$/).selectOption("Tentative");
-    await cumulative.getByLabel(/Ressource proposée/).selectOption("Alice");
+    await labelled(cumulative, "Début", "input").fill(d1);
+    await labelled(cumulative, "Fin", "input").fill(d3);
+    await labelled(cumulative, "Heures totales", "input").fill("12");
+    await labelled(cumulative, "Ressources simultanées", "input").fill("1");
+    await labelled(cumulative, "Jours actifs souhaités", "input").fill("3");
+    await labelled(cumulative, "Confirmation", "select").selectOption("Tentative");
+    await labelled(cumulative, "Ressource proposée", "select").selectOption("Alice");
 
     const alternatives = page.locator(".alternative-option");
     await expect(alternatives).toHaveCount(2);
-    const alternativeA = alternatives.nth(0).locator(".period-card");
-    const alternativeB = alternatives.nth(1).locator(".period-card");
     for (const [card, day, confirmation] of [
-      [alternativeA, d4, "Confirmée"],
-      [alternativeB, d5, "Tentative"],
+      [alternatives.nth(0).locator(".period-card"), d4, "Confirmée"],
+      [alternatives.nth(1).locator(".period-card"), d5, "Tentative"],
     ] as const) {
-      await card.getByLabel(/^Début$/).fill(day);
-      await card.getByLabel(/^Fin$/).fill(day);
-      await card.getByLabel(/Heures totales/).fill("8");
-      await card.getByLabel(/Ressources simultanées/).fill("1");
-      await card.getByLabel(/Jours actifs souhaités/).fill("1");
-      await card.getByLabel(/^Confirmation$/).selectOption(confirmation);
-      await card.getByLabel(/Ressource proposée/).selectOption("Bob");
+      await labelled(card, "Début", "input").fill(day);
+      await labelled(card, "Fin", "input").fill(day);
+      await labelled(card, "Heures totales", "input").fill("8");
+      await labelled(card, "Ressources simultanées", "input").fill("1");
+      await labelled(card, "Jours actifs souhaités", "input").fill("1");
+      await labelled(card, "Confirmation", "select").selectOption(confirmation);
+      await labelled(card, "Ressource proposée", "select").selectOption("Bob");
     }
 
     await page.getByRole("button", { name: "Enregistrer les périodes" }).click();
@@ -270,7 +269,7 @@ test("V2 local acceptance path runs through React, Chromium, FastAPI and SQLite"
     await navigateMain(projectManager.page, "Demandes");
     await periodsSelect(projectManager.page, demandNumber);
     const cumulative = projectManager.page.locator(".period-card.cumulative").first();
-    await cumulative.getByLabel(/Heures totales/).fill("16");
+    await labelled(cumulative, "Heures totales", "input").fill("16");
     await projectManager.page.getByRole("button", { name: "Enregistrer les périodes" }).click();
     await expect(projectManager.page.locator(".demand-notice")).toContainText("doit être approuvée de nouveau");
 
@@ -304,8 +303,8 @@ test("V2 local acceptance path runs through React, Chromium, FastAPI and SQLite"
     await cumulativeCard.click();
 
     const dialog = page.getByRole("dialog", { name: "Modifier le segment" });
-    await dialog.getByLabel("Profil de charge").selectOption("BELL");
-    await dialog.getByLabel("Description").fill("Profil en cloche validé par Playwright");
+    await labelled(dialog, "Profil de charge", "select").selectOption("BELL");
+    await labelled(dialog, "Description", "textarea").fill("Profil en cloche validé par Playwright");
     await dialog.getByRole("button", { name: "Enregistrer", exact: true }).click();
     await expect(dialog).toBeHidden();
 
@@ -314,7 +313,7 @@ test("V2 local acceptance path runs through React, Chromium, FastAPI and SQLite"
     await expect(refreshedCard).toContainText("Cible 3 jour(s) actif(s)");
     await refreshedCard.click();
     const reopened = page.getByRole("dialog", { name: "Modifier le segment" });
-    await expect(reopened.getByLabel("Profil de charge")).toHaveValue("BELL");
+    await expect(labelled(reopened, "Profil de charge", "select")).toHaveValue("BELL");
     await expect(reopened.getByLabel("Historique des changements")).toContainText("Coordonnateur E2E");
     await reopened.getByRole("button", { name: "Fermer" }).first().click();
 
@@ -331,7 +330,7 @@ test("V2 local acceptance path runs through React, Chromium, FastAPI and SQLite"
     await expect(bobRow).toBeVisible();
     await bobRow.getByRole("button", { name: /Modifier le quart P-251, 8 heures/ }).first().click();
     let dialog = page.getByRole("dialog", { name: "Modifier le quart" });
-    await dialog.getByLabel("Heures").fill("10");
+    await labelled(dialog, "Heures", "input").fill("10");
     await dialog.getByRole("button", { name: "Enregistrer les modifications" }).click();
     const choice = dialog.getByRole("alert");
     await expect(choice).toContainText("dépasse les heures prévues du segment");
@@ -363,7 +362,6 @@ test("V2 local acceptance path runs through React, Chromium, FastAPI and SQLite"
     page.once("dialog", (dialog) => dialog.accept());
     await page.locator(".batch-row").first().getByRole("button", { name: "Créer brouillons M365" }).click();
     await expect(page.locator(".communications-notice")).toContainText("brouillon(s) M365 créé(s)");
-    await expect(page.locator(".batch-row").first()).toContainText("fake_playwright").catch(() => undefined);
     await closeContext(context);
   });
 
@@ -371,7 +369,8 @@ test("V2 local acceptance path runs through React, Chromium, FastAPI and SQLite"
     const { context, page } = await openAs(browser, "COORDINATOR");
     await navigateMain(page, "Demandes");
     await page.getByRole("button", { name: "Historique", exact: true }).click();
-    await page.locator(".demand-history-selector").getByLabel("Demande").selectOption(demandNumber);
+    const selector = page.locator(".demand-history-selector");
+    await labelled(selector, "Demande", "select").selectOption(demandNumber);
     await expect(page.locator(".demand-history-timeline")).toContainText("Coordonnateur E2E");
     await expect(page.locator(".demand-history-timeline li").first()).toBeVisible();
     await closeContext(context);
@@ -400,8 +399,8 @@ test("V2 local acceptance path runs through React, Chromium, FastAPI and SQLite"
     const coordinator = await openAs(browser, "COORDINATOR");
     await navigateMain(coordinator.page, "Demandes");
     await coordinator.page.getByRole("button", { name: "Urgence", exact: true }).click();
-    const urgentPicker = coordinator.page.locator(".workflow-list-panel").getByLabel("Demande urgente");
-    await urgentPicker.selectOption(urgentNumber);
+    const urgentPanel = coordinator.page.locator(".workflow-list-panel");
+    await labelled(urgentPanel, "Demande urgente", "select").selectOption(urgentNumber);
     await expect(coordinator.page.locator(".workflow-detail-panel")).toContainText("Urgente");
     await coordinator.page.getByLabel(/Justification de l’urgence/).fill("Intervention requise aujourd'hui");
     coordinator.page.once("dialog", (dialog) => dialog.accept());
@@ -410,8 +409,8 @@ test("V2 local acceptance path runs through React, Chromium, FastAPI and SQLite"
     await expect(coordinator.page.getByTestId("emergency-override-active")).toContainText("Coordonnateur E2E");
 
     await coordinator.page.getByRole("button", { name: "Workflow", exact: true }).click();
-    const workflowPicker = coordinator.page.locator(".workflow-list-panel").getByLabel("Demande");
-    await workflowPicker.selectOption(urgentNumber);
+    const workflowPanel = coordinator.page.locator(".workflow-list-panel");
+    await labelled(workflowPanel, "Demande", "select").selectOption(urgentNumber);
     await coordinator.page.getByLabel(/Commentaire d’approbation/).fill("Régularisation après urgence");
     await coordinator.page.getByRole("button", { name: "Approuver", exact: true }).click();
     await expect(coordinator.page.locator(".demand-notice")).toContainText("Demande approuvée");
