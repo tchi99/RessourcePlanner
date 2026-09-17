@@ -1,0 +1,276 @@
+from __future__ import annotations
+
+from collections import Counter
+from contextlib import contextmanager
+from contextvars import ContextVar
+from dataclasses import dataclass, field
+import hashlib
+from pathlib import Path
+from time import perf_counter
+from typing import Any, Iterator
+from weakref import WeakSet
+
+from fastapi import Request
+from fastapi.responses import JSONResponse
+from sqlalchemy import Engine, event
+from starlette.routing import Match
+
+from ..performance_diagnostics import PerformanceSample, append_performance_sample
+
+
+_DB_SLOW_QUERY_SECONDS = 0.250
+_DB_N_PLUS_ONE_REPEAT_THRESHOLD = 5
+_ALLOWED_PHASES = {"auth", "compute", "serialization", "external"}
+
+
+@dataclass(slots=True)
+class RequestPerformanceContext:
+    durations: dict[str, float] = field(default_factory=dict)
+    db_query_count: int = 0
+    db_select_count: int = 0
+    db_slow_query_count: int = 0
+    db_slowest_query_seconds: float = 0.0
+    select_fingerprints: Counter[str] = field(default_factory=Counter)
+    external_call_count: int = 0
+    external_item_count: int = 0
+
+    @property
+    def recorded_seconds(self) -> float:
+        return sum(self.durations.values())
+
+    def add_duration(self, phase: str, seconds: float) -> None:
+        self.durations[phase] = self.durations.get(phase, 0.0) + max(float(seconds), 0.0)
+
+    def record_query(self, statement: str, seconds: float) -> None:
+        duration = max(float(seconds), 0.0)
+        self.db_query_count += 1
+        self.add_duration("db", duration)
+        self.db_slowest_query_seconds = max(self.db_slowest_query_seconds, duration)
+        if duration >= _DB_SLOW_QUERY_SECONDS:
+            self.db_slow_query_count += 1
+
+        normalized = " ".join(str(statement or "").split()).casefold()
+        if not normalized.startswith("select"):
+            return
+        self.db_select_count += 1
+        # Keep only a one-way technical fingerprint. SQL text/parameters never enter logs.
+        fingerprint = hashlib.sha256(normalized.encode("utf-8")).hexdigest()[:16]
+        self.select_fingerprints[fingerprint] += 1
+
+    @property
+    def db_repeated_query_max(self) -> int:
+        return max(self.select_fingerprints.values(), default=0)
+
+    @property
+    def db_n_plus_one_suspected(self) -> bool:
+        return self.db_repeated_query_max >= _DB_N_PLUS_ONE_REPEAT_THRESHOLD
+
+    def to_sample(
+        self,
+        *,
+        operation: str,
+        status: str,
+        total_seconds: float,
+        error_type: str = "",
+    ) -> PerformanceSample:
+        total = max(float(total_seconds), 0.0)
+        auth = self.durations.get("auth", 0.0)
+        db = self.durations.get("db", 0.0)
+        compute = self.durations.get("compute", 0.0)
+        serialization = self.durations.get("serialization", 0.0)
+        external = self.durations.get("external", 0.0)
+        api = max(total - auth - db - compute - serialization - external, 0.0)
+        return PerformanceSample(
+            operation=operation,
+            status=status,
+            total_seconds=total,
+            auth_seconds=auth,
+            api_seconds=api,
+            db_seconds=db,
+            compute_seconds=compute,
+            serialization_seconds=serialization,
+            external_seconds=external,
+            db_query_count=self.db_query_count,
+            db_select_count=self.db_select_count,
+            db_repeated_query_max=self.db_repeated_query_max,
+            db_slow_query_count=self.db_slow_query_count,
+            db_slowest_query_seconds=self.db_slowest_query_seconds,
+            db_n_plus_one_suspected=self.db_n_plus_one_suspected,
+            external_call_count=self.external_call_count,
+            external_item_count=self.external_item_count,
+            engine="fastapi-v2",
+            error_type=error_type,
+        )
+
+
+_CURRENT_REQUEST: ContextVar[RequestPerformanceContext | None] = ContextVar(
+    "resourceplanner_request_performance",
+    default=None,
+)
+_INSTRUMENTED_ENGINES: WeakSet[Engine] = WeakSet()
+
+
+def current_request_performance() -> RequestPerformanceContext | None:
+    return _CURRENT_REQUEST.get()
+
+
+@contextmanager
+def performance_phase(phase: str) -> Iterator[None]:
+    """Measure exclusive request time for a known technical phase.
+
+    Durations already recorded by nested phases (for example DB inside compute) are
+    subtracted so the request buckets can be added without double-counting.
+    """
+    if phase not in _ALLOWED_PHASES:
+        raise ValueError(f"Unsupported performance phase: {phase}")
+    context = current_request_performance()
+    if context is None:
+        yield
+        return
+
+    nested_before = context.recorded_seconds
+    started = perf_counter()
+    try:
+        yield
+    finally:
+        elapsed = perf_counter() - started
+        nested_seconds = max(context.recorded_seconds - nested_before, 0.0)
+        context.add_duration(phase, max(elapsed - nested_seconds, 0.0))
+
+
+def record_external_call() -> None:
+    context = current_request_performance()
+    if context is not None:
+        context.external_call_count += 1
+
+
+def record_external_items(item_count: int) -> None:
+    context = current_request_performance()
+    if context is not None:
+        context.external_item_count += max(int(item_count), 0)
+
+
+def _safe_operation(request: Request, app: Any) -> str:
+    raw_path = request.url.path
+    if raw_path == "/health":
+        return f"http {request.method.upper()} /health"
+
+    route = request.scope.get("route")
+    template = str(getattr(route, "path", "") or "")
+    if not template.startswith("/api/v1/"):
+        # Authorization can short-circuit before Starlette stores the matched route in
+        # the scope. Resolve the route pattern without persisting path parameters.
+        for candidate in getattr(app, "routes", ()):
+            try:
+                match, _child_scope = candidate.matches(request.scope)
+            except (AttributeError, TypeError):
+                continue
+            if match is Match.FULL:
+                candidate_path = str(getattr(candidate, "path", "") or "")
+                if candidate_path.startswith("/api/v1/"):
+                    template = candidate_path
+                    break
+    if not template.startswith("/api/v1/"):
+        # Never persist unmatched raw API paths: they may contain business identifiers.
+        template = "/api/v1/<unmatched>"
+    return f"http {request.method.upper()} {template}"
+
+
+def _server_timing(sample: PerformanceSample) -> str:
+    timings = (
+        ("auth", sample.auth_seconds),
+        ("api", sample.api_seconds),
+        ("db", sample.db_seconds),
+        ("compute", sample.compute_seconds),
+        ("serialization", sample.serialization_seconds),
+        ("external", sample.external_seconds),
+        ("total", sample.total_seconds),
+    )
+    return ", ".join(f"{name};dur={seconds * 1000.0:.3f}" for name, seconds in timings)
+
+
+def install_performance_middleware(app: Any, *, log_path: Path | None = None) -> None:
+    @app.middleware("http")
+    async def collect_performance(request: Request, call_next):
+        raw_path = request.url.path
+        if raw_path != "/health" and not raw_path.startswith("/api/v1/"):
+            return await call_next(request)
+
+        context = RequestPerformanceContext()
+        token = _CURRENT_REQUEST.set(context)
+        started = perf_counter()
+        status = "500"
+        error_type = ""
+        response = None
+        try:
+            response = await call_next(request)
+            status = str(response.status_code)
+            return response
+        except Exception as exc:
+            error_type = type(exc).__name__
+            raise
+        finally:
+            total = perf_counter() - started
+            sample = context.to_sample(
+                operation=_safe_operation(request, app),
+                status=status,
+                total_seconds=total,
+                error_type=error_type,
+            ).normalized()
+            if response is not None:
+                response.headers["Server-Timing"] = _server_timing(sample)
+            append_performance_sample(sample, path=log_path)
+            _CURRENT_REQUEST.reset(token)
+
+
+class InstrumentedJSONResponse(JSONResponse):
+    """Measure JSON encoding separately from endpoint/domain work."""
+
+    def render(self, content: Any) -> bytes:
+        with performance_phase("serialization"):
+            return super().render(content)
+
+
+def install_sql_performance_instrumentation(engine: Engine) -> None:
+    """Attach request-aware SQL timings without logging SQL text or parameters."""
+    if engine in _INSTRUMENTED_ENGINES:
+        return
+    _INSTRUMENTED_ENGINES.add(engine)
+
+    @event.listens_for(engine, "before_cursor_execute")
+    def _before_cursor_execute(
+        _conn,
+        _cursor,
+        _statement,
+        _parameters,
+        execution_context,
+        _executemany,
+    ) -> None:
+        if current_request_performance() is not None:
+            execution_context._resourceplanner_perf_started = perf_counter()
+
+    @event.listens_for(engine, "after_cursor_execute")
+    def _after_cursor_execute(
+        _conn,
+        _cursor,
+        statement,
+        _parameters,
+        execution_context,
+        _executemany,
+    ) -> None:
+        context = current_request_performance()
+        started = getattr(execution_context, "_resourceplanner_perf_started", None)
+        if context is None or started is None:
+            return
+        context.record_query(statement, perf_counter() - started)
+        execution_context._resourceplanner_perf_started = None
+
+    @event.listens_for(engine, "handle_error")
+    def _handle_error(exception_context) -> None:
+        context = current_request_performance()
+        execution_context = exception_context.execution_context
+        started = getattr(execution_context, "_resourceplanner_perf_started", None)
+        if context is None or started is None:
+            return
+        context.record_query(exception_context.statement or "", perf_counter() - started)
+        execution_context._resourceplanner_perf_started = None
