@@ -6,7 +6,8 @@ from typing import Iterable
 from openpyxl import load_workbook
 from openpyxl.utils.exceptions import InvalidFileException
 
-from ...application import ApplicationOperationError, ExternalProjectRecord, ProjectSourcePort
+from ...application.errors import ApplicationOperationError
+from ...application.project_sync import ExternalProjectRecord, ProjectSourcePort
 
 
 _REQUIRED_COLUMNS = (
