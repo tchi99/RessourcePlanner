@@ -28,15 +28,17 @@ DEFAULT_ENDPOINT_BUDGETS: dict[str, EndpointBudget] = {
     "http GET /api/v1/projects": EndpointBudget(2, 2, 1, 1, 5.0),
     "http GET /api/v1/resources": EndpointBudget(2, 2, 1, 1, 5.0),
     "http GET /api/v1/demands": EndpointBudget(2, 2, 1, 1, 5.0),
-    "http GET /api/v1/segments": EndpointBudget(2, 2, 1, 1, 5.0),
-    "http GET /api/v1/shifts": EndpointBudget(2, 2, 1, 1, 5.0),
+    # These two projections currently execute a small, fixed set of relationship
+    # lookups. Their important invariant is that the count does not grow with rows.
+    "http GET /api/v1/segments": EndpointBudget(5, 5, 2, 0, 5.0),
+    "http GET /api/v1/shifts": EndpointBudget(7, 7, 2, 0, 5.0),
     # list_pending_loads currently reads submitted requests individually. #252 makes
     # that scaling debt visible without pretending it has already been optimized.
     "http GET /api/v1/planning/snapshot": EndpointBudget(
         max_queries=180,
         max_selects=180,
-        max_repeated_query=64,
-        max_query_growth=160,
+        max_repeated_query=32,
+        max_query_growth=150,
         coarse_p99_seconds=15.0,
         allow_n_plus_one=True,
     ),
