@@ -4,6 +4,7 @@
 # Python virtual environments
 .venv/
 .venv-web/
+.venv-importer/
 
 # IDE / editor temp files
 tempCodeRunnerFile.py
