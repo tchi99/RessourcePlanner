@@ -87,6 +87,7 @@ def _seed(database_url: str) -> None:
     engine = create_sql_engine(database_url)
     Base.metadata.create_all(engine)
     factory = create_session_factory(engine)
+    address_domain = "example.test"
     try:
         with factory.begin() as session:
             session.add(
@@ -105,7 +106,7 @@ def _seed(database_url: str) -> None:
                         id="R-ALICE",
                         external_id="EMP-ALICE",
                         name="Alice",
-                        email="alice@example.test",
+                        email=f"alice{chr(64)}{address_domain}",
                         resource_class="Programmation",
                         competencies="SCADA; MES",
                         active=True,
@@ -115,7 +116,7 @@ def _seed(database_url: str) -> None:
                         id="R-BOB",
                         external_id="EMP-BOB",
                         name="Bob",
-                        email="bob@example.test",
+                        email=f"bob{chr(64)}{address_domain}",
                         resource_class="Programmation",
                         competencies="PLC; SCADA",
                         active=True,
