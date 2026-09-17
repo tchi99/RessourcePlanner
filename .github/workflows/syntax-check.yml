@@ -63,7 +63,7 @@ jobs:
 
   validate:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -90,6 +90,12 @@ jobs:
       - name: Build React V2 frontend
         working-directory: frontend
         run: npm run build
+      - name: Install Playwright Chromium
+        working-directory: frontend
+        run: npx playwright install --with-deps chromium
+      - name: Run React V2 browser acceptance
+        working-directory: frontend
+        run: npm run test:e2e
       - name: Smoke complete FastAPI + React runtime
         run: python tools/check_web_runtime.py
       - name: Scan current repository tree for common PII and secrets
