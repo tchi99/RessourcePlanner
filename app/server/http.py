@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 from collections.abc import Iterator
+from pathlib import Path
 from typing import Any, Callable
 
 from fastapi import Depends, FastAPI, Request
@@ -38,6 +39,11 @@ from .composition import (
     build_user_admin_service,
 )
 from .oidc import OidcRuntime
+from .performance import (
+    InstrumentedJSONResponse,
+    install_performance_middleware,
+    install_sql_performance_instrumentation,
+)
 from .routes_auth import build_auth_router
 from .routes_commands import build_command_router
 from .routes_communications import build_communication_router
@@ -216,8 +222,10 @@ def create_api_app(
     auth_resolver: AuthResolver | None = None,
     oidc_runtime: OidcRuntime | None = None,
     communication_transport: CommunicationTransportPort | None = None,
+    performance_log_path: Path | None = None,
 ) -> FastAPI:
     engine = create_sql_engine(database_url)
+    install_sql_performance_instrumentation(engine)
     factory = create_session_factory(engine)
     session_dependency = make_session_dependency(factory)
     facade_dependency = make_facade_dependency(
@@ -255,6 +263,7 @@ def create_api_app(
         title="RessourcePlanner API",
         version="1.0.0-dev",
         lifespan=lifespan,
+        default_response_class=InstrumentedJSONResponse,
     )
     app.state.database_dialect = engine.dialect.name
     app.state.session_factory = factory
@@ -268,6 +277,9 @@ def create_api_app(
         app,
         auth_resolver or _default_auth_resolver(actor_name),
     )
+    # Registered after authorization so Starlette wraps it outside auth and the
+    # request performance context is already active while credentials are resolved.
+    install_performance_middleware(app, log_path=performance_log_path)
 
     @app.exception_handler(RequestValidationError)
     async def handle_request_validation_error(
