@@ -6,9 +6,9 @@ from typing import Protocol, Sequence
 
 @dataclass(frozen=True, slots=True)
 class ExternalProjectRecord:
-    """Transport-neutral project snapshot supplied by an ERP integration."""
+    """Transport-neutral project snapshot supplied by an ERP integration or export."""
 
-    external_id: str
+    external_id: str | None
     number: str
     name: str
     client: str | None = None
@@ -21,7 +21,8 @@ class ProjectSourcePort(Protocol):
     """Read-only source of ERP projects.
 
     The source is deliberately independent from SQL and HTTP so Acumatica can be
-    replaced or simulated without changing application rules.
+    replaced or simulated without changing application rules. Manual exports may
+    omit the ERP row identifier and rely on the project number until live sync.
     """
 
     def list_projects(self) -> Sequence[ExternalProjectRecord]: ...
