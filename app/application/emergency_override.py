@@ -76,7 +76,7 @@ def emergency_override_eligibility(
         return False, "ALREADY_ACTIVE"
     if str(demand.status or "").strip().casefold() != "soumise":
         return False, "STATUS_NOT_SUBMITTED"
-    if str(demand.priority or "").strip().casefold() != "urgent":
+    if str(demand.priority or "").strip().casefold() not in {"urgent", "urgente"}:
         return False, "NOT_URGENT"
 
     week_start, week_end = current_week_window(today)
@@ -218,7 +218,7 @@ class EmergencyApplicationFacade(ApplicationFacade):
         service = cast(EmergencyDemandService, self._demands)
         summary = service.emergency_override_command(command)
         return DemandMutationResult(
-            demand_number=str(command.number or "").strip(),
+            demand_number=command.number,
             status="Soumise",
             planning=PlanningResult.from_mapping(summary),
         )

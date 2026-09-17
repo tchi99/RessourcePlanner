@@ -29,6 +29,8 @@ frontend/node_modules/
 frontend/dist/
 frontend/.env
 frontend/.env.local
+frontend/playwright-report/
+frontend/test-results/
 
 # Local cutover reports (may contain workbook metadata/diagnostics)
 cutover_report.json

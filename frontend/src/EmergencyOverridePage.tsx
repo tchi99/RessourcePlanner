@@ -22,7 +22,7 @@ function errorMessage(reason: unknown): string {
 }
 
 function isEmergencyCandidate(demand: EmergencyDemand) {
-  return normalize(demand.status) === "soumise" && normalize(demand.priority) === "urgent";
+  return normalize(demand.status) === "soumise" && normalize(demand.priority).startsWith("urgent");
 }
 
 export default function EmergencyOverridePage() {
