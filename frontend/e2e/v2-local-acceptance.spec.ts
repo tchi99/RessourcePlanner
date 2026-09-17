@@ -371,8 +371,9 @@ test("V2 local acceptance path runs through React, Chromium, FastAPI and SQLite"
     const { context, page } = await openAs(browser, "COORDINATOR");
     await navigateMain(page, "Demandes");
     await page.getByRole("button", { name: "Historique", exact: true }).click();
-    const selector = page.locator(".demand-history-selector");
-    await labelled(selector, "Demande", "select").selectOption(demandNumber);
+    const selector = page.locator("label.demand-history-selector select");
+    await selector.selectOption(demandNumber);
+    await expect(selector).toHaveValue(demandNumber);
     await expect(page.locator(".demand-history-timeline")).toContainText("Coordonnateur E2E");
     await expect(page.locator(".demand-history-timeline li").first()).toBeVisible();
     await closeContext(context);
