@@ -19,6 +19,7 @@ from ..application.security import (
     PERMISSION_READ,
     PERMISSION_SYNC_PROJECTS,
 )
+from .performance import performance_phase
 
 
 AuthResolverResult = AuthPrincipal | None | Awaitable[AuthPrincipal | None]
@@ -110,20 +111,21 @@ def install_authorization_middleware(app: Any, resolver: AuthResolver) -> None:
         if not path.startswith("/api/v1/"):
             return await call_next(request)
 
-        principal = await resolve_principal(resolver, request)
-        if principal is None:
-            return _error(
-                401,
-                "authentication_required",
-                "Une authentification est requise pour accéder à RessourcePlanner.",
-            )
-        request.state.auth_principal = principal
-        permission = required_permission(request.method, path)
-        if permission is not None and not principal.has_permission(permission):
-            return _error(
-                403,
-                "permission_denied",
-                "Vous n'avez pas la permission requise pour cette opération.",
-                context={"required_permission": permission},
-            )
+        with performance_phase("auth"):
+            principal = await resolve_principal(resolver, request)
+            if principal is None:
+                return _error(
+                    401,
+                    "authentication_required",
+                    "Une authentification est requise pour accéder à RessourcePlanner.",
+                )
+            request.state.auth_principal = principal
+            permission = required_permission(request.method, path)
+            if permission is not None and not principal.has_permission(permission):
+                return _error(
+                    403,
+                    "permission_denied",
+                    "Vous n'avez pas la permission requise pour cette opération.",
+                    context={"required_permission": permission},
+                )
         return await call_next(request)
