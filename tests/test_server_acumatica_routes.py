@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 
 from app.application import ExternalProjectRecord
 from app.infrastructure.sql import Base, create_sql_engine
+from app.performance_diagnostics import read_performance_samples
 from app.server import create_api_app
 
 
@@ -52,6 +53,7 @@ class ServerAcumaticaRouteTests(unittest.TestCase):
     def test_configured_sync_persists_projects_and_is_idempotent(self) -> None:
         with TemporaryDirectory() as directory:
             source = StubProjectSource()
+            performance_log = Path(directory) / "performance.jsonl"
             app = create_api_app(
                 self._database(directory),
                 project_source=source,
@@ -60,6 +62,7 @@ class ServerAcumaticaRouteTests(unittest.TestCase):
                     "version": "25.200.001",
                     "entity": "Project",
                 },
+                performance_log_path=performance_log,
             )
             with TestClient(app) as client:
                 status = client.get("/api/v1/integrations/acumatica")
@@ -90,6 +93,21 @@ class ServerAcumaticaRouteTests(unittest.TestCase):
             self.assertEqual(projects.json()[0]["number"], "P-100")
             self.assertEqual(projects.json()[0]["erp_external_id"], "ERP-1")
             self.assertEqual(projects.json()[0]["project_manager"], "Alice")
+
+            samples = read_performance_samples(path=performance_log, limit=20)
+            sync_samples = [
+                sample
+                for sample in samples
+                if sample.get("operation")
+                == "http POST /api/v1/integrations/acumatica/projects/sync"
+            ]
+            self.assertEqual(len(sync_samples), 2)
+            for sample in sync_samples:
+                self.assertEqual(sample["external_call_count"], 1)
+                self.assertEqual(sample["external_item_count"], 1)
+                self.assertGreater(sample["db_query_count"], 0)
+                self.assertGreaterEqual(sample["external_seconds"], 0.0)
+                self.assertGreaterEqual(sample["compute_seconds"], 0.0)
 
 
 if __name__ == "__main__":
