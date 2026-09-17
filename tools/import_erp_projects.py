@@ -11,10 +11,11 @@ if str(_REPO_ROOT) not in sys.path:
 
 from sqlalchemy.exc import SQLAlchemyError
 
-from app.application import ApplicationError, ProjectSyncResult, ProjectSyncService
+from app.application.errors import ApplicationError
+from app.application.project_sync import ProjectSyncResult, ProjectSyncService
 from app.infrastructure.erp_export import ErpExcelProjectSource
-from app.infrastructure.sql import create_session_factory, create_sql_engine
 from app.infrastructure.sql.project_sync_repository import SqlProjectSyncRepository
+from app.infrastructure.sql.session import create_session_factory, create_sql_engine
 
 
 DATABASE_URL_ENV = "RESOURCEPLANNER_DATABASE_URL"
