@@ -49,7 +49,7 @@ class ServerPerformanceTests(unittest.TestCase):
 
             try:
                 with TestClient(app) as client:
-                    response = client.get("/api/v1/items/SECRET-123")
+                    response = client.get("/api/v1/items/opaque-id-123")
             finally:
                 engine.dispose()
 
@@ -59,7 +59,7 @@ class ServerPerformanceTests(unittest.TestCase):
             self.assertEqual(len(samples), 1)
             sample = samples[0]
             self.assertEqual(sample["operation"], "http GET /api/v1/items/{item_id}")
-            self.assertNotIn("SECRET-123", log_path.read_text(encoding="utf-8"))
+            self.assertNotIn("opaque-id-123", log_path.read_text(encoding="utf-8"))
             self.assertEqual(sample["db_query_count"], 5)
             self.assertEqual(sample["db_select_count"], 5)
             self.assertEqual(sample["db_repeated_query_max"], 5)
