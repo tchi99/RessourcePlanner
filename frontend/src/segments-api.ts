@@ -14,6 +14,7 @@ export type SegmentWrite = {
   description?: string;
   source_effort_id?: string | null;
   required_competency?: string | null;
+  required_competency_id?: string | null;
   planning_type?: string;
   priority?: string;
   outside_standard_hours?: boolean;
