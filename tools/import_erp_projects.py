@@ -9,6 +9,8 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
+from alembic import command
+from alembic.config import Config
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.application.errors import ApplicationError
@@ -26,12 +28,35 @@ def resolve_database_url(explicit: str | None = None) -> str:
     return (explicit or os.getenv(DATABASE_URL_ENV) or DEFAULT_DATABASE_URL).strip()
 
 
+def _is_sqlite(database_url: str) -> bool:
+    return database_url.strip().casefold().startswith("sqlite")
+
+
+def ensure_local_sqlite_schema(database_url: str) -> None:
+    """Bring the standalone local SQLite database to the current Alembic head.
+
+    The external importer can be installed and launched before the Web runtime.
+    In that case SQLite would otherwise create an empty database file and the
+    first project query would fail with "no such table: projects".
+    """
+
+    if not _is_sqlite(database_url):
+        return
+
+    config = Config(str(_REPO_ROOT / "alembic.ini"))
+    config.set_main_option("script_location", str(_REPO_ROOT / "migrations"))
+    config.set_main_option("sqlalchemy.url", database_url.replace("%", "%%"))
+    command.upgrade(config, "head")
+
+
 def synchronize_file(
     xlsx_path: str | Path,
     *,
     database_url: str,
     apply: bool,
 ) -> ProjectSyncResult:
+    ensure_local_sqlite_schema(database_url)
+
     source = ErpExcelProjectSource(xlsx_path)
     engine = create_sql_engine(database_url)
     factory = create_session_factory(engine)
@@ -101,7 +126,7 @@ def run_gui(*, database_url: str) -> int:
         messagebox.showerror(
             "Import des projets ERP",
             "Impossible d'accéder à la base de données. "
-            "Vérifie que la base SQLite existe et que ses migrations sont à jour.\n\n"
+            "Vérifie que l'URL de base de données cible est correcte et accessible.\n\n"
             f"Détail : {exc}",
         )
         return 3
@@ -119,7 +144,13 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("xlsx", nargs="?", help="Chemin du fichier XLSX exporté de l'ERP.")
     parser.add_argument(
         "--database-url",
-        help=f"URL SQLAlchemy. Défaut: ${DATABASE_URL_ENV}, puis {DEFAULT_DATABASE_URL}.",
+        help=(
+            "URL SQLAlchemy. Défaut: $"
+            + DATABASE_URL_ENV
+            + ", puis "
+            + DEFAULT_DATABASE_URL
+            + "."
+        ),
     )
     parser.add_argument(
         "--apply",
