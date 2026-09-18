@@ -28,6 +28,7 @@ class DemandCreateCommand:
     project_manager: str = ""
     requester: str | None = None
     work_package_ref: str | None = None
+    task_code: str | None = None
     request_type: str = "Projet"
     priority: str = "Normale"
     confirmation: str = "Confirmée"
@@ -88,6 +89,7 @@ class DemandCreateCommand:
             project_manager=text(values.get("ChargeProjet")),
             requester=optional_text(values.get("Demandeur")),
             work_package_ref=optional_text(values.get("SourceEffortID")),
+            task_code=optional_text(values.get("TaskCode")),
             request_type=text(values.get("TypeDemande")) or "Projet",
             priority=text(values.get("Priorite")) or "Normale",
             confirmation=text(values.get("Confirmation")) or "Confirmée",
@@ -126,6 +128,7 @@ class DemandCreateCommand:
             "ChargeProjet": text(self.project_manager),
             "Demandeur": self.requester,
             "SourceEffortID": self.work_package_ref,
+            "TaskCode": self.task_code,
             "TypeDemande": text(self.request_type) or "Projet",
             "Priorite": text(self.priority) or "Normale",
             "Confirmation": text(self.confirmation) or "Confirmée",
@@ -152,6 +155,7 @@ class DemandUpdateCommand:
     project_manager: str | None | UnsetType = UNSET
     requester: str | None | UnsetType = UNSET
     work_package_ref: str | None | UnsetType = UNSET
+    task_code: str | None | UnsetType = UNSET
     request_type: str | None | UnsetType = UNSET
     priority: str | None | UnsetType = UNSET
     confirmation: str | None | UnsetType = UNSET
@@ -196,6 +200,7 @@ class DemandUpdateCommand:
             "ChargeProjet",
             "Demandeur",
             "SourceEffortID",
+            "TaskCode",
             "TypeDemande",
             "Priorite",
             "Confirmation",
@@ -234,6 +239,7 @@ class DemandUpdateCommand:
             project_manager=present("ChargeProjet", optional_text),
             requester=present("Demandeur", optional_text),
             work_package_ref=present("SourceEffortID", optional_text),
+            task_code=present("TaskCode", optional_text),
             request_type=present("TypeDemande", optional_text),
             priority=present("Priorite", optional_text),
             confirmation=present("Confirmation", optional_text),
@@ -289,6 +295,7 @@ class DemandUpdateCommand:
             "ChargeProjet": self.project_manager,
             "Demandeur": self.requester,
             "SourceEffortID": self.work_package_ref,
+            "TaskCode": self.task_code,
             "TypeDemande": self.request_type,
             "Priorite": self.priority,
             "Confirmation": self.confirmation,
