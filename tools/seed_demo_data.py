@@ -24,9 +24,11 @@ from app.application.security import (  # noqa: E402
     ROLE_TECHNICIAN,
 )
 from app.infrastructure.sql import (  # noqa: E402
+    Competency,
     Project,
     Resource,
     ResourceAvailabilityRule,
+    ResourceCompetency,
     ResourceRequirement,
     Shift,
     SqlUserIdentityRepository,
@@ -148,7 +150,44 @@ def _clear_demo_project_data(session: Session) -> None:
     session.execute(delete(Project).where(Project.id.in_(DEMO_PROJECT_IDS)))
 
 
-def _upsert_demo_resources(session: Session, monday: date) -> None:
+def _upsert_demo_competencies(session: Session) -> dict[str, str]:
+    names = (
+        "PLC",
+        "SCADA",
+        "MES",
+        "Installation",
+        "Mise en service",
+        "Montage",
+        "Câblage",
+        "Électrique",
+        "DAO",
+        "Coordination",
+        "Planification",
+    )
+    result: dict[str, str] = {}
+    for index, name in enumerate(names, start=1):
+        row = session.scalar(select(Competency).where(Competency.name == name))
+        if row is None:
+            row = Competency(
+                id=f"DEMO-COMP-{index:02d}",
+                name=name,
+                description=f"Compétence de démonstration — {name}",
+                active=True,
+                sort_order=index * 10,
+            )
+            session.add(row)
+            session.flush()
+        else:
+            row.active = True
+        result[name] = row.id
+    return result
+
+
+def _upsert_demo_resources(
+    session: Session,
+    monday: date,
+    competency_ids: dict[str, str],
+) -> None:
     definitions = (
         (
             "DEMO-R-AUTO-1",
@@ -210,6 +249,22 @@ def _upsert_demo_resources(session: Session, monday: date) -> None:
 
     session.flush()
 
+    session.execute(
+        delete(ResourceCompetency).where(
+            ResourceCompetency.resource_id.in_(DEMO_RESOURCE_IDS)
+        )
+    )
+    for resource_id, _name, _resource_class, competencies, _sort_order in definitions:
+        for name in [part.strip() for part in competencies.split(";") if part.strip()]:
+            competency_id = competency_ids.get(name)
+            if competency_id:
+                session.add(
+                    ResourceCompetency(
+                        resource_id=resource_id,
+                        competency_id=competency_id,
+                    )
+                )
+
     schedule_ids = tuple(f"DEMO-SCH-{resource_id}" for resource_id in DEMO_RESOURCE_IDS)
     session.execute(
         delete(ResourceAvailabilityRule).where(
@@ -264,7 +319,8 @@ def seed_demo_session(session: Session, *, today: date | None = None) -> DemoSee
     now = datetime.now(timezone.utc)
 
     _clear_demo_project_data(session)
-    _upsert_demo_resources(session, monday)
+    competency_ids = _upsert_demo_competencies(session)
+    _upsert_demo_resources(session, monday, competency_ids)
     dev_user_count = _upsert_dev_users(session)
 
     projects = (
