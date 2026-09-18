@@ -54,7 +54,11 @@ def required_permission(method: str, path: str) -> str | None:
         return PERMISSION_MANAGE_COMMUNICATIONS
     if verb == "GET":
         return PERMISSION_READ
-    if path.startswith("/api/v1/resources") or path.startswith("/api/v1/availability-rules"):
+    if (
+        path.startswith("/api/v1/resources")
+        or path.startswith("/api/v1/availability-rules")
+        or path.startswith("/api/v1/competencies")
+    ):
         return PERMISSION_MANAGE_RESOURCES
     if path.startswith("/api/v1/work-packages"):
         return PERMISSION_MANAGE_WORK_PACKAGES
