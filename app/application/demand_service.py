@@ -34,6 +34,7 @@ BUSINESS_DEMAND_FIELDS = frozenset(
         "Client",
         "ChargeProjet",
         "SourceEffortID",
+        "TaskCode",
         "TypeDemande",
         "Priorite",
         "Confirmation",

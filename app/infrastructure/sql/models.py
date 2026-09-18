@@ -15,6 +15,7 @@ from sqlalchemy import (
     String,
     Text,
     Time,
+    UniqueConstraint,
     false,
     text,
     true,
@@ -41,6 +42,38 @@ class Project(TimestampMixin, Base):
     project_manager_external_id: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
     project_manager_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     status: Mapped[str] = mapped_column(String(32), nullable=False, server_default=text("'active'"), index=True)
+
+
+class TaskCatalogEntry(TimestampMixin, Base):
+    __tablename__ = "task_catalog_items"
+    __table_args__ = (
+        UniqueConstraint(
+            "project_number",
+            "task_code",
+            name="uq_task_catalog_items_project_code",
+        ),
+        Index("ix_task_catalog_items_project_active", "project_number", "active"),
+    )
+
+    id: Mapped[str] = mapped_column(String(ID_LENGTH), primary_key=True, default=new_id)
+    project_number: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    task_code: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    label: Mapped[str] = mapped_column(String(255), nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(32), nullable=False, server_default=text("'Actif'"), index=True
+    )
+    active: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=true(), index=True
+    )
+    billing_rule: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    allocation_rule: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    completion_percent: Mapped[Decimal | None] = mapped_column(Numeric(7, 2), nullable=True)
+    erp_created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    branch: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    approver_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    cv_enabled: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    time_entry_enabled: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    expenses_enabled: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
 
 
 class Resource(TimestampMixin, Base):
@@ -113,6 +146,8 @@ class WorkforceRequest(TimestampMixin, Base):
     work_package_id: Mapped[str | None] = mapped_column(
         String(ID_LENGTH), ForeignKey("work_packages.id"), nullable=True, index=True
     )
+    erp_task_code: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    erp_task_label: Mapped[str | None] = mapped_column(String(255), nullable=True)
     requester_external_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
     requester_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     request_type: Mapped[str] = mapped_column(String(64), nullable=False, server_default=text("'Projet'"))

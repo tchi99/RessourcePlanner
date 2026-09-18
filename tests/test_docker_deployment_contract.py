@@ -17,6 +17,12 @@ class DockerDeploymentContractTests(unittest.TestCase):
         self.assertNotIn("nicegui", dockerfile.casefold())
         self.assertNotIn("xlwings", dockerfile.casefold())
 
+    def test_importer_image_packages_project_and_task_importers(self) -> None:
+        dockerfile = (ROOT / "Dockerfile.importer").read_text(encoding="utf-8")
+        self.assertIn("tools/import_erp_projects.py", dockerfile)
+        self.assertIn("tools/import_erp_tasks.py", dockerfile)
+        self.assertIn("requirements-importer.txt", dockerfile)
+
     def test_frontend_image_builds_react_then_serves_with_nginx(self) -> None:
         dockerfile = (ROOT / "frontend" / "Dockerfile").read_text(encoding="utf-8")
         self.assertIn("FROM node:22-alpine AS build", dockerfile)
@@ -39,6 +45,9 @@ class DockerDeploymentContractTests(unittest.TestCase):
         self.assertIn("seed-dev:", compose)
         self.assertIn('command: ["python", "tools/seed_demo_data.py"]', compose)
         self.assertIn("RESOURCEPLANNER_DEV_USER_SWITCHER", compose)
+        self.assertIn("import-projects:", compose)
+        self.assertIn("import-tasks:", compose)
+        self.assertIn('entrypoint: ["python", "tools/import_erp_tasks.py"]', compose)
         self.assertIn("backend:", compose)
         self.assertIn("frontend:", compose)
         self.assertNotIn("mssql:", compose.casefold())

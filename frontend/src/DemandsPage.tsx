@@ -6,12 +6,14 @@ import {
   DemandWrite,
   ProjectReadModel,
   ResourceReadModel,
+  TaskCatalogItemReadModel,
   WorkPackageReadModel,
   createDemand,
   getDemand,
   getDemands,
   getProjects,
   getResources,
+  getTaskCatalog,
   getWorkPackages,
   updateDemand,
 } from "./api";
@@ -20,6 +22,7 @@ type FormState = {
   project_number: string;
   requester: string;
   work_package_ref: string;
+  task_code: string;
   priority: string;
   confirmation: "Tentative" | "Confirmée";
   desired_start: string;
@@ -71,6 +74,7 @@ function emptyForm(projectNumber = ""): FormState {
     project_number: projectNumber,
     requester: "",
     work_package_ref: "",
+    task_code: "",
     priority: "Normale",
     confirmation: "Confirmée",
     desired_start: todayIso(),
@@ -89,6 +93,7 @@ function formFromDemand(demand: DemandReadModel): FormState {
     project_number: demand.project_number ?? "",
     requester: demand.requester ?? "",
     work_package_ref: demand.work_package_ref ?? "",
+    task_code: demand.task_code ?? "",
     priority: demand.priority ?? "Normale",
     confirmation: (demand.confirmation === "Tentative" ? "Tentative" : "Confirmée"),
     desired_start: demand.desired_start ?? "",
@@ -147,6 +152,7 @@ export default function DemandsPage() {
   const [demands, setDemands] = useState<DemandReadModel[]>([]);
   const [projects, setProjects] = useState<ProjectReadModel[]>([]);
   const [resources, setResources] = useState<ResourceReadModel[]>([]);
+  const [tasks, setTasks] = useState<TaskCatalogItemReadModel[]>([]);
   const [workPackages, setWorkPackages] = useState<WorkPackageReadModel[]>([]);
   const [selectedNumber, setSelectedNumber] = useState<string | null>(null);
   const [selectedDemand, setSelectedDemand] = useState<DemandReadModel | null>(null);
@@ -158,6 +164,7 @@ export default function DemandsPage() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  const [taskSearch, setTaskSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [projectFilter, setProjectFilter] = useState("all");
   const createRetry = useRef<RetryReceipt | null>(null);
@@ -214,11 +221,18 @@ export default function DemandsPage() {
     const projectNumber = form.project_number;
     if (!projectNumber) {
       setWorkPackages([]);
+      setTasks([]);
       return;
     }
     const controller = new AbortController();
-    getWorkPackages(projectNumber, false, controller.signal)
-      .then(setWorkPackages)
+    Promise.all([
+      getWorkPackages(projectNumber, false, controller.signal),
+      getTaskCatalog(projectNumber, "", false, controller.signal),
+    ])
+      .then(([packageRows, taskRows]) => {
+        setWorkPackages(packageRows);
+        setTasks(taskRows);
+      })
       .catch((reason: unknown) => {
         if (reason instanceof DOMException && reason.name === "AbortError") return;
         setError(messageFromError(reason));
@@ -249,6 +263,21 @@ export default function DemandsPage() {
   const selectedWorkPackage = useMemo(
     () => workPackages.find((row) => row.reference === form.work_package_ref) ?? null,
     [workPackages, form.work_package_ref],
+  );
+
+  const visibleTasks = useMemo(() => {
+    const query = normalize(taskSearch);
+    return tasks.filter((task) => {
+      if (!task.active && task.code !== form.task_code) return false;
+      if (task.code === form.task_code) return true;
+      if (!query) return true;
+      return normalize(`${task.code} ${task.label}`).includes(query);
+    });
+  }, [tasks, taskSearch, form.task_code]);
+
+  const selectedTask = useMemo(
+    () => tasks.find((row) => row.code === form.task_code) ?? null,
+    [tasks, form.task_code],
   );
 
   async function reloadDemand(number: string) {
@@ -335,6 +364,7 @@ export default function DemandsPage() {
       client: selectedProject.client ?? "",
       requester: form.requester.trim() || null,
       work_package_ref: form.work_package_ref || null,
+      task_code: form.task_code || null,
       request_type: selectedDemand?.request_type || "Projet",
       priority: form.priority,
       confirmation: form.confirmation,
@@ -481,13 +511,59 @@ export default function DemandsPage() {
                   <span>Projet</span>
                   <select
                     value={form.project_number}
-                    onChange={(event) => setForm((current) => ({ ...current, project_number: event.target.value, work_package_ref: "" }))}
+                    onChange={(event) => {
+                      setTaskSearch("");
+                      setForm((current) => ({
+                        ...current,
+                        project_number: event.target.value,
+                        work_package_ref: "",
+                        task_code: "",
+                      }));
+                    }}
                     disabled={saving}
                     required
                   >
                     <option value="">Sélectionner un projet…</option>
                     {projects.map((project) => <option value={project.number} key={project.id}>{project.number} — {project.name}</option>)}
                   </select>
+                </label>
+
+                <label>
+                  <span>Recherche catalogue ERP</span>
+                  <input
+                    value={taskSearch}
+                    onChange={(event) => setTaskSearch(event.target.value)}
+                    disabled={saving || !form.project_number}
+                    placeholder="Code ou description…"
+                  />
+                </label>
+
+                <label>
+                  <span>Tâche ERP</span>
+                  <select
+                    value={form.task_code}
+                    onChange={(event) => setField("task_code", event.target.value)}
+                    disabled={saving || !form.project_number}
+                  >
+                    <option value="">Aucune tâche sélectionnée</option>
+                    {form.task_code && !selectedTask && (
+                      <option value={form.task_code}>
+                        {form.task_code} — {selectedDemand?.task_label || "tâche historique/non cataloguée"}
+                      </option>
+                    )}
+                    {visibleTasks.map((task) => (
+                      <option value={task.code} key={`${task.project_number}:${task.code}`}>
+                        {task.code} — {task.label}{task.active ? "" : " · inactive"}
+                      </option>
+                    ))}
+                  </select>
+                  {selectedTask && (
+                    <small>
+                      {selectedTask.status}
+                      {selectedTask.time_entry_enabled == null ? "" : ` · Temps: ${selectedTask.time_entry_enabled ? "oui" : "non"}`}
+                      {selectedTask.expenses_enabled == null ? "" : ` · Dépenses: ${selectedTask.expenses_enabled ? "oui" : "non"}`}
+                    </small>
+                  )}
                 </label>
 
                 <label>

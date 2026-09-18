@@ -39,6 +39,7 @@ EXPECTED_TABLES = {
     "resource_availability_rules",
     "resource_requirements",
     "shifts",
+    "task_catalog_items",
 }
 
 
@@ -60,10 +61,13 @@ class SqlSchemaTests(unittest.TestCase):
         communication_messages = Base.metadata.tables["communication_messages"].c
         communication_snapshots = Base.metadata.tables["communication_snapshot_lines"].c
         planning_history = Base.metadata.tables["planning_change_history"].c
+        task_catalog = Base.metadata.tables["task_catalog_items"].c
 
         self.assertFalse(requirements.project_id.nullable)
         self.assertTrue(requirements.workforce_request_id.nullable)
         self.assertTrue(requests.work_package_id.nullable)
+        self.assertTrue(requests.erp_task_code.nullable)
+        self.assertTrue(requests.erp_task_label.nullable)
         self.assertFalse(requests.project_id.nullable)
         self.assertFalse(periods.workforce_request_id.nullable)
         self.assertFalse(periods.start_date.nullable)
@@ -107,6 +111,11 @@ class SqlSchemaTests(unittest.TestCase):
         self.assertTrue(planning_history.details.nullable)
         self.assertTrue(planning_history.actor_name.nullable)
         self.assertFalse(planning_history.occurred_at.nullable)
+        self.assertFalse(task_catalog.project_number.nullable)
+        self.assertFalse(task_catalog.task_code.nullable)
+        self.assertFalse(task_catalog.label.nullable)
+        self.assertFalse(task_catalog.status.nullable)
+        self.assertFalse(task_catalog.active.nullable)
 
     def test_metadata_creates_all_tables_on_sqlite_memory(self) -> None:
         engine = create_engine("sqlite+pysqlite:///:memory:")

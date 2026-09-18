@@ -68,6 +68,8 @@ class DemandReadModel:
     location: str | None = None
     work_package_ref: str | None = None
     work_package_name: str | None = None
+    task_code: str | None = None
+    task_label: str | None = None
     resource_count: int = 1
     required_competencies: str | None = None
     estimated_hours: float | None = None
@@ -100,6 +102,8 @@ class DemandReadModel:
             work_package_name=_optional_text(
                 row.get("WorkPackageName") or row.get("NomEffort")
             ),
+            task_code=_optional_text(row.get("TaskCode") or row.get("CodeTache")),
+            task_label=_optional_text(row.get("TaskLabel") or row.get("Tache")),
             resource_count=max(int(_number(row.get("NombreRessources")) or 1), 1),
             required_competencies=_optional_text(row.get("CompetencesRequises")),
             estimated_hours=_optional_number(row.get("TempsEstimeHeures")),

@@ -100,6 +100,13 @@ from .repository_ports import (
     SegmentRepositoryPort,
     WorkPackageRepositoryPort,
 )
+from .task_catalog import (
+    TaskCatalogItem,
+    TaskCatalogRepositoryPort,
+    TaskCatalogSourcePort,
+    TaskCatalogSyncResult,
+    TaskCatalogSyncService,
+)
 from .resource_admin import (
     AVAILABILITY_HOLIDAY,
     AVAILABILITY_STANDARD,
@@ -216,6 +223,11 @@ __all__ = [
     "SegmentUpdateCommand",
     "ShiftReadModel",
     "WorkPackageCreateCommand",
+    "TaskCatalogItem",
+    "TaskCatalogRepositoryPort",
+    "TaskCatalogSourcePort",
+    "TaskCatalogSyncResult",
+    "TaskCatalogSyncService",
     "WorkPackageMutationResult",
     "WorkPackageReadModel",
     "WorkPackageRepositoryPort",

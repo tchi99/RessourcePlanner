@@ -56,3 +56,6 @@ signing-output/
 *.xlsm
 ~$*.xlsx
 ~$*.xlsm
+
+# Manual ERP CSV exports
+imports/*.csv

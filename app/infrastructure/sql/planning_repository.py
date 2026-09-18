@@ -113,6 +113,8 @@ class SqlPlanningReadRepository(PlanningReadRepositoryPort):
                 "TempsEstimeHeures": _number(request.estimated_hours),
                 "TempsEstimeJours": _number(request.estimated_days),
                 "TechnicienPropose": resource.name if resource is not None else None,
+                "TaskCode": request.erp_task_code,
+                "TaskLabel": request.erp_task_label,
                 "DateCreation": request.created_at,
                 "DateModification": request.updated_at,
                 "ApprouvePar": request.approved_by_name,

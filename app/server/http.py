@@ -52,6 +52,7 @@ from .routes_dev_user_switcher import build_dev_user_switcher_router
 from .routes_integrations import build_integration_router
 from .routes_me import build_me_router
 from .routes_reads import build_read_router
+from .routes_task_catalog import build_task_catalog_router
 from .routes_user_admin import build_user_admin_router
 from .security import AuthResolver, install_authorization_middleware, static_auth_resolver
 
@@ -360,6 +361,7 @@ def create_api_app(
     app.include_router(build_user_admin_router(user_admin_dependency))
     app.include_router(build_command_router(facade_dependency, idempotency_dependency))
     app.include_router(build_read_router(query_dependency))
+    app.include_router(build_task_catalog_router(session_dependency))
     app.include_router(build_me_router(query_dependency))
     app.include_router(build_communication_router(communication_dependency))
     app.include_router(
