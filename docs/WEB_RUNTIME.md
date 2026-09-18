@@ -7,7 +7,8 @@ Le runtime normal ne lance ni NiceGUI, ni Excel, ni `main.py`. Un seul processus
 - l'interface React construite par Vite à `/`;
 - les assets statiques à `/assets/...`;
 - l'API à `/api/v1/...`;
-- le health check à `/health`;
+- le liveness check à `/health`;
+- le readiness check SQL/Alembic à `/ready`;
 - OpenAPI à `/docs` et `/openapi.json`.
 
 Le frontend utilise des URLs relatives. Il appelle donc FastAPI sur la même origine et aucun serveur Vite n'est requis en exploitation.
@@ -103,10 +104,13 @@ Le smoke vérifie avec une base SQLite en mémoire :
 
 - `/` retourne le `index.html` Vite;
 - au moins un asset `/assets/...` est réellement servi;
-- `/health` reste fonctionnel;
+- `/health` confirme la liveness sans toucher SQL;
+- `/ready` confirme la connexion et la révision Alembic exacte;
 - une route `/api/v1/...` inconnue retourne un vrai 404 JSON et n'est pas transformée en page React.
 
 La CI exécute ce smoke après `npm run build`.
+
+Après une installation réelle et un démarrage avec `Lancer_Web.bat`, exécuter `Verifier_Web.bat` dans une deuxième console. Ce smoke valide l'environnement `.venv-web`, l'absence de dépendances legacy, le frontend, `/health` et `/ready`.
 
 ## 6. Arrêt
 
@@ -167,3 +171,12 @@ Avant exposition réseau réelle, il reste notamment à valider ou ajouter selon
 - sauvegarde/restauration opérationnelle.
 
 Le jour du cutover, suivre également `SQL_CUTOVER_RUNBOOK.md`.
+
+
+## 11. Runbook d'exploitation
+
+Les procédures détaillées de configuration, diagnostic, sauvegarde/restauration, remplacement SQLite → SQL Server, mise à jour et rollback sont centralisées dans :
+
+- `V2_RUNTIME_OPERATIONS.md`;
+- `ENVIRONMENT_VARIABLES.md`;
+- `V2_SQLSERVER_READINESS.md`.
