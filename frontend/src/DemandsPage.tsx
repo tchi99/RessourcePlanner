@@ -269,6 +269,7 @@ export default function DemandsPage() {
     const query = normalize(taskSearch);
     return tasks.filter((task) => {
       if (!task.active && task.code !== form.task_code) return false;
+      if (task.code === form.task_code) return true;
       if (!query) return true;
       return normalize(`${task.code} ${task.label}`).includes(query);
     });
@@ -528,7 +529,7 @@ export default function DemandsPage() {
                 </label>
 
                 <label>
-                  <span>Rechercher une tâche ERP</span>
+                  <span>Recherche catalogue ERP</span>
                   <input
                     value={taskSearch}
                     onChange={(event) => setTaskSearch(event.target.value)}
