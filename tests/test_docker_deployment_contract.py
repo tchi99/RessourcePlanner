@@ -36,6 +36,9 @@ class DockerDeploymentContractTests(unittest.TestCase):
         self.assertIn("migrate:", compose)
         self.assertIn('command: ["python", "-m", "alembic", "upgrade", "head"]', compose)
         self.assertIn("condition: service_completed_successfully", compose)
+        self.assertIn("seed-dev:", compose)
+        self.assertIn('command: ["python", "tools/seed_demo_data.py"]', compose)
+        self.assertIn("RESOURCEPLANNER_DEV_USER_SWITCHER", compose)
         self.assertIn("backend:", compose)
         self.assertIn("frontend:", compose)
         self.assertNotIn("mssql:", compose.casefold())
@@ -46,6 +49,7 @@ class DockerDeploymentContractTests(unittest.TestCase):
         self.assertIn("RESOURCEPLANNER_IMAGE_TAG:?", compose)
         self.assertIn("RESOURCEPLANNER_DATABASE_URL:?", compose)
         self.assertIn("restart: unless-stopped", compose)
+        self.assertIn('RESOURCEPLANNER_DEV_USER_SWITCHER: "false"', compose)
         self.assertNotIn("alembic upgrade head", compose)
         self.assertNotIn("migrate:", compose)
 

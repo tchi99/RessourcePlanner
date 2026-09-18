@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { useAuth } from "./AuthContext";
 import CommunicationsPage from "./CommunicationsPage";
+import DevUserSwitcher from "./DevUserSwitcher";
 import DemandsWorkspace from "./DemandsWorkspace";
 import MediumTermPage from "./MediumTermPage";
 import PlanningPage from "./PlanningPage";
@@ -168,6 +169,7 @@ export default function App() {
             <span className="topbar-context">RessourcePlanner V2</span>
             <strong>{currentItem?.label}</strong>
           </div>
+          <DevUserSwitcher />
           <div className="topbar-status" title={`Mode d’authentification: ${principal.auth_mode}`}>
             <span className="status-dot" />
             {principal.display_name}

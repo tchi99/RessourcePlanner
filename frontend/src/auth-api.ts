@@ -12,6 +12,19 @@ export type AuthPrincipal = {
   auth_mode: string;
 };
 
+export type DevUserIdentity = {
+  user_id: string;
+  display_name: string;
+  roles: string[];
+  employee_external_id: string | null;
+};
+
+export type DevUserSwitcherState = {
+  enabled: boolean;
+  bootstrap: AuthPrincipal;
+  users: DevUserIdentity[];
+};
+
 const API_BASE = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/$/, "");
 
 async function apiError(response: Response): Promise<ApiError> {
@@ -45,6 +58,36 @@ export async function getCurrentPrincipal(signal?: AbortSignal): Promise<AuthPri
 
 export async function logoutCurrentSession(): Promise<void> {
   const response = await fetch(`${API_BASE}/api/v1/auth/logout`, {
+    method: "POST",
+    headers: { Accept: "application/json" },
+    credentials: "include",
+  });
+  if (!response.ok) throw await apiError(response);
+}
+
+export async function getDevUserSwitcher(signal?: AbortSignal): Promise<DevUserSwitcherState | null> {
+  const response = await fetch(`${API_BASE}/api/v1/dev/user-switcher`, {
+    headers: { Accept: "application/json" },
+    credentials: "include",
+    signal,
+  });
+  if (response.status === 404) return null;
+  if (!response.ok) throw await apiError(response);
+  return response.json() as Promise<DevUserSwitcherState>;
+}
+
+export async function selectDevUser(userId: string): Promise<void> {
+  const response = await fetch(`${API_BASE}/api/v1/dev/user-switcher/select`, {
+    method: "POST",
+    headers: { Accept: "application/json", "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ user_id: userId }),
+  });
+  if (!response.ok) throw await apiError(response);
+}
+
+export async function resetDevUser(): Promise<void> {
+  const response = await fetch(`${API_BASE}/api/v1/dev/user-switcher/reset`, {
     method: "POST",
     headers: { Accept: "application/json" },
     credentials: "include",

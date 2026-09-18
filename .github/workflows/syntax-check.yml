@@ -155,6 +155,11 @@ jobs:
           curl -fsS http://127.0.0.1:18080/health | grep -q '"status":"ok"'
           curl -fsS http://127.0.0.1:18080/ | grep -qi '<html'
           curl -fsS 'http://127.0.0.1:18080/api/v1/projects?active_only=true' >/tmp/projects.json
+          curl -fsS 'http://127.0.0.1:18080/api/v1/dev/user-switcher' >/tmp/switcher.json
+          grep -q 'Technicien Démo A' /tmp/switcher.json
+          tech_id="$(python -c 'import json; data=json.load(open("/tmp/switcher.json")); print(next(row["user_id"] for row in data["users"] if row["display_name"]=="Technicien Démo A"))')"
+          curl -fsS -c /tmp/dev-cookie.txt             -H 'Content-Type: application/json'             -d "{\"user_id\":\"$tech_id\"}"             'http://127.0.0.1:18080/api/v1/dev/user-switcher/select' >/tmp/select.json
+          curl -fsS -b /tmp/dev-cookie.txt             'http://127.0.0.1:18080/api/v1/auth/me' | grep -q '"TECHNICIAN"'
       - name: Show Docker diagnostics on failure
         if: failure()
         run: |

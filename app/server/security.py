@@ -46,6 +46,8 @@ def required_permission(method: str, path: str) -> str | None:
         return None
     if path in {"/api/v1/auth/me", "/api/v1/auth/logout"}:
         return None
+    if path.startswith("/api/v1/dev/user-switcher"):
+        return None
     if path.startswith("/api/v1/admin/users"):
         return PERMISSION_ADMIN_USERS
     if path.startswith("/api/v1/communications"):

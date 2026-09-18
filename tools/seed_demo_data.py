@@ -16,12 +16,20 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from app.application.security import (  # noqa: E402
+    ROLE_ADMIN,
+    ROLE_COORDINATOR,
+    ROLE_MANAGER,
+    ROLE_PROJECT_MANAGER,
+    ROLE_TECHNICIAN,
+)
 from app.infrastructure.sql import (  # noqa: E402
     Project,
     Resource,
     ResourceAvailabilityRule,
     ResourceRequirement,
     Shift,
+    SqlUserIdentityRepository,
     WorkforceRequest,
     WorkforceRequestHistory,
     WorkforceRequestPeriod,
@@ -43,6 +51,11 @@ DEMO_RESOURCE_IDS = (
     "DEMO-R-DRAW-1",
     "DEMO-R-PM-1",
 )
+DEV_IDENTITY_ISSUER = "urn:resourceplanner:dev"
+DEV_TECHNICIAN_EXTERNAL_IDS = {
+    "DEMO-R-AUTO-1": "DEV-TECH-A",
+    "DEMO-R-AUTO-2": "DEV-TECH-B",
+}
 
 
 @dataclass(frozen=True)
@@ -55,6 +68,7 @@ class DemoSeedSummary:
     requirements: int
     shifts: int
     periods: int
+    users: int
 
 
 def _week_start(day: date) -> date:
@@ -188,6 +202,8 @@ def _upsert_demo_resources(session: Session, monday: date) -> None:
         resource.name = name
         resource.resource_class = resource_class
         resource.competencies = competencies
+        if resource_id in DEV_TECHNICIAN_EXTERNAL_IDS:
+            resource.external_id = DEV_TECHNICIAN_EXTERNAL_IDS[resource_id]
         resource.note = "Ressource de démonstration locale"
         resource.active = True
         resource.sort_order = sort_order
@@ -219,6 +235,29 @@ def _upsert_demo_resources(session: Session, monday: date) -> None:
         )
 
 
+def _upsert_dev_users(session: Session) -> int:
+    repository = SqlUserIdentityRepository(session)
+    definitions = (
+        ("admin", "Administrateur Démo", ROLE_ADMIN, None),
+        ("coordinator", "Coordonnateur Démo", ROLE_COORDINATOR, None),
+        ("project-manager", "Chargé de projet Démo", ROLE_PROJECT_MANAGER, None),
+        ("manager", "Gestionnaire Démo", ROLE_MANAGER, None),
+        ("technician-a", "Technicien Démo A", ROLE_TECHNICIAN, "DEV-TECH-A"),
+        ("technician-b", "Technicien Démo B", ROLE_TECHNICIAN, "DEV-TECH-B"),
+    )
+    for subject, display_name, role, employee_external_id in definitions:
+        repository.upsert(
+            issuer=DEV_IDENTITY_ISSUER,
+            subject=subject,
+            display_name=display_name,
+            email=None,
+            employee_external_id=employee_external_id,
+            roles=(role,),
+            active=True,
+        )
+    return len(definitions)
+
+
 def seed_demo_session(session: Session, *, today: date | None = None) -> DemoSeedSummary:
     today = today or date.today()
     monday = _week_start(today)
@@ -226,6 +265,7 @@ def seed_demo_session(session: Session, *, today: date | None = None) -> DemoSee
 
     _clear_demo_project_data(session)
     _upsert_demo_resources(session, monday)
+    dev_user_count = _upsert_dev_users(session)
 
     projects = (
         Project(
@@ -619,6 +659,7 @@ def seed_demo_session(session: Session, *, today: date | None = None) -> DemoSee
         requirements=len(requirements),
         shifts=len(shifts),
         periods=len(periods),
+        users=dev_user_count,
     )
 
 
@@ -638,6 +679,7 @@ def seed_demo_database(database_url: str, *, today: date | None = None) -> DemoS
             "workforce_requests",
             "resource_requirements",
             "shifts",
+            "app_users",
         }
         existing = set(inspect(engine).get_table_names())
         missing = sorted(required_tables - existing)
@@ -684,7 +726,8 @@ def main() -> int:
         f"{summary.demands} demandes, "
         f"{summary.requirements} besoins, "
         f"{summary.shifts} quarts, "
-        f"{summary.periods} périodes."
+        f"{summary.periods} périodes, "
+        f"{summary.users} identités de développement."
     )
     print("Le rechargement remplace uniquement les données des projets DEMO-*.")
     return 0

@@ -47,7 +47,12 @@ button { cursor: pointer; }
 .topbar > div:nth-child(2) { min-width: 0; }
 .topbar-context { display: block; color: var(--muted); font-size: .66rem; text-transform: uppercase; letter-spacing: .06em; }
 .topbar strong { display: block; font-size: .88rem; }
-.topbar-status { margin-left: auto; display: flex; align-items: center; gap: .4rem; color: var(--muted); font-size: .72rem; }
+.dev-user-switcher { margin-left: auto; display: grid; gap: .12rem; min-width: 245px; }
+.dev-user-switcher label { display: flex; align-items: center; gap: .45rem; }
+.dev-user-switcher label > span { color: var(--muted); font-size: .64rem; font-weight: 700; white-space: nowrap; }
+.dev-user-switcher select { min-width: 0; width: 100%; min-height: 34px; border: 1px solid var(--border); border-radius: 8px; background: white; color: var(--ink); padding: .3rem .45rem; font-size: .7rem; }
+.dev-user-switcher small { color: var(--danger); font-size: .6rem; }
+.topbar-status { display: flex; align-items: center; gap: .4rem; color: var(--muted); font-size: .72rem; }
 .status-dot { width: 7px; height: 7px; border-radius: 999px; background: #d79a2b; }
 .menu-button { display: none; border: 0; background: transparent; font-size: 1.2rem; }
 .main-content { padding: 1.2rem; }
@@ -170,6 +175,8 @@ h1 { font-size: 1.6rem; }
   .week-navigation { display: grid; grid-template-columns: 1fr 1fr 1fr; }
   .week-navigation button { padding: .4rem; font-size: .68rem; }
   .pending-list { grid-template-columns: 1fr; }
+  .dev-user-switcher { margin-left: auto; min-width: 180px; }
+  .dev-user-switcher label > span { display: none; }
   .topbar-status { display: none; }
   h1 { font-size: 1.3rem; }
 }

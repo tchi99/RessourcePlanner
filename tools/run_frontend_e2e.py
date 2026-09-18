@@ -28,6 +28,7 @@ from app.application.security import (
     AuthPrincipal,
     ROLE_ADMIN,
     ROLE_COORDINATOR,
+    ROLE_MANAGER,
     ROLE_PROJECT_MANAGER,
     ROLE_TECHNICIAN,
 )
@@ -36,10 +37,15 @@ from app.infrastructure.sql import (
     Project,
     Resource,
     ResourceAvailabilityRule,
+    SqlUserIdentityRepository,
     create_session_factory,
     create_sql_engine,
 )
 from app.server import create_api_app
+from app.server.dev_user_switcher import (
+    DevUserSwitcherRuntime,
+    dev_user_switcher_auth_resolver,
+)
 from app.server.frontend import attach_frontend
 
 
@@ -81,6 +87,29 @@ def _principal_for_request(request: Request) -> AuthPrincipal | None:
         roles=(role,),
         auth_mode="test",
     )
+
+
+def _bootstrap_principal() -> AuthPrincipal:
+    return AuthPrincipal.from_roles(
+        local_user_id=None,
+        issuer="urn:resourceplanner:local",
+        subject="playwright-bootstrap",
+        display_name="Administrateur bootstrap E2E",
+        email=None,
+        roles=(ROLE_ADMIN,),
+        auth_mode="local",
+    )
+
+
+def _combined_auth_resolver(dev_resolver):
+    def resolve(request: Request) -> AuthPrincipal | None:
+        if str(request.headers.get("X-E2E-Anonymous") or "").strip():
+            return None
+        if str(request.headers.get("X-E2E-Role") or "").strip():
+            return _principal_for_request(request)
+        return dev_resolver(request)
+
+    return resolve
 
 
 def _seed(database_url: str) -> None:
@@ -137,6 +166,25 @@ def _seed(database_url: str) -> None:
                         active=True,
                     )
                 )
+
+            users = SqlUserIdentityRepository(session)
+            for subject, display_name, role, employee_external_id in (
+                ("admin", "Administrateur Démo", ROLE_ADMIN, None),
+                ("coordinator", "Coordonnateur Démo", ROLE_COORDINATOR, None),
+                ("project-manager", "Chargé de projet Démo", ROLE_PROJECT_MANAGER, None),
+                ("manager", "Gestionnaire Démo", ROLE_MANAGER, None),
+                ("technician-a", "Technicien Démo A", ROLE_TECHNICIAN, "EMP-ALICE"),
+                ("technician-b", "Technicien Démo B", ROLE_TECHNICIAN, "EMP-BOB"),
+            ):
+                users.upsert(
+                    issuer="urn:resourceplanner:e2e-dev",
+                    subject=subject,
+                    display_name=display_name,
+                    email=None,
+                    employee_external_id=employee_external_id,
+                    roles=(role,),
+                    active=True,
+                )
     finally:
         engine.dispose()
 
@@ -148,9 +196,12 @@ def build_app(database_path: Path, frontend_dist: Path):
     database_url = f"sqlite+pysqlite:///{database_path.as_posix()}"
     _seed(database_url)
     transport = FakePlaywrightCommunicationTransport()
+    dev_runtime = DevUserSwitcherRuntime(bootstrap_principal=_bootstrap_principal())
+    dev_resolver = dev_user_switcher_auth_resolver(dev_runtime)
     app = create_api_app(
         database_url,
-        auth_resolver=_principal_for_request,
+        auth_resolver=_combined_auth_resolver(dev_resolver),
+        dev_user_switcher_runtime=dev_runtime,
         communication_transport=transport,
     )
     attach_frontend(app, frontend_dist, required=True)
