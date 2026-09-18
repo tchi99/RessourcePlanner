@@ -6,6 +6,7 @@ from app.performance_baseline import (
     EndpointBudget,
     aggregate_dataset,
     baseline_payload,
+    compare_baselines,
     evaluate_budgets,
     percentile,
     query_growth,
@@ -100,6 +101,17 @@ class V2PerformanceBaselineTests(unittest.TestCase):
         payload = baseline_payload(reports, budgets={OPERATION: budget})
         self.assertTrue(payload["passed"])
         self.assertIn("not SQL Server production latency targets", payload["production_interpretation"])
+
+    def test_before_after_comparison_reports_latency_and_query_deltas(self) -> None:
+        before = baseline_payload([_report("small", 2), _report("large", 4)])
+        after = baseline_payload([_report("small", 3), _report("large", 7)])
+        comparison = compare_baselines(before, after)
+
+        small = comparison["datasets"]["small"]["operations"][OPERATION]
+        large = comparison["datasets"]["large"]["operations"][OPERATION]
+        self.assertEqual(small["db_queries_delta"], 1)
+        self.assertEqual(large["db_queries_delta"], 3)
+        self.assertEqual(small["p95_seconds_delta"], 0.0)
 
     def test_missing_representative_operation_fails_closed(self) -> None:
         budget = EndpointBudget(2, 2, 1, 1, 5.0)
