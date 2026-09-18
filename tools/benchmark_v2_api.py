@@ -30,6 +30,7 @@ from app.performance_baseline import (
     DATASET_ORDER,
     aggregate_dataset,
     baseline_payload,
+    compare_baselines,
     format_baseline_report,
 )
 from app.performance_diagnostics import read_performance_samples
@@ -253,6 +254,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--iterations", type=int, default=5)
     parser.add_argument("--output", type=Path)
     parser.add_argument(
+        "--compare",
+        type=Path,
+        help="Baseline JSON précédente à comparer au run courant.",
+    )
+    parser.add_argument(
         "--ci",
         action="store_true",
         help="Retourne un code non nul lorsqu'un budget structurel est dépassé.",
@@ -272,6 +278,11 @@ def main() -> int:
             for name in selected
         ]
     payload = baseline_payload(reports)
+    if args.compare is not None:
+        before = json.loads(args.compare.read_text(encoding="utf-8"))
+        if not isinstance(before, dict):
+            raise SystemExit("--compare doit pointer vers un objet JSON de baseline")
+        payload["comparison"] = compare_baselines(before, payload)
     print(format_baseline_report(payload))
     if args.output is not None:
         args.output.parent.mkdir(parents=True, exist_ok=True)
