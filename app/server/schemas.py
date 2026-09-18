@@ -105,6 +105,7 @@ class DemandCreateRequest(StrictRequest):
     client: str = ""
     requester: str | None = None
     work_package_ref: str | None = None
+    task_code: str | None = None
     request_type: str = "Projet"
     priority: str = "Normale"
     confirmation: str = "Confirmée"
@@ -125,6 +126,7 @@ class DemandUpdateRequest(StrictRequest):
     client: str | None = None
     requester: str | None = None
     work_package_ref: str | None = None
+    task_code: str | None = None
     request_type: str | None = None
     priority: str | None = None
     confirmation: str | None = None
