@@ -20,7 +20,7 @@ services:
     image: ${RESOURCEPLANNER_BACKEND_IMAGE:-resourceplanner-backend}:${RESOURCEPLANNER_IMAGE_TAG:-local}
     command: ["python", "tools/seed_demo_data.py"]
     depends_on:
-      seed-dev:
+      migrate:
         condition: service_completed_successfully
     environment:
       RESOURCEPLANNER_DATABASE_URL: "${RESOURCEPLANNER_DATABASE_URL:-sqlite+pysqlite:////data/resourceplanner.db}"
@@ -34,7 +34,7 @@ services:
       dockerfile: Dockerfile.backend
     image: ${RESOURCEPLANNER_BACKEND_IMAGE:-resourceplanner-backend}:${RESOURCEPLANNER_IMAGE_TAG:-local}
     depends_on:
-      migrate:
+      seed-dev:
         condition: service_completed_successfully
     environment:
       RESOURCEPLANNER_DATABASE_URL: "${RESOURCEPLANNER_DATABASE_URL:-sqlite+pysqlite:////data/resourceplanner.db}"
