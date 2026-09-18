@@ -17,8 +17,10 @@ from app.infrastructure.sql import (
     transactional_session,
 )
 from app.server.runtime import ServerSettings
+from sqlalchemy import text
 from tools.check_server_runtime import (
-    ServerReadinessError,
+    MigrationReadinessError,
+    _expected_alembic_head,
     check_server_runtime,
     main,
 )
@@ -30,6 +32,17 @@ class ServerReadinessToolTests(unittest.TestCase):
         url = f"sqlite:///{path.as_posix()}"
         engine = create_sql_engine(url)
         Base.metadata.create_all(engine)
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    "CREATE TABLE alembic_version "
+                    "(version_num VARCHAR(32) NOT NULL PRIMARY KEY)"
+                )
+            )
+            connection.execute(
+                text("INSERT INTO alembic_version(version_num) VALUES (:head)"),
+                {"head": _expected_alembic_head()},
+            )
         factory = create_session_factory(engine)
         with transactional_session(factory) as session:
             session.add_all(
@@ -58,11 +71,10 @@ class ServerReadinessToolTests(unittest.TestCase):
         with TemporaryDirectory() as directory:
             path = Path(directory) / "empty.db"
             settings = ServerSettings(database_url=f"sqlite:///{path.as_posix()}")
-            with self.assertRaises(ServerReadinessError) as caught:
+            with self.assertRaises(MigrationReadinessError) as caught:
                 check_server_runtime(settings)
 
-        self.assertIn("/api/v1/projects", str(caught.exception))
-        self.assertIn("HTTP 500", str(caught.exception))
+        self.assertIn("alembic_version", str(caught.exception))
 
     def test_cli_returns_configuration_exit_code_without_database_url(self) -> None:
         stderr = StringIO()

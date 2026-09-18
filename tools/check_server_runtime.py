@@ -5,6 +5,11 @@ from pathlib import Path
 import sys
 from typing import Any
 
+from alembic.config import Config
+from alembic.script import ScriptDirectory
+from sqlalchemy import inspect, text
+from sqlalchemy.exc import DBAPIError, NoSuchModuleError
+
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -12,6 +17,7 @@ if str(ROOT) not in sys.path:
 
 from fastapi.testclient import TestClient
 
+from app.infrastructure.sql import create_sql_engine
 from app.server.runtime import (
     ServerConfigurationError,
     ServerSettings,
@@ -20,7 +26,93 @@ from app.server.runtime import (
 
 
 class ServerReadinessError(RuntimeError):
-    """Raised when a read-only server smoke check fails."""
+    """Raised when the configured API is reachable but not ready."""
+
+
+class DriverReadinessError(RuntimeError):
+    """Raised when the configured SQLAlchemy/DBAPI driver cannot be loaded."""
+
+
+class ConnectivityReadinessError(RuntimeError):
+    """Raised when the database driver loads but the server cannot be reached/used."""
+
+
+class MigrationReadinessError(RuntimeError):
+    """Raised when the target database is not on the expected Alembic head."""
+
+
+def _expected_alembic_head() -> str:
+    config = Config(str(ROOT / "alembic.ini"))
+    config.set_main_option("script_location", str(ROOT / "migrations"))
+    heads = ScriptDirectory.from_config(config).get_heads()
+    if len(heads) != 1:
+        raise MigrationReadinessError(
+            "Le dépôt doit exposer une seule tête Alembic avant le démarrage."
+        )
+    return heads[0]
+
+
+def check_database_preflight(database_url: str) -> dict[str, Any]:
+    """Validate driver, connectivity and migration state without changing data."""
+
+    try:
+        engine = create_sql_engine(database_url)
+    except (ModuleNotFoundError, ImportError, NoSuchModuleError) as exc:
+        raise DriverReadinessError(
+            "Le dialecte/driver de base de données configuré n'est pas installé."
+        ) from exc
+
+    try:
+        try:
+            connection = engine.connect()
+        except (ModuleNotFoundError, ImportError, NoSuchModuleError) as exc:
+            raise DriverReadinessError(
+                "Le DBAPI/driver ODBC configuré n'est pas installé."
+            ) from exc
+        except DBAPIError as exc:
+            raise ConnectivityReadinessError(
+                "Le driver est chargé, mais la connexion à la base de données a échoué."
+            ) from exc
+
+        with connection:
+            try:
+                connection.execute(text("SELECT 1")).scalar_one()
+                tables = set(inspect(connection).get_table_names())
+            except DBAPIError as exc:
+                raise ConnectivityReadinessError(
+                    "La connexion a été ouverte, mais la base n'est pas interrogeable."
+                ) from exc
+
+            if "alembic_version" not in tables:
+                raise MigrationReadinessError(
+                    "La table alembic_version est absente; exécuter les migrations avant le serveur."
+                )
+
+            try:
+                revisions = tuple(
+                    str(value)
+                    for value in connection.execute(
+                        text("SELECT version_num FROM alembic_version")
+                    ).scalars()
+                )
+            except DBAPIError as exc:
+                raise MigrationReadinessError(
+                    "Impossible de lire la version Alembic de la base."
+                ) from exc
+
+            expected = _expected_alembic_head()
+            if revisions != (expected,):
+                current = ", ".join(revisions) if revisions else "<aucune>"
+                raise MigrationReadinessError(
+                    f"Migration requise: base={current}; dépôt={expected}."
+                )
+            return {
+                "database": engine.dialect.name,
+                "alembic_revision": expected,
+                "connectivity": "ok",
+            }
+    finally:
+        engine.dispose()
 
 
 def _response_json(response, *, path: str) -> Any:
@@ -40,7 +132,18 @@ def _response_json(response, *, path: str) -> Any:
 def check_server_runtime(settings: ServerSettings) -> dict[str, Any]:
     """Exercise the configured API without mutating business data."""
 
-    app = create_configured_app(settings)
+    database = check_database_preflight(settings.database_url)
+    try:
+        app = create_configured_app(settings)
+    except (ModuleNotFoundError, ImportError, NoSuchModuleError) as exc:
+        raise DriverReadinessError(
+            "Le driver de base de données requis par le serveur n'est pas installé."
+        ) from exc
+    except DBAPIError as exc:
+        raise ConnectivityReadinessError(
+            "Le serveur n'a pas pu ouvrir sa connexion de base de données."
+        ) from exc
+
     with TestClient(app, raise_server_exceptions=False) as client:
         health = _response_json(client.get("/health"), path="/health")
         projects = _response_json(
@@ -64,8 +167,10 @@ def check_server_runtime(settings: ServerSettings) -> dict[str, Any]:
 
     return {
         "status": "ok",
-        "database": str(health.get("database") or "unknown"),
+        "database": str(health.get("database") or database["database"]),
         "api": str(health.get("api") or "unknown"),
+        "alembic_revision": database["alembic_revision"],
+        "connectivity": database["connectivity"],
         "active_projects": len(projects),
         "active_resources": len(resources),
         "openapi_paths": len(openapi.get("paths", {})),
@@ -86,16 +191,24 @@ def main() -> int:
 
     try:
         summary = check_server_runtime(settings)
+    except DriverReadinessError as exc:
+        _print_error("driver_error", str(exc))
+        return 3
+    except ConnectivityReadinessError as exc:
+        _print_error("connectivity_error", str(exc))
+        return 5
+    except MigrationReadinessError as exc:
+        _print_error("migration_error", str(exc))
+        return 6
     except ServerReadinessError as exc:
         _print_error("readiness_error", str(exc))
-        return 3
+        return 7
     except Exception as exc:
-        # A missing DBAPI/ODBC driver or another infrastructure error can occur before
-        # FastAPI is able to translate it to its stable HTTP contract. Report only the
-        # exception type here so a connection string/password can never leak to output.
+        # Never echo the exception message: it may contain a URL, host, username or
+        # connection-string fragment. The type is sufficient for unexpected failures.
         _print_error(
             "technical_error",
-            "Le préflight n'a pas pu initialiser ou interroger le backend.",
+            "Le préflight a rencontré une erreur technique non classée.",
             error_type=type(exc).__name__,
         )
         return 4
