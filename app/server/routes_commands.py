@@ -106,14 +106,26 @@ def build_command_router(
         idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
         facade: ApplicationFacade = Depends(facade_dependency),
         idempotency: IdempotentCommandExecutor = Depends(idempotency_dependency),
+        session: Session = Depends(session_dependency),
     ) -> dict[str, Any]:
+        competencies = _catalog(session)
+        selection_supplied = "competency_ids" in body.model_fields_set
+        competency_ids = tuple(body.competency_ids or ())
+        values = body.model_dump(exclude={"competency_ids"})
+        if selection_supplied:
+            values["competencies"] = competencies.snapshot_text(competency_ids)
+
+        def action() -> dict[str, Any]:
+            result = facade.create_resource(ResourceCreateCommand(**values))
+            if selection_supplied:
+                competencies.assign_resource(result.resource_id, competency_ids)
+            return _payload(result)
+
         return idempotency.execute(
             scope="resource.create",
             key=idempotency_key,
             request_payload=_json_body(body),
-            action=lambda: _payload(
-                facade.create_resource(ResourceCreateCommand(**body.model_dump()))
-            ),
+            action=action,
         )
 
     @router.patch("/resources/{resource_id}")
@@ -121,15 +133,20 @@ def build_command_router(
         resource_id: str,
         body: ResourceUpdateRequest,
         facade: ApplicationFacade = Depends(facade_dependency),
+        session: Session = Depends(session_dependency),
     ) -> dict[str, Any]:
-        return _payload(
-            facade.update_resource(
-                ResourceUpdateCommand(
-                    resource_id=resource_id,
-                    **body.model_dump(exclude_unset=True),
-                )
-            )
+        competencies = _catalog(session)
+        selection_supplied = "competency_ids" in body.model_fields_set
+        competency_ids = tuple(body.competency_ids or ())
+        values = body.model_dump(exclude_unset=True, exclude={"competency_ids"})
+        if selection_supplied:
+            values["competencies"] = competencies.snapshot_text(competency_ids)
+        result = facade.update_resource(
+            ResourceUpdateCommand(resource_id=resource_id, **values)
         )
+        if selection_supplied:
+            competencies.assign_resource(resource_id, competency_ids)
+        return _payload(result)
 
     @router.post("/resources/{resource_id}/deactivate")
     def deactivate_resource(
