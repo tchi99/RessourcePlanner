@@ -12,7 +12,7 @@ class DockerDeploymentContractTests(unittest.TestCase):
         dockerfile = (ROOT / "Dockerfile.backend").read_text(encoding="utf-8")
         self.assertIn("FROM python:3.12-slim", dockerfile)
         self.assertIn("requirements-server.txt", dockerfile)
-        self.assertIn("python -m app.server", dockerfile)
+        self.assertIn('CMD ["python", "-m", "app.server"]', dockerfile)
         self.assertNotIn("requirements.txt", dockerfile)
         self.assertNotIn("nicegui", dockerfile.casefold())
         self.assertNotIn("xlwings", dockerfile.casefold())
