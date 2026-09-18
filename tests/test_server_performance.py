@@ -68,7 +68,7 @@ class ServerPerformanceTests(unittest.TestCase):
             self.assertEqual(sample["external_item_count"], 3)
             self.assertEqual(sample["engine"], "fastapi-v2")
 
-    def test_create_api_app_records_health_database_timing(self) -> None:
+    def test_create_api_app_records_health_without_database_dependency(self) -> None:
         with TemporaryDirectory() as directory:
             database_path = Path(directory) / "health.db"
             log_path = Path(directory) / "performance.jsonl"
@@ -86,8 +86,8 @@ class ServerPerformanceTests(unittest.TestCase):
             self.assertEqual(len(samples), 1)
             sample = samples[0]
             self.assertEqual(sample["operation"], "http GET /health")
-            self.assertEqual(sample["db_query_count"], 1)
-            self.assertGreaterEqual(sample["db_seconds"], 0.0)
+            self.assertEqual(sample["db_query_count"], 0)
+            self.assertEqual(sample["db_seconds"], 0.0)
 
     def test_percentile_report_aggregates_http_samples(self) -> None:
         rows = [

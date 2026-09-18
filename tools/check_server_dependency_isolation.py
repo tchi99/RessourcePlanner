@@ -53,6 +53,7 @@ def main() -> int:
     paths = app.openapi().get("paths", {})
     required_paths = {
         "/health",
+        "/ready",
         "/api/v1/projects",
         "/api/v1/work-packages",
         "/api/v1/demands",
@@ -76,7 +77,7 @@ def main() -> int:
         json.dumps(
             {
                 "status": "ok",
-                "database": health.get("database"),
+                "liveness": health.get("status"),
                 "api": health.get("api"),
                 "openapi_paths": len(paths),
                 "legacy_modules_present": [],

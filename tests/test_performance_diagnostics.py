@@ -78,8 +78,13 @@ class PerformanceDiagnosticsTests(unittest.TestCase):
                 )
             self.assertTrue(path.exists())
             self.assertTrue(path.with_name("performance.jsonl.1").exists())
-            for line in path.read_text(encoding="utf-8").splitlines():
+            current_lines = path.read_text(encoding="utf-8").splitlines()
+            for line in current_lines:
                 self.assertIsInstance(json.loads(line), dict)
+
+            samples = read_performance_samples(path=path, limit=50, backups=2)
+            self.assertGreater(len(samples), len(current_lines))
+            self.assertEqual(samples[-1]["segment_count"], 11)
 
     def test_negative_timings_and_counters_are_normalized(self) -> None:
         data = PerformanceSample(

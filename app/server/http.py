@@ -8,7 +8,6 @@ from typing import Any, Callable
 from fastapi import Depends, FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
-from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from ..application import (
@@ -44,6 +43,7 @@ from .performance import (
     install_performance_middleware,
     install_sql_performance_instrumentation,
 )
+from .readiness import DatabaseReadinessError, check_database_readiness
 from .routes_auth import build_auth_router
 from .routes_commands import build_command_router
 from .routes_communications import build_communication_router
@@ -223,6 +223,7 @@ def create_api_app(
     oidc_runtime: OidcRuntime | None = None,
     communication_transport: CommunicationTransportPort | None = None,
     performance_log_path: Path | None = None,
+    runtime_dependencies: dict[str, Any] | None = None,
 ) -> FastAPI:
     engine = create_sql_engine(database_url)
     install_sql_performance_instrumentation(engine)
@@ -272,6 +273,7 @@ def create_api_app(
     app.state.query_dependency = query_dependency
     app.state.user_admin_dependency = user_admin_dependency
     app.state.communication_dependency = communication_dependency
+    app.state.runtime_dependencies = dict(runtime_dependencies or {})
 
     install_authorization_middleware(
         app,
@@ -312,12 +314,37 @@ def create_api_app(
         )
 
     @app.get("/health", tags=["system"])
-    def health(session: Session = Depends(session_dependency)) -> dict[str, Any]:
-        session.execute(text("SELECT 1"))
+    def health() -> dict[str, Any]:
+        """Process liveness only; intentionally does not touch SQL or external systems."""
         return {
             "status": "ok",
-            "database": engine.dialect.name,
             "api": "v1",
+        }
+
+    @app.get("/ready", tags=["system"], response_model=None)
+    def readiness() -> Any:
+        """Required local dependencies only; external integrations are informational."""
+        dependencies = dict(app.state.runtime_dependencies)
+        try:
+            database = check_database_readiness(engine)
+        except DatabaseReadinessError as exc:
+            return JSONResponse(
+                status_code=503,
+                content={
+                    "status": "not_ready",
+                    "api": "v1",
+                    "database": {
+                        "status": "error",
+                        "reason": exc.code,
+                    },
+                    "external_dependencies": dependencies,
+                },
+            )
+        return {
+            "status": "ready",
+            "api": "v1",
+            "database": database,
+            "external_dependencies": dependencies,
         }
 
     app.include_router(build_auth_router(oidc_runtime))
