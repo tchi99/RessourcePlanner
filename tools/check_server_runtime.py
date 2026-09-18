@@ -196,13 +196,13 @@ def main() -> int:
         return 3
     except ConnectivityReadinessError as exc:
         _print_error("connectivity_error", str(exc))
-        return 4
+        return 5
     except MigrationReadinessError as exc:
         _print_error("migration_error", str(exc))
-        return 5
+        return 6
     except ServerReadinessError as exc:
         _print_error("readiness_error", str(exc))
-        return 6
+        return 7
     except Exception as exc:
         # Never echo the exception message: it may contain a URL, host, username or
         # connection-string fragment. The type is sufficient for unexpected failures.
@@ -211,7 +211,7 @@ def main() -> int:
             "Le préflight a rencontré une erreur technique non classée.",
             error_type=type(exc).__name__,
         )
-        return 7
+        return 4
 
     print(json.dumps(summary, ensure_ascii=False, sort_keys=True))
     return 0
