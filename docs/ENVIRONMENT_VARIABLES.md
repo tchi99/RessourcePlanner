@@ -22,8 +22,11 @@ Ce document inventorie les variables du runtime Web. Il indique **quoi configure
 | `RESOURCEPLANNER_LOCAL_AUTH_EMAIL` | Courriel descriptif local |
 | `RESOURCEPLANNER_LOCAL_AUTH_ROLES` | Rôles locaux |
 | `RESOURCEPLANNER_ALLOW_LOCAL_AUTH_NETWORK` | Autorise explicitement le mode local hors loopback |
+| `RESOURCEPLANNER_DEV_USER_SWITCHER` | Active le sélecteur d’identités de développement; défaut `false`, accepté uniquement avec `RESOURCEPLANNER_AUTH_MODE=local` |
 
 Le mode local refuse par défaut une écoute réseau. Ne pas utiliser l'override comme substitut à l'authentification réelle lors d'une exposition réseau.
+
+Le sélecteur de développement crée une session locale HttpOnly vers un `AppUser` existant et réutilise les rôles/permissions backend. Il n'émule pas OIDC et le serveur refuse de démarrer si le switcher est demandé en mode `oidc`. Le Compose Synology le force explicitement à `false`.
 
 ## OIDC
 
