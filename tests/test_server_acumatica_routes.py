@@ -4,10 +4,12 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
 
+import httpx
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
 from app.application import ApplicationOperationError, ExternalProjectRecord
+from app.infrastructure.acumatica import AcumaticaProjectSource, AcumaticaProjectSourceSettings
 from app.infrastructure.sql import (
     Base,
     Project,
@@ -159,6 +161,67 @@ class ServerAcumaticaRouteTests(unittest.TestCase):
             self.assertEqual(sample["external_call_count"], 1)
             self.assertEqual(sample["external_item_count"], 0)
             self.assertGreaterEqual(sample["external_seconds"], 0.0)
+
+    def test_failed_second_page_does_not_apply_partial_acumatica_snapshot(self) -> None:
+        with TemporaryDirectory() as directory:
+            database_url = self._database(directory)
+            engine = create_sql_engine(database_url)
+            factory = create_session_factory(engine)
+            try:
+                with transactional_session(factory) as session:
+                    session.add(
+                        Project(
+                            id="EXISTING",
+                            erp_external_id="ERP-EXISTING",
+                            number="P-EXISTING",
+                            name="Nom local conservé",
+                            status="Active",
+                        )
+                    )
+            finally:
+                engine.dispose()
+
+            def handler(request: httpx.Request) -> httpx.Response:
+                if request.url.params.get("$skip") == "0":
+                    return httpx.Response(
+                        200,
+                        json=[
+                            {
+                                "id": "ERP-EXISTING",
+                                "ProjectID": {"value": "P-EXISTING"},
+                                "Description": {"value": "Nom partiel à ne pas appliquer"},
+                            },
+                            {
+                                "id": "ERP-FIRST",
+                                "ProjectID": {"value": "P-FIRST"},
+                                "Description": {"value": "Nouveau partiel"},
+                            },
+                        ],
+                    )
+                return httpx.Response(503, text="upstream unavailable")
+
+            source = AcumaticaProjectSource(
+                AcumaticaProjectSourceSettings(
+                    base_url="https://erp.example.test/Instance",
+                    bearer_token="runtime-secret",
+                    version="25.200.001",
+                    page_size=2,
+                ),
+                transport=httpx.MockTransport(handler),
+            )
+            app = create_api_app(database_url, project_source=source)
+            with TestClient(app) as client:
+                sync = client.post("/api/v1/integrations/acumatica/projects/sync")
+                projects = client.get("/api/v1/projects")
+
+            self.assertEqual(sync.status_code, 500)
+            self.assertEqual(
+                sync.json()["error"]["context"]["failure_kind"],
+                "upstream_5xx",
+            )
+            self.assertEqual(len(projects.json()), 1)
+            self.assertEqual(projects.json()[0]["number"], "P-EXISTING")
+            self.assertEqual(projects.json()[0]["name"], "Nom local conservé")
 
     def test_mid_sync_conflict_rolls_back_every_project_written_by_that_pull(self) -> None:
         with TemporaryDirectory() as directory:
