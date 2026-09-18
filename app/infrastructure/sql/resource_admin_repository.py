@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from ...application.query_models import ResourceAvailabilityRuleReadModel, ResourceReadModel
 from ...application.resource_admin import ResourceAdminRepositoryPort
 from .base import new_id
-from .models import Resource, ResourceAvailabilityRule
+from .models import Resource, ResourceAvailabilityRule, ResourceCompetency
 
 
 def _text(value: object) -> str:
@@ -21,13 +21,14 @@ def _optional_text(value: object) -> str | None:
     return text or None
 
 
-def _resource_model(row: Resource) -> ResourceReadModel:
+def _resource_model(row: Resource, competency_ids: tuple[str, ...] = ()) -> ResourceReadModel:
     return ResourceReadModel(
         id=row.id,
         name=row.name,
         email=_optional_text(row.email),
         resource_class=_optional_text(row.resource_class),
         competencies=_optional_text(row.competencies),
+        competency_ids=competency_ids,
         note=_optional_text(row.note),
         active=bool(row.active),
         sort_order=int(row.sort_order or 0),
@@ -58,16 +59,25 @@ class SqlResourceAdminRepository(ResourceAdminRepositoryPort):
     def __init__(self, session: Session) -> None:
         self._session = session
 
+    def _competency_ids(self, resource_id: str) -> tuple[str, ...]:
+        return tuple(
+            self._session.scalars(
+                select(ResourceCompetency.competency_id).where(
+                    ResourceCompetency.resource_id == resource_id
+                )
+            ).all()
+        )
+
     def list_resources(self, *, active_only: bool = False) -> tuple[ResourceReadModel, ...]:
         statement = select(Resource)
         if active_only:
             statement = statement.where(Resource.active.is_(True))
         rows = self._session.scalars(statement.order_by(Resource.sort_order, Resource.name)).all()
-        return tuple(_resource_model(row) for row in rows)
+        return tuple(_resource_model(row, self._competency_ids(row.id)) for row in rows)
 
     def get_resource(self, resource_id: str) -> ResourceReadModel | None:
         row = self._session.get(Resource, _text(resource_id))
-        return _resource_model(row) if row is not None else None
+        return _resource_model(row, self._competency_ids(row.id)) if row is not None else None
 
     def find_resource_by_name(self, name: str) -> ResourceReadModel | None:
         wanted = _text(name).casefold()
