@@ -14,6 +14,16 @@ Pour reproduire exactement la garde CI :
 python tools/benchmark_v2_api.py --iterations 3 --ci --output /tmp/v2-performance-baseline.json
 ```
 
+Pour faire un vrai comparatif avant/après :
+
+```bash
+python tools/benchmark_v2_api.py --iterations 5 --output /tmp/v2-before.json
+# appliquer la modification à mesurer
+python tools/benchmark_v2_api.py --iterations 5 --compare /tmp/v2-before.json --output /tmp/v2-after.json
+```
+
+Le second rapport affiche les deltas p95, nombre maximal de requêtes SQL et répétition maximale d'une même empreinte SQL, pour chaque dataset et endpoint communs.
+
 Il est aussi possible de limiter l'exécution à un volume :
 
 ```bash
@@ -32,7 +42,7 @@ Les dates, statuts, confirmations, affectations et charges sont générés de fa
 
 ## Parcours mesurés
 
-La baseline couvre les lectures `projects`, `resources`, `demands`, `segments`, `shifts` et `planning/snapshot`. Pour chaque route, le rapport conserve uniquement des métriques techniques : p50/p95/p99, ventilation auth/API/DB/compute/serialization/external, nombre de requêtes SQL, nombre de `SELECT`, répétition maximale d'une empreinte SQL et signal N+1.
+La baseline couvre les lectures `projects`, `resources`, `demands`, `segments`, `shifts` et `planning/snapshot`. Pour chaque route, le rapport conserve uniquement des métriques techniques : p50/p95/p99, ventilation p95 auth/API/DB/compute/serialization/external, nombre de requêtes SQL, nombre de `SELECT`, répétition maximale d'une empreinte SQL et signal N+1. La ventilation des phases est visible dans le rapport texte et dans le JSON.
 
 Aucun numéro de projet, identifiant de demande, nom de ressource, texte SQL ou paramètre SQL n'est écrit dans le rapport de performance.
 
