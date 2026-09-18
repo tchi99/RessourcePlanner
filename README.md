@@ -146,6 +146,27 @@ Un segment peut autoriser explicitement le travail hors horaire. Si sa fenêtre 
 
 Les vacances restent exclues des propositions automatiques de hors horaire.
 
+
+## Import des projets ERP sous Docker
+
+L'importateur Excel est disponible comme service Docker one-shot `import-projects`. Il utilise le même volume `resourceplanner-data` que FastAPI, donc les projets importés deviennent immédiatement disponibles dans la base SQLite du stack Docker.
+
+Déposer l'export ERP dans le dossier `imports/`, puis prévisualiser l'import sans modifier la base :
+
+```bash
+docker compose run --rm import-projects /imports/Projets.xlsx
+```
+
+Pour appliquer les changements :
+
+```bash
+docker compose run --rm import-projects /imports/Projets.xlsx --apply
+```
+
+Le service dépend de `migrate`, ce qui garantit que les migrations Alembic sont appliquées avant l'import. Il appartient au profil `tools` et ne se lance donc pas pendant un simple `docker compose up`.
+
+Un autre dossier hôte peut être utilisé en définissant `RESOURCEPLANNER_IMPORTS_PATH`. Les fichiers Excel restent montés en lecture seule dans le conteneur.
+
 ## Source Excel et fichiers locaux
 
 Le chemin du classeur est configuré localement dans `app_config.json`, fichier ignoré par Git. Les fichiers `.xlsx` et `.xlsm` sont également ignorés par le dépôt.
