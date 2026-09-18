@@ -90,36 +90,31 @@ def upgrade() -> None:
         ),
     )
 
-    op.add_column(
-        "resource_requirements",
-        sa.Column("required_competency_id", sa.String(length=36), nullable=True),
-    )
-    op.create_index(
-        "ix_resource_requirements_required_competency_id",
-        "resource_requirements",
-        ["required_competency_id"],
-        unique=False,
-    )
-    op.create_foreign_key(
-        "fk_resource_requirements_required_competency_id_competencies",
-        "resource_requirements",
-        "competencies",
-        ["required_competency_id"],
-        ["id"],
-    )
+    with op.batch_alter_table("resource_requirements") as batch_op:
+        batch_op.add_column(
+            sa.Column("required_competency_id", sa.String(length=36), nullable=True)
+        )
+        batch_op.create_index(
+            "ix_resource_requirements_required_competency_id",
+            ["required_competency_id"],
+            unique=False,
+        )
+        batch_op.create_foreign_key(
+            "fk_resource_requirements_required_competency_id_competencies",
+            "competencies",
+            ["required_competency_id"],
+            ["id"],
+        )
 
 
 def downgrade() -> None:
-    op.drop_constraint(
-        "fk_resource_requirements_required_competency_id_competencies",
-        "resource_requirements",
-        type_="foreignkey",
-    )
-    op.drop_index(
-        "ix_resource_requirements_required_competency_id",
-        table_name="resource_requirements",
-    )
-    op.drop_column("resource_requirements", "required_competency_id")
+    with op.batch_alter_table("resource_requirements") as batch_op:
+        batch_op.drop_constraint(
+            "fk_resource_requirements_required_competency_id_competencies",
+            type_="foreignkey",
+        )
+        batch_op.drop_index("ix_resource_requirements_required_competency_id")
+        batch_op.drop_column("required_competency_id")
     op.drop_table("workforce_request_competencies")
     op.drop_table("resource_competencies")
     op.drop_index("ix_competencies_active_order", table_name="competencies")
