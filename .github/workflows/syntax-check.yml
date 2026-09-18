@@ -54,12 +54,18 @@ jobs:
           app/server
           migrations
           tools/check_server_dependency_isolation.py
+          tools/check_server_runtime.py
+          tools/check_sqlserver_readiness.py
+          tools/smoke_sqlserver_readonly.py
+          tools/smoke_sqlserver_transaction.py
           tools/check_web_runtime.py
           tools/cutover_inventory.py
       - name: Guard Web/SQL boundaries from V1 imports
         run: python tools/cutover_inventory.py --check-boundaries
       - name: Smoke server without NiceGUI or Excel dependencies
         run: python tools/check_server_dependency_isolation.py
+      - name: Validate SQLite migrations and offline SQL Server readiness
+        run: python tools/check_sqlserver_readiness.py
 
   validate:
     runs-on: ubuntu-latest
