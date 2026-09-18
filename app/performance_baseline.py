@@ -257,6 +257,79 @@ def baseline_payload(
     }
 
 
+def compare_baselines(
+    before: Mapping[str, Any],
+    after: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Compare two baseline payloads using technical metrics only."""
+
+    before_datasets = {
+        str(row.get("dataset") or ""): row
+        for row in before.get("datasets", ())
+        if isinstance(row, Mapping)
+    }
+    after_datasets = {
+        str(row.get("dataset") or ""): row
+        for row in after.get("datasets", ())
+        if isinstance(row, Mapping)
+    }
+    datasets: dict[str, Any] = {}
+    for dataset in DATASET_ORDER:
+        before_row = before_datasets.get(dataset)
+        after_row = after_datasets.get(dataset)
+        if before_row is None or after_row is None:
+            continue
+        before_ops = before_row.get("operations", {})
+        after_ops = after_row.get("operations", {})
+        operations: dict[str, Any] = {}
+        for operation in sorted(set(before_ops) & set(after_ops)):
+            before_metrics = before_ops[operation]
+            after_metrics = after_ops[operation]
+            operations[operation] = {
+                "p95_seconds_before": float(before_metrics["total_seconds"]["p95"]),
+                "p95_seconds_after": float(after_metrics["total_seconds"]["p95"]),
+                "p95_seconds_delta": round(
+                    float(after_metrics["total_seconds"]["p95"])
+                    - float(before_metrics["total_seconds"]["p95"]),
+                    6,
+                ),
+                "db_queries_before": int(before_metrics["db_query_count"]["max"]),
+                "db_queries_after": int(after_metrics["db_query_count"]["max"]),
+                "db_queries_delta": int(after_metrics["db_query_count"]["max"])
+                - int(before_metrics["db_query_count"]["max"]),
+                "repeated_query_before": int(before_metrics["db_repeated_query_max"]),
+                "repeated_query_after": int(after_metrics["db_repeated_query_max"]),
+                "repeated_query_delta": int(after_metrics["db_repeated_query_max"])
+                - int(before_metrics["db_repeated_query_max"]),
+            }
+        datasets[dataset] = {"operations": operations}
+    return {
+        "before_environment": str(before.get("environment") or ""),
+        "after_environment": str(after.get("environment") or ""),
+        "datasets": datasets,
+    }
+
+
+def format_baseline_comparison(comparison: Mapping[str, Any]) -> str:
+    lines = [
+        "Comparaison avant → après",
+        "dataset | operation | p95 avant | p95 après | Δ p95 | queries avant | queries après | Δ queries | Δ repeated",
+    ]
+    for dataset in DATASET_ORDER:
+        row = comparison.get("datasets", {}).get(dataset)
+        if not row:
+            continue
+        for operation, metrics in row.get("operations", {}).items():
+            lines.append(
+                f"{dataset} | {operation} | "
+                f"{metrics['p95_seconds_before']:.4f}s | {metrics['p95_seconds_after']:.4f}s | "
+                f"{metrics['p95_seconds_delta']:+.4f}s | "
+                f"{metrics['db_queries_before']} | {metrics['db_queries_after']} | "
+                f"{metrics['db_queries_delta']:+d} | {metrics['repeated_query_delta']:+d}"
+            )
+    return "\n".join(lines)
+
+
 def format_baseline_report(payload: Mapping[str, Any]) -> str:
     lines = [
         "V2 API performance baseline — SQLite",
@@ -274,6 +347,16 @@ def format_baseline_report(payload: Mapping[str, Any]) -> str:
                 f"{metrics['db_query_count']['max']} | {metrics['db_select_count']['max']} | "
                 f"{metrics['db_repeated_query_max']} | {metrics['db_n_plus_one_suspected']}"
             )
+            phases = metrics.get("phase_p95_seconds", {})
+            lines.append(
+                "  phases p95: "
+                f"auth={float(phases.get('auth', 0.0)):.4f}s "
+                f"api={float(phases.get('api', 0.0)):.4f}s "
+                f"db={float(phases.get('db', 0.0)):.4f}s "
+                f"compute={float(phases.get('compute', 0.0)):.4f}s "
+                f"serialization={float(phases.get('serialization', 0.0)):.4f}s "
+                f"external={float(phases.get('external', 0.0)):.4f}s"
+            )
     lines.extend(("", "query growth (small → large):"))
     for operation, growth in payload.get("query_growth", {}).items():
         lines.append(f"- {operation}: {growth:+d} query(s)")
@@ -287,4 +370,7 @@ def format_baseline_report(payload: Mapping[str, Any]) -> str:
             )
     else:
         lines.extend(("", "BUDGET: PASS"))
+    comparison = payload.get("comparison")
+    if isinstance(comparison, Mapping) and comparison.get("datasets"):
+        lines.extend(("", format_baseline_comparison(comparison)))
     return "\n".join(lines)
