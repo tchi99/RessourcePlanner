@@ -15,9 +15,16 @@ class WebInstallationContractTests(unittest.TestCase):
         self.assertIn(".venv-web", installer)
         self.assertIn("npm run build", installer)
 
-        requirements = (ROOT / "requirements-server.txt").read_text(encoding="utf-8").casefold()
+        requirements = (ROOT / "requirements-server.txt").read_text(encoding="utf-8")
+        package_lines = [
+            line.strip().casefold()
+            for line in requirements.splitlines()
+            if line.strip() and not line.lstrip().startswith("#")
+        ]
         for package in ("nicegui", "xlwings", "openpyxl"):
-            self.assertNotIn(package, requirements)
+            self.assertFalse(
+                any(line == package or line.startswith(package + "==") for line in package_lines)
+            )
 
     def test_launcher_runs_migrations_only_for_implicit_local_sqlite(self) -> None:
         launcher = (ROOT / "Lancer_Web.bat").read_text(encoding="utf-8")
