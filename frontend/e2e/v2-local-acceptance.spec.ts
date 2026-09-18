@@ -98,6 +98,10 @@ async function createDemand(
   await expect(editor.getByRole("heading", { name: "Nouvelle demande" })).toBeVisible();
 
   await labelled(editor, "Projet", "select").selectOption("P-251");
+  await labelled(editor, "Recherche catalogue ERP", "input").fill("automatisation");
+  const taskSelect = labelled(editor, "Tâche ERP", "select");
+  await expect(taskSelect.locator("option", { hasText: "210 — AUTOMATISATION E2E" })).toBeAttached();
+  await taskSelect.selectOption("210");
   if (input.workPackage) {
     await selectOptionContaining(labelled(editor, "Plage moyen terme", "select"), input.workPackage);
   }
