@@ -1,12 +1,16 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import logging
 from typing import Any
 from urllib.parse import quote
 
 import httpx
 
 from ...application import ApplicationOperationError, ExternalProjectRecord, ProjectSourcePort
+
+
+logger = logging.getLogger(__name__)
 
 
 def _text(value: object) -> str:
@@ -22,6 +26,18 @@ def _unwrap(value: Any) -> Any:
     if isinstance(value, dict) and "value" in value:
         return value.get("value")
     return value
+
+
+def _http_failure_kind(status_code: int) -> tuple[str, bool]:
+    if status_code == 401:
+        return "authentication", False
+    if status_code == 403:
+        return "authorization", False
+    if status_code == 429:
+        return "throttled", True
+    if status_code >= 500:
+        return "upstream_5xx", True
+    return "http_error", False
 
 
 @dataclass(frozen=True, slots=True)
@@ -84,6 +100,46 @@ class AcumaticaProjectSource(ProjectSourcePort):
         )
         return tuple(dict.fromkeys(field for field in values if _text(field)))
 
+    def _safe_context(
+        self,
+        *,
+        failure_kind: str,
+        retryable: bool,
+        http_status: int | None = None,
+        reason: str | None = None,
+    ) -> dict[str, object]:
+        settings = self._settings
+        context: dict[str, object] = {
+            "endpoint": settings.endpoint,
+            "entity": settings.entity,
+            "failure_kind": failure_kind,
+            "retryable": retryable,
+        }
+        if http_status is not None:
+            context["http_status"] = int(http_status)
+        if reason:
+            context["reason"] = reason
+        return context
+
+    def _log_failure(
+        self,
+        *,
+        failure_kind: str,
+        retryable: bool,
+        http_status: int | None = None,
+    ) -> None:
+        # Never log the URL, token, exception message, response body or business
+        # payload. Endpoint/entity are contract metadata already exposed by the safe
+        # runtime status route.
+        logger.warning(
+            "Acumatica project read failed kind=%s retryable=%s status=%s endpoint=%s entity=%s",
+            failure_kind,
+            retryable,
+            http_status if http_status is not None else "-",
+            self._settings.endpoint,
+            self._settings.entity,
+        )
+
     def _record(self, payload: dict[str, Any]) -> ExternalProjectRecord:
         settings = self._settings
         external_id = _text(payload.get("id"))
@@ -138,29 +194,121 @@ class AcumaticaProjectSource(ProjectSourcePort):
                         },
                     )
                     response.raise_for_status()
-                    payload = response.json()
+                    try:
+                        payload = response.json()
+                    except ValueError as exc:
+                        self._log_failure(
+                            failure_kind="invalid_json",
+                            retryable=False,
+                            http_status=response.status_code,
+                        )
+                        raise ApplicationOperationError(
+                            "La réponse Acumatica des projets n'est pas un JSON valide.",
+                            code="acumatica_project_response_invalid",
+                            context=self._safe_context(
+                                failure_kind="invalid_json",
+                                retryable=False,
+                                http_status=response.status_code,
+                                reason="invalid_json",
+                            ),
+                        ) from exc
+
                     if not isinstance(payload, list):
+                        self._log_failure(
+                            failure_kind="invalid_payload",
+                            retryable=False,
+                            http_status=response.status_code,
+                        )
                         raise ApplicationOperationError(
                             "La réponse Acumatica des projets n'est pas une liste.",
                             code="acumatica_project_response_invalid",
+                            context=self._safe_context(
+                                failure_kind="invalid_payload",
+                                retryable=False,
+                                http_status=response.status_code,
+                                reason="not_a_list",
+                            ),
                         )
                     rows = [row for row in payload if isinstance(row, dict)]
                     if len(rows) != len(payload):
+                        self._log_failure(
+                            failure_kind="invalid_payload",
+                            retryable=False,
+                            http_status=response.status_code,
+                        )
                         raise ApplicationOperationError(
                             "La réponse Acumatica contient un projet au format invalide.",
                             code="acumatica_project_response_invalid",
+                            context=self._safe_context(
+                                failure_kind="invalid_payload",
+                                retryable=False,
+                                http_status=response.status_code,
+                                reason="non_object_row",
+                            ),
                         )
-                    result.extend(self._record(row) for row in rows)
+
+                    try:
+                        parsed = [self._record(row) for row in rows]
+                    except ApplicationOperationError as exc:
+                        logger.warning(
+                            "Acumatica project payload rejected code=%s endpoint=%s entity=%s",
+                            exc.code,
+                            settings.endpoint,
+                            settings.entity,
+                        )
+                        raise
+                    result.extend(parsed)
                     if len(rows) < page_size:
                         break
                     skip += page_size
         except ApplicationOperationError:
             raise
-        except (httpx.HTTPError, ValueError, TypeError) as exc:
+        except httpx.HTTPStatusError as exc:
+            status_code = int(exc.response.status_code)
+            failure_kind, retryable = _http_failure_kind(status_code)
+            self._log_failure(
+                failure_kind=failure_kind,
+                retryable=retryable,
+                http_status=status_code,
+            )
             raise ApplicationOperationError(
                 "Impossible de lire les projets depuis Acumatica.",
                 code="acumatica_project_read_failed",
-                context={"endpoint": settings.endpoint, "entity": settings.entity},
+                context=self._safe_context(
+                    failure_kind=failure_kind,
+                    retryable=retryable,
+                    http_status=status_code,
+                ),
+            ) from exc
+        except httpx.TimeoutException as exc:
+            self._log_failure(failure_kind="timeout", retryable=True)
+            raise ApplicationOperationError(
+                "Impossible de lire les projets depuis Acumatica.",
+                code="acumatica_project_read_failed",
+                context=self._safe_context(
+                    failure_kind="timeout",
+                    retryable=True,
+                ),
+            ) from exc
+        except httpx.RequestError as exc:
+            self._log_failure(failure_kind="network", retryable=True)
+            raise ApplicationOperationError(
+                "Impossible de lire les projets depuis Acumatica.",
+                code="acumatica_project_read_failed",
+                context=self._safe_context(
+                    failure_kind="network",
+                    retryable=True,
+                ),
+            ) from exc
+        except (TypeError, ValueError) as exc:
+            self._log_failure(failure_kind="invalid_payload", retryable=False)
+            raise ApplicationOperationError(
+                "Impossible de lire les projets depuis Acumatica.",
+                code="acumatica_project_read_failed",
+                context=self._safe_context(
+                    failure_kind="invalid_payload",
+                    retryable=False,
+                ),
             ) from exc
 
         return tuple(result)
