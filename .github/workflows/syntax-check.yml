@@ -12,11 +12,17 @@ on:
       - "Lancer_Web.bat"
       - "Verifier_Web.bat"
       - "Charger_Donnees_Demo.bat"
+      - "Dockerfile.backend"
+      - "docker-compose.yml"
+      - ".dockerignore"
+      - ".env.example"
+      - "deploy/**"
       - "app/**"
       - "tests/**"
       - "tools/**"
       - "migrations/**"
       - "frontend/**"
+      - "docs/**"
       - "alembic.ini"
       - "requirements*.txt"
       - "constraints*.txt"
@@ -115,3 +121,45 @@ jobs:
         run: python tools/check_web_runtime.py
       - name: Scan current repository tree for common PII and secrets
         run: python tools/privacy_scan.py
+
+  docker-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      RESOURCEPLANNER_IMAGE_TAG: ci
+      RESOURCEPLANNER_HTTP_PORT: "18080"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Validate Docker Compose configuration
+        run: |
+          docker compose config >/tmp/resourceplanner-compose.yml
+          RESOURCEPLANNER_IMAGE_TAG=ci \
+          RESOURCEPLANNER_DATABASE_URL=sqlite+pysqlite:////data/resourceplanner.db \
+          RESOURCEPLANNER_AUTH_MODE=local \
+          RESOURCEPLANNER_ALLOW_LOCAL_AUTH_NETWORK=true \
+          docker compose -f deploy/synology/compose.yml config >/tmp/resourceplanner-synology-compose.yml
+      - name: Build and start Docker runtime
+        run: docker compose up -d --build
+      - name: Smoke same-origin frontend, API and readiness
+        run: |
+          ready=0
+          for attempt in $(seq 1 45); do
+            if curl -fsS http://127.0.0.1:18080/ready | grep -q '"status":"ready"'; then
+              ready=1
+              break
+            fi
+            sleep 2
+          done
+          test "$ready" = "1"
+          curl -fsS http://127.0.0.1:18080/health | grep -q '"status":"ok"'
+          curl -fsS http://127.0.0.1:18080/ | grep -qi '<html'
+          curl -fsS 'http://127.0.0.1:18080/api/v1/projects?active_only=true' >/tmp/projects.json
+      - name: Show Docker diagnostics on failure
+        if: failure()
+        run: |
+          docker compose ps -a
+          docker compose logs --no-color --tail=300
+      - name: Stop Docker runtime
+        if: always()
+        run: docker compose down -v --remove-orphans

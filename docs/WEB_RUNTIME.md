@@ -180,3 +180,14 @@ Les procédures détaillées de configuration, diagnostic, sauvegarde/restaurati
 - `V2_RUNTIME_OPERATIONS.md`;
 - `ENVIRONMENT_VARIABLES.md`;
 - `V2_SQLSERVER_READINESS.md`.
+
+
+## 12. Docker / Synology
+
+La voie Docker devient la cible de déploiement Synology prévue par la tranche Docker. Dans ce mode, le runtime n'est plus un unique processus qui sert aussi les assets React : le frontend est construit puis servi par Nginx, tandis que FastAPI reste un conteneur API séparé sur le réseau Docker.
+
+Nginx conserve une origine unique pour le navigateur en proxifiant `/api/*`, `/health`, `/ready`, `/docs` et `/openapi.json` vers FastAPI.
+
+Le chemin Windows `Installer_Web.bat` / `Lancer_Web.bat` reste disponible pendant la transition, mais il n'est plus requis sur un hôte Docker.
+
+Voir `docs/DOCKER_SYNOLOGY.md` pour le démarrage local, les migrations contrôlées, la cible Container Manager, le versionnement des images et le rollback.

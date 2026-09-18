@@ -12,6 +12,10 @@ tempCodeRunnerFile.py
 # Streamlit
 .streamlit/secrets.toml
 
+# Docker/site-local environment files
+.env
+deploy/synology/.env
+
 # RessourcePlanner local configuration and per-user preferences
 app_config.json
 user_preferences.json
