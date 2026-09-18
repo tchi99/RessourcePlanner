@@ -15,6 +15,7 @@ from alembic.config import Config
 from alembic.script import ScriptDirectory
 from sqlalchemy import bindparam, insert, select, update
 from sqlalchemy.dialects import mssql
+from sqlalchemy import UniqueConstraint
 from sqlalchemy.schema import CreateIndex, CreateTable
 from sqlalchemy.sql.sqltypes import Integer, String, Text
 
@@ -154,21 +155,21 @@ def _validate_identifier(name: str | None, *, kind: str) -> None:
         )
 
 
-def _estimated_index_key_bytes(index) -> int:
+def _estimated_key_bytes(expressions, *, name: str) -> int:
     total = 0
-    for expression in index.expressions:
-        column = getattr(expression, "type", None)
-        if isinstance(column, Text):
+    for expression in expressions:
+        sql_type = getattr(expression, "type", None)
+        if isinstance(sql_type, Text):
             raise SqlServerReadinessError(
-                f"L'index {index.name} cible une colonne Text non bornée."
+                f"La clé {name} cible une colonne Text non bornée."
             )
-        if isinstance(column, String):
-            if column.length is None:
+        if isinstance(sql_type, String):
+            if sql_type.length is None:
                 raise SqlServerReadinessError(
-                    f"L'index {index.name} cible une chaîne sans longueur explicite."
+                    f"La clé {name} cible une chaîne sans longueur explicite."
                 )
-            total += int(column.length)
-        elif isinstance(column, Integer):
+            total += int(sql_type.length)
+        elif isinstance(sql_type, Integer):
             total += 4
         else:
             # Date/time/boolean/numeric keys in this schema are all far below the
@@ -205,12 +206,23 @@ def check_mssql_schema_compilation() -> ReadinessCheck:
             _validate_identifier(constraint.name, kind=f"contrainte {table.name}")
             if constraint.name:
                 max_identifier = max(max_identifier, len(constraint.name))
+            if isinstance(constraint, UniqueConstraint):
+                key_bytes = _estimated_key_bytes(
+                    tuple(constraint.columns),
+                    name=constraint.name or f"unique:{table.name}",
+                )
+                max_index_key = max(max_index_key, key_bytes)
+                if key_bytes > MSSQL_CONSERVATIVE_INDEX_KEY_BYTES:
+                    raise SqlServerReadinessError(
+                        f"La contrainte {constraint.name} estime une clé de {key_bytes} octets, "
+                        f"au-dessus du budget conservateur {MSSQL_CONSERVATIVE_INDEX_KEY_BYTES}."
+                    )
 
         for index in table.indexes:
             _validate_identifier(index.name, kind=f"index {table.name}")
             if index.name:
                 max_identifier = max(max_identifier, len(index.name))
-            key_bytes = _estimated_index_key_bytes(index)
+            key_bytes = _estimated_key_bytes(index.expressions, name=index.name or f"index:{table.name}")
             max_index_key = max(max_index_key, key_bytes)
             if key_bytes > MSSQL_CONSERVATIVE_INDEX_KEY_BYTES:
                 raise SqlServerReadinessError(
@@ -233,7 +245,7 @@ def check_mssql_schema_compilation() -> ReadinessCheck:
 
 
 def _critical_statements():
-    start = bindparam("start_date", type_=Project.created_at.type)
+    start = bindparam("start_date", type_=Project.__table__.c.created_at.type)
     # Date parameters use an explicit Date-bearing mapped column in the actual
     # representative statements below; the first bind only exercises timestamp binds.
     yield "projects", select(Project).where(Project.status == "Actif").order_by(Project.number)
@@ -257,8 +269,12 @@ def _critical_statements():
         )
         .outerjoin(Resource, ResourceRequirement.assigned_resource_id == Resource.id)
         .where(
-            ResourceRequirement.end_date >= bindparam("window_start", type_=ResourceRequirement.start_date.type),
-            ResourceRequirement.start_date <= bindparam("window_end", type_=ResourceRequirement.end_date.type),
+            ResourceRequirement.end_date >= bindparam(
+                "window_start", type_=ResourceRequirement.__table__.c.start_date.type
+            ),
+            ResourceRequirement.start_date <= bindparam(
+                "window_end", type_=ResourceRequirement.__table__.c.end_date.type
+            ),
         )
         .order_by(ResourceRequirement.start_date, ResourceRequirement.id)
     )
@@ -267,8 +283,12 @@ def _critical_statements():
         .join(ResourceRequirement, Shift.resource_requirement_id == ResourceRequirement.id)
         .join(Resource, Shift.resource_id == Resource.id)
         .where(
-            Shift.work_date >= bindparam("shift_start", type_=Shift.work_date.type),
-            Shift.work_date <= bindparam("shift_end", type_=Shift.work_date.type),
+            Shift.work_date >= bindparam(
+                "shift_start", type_=Shift.__table__.c.work_date.type
+            ),
+            Shift.work_date <= bindparam(
+                "shift_end", type_=Shift.__table__.c.work_date.type
+            ),
         )
         .order_by(Shift.work_date, Shift.id)
     )
