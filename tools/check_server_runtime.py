@@ -5,8 +5,6 @@ from pathlib import Path
 import sys
 from typing import Any
 
-from alembic.config import Config
-from alembic.script import ScriptDirectory
 from sqlalchemy import inspect, text
 from sqlalchemy.exc import DBAPIError, NoSuchModuleError
 
@@ -18,6 +16,7 @@ if str(ROOT) not in sys.path:
 from fastapi.testclient import TestClient
 
 from app.infrastructure.sql import create_sql_engine
+from app.server.readiness import expected_alembic_head
 from app.server.runtime import (
     ServerConfigurationError,
     ServerSettings,
@@ -42,14 +41,12 @@ class MigrationReadinessError(RuntimeError):
 
 
 def _expected_alembic_head() -> str:
-    config = Config(str(ROOT / "alembic.ini"))
-    config.set_main_option("script_location", str(ROOT / "migrations"))
-    heads = ScriptDirectory.from_config(config).get_heads()
-    if len(heads) != 1:
+    try:
+        return expected_alembic_head()
+    except Exception as exc:
         raise MigrationReadinessError(
             "Le dépôt doit exposer une seule tête Alembic avant le démarrage."
-        )
-    return heads[0]
+        ) from exc
 
 
 def check_database_preflight(database_url: str) -> dict[str, Any]:
@@ -146,6 +143,7 @@ def check_server_runtime(settings: ServerSettings) -> dict[str, Any]:
 
     with TestClient(app, raise_server_exceptions=False) as client:
         health = _response_json(client.get("/health"), path="/health")
+        ready = _response_json(client.get("/ready"), path="/ready")
         projects = _response_json(
             client.get("/api/v1/projects?active_only=true"),
             path="/api/v1/projects",
@@ -158,6 +156,13 @@ def check_server_runtime(settings: ServerSettings) -> dict[str, Any]:
 
     if not isinstance(health, dict) or health.get("status") != "ok":
         raise ServerReadinessError("/health n'a pas confirmé status=ok.")
+    if not isinstance(ready, dict) or ready.get("status") != "ready":
+        raise ServerReadinessError("/ready n'a pas confirmé status=ready.")
+    ready_database = ready.get("database")
+    if not isinstance(ready_database, dict) or ready_database.get("status") != "ok":
+        raise ServerReadinessError("/ready n'a pas confirmé la base prête.")
+    if ready_database.get("alembic_revision") != database["alembic_revision"]:
+        raise ServerReadinessError("/ready et le préflight Alembic ne concordent pas.")
     if not isinstance(projects, list):
         raise ServerReadinessError("/api/v1/projects n'a pas retourné une liste.")
     if not isinstance(resources, list):
@@ -167,10 +172,12 @@ def check_server_runtime(settings: ServerSettings) -> dict[str, Any]:
 
     return {
         "status": "ok",
-        "database": str(health.get("database") or database["database"]),
+        "database": str(ready_database.get("dialect") or database["database"]),
         "api": str(health.get("api") or "unknown"),
         "alembic_revision": database["alembic_revision"],
         "connectivity": database["connectivity"],
+        "readiness": "ready",
+        "external_dependencies": ready.get("external_dependencies", {}),
         "active_projects": len(projects),
         "active_resources": len(resources),
         "openapi_paths": len(openapi.get("paths", {})),
