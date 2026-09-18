@@ -38,6 +38,7 @@ from app.infrastructure.sql import (
     Resource,
     ResourceAvailabilityRule,
     SqlUserIdentityRepository,
+    TaskCatalogEntry,
     create_session_factory,
     create_sql_engine,
 )
@@ -127,6 +128,18 @@ def _seed(database_url: str) -> None:
                     client="Client E2E",
                     project_manager_name="Chargé E2E",
                     status="Actif",
+                )
+            )
+            session.add(
+                TaskCatalogEntry(
+                    id="TASK-P251-210",
+                    project_number="P-251",
+                    task_code="210",
+                    label="AUTOMATISATION E2E",
+                    status="Actif",
+                    active=True,
+                    time_entry_enabled=True,
+                    expenses_enabled=False,
                 )
             )
             session.add_all(
