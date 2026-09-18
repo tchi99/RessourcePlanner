@@ -15,6 +15,7 @@ from ..infrastructure.m365 import (
     MicrosoftGraphCommunicationSettings,
     MicrosoftGraphCommunicationTransport,
 )
+from .dev_user_switcher import DevUserSwitcherRuntime, dev_user_switcher_auth_resolver
 from .embedding import EmbeddingSettings, install_embedding_headers
 from .frontend import FrontendBuildError, attach_frontend
 from .http import create_api_app
@@ -33,6 +34,7 @@ LOCAL_AUTH_NAME_ENV = "RESOURCEPLANNER_LOCAL_AUTH_NAME"
 LOCAL_AUTH_EMAIL_ENV = "RESOURCEPLANNER_LOCAL_AUTH_EMAIL"
 LOCAL_AUTH_ROLES_ENV = "RESOURCEPLANNER_LOCAL_AUTH_ROLES"
 ALLOW_LOCAL_AUTH_NETWORK_ENV = "RESOURCEPLANNER_ALLOW_LOCAL_AUTH_NETWORK"
+DEV_USER_SWITCHER_ENV = "RESOURCEPLANNER_DEV_USER_SWITCHER"
 OIDC_DISCOVERY_URL_ENV = "RESOURCEPLANNER_OIDC_DISCOVERY_URL"
 OIDC_CLIENT_ID_ENV = "RESOURCEPLANNER_OIDC_CLIENT_ID"
 OIDC_CLIENT_SECRET_ENV = "RESOURCEPLANNER_OIDC_CLIENT_SECRET"
@@ -289,6 +291,7 @@ class ServerSettings:
     frontend_dist: str | None = None
     auth_mode: str = "local"
     auth_principal: AuthPrincipal | None = field(default_factory=_default_local_principal, repr=False)
+    dev_user_switcher: bool = False
     oidc: OidcClientSettings | None = field(default=None, repr=False)
     oidc_cookie_name: str = "resourceplanner_session"
     oidc_session_hours: int = 8
@@ -332,6 +335,11 @@ class ServerSettings:
         )
         oidc_secure_cookie = True
         oidc_auto_provision = False
+        dev_user_switcher = _bool(values.get(DEV_USER_SWITCHER_ENV), default=False)
+        if dev_user_switcher and auth_mode != "local":
+            raise ServerConfigurationError(
+                f"{DEV_USER_SWITCHER_ENV}=true est réservé à {AUTH_MODE_ENV}=local."
+            )
 
         if auth_mode == "local":
             allow_network = _bool(values.get(ALLOW_LOCAL_AUTH_NETWORK_ENV), default=False)
@@ -369,6 +377,7 @@ class ServerSettings:
             frontend_dist=frontend_dist,
             auth_mode=auth_mode,
             auth_principal=auth_principal,
+            dev_user_switcher=dev_user_switcher,
             oidc=oidc,
             oidc_cookie_name=oidc_cookie_name,
             oidc_session_hours=oidc_session_hours,
@@ -395,6 +404,12 @@ def create_configured_app(settings: ServerSettings | None = None) -> FastAPI:
         else None
     )
     oidc_runtime = None
+    dev_user_switcher_runtime = None
+    if resolved.dev_user_switcher and resolved.auth_mode != "local":
+        raise ServerConfigurationError(
+            "Le sélecteur d’utilisateur de développement ne peut être activé qu’en mode local."
+        )
+
     if resolved.auth_mode == "oidc":
         if resolved.oidc is None:
             raise ServerConfigurationError("La configuration OIDC est absente.")
@@ -408,7 +423,15 @@ def create_configured_app(settings: ServerSettings | None = None) -> FastAPI:
         )
         auth_resolver = oidc_session_auth_resolver(resolved.oidc_cookie_name)
     else:
-        auth_resolver = static_auth_resolver(resolved.auth_principal)
+        if resolved.dev_user_switcher:
+            if resolved.auth_principal is None:
+                raise ServerConfigurationError("L’identité administrateur locale de bootstrap est absente.")
+            dev_user_switcher_runtime = DevUserSwitcherRuntime(
+                bootstrap_principal=resolved.auth_principal,
+            )
+            auth_resolver = dev_user_switcher_auth_resolver(dev_user_switcher_runtime)
+        else:
+            auth_resolver = static_auth_resolver(resolved.auth_principal)
 
     app = create_api_app(
         resolved.database_url,
@@ -419,6 +442,7 @@ def create_configured_app(settings: ServerSettings | None = None) -> FastAPI:
         ),
         auth_resolver=auth_resolver,
         oidc_runtime=oidc_runtime,
+        dev_user_switcher_runtime=dev_user_switcher_runtime,
         communication_transport=communication_transport,
         runtime_dependencies={
             "oidc": {
