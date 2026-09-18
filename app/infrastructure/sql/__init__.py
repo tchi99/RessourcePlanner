@@ -44,6 +44,7 @@ from .models import (
     ORIGIN_REQUEST,
     Project,
     Resource,
+    TaskCatalogEntry,
     ResourceAvailabilityRule,
     ResourceRequirement,
     Shift,
@@ -61,6 +62,7 @@ from .planning_audit import PlanningChangeHistory
 from .planning_repository import SqlPlanningReadRepository
 from .capacity_query_repository import SqlPlannerQueryRepository
 from .project_sync_repository import SqlProjectSyncRepository
+from .task_catalog_repository import SqlTaskCatalogRepository
 from .resource_admin_repository import SqlResourceAdminRepository
 from .segment_repository import SqlSegmentRepository
 from .overallocation import (
@@ -104,6 +106,7 @@ __all__ = [
     "ResourceAvailabilityRule",
     "ResourceRequirement",
     "Shift",
+    "TaskCatalogEntry",
     "SqlAllocationCommandAdapter",
     "SqlApprovedDemandSyncAdapter",
     "SqlAuthSessionRepository",
@@ -124,6 +127,7 @@ __all__ = [
     "SqlPlanningCommandAdapter",
     "SqlPlanningReadRepository",
     "SqlProjectSyncRepository",
+    "SqlTaskCatalogRepository",
     "SqlResourceAdminRepository",
     "SqlSegmentRepository",
     "SqlSegmentRepositoryWithActiveDayMetrics",
