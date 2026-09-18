@@ -24,6 +24,23 @@ export type ProjectSyncResult = {
   unchanged: number;
 };
 
+export type TaskCatalogItemReadModel = {
+  project_number: string;
+  code: string;
+  label: string;
+  status: string;
+  active: boolean;
+  billing_rule: string | null;
+  allocation_rule: string | null;
+  completion_percent: number | null;
+  erp_created_at: string | null;
+  branch: string | null;
+  approver_name: string | null;
+  cv_enabled: boolean | null;
+  time_entry_enabled: boolean | null;
+  expenses_enabled: boolean | null;
+};
+
 export type WorkPackageReadModel = {
   id: string;
   reference: string;
@@ -132,6 +149,8 @@ export type DemandReadModel = {
   location: string | null;
   work_package_ref: string | null;
   work_package_name: string | null;
+  task_code: string | null;
+  task_label: string | null;
   resource_count: number;
   required_competencies: string | null;
   estimated_hours: number | null;
@@ -283,6 +302,7 @@ export type DemandWrite = {
   client?: string;
   requester: string | null;
   work_package_ref: string | null;
+  task_code: string | null;
   request_type?: string;
   priority: string;
   confirmation: "Tentative" | "Confirmée";
@@ -417,6 +437,23 @@ export function getAcumaticaIntegrationStatus(signal?: AbortSignal) {
 
 export function syncAcumaticaProjects() {
   return postJson<ProjectSyncResult>("/api/v1/integrations/acumatica/projects/sync");
+}
+
+export function getTaskCatalog(
+  projectNumber: string,
+  query = "",
+  activeOnly = true,
+  signal?: AbortSignal,
+) {
+  const params = new URLSearchParams({
+    project_number: projectNumber,
+    active_only: String(activeOnly),
+  });
+  if (query.trim()) params.set("q", query.trim());
+  return getJson<TaskCatalogItemReadModel[]>(
+    `/api/v1/task-catalog?${params.toString()}`,
+    signal,
+  );
 }
 
 export function getWorkPackages(projectNumber: string, activeOnly = true, signal?: AbortSignal) {
