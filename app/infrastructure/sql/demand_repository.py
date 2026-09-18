@@ -17,6 +17,7 @@ from .models import (
     Resource,
     TaskCatalogEntry,
     WorkforceRequest,
+    WorkforceRequestCompetency,
     WorkforceRequestHistory,
     WorkPackage,
 )
@@ -51,8 +52,8 @@ class SqlDemandRepository(DemandRepositoryPort):
         self._session = session
         self._actor_name = _text(actor_name)
 
-    @staticmethod
     def _read_model(
+        self,
         request: WorkforceRequest,
         project: Project,
         work_package: WorkPackage | None,
@@ -86,6 +87,13 @@ class SqlDemandRepository(DemandRepositoryPort):
             task_label=_optional_text(request.erp_task_label),
             resource_count=max(int(request.resource_count or 1), 1),
             required_competencies=_optional_text(request.required_competencies),
+            required_competency_ids=tuple(
+                self._session.scalars(
+                    select(WorkforceRequestCompetency.competency_id).where(
+                        WorkforceRequestCompetency.workforce_request_id == request.id
+                    )
+                ).all()
+            ),
             estimated_hours=(
                 float(request.estimated_hours)
                 if request.estimated_hours is not None
