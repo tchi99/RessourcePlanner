@@ -357,16 +357,25 @@ def build_command_router(
         idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
         facade: ApplicationFacade = Depends(facade_dependency),
         idempotency: IdempotentCommandExecutor = Depends(idempotency_dependency),
+        session: Session = Depends(session_dependency),
     ) -> dict[str, Any]:
+        competencies = _catalog(session)
+        values, selection_supplied, competency_id = _segment_command_values(
+            body,
+            competencies,
+        )
+
+        def action() -> dict[str, Any]:
+            result = facade.create_segment(SegmentCreateCommand(**values))
+            if selection_supplied:
+                competencies.assign_segment(result.segment_id, competency_id)
+            return _payload(result)
+
         return idempotency.execute(
             scope="segment.create",
             key=idempotency_key,
             request_payload=_json_body(body),
-            action=lambda: _payload(
-                facade.create_segment(
-                    SegmentCreateCommand(**_segment_command_values(body))
-                )
-            ),
+            action=action,
         )
 
     @router.patch("/segments/{segment_id}")
@@ -374,12 +383,19 @@ def build_command_router(
         segment_id: str,
         body: SegmentUpdateRequest,
         facade: ApplicationFacade = Depends(facade_dependency),
+        session: Session = Depends(session_dependency),
     ) -> dict[str, Any]:
-        return _payload(
-            facade.update_segment(
-                SegmentUpdateCommand(segment_id=segment_id, **_segment_command_values(body))
-            )
+        competencies = _catalog(session)
+        values, selection_supplied, competency_id = _segment_command_values(
+            body,
+            competencies,
         )
+        result = facade.update_segment(
+            SegmentUpdateCommand(segment_id=segment_id, **values)
+        )
+        if selection_supplied:
+            competencies.assign_segment(segment_id, competency_id)
+        return _payload(result)
 
     @router.post("/segments/{segment_id}/cancel")
     def cancel_segment(
