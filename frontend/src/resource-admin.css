@@ -413,3 +413,133 @@
     display: none;
   }
 }
+
+
+.competency-picker {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.competency-picker input,
+.competency-picker select,
+.competency-editor input,
+.competency-editor textarea {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: white;
+  color: var(--ink);
+  padding: 9px 10px;
+  font: inherit;
+}
+
+.competency-picker select[multiple] {
+  min-height: 94px;
+}
+
+.competency-picker small,
+.legacy-competency-note {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 500;
+}
+
+.competency-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.competency-chip {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  padding: 5px 8px;
+  font: inherit;
+  font-size: 0.76rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.competency-catalog-card {
+  display: grid;
+  gap: 16px;
+}
+
+.competency-catalog-layout {
+  display: grid;
+  grid-template-columns: minmax(240px, 0.9fr) minmax(280px, 1.1fr);
+  gap: 16px;
+}
+
+.competency-catalog-list {
+  display: grid;
+  align-content: start;
+  gap: 6px;
+  max-height: 340px;
+  overflow: auto;
+}
+
+.competency-catalog-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: white;
+  color: var(--ink);
+  padding: 10px 11px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.competency-catalog-row.selected {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.competency-catalog-row.inactive {
+  opacity: 0.58;
+}
+
+.competency-catalog-row > span:first-child {
+  display: grid;
+  gap: 2px;
+}
+
+.competency-catalog-row small,
+.competency-catalog-row > span:last-child {
+  color: var(--muted);
+  font-size: 0.76rem;
+}
+
+.competency-editor {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: #fbfdff;
+}
+
+.competency-editor label:not(.checkbox-field) {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+@media (max-width: 720px) {
+  .competency-catalog-layout {
+    grid-template-columns: 1fr;
+  }
+}
