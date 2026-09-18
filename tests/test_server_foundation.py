@@ -65,7 +65,7 @@ class ServerFoundationTests(unittest.TestCase):
                 response = client.get("/health")
 
             self.assertEqual(response.status_code, 200)
-            self.assertEqual(response.json(), {"status": "ok", "database": "sqlite", "api": "v1"})
+            self.assertEqual(response.json(), {"status": "ok", "api": "v1"})
 
             engine = create_sql_engine(database_url)
             try:
