@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+from io import BytesIO
 from pathlib import Path
 from typing import Iterable
+from xml.etree import ElementTree
+from zipfile import BadZipFile, ZipFile
 
 from openpyxl import load_workbook
 from openpyxl.utils.exceptions import InvalidFileException
@@ -17,6 +20,10 @@ _REQUIRED_COLUMNS = (
     "Nom du client",
     "Gestionnaire de projet",
 )
+
+_STYLES_PATH = "xl/styles.xml"
+_SPREADSHEET_NS = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
+_OPENPYXL_EMPTY_FILL_ERROR = "openpyxl.styles.fills.Fill"
 
 
 def _text(value: object) -> str:
@@ -34,6 +41,75 @@ def _project_number(value: object) -> str:
     if isinstance(value, float) and value.is_integer():
         return str(int(value))
     return _text(value)
+
+
+def _workbook_with_repaired_empty_fills(path: Path) -> BytesIO | None:
+    """Return an in-memory XLSX with invalid empty fill entries repaired.
+
+    Some ERP Excel exports contain empty fill records in xl/styles.xml. Excel
+    tolerates them, but openpyxl 3.1.x rejects them with an expected Fill
+    TypeError. The importer only reads values, so replacing an empty fill with
+    a neutral patternFill is safe and keeps the same fill index.
+    """
+
+    try:
+        with ZipFile(path, "r") as source:
+            if _STYLES_PATH not in source.namelist():
+                return None
+
+            root = ElementTree.fromstring(source.read(_STYLES_PATH))
+            fills = root.find(f"{{{_SPREADSHEET_NS}}}fills")
+            if fills is None:
+                return None
+
+            repaired = 0
+            for fill in fills.findall(f"{{{_SPREADSHEET_NS}}}fill"):
+                if len(fill) == 0:
+                    ElementTree.SubElement(
+                        fill,
+                        f"{{{_SPREADSHEET_NS}}}patternFill",
+                        {"patternType": "none"},
+                    )
+                    repaired += 1
+
+            if repaired == 0:
+                return None
+
+            ElementTree.register_namespace("", _SPREADSHEET_NS)
+            repaired_styles = ElementTree.tostring(
+                root,
+                encoding="utf-8",
+                xml_declaration=True,
+            )
+
+            buffer = BytesIO()
+            with ZipFile(buffer, "w") as target:
+                for item in source.infolist():
+                    content = (
+                        repaired_styles
+                        if item.filename == _STYLES_PATH
+                        else source.read(item.filename)
+                    )
+                    target.writestr(item, content)
+    except (BadZipFile, ElementTree.ParseError, OSError):
+        return None
+
+    buffer.seek(0)
+    return buffer
+
+
+def _load_erp_workbook(path: Path):
+    try:
+        return load_workbook(path, read_only=True, data_only=True)
+    except TypeError as exc:
+        if _OPENPYXL_EMPTY_FILL_ERROR not in str(exc):
+            raise
+
+        repaired = _workbook_with_repaired_empty_fills(path)
+        if repaired is None:
+            raise
+
+        return load_workbook(repaired, read_only=True, data_only=True)
 
 
 class ErpExcelProjectSource(ProjectSourcePort):
@@ -76,8 +152,8 @@ class ErpExcelProjectSource(ProjectSourcePort):
             )
 
         try:
-            workbook = load_workbook(self._path, read_only=True, data_only=True)
-        except (OSError, InvalidFileException, ValueError) as exc:
+            workbook = _load_erp_workbook(self._path)
+        except (OSError, InvalidFileException, TypeError, ValueError) as exc:
             raise ApplicationOperationError(
                 "Impossible d'ouvrir le fichier d'export ERP.",
                 code="erp_excel_project_file_invalid",
