@@ -44,7 +44,7 @@ async function openAs(browser: Browser, role?: Role) {
   const context = await browser.newContext({
     baseURL: BASE_URL,
     locale: "fr-CA",
-    extraHTTPHeaders: role ? { "X-E2E-Role": role } : {},
+    extraHTTPHeaders: role ? { "X-E2E-Role": role } : { "X-E2E-Anonymous": "1" },
   });
   const page = await context.newPage();
   await page.goto("/");
@@ -445,4 +445,44 @@ test("V2 local acceptance path runs through React, Chromium, FastAPI and SQLite"
 
     await closeContext(context);
   });
+});
+
+
+test("development identity selector switches real local users and technician schedules", async ({ browser }) => {
+  const context = await browser.newContext({
+    baseURL: BASE_URL,
+    locale: "fr-CA",
+  });
+  const page = await context.newPage();
+  await page.goto("/");
+
+  const selector = page.getByLabel("Identité de test");
+  await expect(selector).toBeVisible();
+  await expect(page.locator(".sidebar-footer")).toContainText("Administrateur bootstrap E2E");
+
+  await selectOptionContaining(selector, "Technicien Démo A");
+  await expect(page.locator(".sidebar-footer")).toContainText("Technicien Démo A");
+  await expect(page.getByRole("heading", { name: "Aujourd’hui", level: 1 })).toBeVisible();
+  await expect(page.locator(".main-nav").getByText("Utilisateurs", { exact: true })).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Ma semaine", exact: true }).click();
+  await page.getByRole("button", { name: /Suivante/ }).click();
+  await expect(page.locator(".my-schedule-days")).toBeVisible();
+  const technicianAText = await page.locator(".my-schedule-days").innerText();
+  expect(technicianAText).toContain("P-251");
+
+  await selectOptionContaining(page.getByLabel("Identité de test"), "Technicien Démo B");
+  await expect(page.locator(".sidebar-footer")).toContainText("Technicien Démo B");
+  await page.getByRole("button", { name: "Ma semaine", exact: true }).click();
+  await page.getByRole("button", { name: /Suivante/ }).click();
+  await expect(page.locator(".my-schedule-days")).toBeVisible();
+  const technicianBText = await page.locator(".my-schedule-days").innerText();
+  expect(technicianBText).toContain("P-251");
+  expect(technicianBText).not.toBe(technicianAText);
+
+  await selectOptionContaining(page.getByLabel("Identité de test"), "Administrateur Démo");
+  await expect(page.locator(".sidebar-footer")).toContainText("Administrateur Démo");
+  await expect(page.locator(".main-nav").getByText("Utilisateurs", { exact: true })).toBeVisible();
+
+  await context.close();
 });
