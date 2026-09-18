@@ -38,8 +38,9 @@ Le Compose local :
 1. construit l'image backend depuis `requirements-server.txt`;
 2. construit React avec Node 22 puis sert `dist` avec Nginx;
 3. exécute le service one-shot `migrate` sur la base SQLite locale;
-4. ne démarre le backend qu'après une migration réussie;
-5. ne démarre le frontend qu'après le healthcheck du backend.
+4. exécute ensuite `seed-dev`, qui recharge uniquement les données `DEMO-*` et six identités locales de test;
+5. ne démarre le backend qu'après migration + seed réussis;
+6. ne démarre le frontend qu'après le healthcheck du backend.
 
 URL par défaut :
 
@@ -91,7 +92,11 @@ Copier `.env.example` vers `.env` seulement si une surcharge est nécessaire.
 
 Le fichier `.env` réel est ignoré par Git. Ne jamais y committer de secret.
 
-Le Compose local active explicitement le mode d'authentification local sur le réseau Docker. Ce choix sert au développement/smoke sur une machine de confiance et ne constitue pas une configuration de production exposée sur le LAN.
+Le Compose local active explicitement le mode d'authentification local sur le réseau Docker ainsi que `RESOURCEPLANNER_DEV_USER_SWITCHER=true`. Ce choix sert au développement/smoke sur une machine de confiance et ne constitue pas une configuration de production exposée sur le LAN.
+
+Après `docker compose up -d --build`, le sélecteur **Identité de test** permet de passer sans redémarrage entre Administrateur, Coordonnateur, Chargé de projet, Gestionnaire, Technicien A et Technicien B. Les techniciens sont liés à deux ressources démo distinctes et affichent donc leurs propres quarts.
+
+Le sélecteur ne crée aucune permission dans React : chaque changement ouvre une session locale vers un vrai `AppUser`, puis `/api/v1/auth/me` reste la source de vérité. Le bouton disparaît lorsque le backend ne publie pas la route dev.
 
 ## 3. Migrations Alembic
 
@@ -105,7 +110,7 @@ docker compose run --rm migrate
 
 ### Synology / production
 
-Le Compose Synology **n'exécute aucune migration au démarrage du backend**.
+Le Compose Synology **n'exécute aucune migration au démarrage du backend** et force `RESOURCEPLANNER_DEV_USER_SWITCHER=false`. Le runtime refuse également toute tentative d'activer ce switcher lorsque `RESOURCEPLANNER_AUTH_MODE=oidc`.
 
 Avant une promotion :
 
