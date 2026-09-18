@@ -141,17 +141,20 @@ def check_server_runtime(settings: ServerSettings) -> dict[str, Any]:
             "Le serveur n'a pas pu ouvrir sa connexion de base de données."
         ) from exc
 
+    projects: Any = None
+    resources: Any = None
     with TestClient(app, raise_server_exceptions=False) as client:
         health = _response_json(client.get("/health"), path="/health")
         ready = _response_json(client.get("/ready"), path="/ready")
-        projects = _response_json(
-            client.get("/api/v1/projects?active_only=true"),
-            path="/api/v1/projects",
-        )
-        resources = _response_json(
-            client.get("/api/v1/resources"),
-            path="/api/v1/resources",
-        )
+        if settings.auth_mode == "local":
+            projects = _response_json(
+                client.get("/api/v1/projects?active_only=true"),
+                path="/api/v1/projects",
+            )
+            resources = _response_json(
+                client.get("/api/v1/resources"),
+                path="/api/v1/resources",
+            )
         openapi = _response_json(client.get("/openapi.json"), path="/openapi.json")
 
     if not isinstance(health, dict) or health.get("status") != "ok":
@@ -163,10 +166,11 @@ def check_server_runtime(settings: ServerSettings) -> dict[str, Any]:
         raise ServerReadinessError("/ready n'a pas confirmé la base prête.")
     if ready_database.get("alembic_revision") != database["alembic_revision"]:
         raise ServerReadinessError("/ready et le préflight Alembic ne concordent pas.")
-    if not isinstance(projects, list):
-        raise ServerReadinessError("/api/v1/projects n'a pas retourné une liste.")
-    if not isinstance(resources, list):
-        raise ServerReadinessError("/api/v1/resources n'a pas retourné une liste.")
+    if settings.auth_mode == "local":
+        if not isinstance(projects, list):
+            raise ServerReadinessError("/api/v1/projects n'a pas retourné une liste.")
+        if not isinstance(resources, list):
+            raise ServerReadinessError("/api/v1/resources n'a pas retourné une liste.")
     if not isinstance(openapi, dict) or not openapi.get("paths"):
         raise ServerReadinessError("/openapi.json ne contient aucune route.")
 
@@ -178,8 +182,9 @@ def check_server_runtime(settings: ServerSettings) -> dict[str, Any]:
         "connectivity": database["connectivity"],
         "readiness": "ready",
         "external_dependencies": ready.get("external_dependencies", {}),
-        "active_projects": len(projects),
-        "active_resources": len(resources),
+        "active_projects": len(projects) if isinstance(projects, list) else None,
+        "active_resources": len(resources) if isinstance(resources, list) else None,
+        "authenticated_reads": "checked" if settings.auth_mode == "local" else "skipped_oidc",
         "openapi_paths": len(openapi.get("paths", {})),
     }
 
