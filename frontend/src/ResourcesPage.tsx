@@ -3,6 +3,7 @@ import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import {
   ApiError,
   AvailabilityRuleWrite,
+  CompetencyReadModel,
   AvailabilityType,
   ResourceAvailabilityRuleReadModel,
   ResourceReadModel,
@@ -12,10 +13,13 @@ import {
   deactivateAvailabilityRule,
   deactivateResource,
   getAvailabilityRules,
+  getCompetencies,
   getResources,
   updateAvailabilityRule,
   updateResource,
 } from "./api";
+import CompetencyCatalogPanel from "./CompetencyCatalogPanel";
+import CompetencyPicker from "./CompetencyPicker";
 
 const WEEKDAYS = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"] as const;
 const DEFAULT_WEEKDAYS = "Lun,Mar,Mer,Jeu,Ven";
@@ -49,6 +53,7 @@ function resourceDraft(resource?: ResourceReadModel | null): ResourceWrite {
     email: resource?.email ?? null,
     resource_class: resource?.resource_class ?? null,
     competencies: resource?.competencies ?? null,
+    competency_ids: resource?.competency_ids ?? [],
     note: resource?.note ?? null,
     active: resource?.active ?? true,
     sort_order: resource?.sort_order ?? 0,
@@ -214,6 +219,7 @@ function RuleEditor({ resourceId, rule, forcedType, onSaved, onCancel }: RuleEdi
 
 export default function ResourcesPage() {
   const [resources, setResources] = useState<ResourceReadModel[]>([]);
+  const [competencies, setCompetencies] = useState<CompetencyReadModel[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [rules, setRules] = useState<ResourceAvailabilityRuleReadModel[]>([]);
   const [holidays, setHolidays] = useState<ResourceAvailabilityRuleReadModel[]>([]);
@@ -243,9 +249,11 @@ export default function ResourcesPage() {
     Promise.all([
       getResources(false, controller.signal),
       getAvailabilityRules(null, true, false, controller.signal),
+      getCompetencies("", false, controller.signal),
     ])
-      .then(([resourceRows, availabilityRows]) => {
+      .then(([resourceRows, availabilityRows, competencyRows]) => {
         setResources(resourceRows);
+        setCompetencies(competencyRows);
         setHolidays(
           availabilityRows.filter(
             (rule) => rule.resource_id === null && rule.availability_type === "Jour férié",
@@ -334,7 +342,8 @@ export default function ResourcesPage() {
         name: profile.name.trim(),
         email: nullable(profile.email ?? ""),
         resource_class: nullable(profile.resource_class ?? ""),
-        competencies: nullable(profile.competencies ?? ""),
+        competencies: profile.competencies,
+        competency_ids: profile.competency_ids,
         note: nullable(profile.note ?? ""),
         external_id: nullable(profile.external_id ?? ""),
         sort_order: Number(profile.sort_order || 0),
@@ -381,7 +390,7 @@ export default function ResourcesPage() {
     }
   }
 
-  function profileField(field: keyof ResourceWrite, value: string | number | boolean | null) {
+  function profileField<K extends keyof ResourceWrite>(field: K, value: ResourceWrite[K]) {
     setProfile((current) => ({ ...current, [field]: value }));
   }
 
@@ -463,7 +472,19 @@ export default function ResourcesPage() {
                   <label>Classe<input value={profile.resource_class ?? ""} onChange={(event) => profileField("resource_class", event.target.value)} placeholder="Programmation, Installation…" /></label>
                   <label>Ordre<input type="number" min="0" value={profile.sort_order} onChange={(event) => profileField("sort_order", Number(event.target.value))} /></label>
                 </div>
-                <label>Compétences<input value={profile.competencies ?? ""} onChange={(event) => profileField("competencies", event.target.value)} placeholder="PLC; SCADA; MES" /></label>
+                <CompetencyPicker
+                  competencies={competencies}
+                  selectedIds={profile.competency_ids}
+                  onChange={(ids) => profileField("competency_ids", ids)}
+                  disabled={pendingProfile}
+                  label="Compétences"
+                  placeholder="Rechercher PLC, SCADA, MES…"
+                />
+                {profile.competency_ids.length === 0 && profile.competencies && (
+                  <small className="legacy-competency-note">
+                    Valeur historique à convertir au catalogue : {profile.competencies}
+                  </small>
+                )}
                 <label>Note<textarea value={profile.note ?? ""} onChange={(event) => profileField("note", event.target.value)} rows={2} /></label>
 
                 <div className="editor-actions split-actions">
@@ -526,6 +547,11 @@ export default function ResourcesPage() {
           )}
         </div>
       </div>
+
+      <CompetencyCatalogPanel
+        competencies={competencies}
+        onChanged={() => setRefreshKey((value) => value + 1)}
+      />
 
       <div className="admin-card holiday-panel">
         <div className="panel-heading">
