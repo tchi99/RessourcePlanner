@@ -420,6 +420,23 @@ def create_configured_app(settings: ServerSettings | None = None) -> FastAPI:
         auth_resolver=auth_resolver,
         oidc_runtime=oidc_runtime,
         communication_transport=communication_transport,
+        runtime_dependencies={
+            "oidc": {
+                "required": resolved.auth_mode == "oidc",
+                "configured": resolved.oidc is not None,
+                "check": "configuration_only",
+            },
+            "acumatica": {
+                "required": False,
+                "configured": resolved.acumatica is not None,
+                "check": "configuration_only",
+            },
+            "m365": {
+                "required": False,
+                "configured": resolved.m365 is not None,
+                "check": "configuration_only",
+            },
+        },
     )
     app.state.auth_mode = resolved.auth_mode
     app.state.embedding = resolved.embedding
