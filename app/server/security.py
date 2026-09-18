@@ -29,6 +29,7 @@ _PUBLIC_PREFIXES = ("/assets/",)
 _PUBLIC_PATHS = {
     "/",
     "/health",
+    "/ready",
     "/docs",
     "/docs/",
     "/openapi.json",
