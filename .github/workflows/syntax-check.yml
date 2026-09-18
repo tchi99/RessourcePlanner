@@ -80,6 +80,12 @@ jobs:
         run: python tools/cutover_inventory.py --check-boundaries
       - name: Run verification suite
         run: python -m unittest discover -s tests -v
+      - name: Enforce V2 SQLite performance budgets
+        run: >-
+          python tools/benchmark_v2_api.py
+          --iterations 3
+          --ci
+          --output /tmp/v2-performance-baseline.json
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
