@@ -180,7 +180,7 @@ class SqlPlannerQueryRepository(PlannerQueryPort):
             )
             .order_by(Resource.sort_order, Resource.name)
         ).all()
-        return tuple(_resource_read_model(resource) for resource in rows)
+        return tuple(_resource_read_model(resource, self._resource_competency_ids(resource.id)) for resource in rows)
 
     def list_demands(self) -> tuple[DemandReadModel, ...]:
         return tuple(self._demands.list())
