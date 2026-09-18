@@ -33,6 +33,7 @@ from .models import (
     Project,
     Resource,
     ResourceAvailabilityRule,
+    ResourceCompetency,
     ResourceRequirement,
     Shift,
     WorkforceRequest,
@@ -84,13 +85,14 @@ def _period_definition(row: DemandPeriodReadModel) -> DemandPeriodDefinition:
     )
 
 
-def _resource_read_model(resource: Resource) -> ResourceReadModel:
+def _resource_read_model(resource: Resource, competency_ids: tuple[str, ...] = ()) -> ResourceReadModel:
     return ResourceReadModel(
         id=resource.id,
         name=resource.name,
         email=_optional_text(resource.email),
         resource_class=_optional_text(resource.resource_class),
         competencies=_optional_text(resource.competencies),
+        competency_ids=competency_ids,
         note=_optional_text(resource.note),
         active=bool(resource.active),
         sort_order=int(resource.sort_order or 0),
@@ -106,6 +108,15 @@ class SqlPlannerQueryRepository(PlannerQueryPort):
         self._demands = SqlDemandRepository(session)
         self._periods = SqlDemandPeriodRepository(session)
         self._segments = SqlSegmentRepository(session)
+
+    def _resource_competency_ids(self, resource_id: str) -> tuple[str, ...]:
+        return tuple(
+            self._session.scalars(
+                select(ResourceCompetency.competency_id).where(
+                    ResourceCompetency.resource_id == resource_id
+                )
+            ).all()
+        )
 
     def list_projects(self, *, active_only: bool = False) -> tuple[ProjectReadModel, ...]:
         rows = self._session.scalars(select(Project).order_by(Project.number)).all()
@@ -136,7 +147,7 @@ class SqlPlannerQueryRepository(PlannerQueryPort):
         rows = self._session.scalars(
             statement.order_by(Resource.sort_order, Resource.name)
         ).all()
-        return tuple(_resource_read_model(resource) for resource in rows)
+        return tuple(_resource_read_model(resource, self._resource_competency_ids(resource.id)) for resource in rows)
 
     def list_schedulable_resources(
         self,
