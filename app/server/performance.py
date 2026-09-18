@@ -266,8 +266,8 @@ def record_external_items(item_count: int) -> None:
 
 def _safe_operation(request: Request, app: Any) -> str:
     raw_path = request.url.path
-    if raw_path == "/health":
-        return f"http {request.method.upper()} /health"
+    if raw_path in {"/health", "/ready"}:
+        return f"http {request.method.upper()} {raw_path}"
 
     route = request.scope.get("route")
     template = str(getattr(route, "path", "") or "")
@@ -307,7 +307,7 @@ def install_performance_middleware(app: Any, *, log_path: Path | None = None) ->
     @app.middleware("http")
     async def collect_performance(request: Request, call_next):
         raw_path = request.url.path
-        if raw_path != "/health" and not raw_path.startswith("/api/v1/"):
+        if raw_path not in {"/health", "/ready"} and not raw_path.startswith("/api/v1/"):
             return await call_next(request)
 
         context = RequestPerformanceContext()
