@@ -15,6 +15,7 @@ from .base import utc_now
 from .models import (
     Project,
     Resource,
+    TaskCatalogEntry,
     WorkforceRequest,
     WorkforceRequestHistory,
     WorkPackage,
@@ -81,6 +82,8 @@ class SqlDemandRepository(DemandRepositoryPort):
             work_package_name=(
                 _optional_text(work_package.name) if work_package is not None else None
             ),
+            task_code=_optional_text(request.erp_task_code),
+            task_label=_optional_text(request.erp_task_label),
             resource_count=max(int(request.resource_count or 1), 1),
             required_competencies=_optional_text(request.required_competencies),
             estimated_hours=(
@@ -184,6 +187,26 @@ class SqlDemandRepository(DemandRepositoryPort):
             )
         return work_package
 
+    def _task(self, code: object, *, project_number: str) -> TaskCatalogEntry | None:
+        task_code = _text(code)
+        if not task_code:
+            return None
+        task = self._session.scalar(
+            select(TaskCatalogEntry).where(
+                TaskCatalogEntry.project_number == _text(project_number),
+                TaskCatalogEntry.task_code == task_code,
+            )
+        )
+        if task is None:
+            raise KeyError(
+                f"Tâche ERP {_text(project_number)}/{task_code} introuvable"
+            )
+        if not task.active:
+            raise ValueError(
+                f"La tâche ERP {_text(project_number)}/{task_code} est inactive."
+            )
+        return task
+
     def _resource(self, name: object) -> Resource | None:
         resource_name = _text(name)
         if not resource_name:
@@ -216,6 +239,10 @@ class SqlDemandRepository(DemandRepositoryPort):
             values.get("SourceEffortID"),
             project_id=project.id,
         )
+        task = self._task(
+            values.get("TaskCode"),
+            project_number=project.number,
+        )
         proposed_resource = self._resource(values.get("TechnicienPropose"))
         number = self._next_request_number()
         status = "Soumise" if submit else "Brouillon"
@@ -224,6 +251,8 @@ class SqlDemandRepository(DemandRepositoryPort):
             legacy_demand_number=number,
             project_id=project.id,
             work_package_id=work_package.id if work_package is not None else None,
+            erp_task_code=task.task_code if task is not None else None,
+            erp_task_label=task.label if task is not None else None,
             # An authorized caller may explicitly name the requester. When omitted,
             # preserve the historical behavior and default to the authenticated actor.
             requester_name=_optional_text(values.get("Demandeur")) or self._actor_name or None,
@@ -281,6 +310,22 @@ class SqlDemandRepository(DemandRepositoryPort):
                 # A WorkPackage is project-owned. Changing project without explicitly
                 # choosing a compatible WorkPackage must not leave a cross-project link.
                 request.work_package_id = None
+
+        if "TaskCode" in updates:
+            project = self._session.get(Project, request.project_id)
+            if project is None:
+                raise KeyError("Projet de la demande introuvable")
+            task = self._task(
+                updates.get("TaskCode"),
+                project_number=project.number,
+            )
+            request.erp_task_code = task.task_code if task is not None else None
+            request.erp_task_label = task.label if task is not None else None
+        elif project_changed:
+            # A task code is project-scoped in the ERP export. Never keep a task
+            # silently attached when the demand moves to another project.
+            request.erp_task_code = None
+            request.erp_task_label = None
 
         if "Demandeur" in updates:
             request.requester_name = _optional_text(updates.get("Demandeur"))
