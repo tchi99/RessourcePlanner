@@ -91,6 +91,7 @@ class SqlAuthSessionRepository:
         raw_token: str,
         *,
         now: datetime | None = None,
+        auth_mode: str = "oidc",
     ) -> AuthPrincipal | None:
         row = self._session.scalar(
             select(AuthSession).where(
@@ -113,7 +114,7 @@ class SqlAuthSessionRepository:
             email=record.email,
             employee_external_id=record.employee_external_id,
             roles=record.roles,
-            auth_mode="oidc",
+            auth_mode=auth_mode,
         )
 
     def revoke_session(self, raw_token: str, *, now: datetime | None = None) -> bool:
