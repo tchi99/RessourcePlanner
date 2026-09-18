@@ -165,7 +165,17 @@ docker compose run --rm import-projects /imports/Projets.xlsx --apply
 
 Le service dépend de `migrate`, ce qui garantit que les migrations Alembic sont appliquées avant l'import. Il appartient au profil `tools` et ne se lance donc pas pendant un simple `docker compose up`.
 
-Un autre dossier hôte peut être utilisé en définissant `RESOURCEPLANNER_IMPORTS_PATH`. Les fichiers Excel restent montés en lecture seule dans le conteneur.
+Le catalogue de tâches ERP utilise le service one-shot `import-tasks` et accepte XLSX/XLSM ou CSV :
+
+```bash
+docker compose run --rm import-tasks "/imports/Tâches de projet.xlsx"
+docker compose run --rm import-tasks "/imports/Tâches de projet.xlsx" --apply
+```
+
+La clé autoritaire d'une tâche est le couple `(ID projet, ID tâche)`. Le détail du mapping réel,
+des statuts et de l'API de recherche est documenté dans `docs/ERP_TASK_CATALOG.md`.
+
+Un autre dossier hôte peut être utilisé en définissant `RESOURCEPLANNER_IMPORTS_PATH`. Les exports restent montés en lecture seule dans le conteneur.
 
 ## Source Excel et fichiers locaux
 
