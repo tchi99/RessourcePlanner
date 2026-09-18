@@ -13,6 +13,7 @@ from app.server.runtime import (
     ACUMATICA_NUMBER_FIELD_ENV,
     ACUMATICA_PAGE_SIZE_ENV,
     ACUMATICA_STATUS_FIELD_ENV,
+    ACUMATICA_TIMEOUT_SECONDS_ENV,
     ACUMATICA_VERSION_ENV,
     DATABASE_URL_ENV,
     ServerConfigurationError,
@@ -42,6 +43,7 @@ class ServerAcumaticaRuntimeTests(unittest.TestCase):
                 ACUMATICA_MANAGER_FIELD_ENV: "Owner",
                 ACUMATICA_STATUS_FIELD_ENV: "State",
                 ACUMATICA_PAGE_SIZE_ENV: "75",
+                ACUMATICA_TIMEOUT_SECONDS_ENV: "12.5",
             }
         )
         assert settings.acumatica is not None
@@ -50,6 +52,7 @@ class ServerAcumaticaRuntimeTests(unittest.TestCase):
         self.assertEqual(settings.acumatica.entity, "RPProject")
         self.assertEqual(settings.acumatica.number_field, "Nbr")
         self.assertEqual(settings.acumatica.page_size, 75)
+        self.assertEqual(settings.acumatica.timeout_seconds, 12.5)
         self.assertNotIn("secret-token", repr(settings))
         self.assertNotIn("secret-token", repr(settings.acumatica))
 
@@ -63,6 +66,20 @@ class ServerAcumaticaRuntimeTests(unittest.TestCase):
                 }
             )
         self.assertIn(ACUMATICA_ACCESS_TOKEN_ENV, str(raised.exception))
+
+    def test_invalid_acumatica_timeout_is_rejected(self) -> None:
+        for value in ("0", "-1", "121", "abc"):
+            with self.subTest(value=value):
+                with self.assertRaises(ServerConfigurationError):
+                    ServerSettings.from_environment(
+                        {
+                            DATABASE_URL_ENV: "sqlite+pysqlite:///:memory:",
+                            ACUMATICA_BASE_URL_ENV: "https://erp.example.test",
+                            ACUMATICA_ACCESS_TOKEN_ENV: "token",
+                            ACUMATICA_VERSION_ENV: "25.200.001",
+                            ACUMATICA_TIMEOUT_SECONDS_ENV: value,
+                        }
+                    )
 
     def test_invalid_acumatica_page_size_is_rejected(self) -> None:
         for value in ("0", "1001", "abc"):

@@ -35,6 +35,7 @@ set RESOURCEPLANNER_ACUMATICA_PROJECT_CLIENT_FIELD=Customer
 set RESOURCEPLANNER_ACUMATICA_PROJECT_MANAGER_FIELD=ProjectManager
 set RESOURCEPLANNER_ACUMATICA_PROJECT_STATUS_FIELD=Status
 set RESOURCEPLANNER_ACUMATICA_PAGE_SIZE=200
+set RESOURCEPLANNER_ACUMATICA_TIMEOUT_SECONDS=30
 ```
 
 Le token n'est jamais enregistré dans SQL, renvoyé par les routes de statut ou inclus dans les erreurs applicatives. Cette première tranche accepte un bearer token fourni par l'environnement; l'obtention/renouvellement OAuth/OIDC sera branchée derrière la même frontière lorsque les paramètres de l'instance seront disponibles.
@@ -89,3 +90,10 @@ Quand l'accès à l'instance Acumatica sera disponible :
 5. obtenir un token de test selon le mécanisme OAuth/OIDC retenu;
 6. appeler la route de statut puis lancer une synchronisation sur une base de développement;
 7. réconcilier quelques projets connus avant toute utilisation en production.
+
+
+## Readiness locale avant accès réel
+
+Les comportements de résilience (pagination, erreurs réseau/HTTP, payloads invalides, atomicité, métriques et journalisation sûre) sont détaillés dans [V2_ACUMATICA_READINESS.md](V2_ACUMATICA_READINESS.md).
+
+Cette validation ne confirme pas le contrat réel de l'instance. Les noms d'entités/champs, la pagination réellement supportée, les statuts, Employee/User, OIDC et l'embedding restent à confirmer dans #232 et les smokes associés.

@@ -4,17 +4,26 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
 
+import httpx
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 
-from app.application import ExternalProjectRecord
-from app.infrastructure.sql import Base, create_sql_engine
+from app.application import ApplicationOperationError, ExternalProjectRecord
+from app.infrastructure.acumatica import AcumaticaProjectSource, AcumaticaProjectSourceSettings
+from app.infrastructure.sql import (
+    Base,
+    Project,
+    create_session_factory,
+    create_sql_engine,
+    transactional_session,
+)
 from app.performance_diagnostics import read_performance_samples
 from app.server import create_api_app
 
 
 class StubProjectSource:
-    def __init__(self) -> None:
-        self.rows = [
+    def __init__(self, rows: list[ExternalProjectRecord] | None = None) -> None:
+        self.rows = rows or [
             ExternalProjectRecord(
                 external_id="ERP-1",
                 number="P-100",
@@ -27,6 +36,20 @@ class StubProjectSource:
 
     def list_projects(self):
         return tuple(self.rows)
+
+
+class FailingProjectSource:
+    def list_projects(self):
+        raise ApplicationOperationError(
+            "Impossible de lire les projets depuis Acumatica.",
+            code="acumatica_project_read_failed",
+            context={
+                "failure_kind": "timeout",
+                "retryable": True,
+                "endpoint": "Default",
+                "entity": "Project",
+            },
+        )
 
 
 class ServerAcumaticaRouteTests(unittest.TestCase):
@@ -108,6 +131,154 @@ class ServerAcumaticaRouteTests(unittest.TestCase):
                 self.assertGreater(sample["db_query_count"], 0)
                 self.assertGreaterEqual(sample["external_seconds"], 0.0)
                 self.assertGreaterEqual(sample["compute_seconds"], 0.0)
+
+    def test_failed_external_read_keeps_external_metrics_coherent(self) -> None:
+        with TemporaryDirectory() as directory:
+            performance_log = Path(directory) / "performance.jsonl"
+            app = create_api_app(
+                self._database(directory),
+                project_source=FailingProjectSource(),
+                performance_log_path=performance_log,
+            )
+            with TestClient(app) as client:
+                response = client.post("/api/v1/integrations/acumatica/projects/sync")
+
+            self.assertEqual(response.status_code, 500)
+            self.assertEqual(response.json()["error"]["code"], "acumatica_project_read_failed")
+            self.assertEqual(
+                response.json()["error"]["context"]["failure_kind"],
+                "timeout",
+            )
+
+            samples = read_performance_samples(path=performance_log, limit=10)
+            sample = next(
+                item
+                for item in samples
+                if item.get("operation")
+                == "http POST /api/v1/integrations/acumatica/projects/sync"
+            )
+            self.assertEqual(sample["status"], "500")
+            self.assertEqual(sample["external_call_count"], 1)
+            self.assertEqual(sample["external_item_count"], 0)
+            self.assertGreaterEqual(sample["external_seconds"], 0.0)
+
+    def test_failed_second_page_does_not_apply_partial_acumatica_snapshot(self) -> None:
+        with TemporaryDirectory() as directory:
+            database_url = self._database(directory)
+            engine = create_sql_engine(database_url)
+            factory = create_session_factory(engine)
+            try:
+                with transactional_session(factory) as session:
+                    session.add(
+                        Project(
+                            id="EXISTING",
+                            erp_external_id="ERP-EXISTING",
+                            number="P-EXISTING",
+                            name="Nom local conservé",
+                            status="Active",
+                        )
+                    )
+            finally:
+                engine.dispose()
+
+            def handler(request: httpx.Request) -> httpx.Response:
+                if request.url.params.get("$skip") == "0":
+                    return httpx.Response(
+                        200,
+                        json=[
+                            {
+                                "id": "ERP-EXISTING",
+                                "ProjectID": {"value": "P-EXISTING"},
+                                "Description": {"value": "Nom partiel à ne pas appliquer"},
+                            },
+                            {
+                                "id": "ERP-FIRST",
+                                "ProjectID": {"value": "P-FIRST"},
+                                "Description": {"value": "Nouveau partiel"},
+                            },
+                        ],
+                    )
+                return httpx.Response(503, text="upstream unavailable")
+
+            source = AcumaticaProjectSource(
+                AcumaticaProjectSourceSettings(
+                    base_url="https://erp.example.test/Instance",
+                    bearer_token="runtime-secret",
+                    version="25.200.001",
+                    page_size=2,
+                ),
+                transport=httpx.MockTransport(handler),
+            )
+            app = create_api_app(database_url, project_source=source)
+            with TestClient(app) as client:
+                sync = client.post("/api/v1/integrations/acumatica/projects/sync")
+                projects = client.get("/api/v1/projects")
+
+            self.assertEqual(sync.status_code, 500)
+            self.assertEqual(
+                sync.json()["error"]["context"]["failure_kind"],
+                "upstream_5xx",
+            )
+            self.assertEqual(len(projects.json()), 1)
+            self.assertEqual(projects.json()[0]["number"], "P-EXISTING")
+            self.assertEqual(projects.json()[0]["name"], "Nom local conservé")
+
+    def test_mid_sync_conflict_rolls_back_every_project_written_by_that_pull(self) -> None:
+        with TemporaryDirectory() as directory:
+            database_url = self._database(directory)
+            engine = create_sql_engine(database_url)
+            factory = create_session_factory(engine)
+            try:
+                with transactional_session(factory) as session:
+                    session.add(
+                        Project(
+                            id="EXISTING",
+                            erp_external_id="ERP-OLD",
+                            number="P-CONFLICT",
+                            name="Projet existant",
+                            status="Active",
+                        )
+                    )
+            finally:
+                engine.dispose()
+
+            source = StubProjectSource(
+                [
+                    ExternalProjectRecord(
+                        external_id="ERP-FIRST",
+                        number="P-FIRST",
+                        name="Devrait être rollback",
+                    ),
+                    ExternalProjectRecord(
+                        external_id="ERP-NEW",
+                        number="P-CONFLICT",
+                        name="Conflit",
+                    ),
+                ]
+            )
+            app = create_api_app(database_url, project_source=source)
+            with TestClient(app) as client:
+                sync = client.post("/api/v1/integrations/acumatica/projects/sync")
+                projects = client.get("/api/v1/projects")
+
+            self.assertEqual(sync.status_code, 409)
+            self.assertEqual(
+                sync.json()["error"]["code"],
+                "project_sync_external_id_conflict",
+            )
+            numbers = {row["number"] for row in projects.json()}
+            self.assertEqual(numbers, {"P-CONFLICT"})
+            self.assertNotIn("P-FIRST", numbers)
+
+            verification_engine = create_sql_engine(database_url)
+            verification_factory = create_session_factory(verification_engine)
+            try:
+                with verification_factory() as session:
+                    rows = session.scalars(select(Project)).all()
+                    self.assertEqual(len(rows), 1)
+                    self.assertEqual(rows[0].erp_external_id, "ERP-OLD")
+            finally:
+                verification_engine.dispose()
 
 
 if __name__ == "__main__":

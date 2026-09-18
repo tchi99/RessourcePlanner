@@ -53,6 +53,7 @@ ACUMATICA_CLIENT_FIELD_ENV = "RESOURCEPLANNER_ACUMATICA_PROJECT_CLIENT_FIELD"
 ACUMATICA_MANAGER_FIELD_ENV = "RESOURCEPLANNER_ACUMATICA_PROJECT_MANAGER_FIELD"
 ACUMATICA_STATUS_FIELD_ENV = "RESOURCEPLANNER_ACUMATICA_PROJECT_STATUS_FIELD"
 ACUMATICA_PAGE_SIZE_ENV = "RESOURCEPLANNER_ACUMATICA_PAGE_SIZE"
+ACUMATICA_TIMEOUT_SECONDS_ENV = "RESOURCEPLANNER_ACUMATICA_TIMEOUT_SECONDS"
 M365_TENANT_ID_ENV = "RESOURCEPLANNER_M365_TENANT_ID"
 M365_CLIENT_ID_ENV = "RESOURCEPLANNER_M365_CLIENT_ID"
 M365_CLIENT_SECRET_ENV = "RESOURCEPLANNER_M365_CLIENT_SECRET"
@@ -101,6 +102,27 @@ def _port(value: object) -> int:
     return _positive_int(value, default=8000, label=PORT_ENV, maximum=65535)
 
 
+def _positive_float(
+    value: object,
+    *,
+    default: float,
+    label: str,
+    maximum: float,
+) -> float:
+    text = _text(value)
+    if not text:
+        return default
+    try:
+        parsed = float(text)
+    except ValueError as exc:
+        raise ServerConfigurationError(f"{label} doit être un nombre positif.") from exc
+    if not 0 < parsed <= maximum:
+        raise ServerConfigurationError(
+            f"{label} doit être supérieur à 0 et inférieur ou égal à {maximum:g}."
+        )
+    return parsed
+
+
 def _acumatica_page_size(value: object) -> int:
     return _positive_int(value, default=200, label=ACUMATICA_PAGE_SIZE_ENV, maximum=1000)
 
@@ -139,6 +161,12 @@ def _acumatica_settings(values: Mapping[str, str]) -> AcumaticaProjectSourceSett
         project_manager_field=_text(values.get(ACUMATICA_MANAGER_FIELD_ENV)) or "ProjectManager",
         status_field=_text(values.get(ACUMATICA_STATUS_FIELD_ENV)) or "Status",
         page_size=_acumatica_page_size(values.get(ACUMATICA_PAGE_SIZE_ENV)),
+        timeout_seconds=_positive_float(
+            values.get(ACUMATICA_TIMEOUT_SECONDS_ENV),
+            default=30.0,
+            label=ACUMATICA_TIMEOUT_SECONDS_ENV,
+            maximum=120.0,
+        ),
     )
 
 
