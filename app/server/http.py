@@ -47,6 +47,7 @@ from .performance import (
 from .readiness import DatabaseReadinessError, check_database_readiness
 from .routes_auth import build_auth_router
 from .routes_commands import build_command_router
+from .routes_competencies import build_competency_router
 from .routes_communications import build_communication_router
 from .routes_dev_user_switcher import build_dev_user_switcher_router
 from .routes_integrations import build_integration_router
@@ -359,8 +360,15 @@ def create_api_app(
     if dev_user_switcher_runtime is not None:
         app.include_router(build_dev_user_switcher_router(dev_user_switcher_runtime))
     app.include_router(build_user_admin_router(user_admin_dependency))
-    app.include_router(build_command_router(facade_dependency, idempotency_dependency))
+    app.include_router(
+        build_command_router(
+            facade_dependency,
+            idempotency_dependency,
+            session_dependency,
+        )
+    )
     app.include_router(build_read_router(query_dependency))
+    app.include_router(build_competency_router(session_dependency))
     app.include_router(build_task_catalog_router(session_dependency))
     app.include_router(build_me_router(query_dependency))
     app.include_router(build_communication_router(communication_dependency))
