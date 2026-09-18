@@ -321,8 +321,8 @@ def create_api_app(
             "api": "v1",
         }
 
-    @app.get("/ready", tags=["system"])
-    def readiness() -> dict[str, Any] | JSONResponse:
+    @app.get("/ready", tags=["system"], response_model=None)
+    def readiness() -> Any:
         """Required local dependencies only; external integrations are informational."""
         dependencies = dict(app.state.runtime_dependencies)
         try:
