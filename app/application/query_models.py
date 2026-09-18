@@ -39,6 +39,7 @@ class ResourceReadModel:
     email: str | None = None
     resource_class: str | None = None
     competencies: str | None = None
+    competency_ids: tuple[str, ...] = ()
     note: str | None = None
     active: bool = True
     sort_order: int = 0
