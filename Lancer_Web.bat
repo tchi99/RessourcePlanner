@@ -35,6 +35,8 @@ if not defined RESOURCEPLANNER_DATABASE_URL (
     echo Utilisation de la base SQLite locale : resourceplanner_server.db
 )
 
+set "RESOURCEPLANNER_FRONTEND_DIST=%CD%\frontend\dist"
+
 if "%LOCAL_SQLITE_MODE%"=="1" (
     echo Verification des migrations de la base locale...
     ".venv-web\Scripts\python.exe" -m alembic upgrade head
@@ -46,7 +48,15 @@ if "%LOCAL_SQLITE_MODE%"=="1" (
     )
 )
 
-set "RESOURCEPLANNER_FRONTEND_DIST=%CD%\frontend\dist"
+echo.
+echo Preflight du runtime Web...
+".venv-web\Scripts\python.exe" tools\check_server_runtime.py
+if errorlevel 1 (
+    echo.
+    echo Le runtime n'est pas pret. Corrige le diagnostic ci-dessus avant le demarrage.
+    pause
+    exit /b 1
+)
 
 if not defined RESOURCEPLANNER_PORT set "DISPLAY_PORT=8000"
 if defined RESOURCEPLANNER_PORT set "DISPLAY_PORT=%RESOURCEPLANNER_PORT%"
@@ -56,6 +66,7 @@ echo Demarrage de RessourcePlanner Web...
 echo Interface : http://127.0.0.1:%DISPLAY_PORT%/
 echo API       : http://127.0.0.1:%DISPLAY_PORT%/api/v1/
 echo Sante     : http://127.0.0.1:%DISPLAY_PORT%/health
+echo Readiness : http://127.0.0.1:%DISPLAY_PORT%/ready
 echo.
 
 ".venv-web\Scripts\python.exe" -m app.server
