@@ -2,10 +2,13 @@ import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   ApiError,
+  CompetencyReadModel,
   DemandReadModel,
   ResourceReadModel,
   SegmentReadModel,
+  getCompetencies,
 } from "./api";
+import CompetencyPicker from "./CompetencyPicker";
 import {
   OverallocationApiError,
   OverallocationContext,
@@ -37,7 +40,7 @@ type FormState = {
   planned_hours: string;
   status: string;
   description: string;
-  required_competency: string;
+  required_competency_id: string;
   planning_type: string;
   priority: string;
   outside_standard_hours: boolean;
@@ -79,7 +82,9 @@ function formFromDemand(demand: DemandReadModel): FormState {
     planned_hours: demand.estimated_hours == null ? "" : String(demand.estimated_hours),
     status: "À assigner",
     description: demand.description ?? "",
-    required_competency: demand.required_competencies ?? "",
+    required_competency_id: demand.required_competency_ids.length === 1
+      ? demand.required_competency_ids[0]
+      : "",
     planning_type: "Flexible",
     priority: demand.priority ?? "Normale",
     outside_standard_hours: false,
@@ -97,7 +102,7 @@ function formFromSegment(segment: SegmentReadModel): FormState {
     planned_hours: String(segment.planned_hours || ""),
     status: segment.status || "À assigner",
     description: segment.description ?? "",
-    required_competency: segment.required_competency ?? "",
+    required_competency_id: segment.required_competency_id ?? "",
     planning_type: segment.planning_type ?? "Flexible",
     priority: segment.priority ?? "Normale",
     outside_standard_hours: segment.outside_standard_hours,
@@ -123,6 +128,7 @@ export default function SegmentEditor({
   onSaved: () => void;
 }) {
   const [segment, setSegment] = useState<SegmentReadModel | null>(null);
+  const [competencies, setCompetencies] = useState<CompetencyReadModel[]>([]);
   const [form, setForm] = useState<FormState | null>(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -163,6 +169,18 @@ export default function SegmentEditor({
       });
     return () => controller.abort();
   }, [open, segmentId, demand]);
+
+  useEffect(() => {
+    if (!open) return;
+    const controller = new AbortController();
+    getCompetencies("", false, controller.signal)
+      .then(setCompetencies)
+      .catch((reason: unknown) => {
+        if (reason instanceof DOMException && reason.name === "AbortError") return;
+        setError(messageFromError(reason));
+      });
+    return () => controller.abort();
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -231,7 +249,8 @@ export default function SegmentEditor({
       planned_hours: plannedHours,
       status: form.status.trim() || "À assigner",
       description: form.description.trim(),
-      required_competency: form.required_competency.trim() || null,
+      required_competency: null,
+      required_competency_id: form.required_competency_id || null,
       planning_type: form.planning_type.trim() || "Flexible",
       priority: form.priority.trim() || "Normale",
       outside_standard_hours: form.outside_standard_hours,
@@ -444,10 +463,20 @@ export default function SegmentEditor({
                   <option value="Urgente">Urgente</option>
                 </select>
               </label>
-              <label>
-                <span>Compétence requise</span>
-                <input value={form.required_competency} onChange={(event) => setField("required_competency", event.target.value)} />
-              </label>
+              <CompetencyPicker
+                competencies={competencies}
+                selectedIds={form.required_competency_id ? [form.required_competency_id] : []}
+                onChange={(ids) => setField("required_competency_id", ids[0] ?? "")}
+                disabled={busy}
+                multiple={false}
+                label="Compétence requise"
+                placeholder="Rechercher une compétence…"
+              />
+              {!form.required_competency_id && segment?.required_competency && (
+                <small className="legacy-competency-note">
+                  Valeur historique à convertir au catalogue : {segment.required_competency}
+                </small>
+              )}
               <label>
                 <span>Confirmation</span>
                 <select value={form.confirmation} onChange={(event) => setField("confirmation", event.target.value as ConfirmationChoice)}>
