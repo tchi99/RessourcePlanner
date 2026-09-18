@@ -37,6 +37,7 @@ from .composition import (
     build_sql_query_port,
     build_user_admin_service,
 )
+from .dev_user_switcher import DevUserSwitcherRuntime
 from .oidc import OidcRuntime
 from .performance import (
     InstrumentedJSONResponse,
@@ -47,6 +48,7 @@ from .readiness import DatabaseReadinessError, check_database_readiness
 from .routes_auth import build_auth_router
 from .routes_commands import build_command_router
 from .routes_communications import build_communication_router
+from .routes_dev_user_switcher import build_dev_user_switcher_router
 from .routes_integrations import build_integration_router
 from .routes_me import build_me_router
 from .routes_reads import build_read_router
@@ -221,10 +223,14 @@ def create_api_app(
     acumatica_info: dict[str, Any] | None = None,
     auth_resolver: AuthResolver | None = None,
     oidc_runtime: OidcRuntime | None = None,
+    dev_user_switcher_runtime: DevUserSwitcherRuntime | None = None,
     communication_transport: CommunicationTransportPort | None = None,
     performance_log_path: Path | None = None,
     runtime_dependencies: dict[str, Any] | None = None,
 ) -> FastAPI:
+    if oidc_runtime is not None and dev_user_switcher_runtime is not None:
+        raise ValueError("OIDC et le sélecteur d’utilisateur de développement sont mutuellement exclusifs.")
+
     engine = create_sql_engine(database_url)
     install_sql_performance_instrumentation(engine)
     factory = create_session_factory(engine)
@@ -274,6 +280,7 @@ def create_api_app(
     app.state.user_admin_dependency = user_admin_dependency
     app.state.communication_dependency = communication_dependency
     app.state.runtime_dependencies = dict(runtime_dependencies or {})
+    app.state.dev_user_switcher_enabled = dev_user_switcher_runtime is not None
 
     install_authorization_middleware(
         app,
@@ -348,6 +355,8 @@ def create_api_app(
         }
 
     app.include_router(build_auth_router(oidc_runtime))
+    if dev_user_switcher_runtime is not None:
+        app.include_router(build_dev_user_switcher_router(dev_user_switcher_runtime))
     app.include_router(build_user_admin_router(user_admin_dependency))
     app.include_router(build_command_router(facade_dependency, idempotency_dependency))
     app.include_router(build_read_router(query_dependency))
