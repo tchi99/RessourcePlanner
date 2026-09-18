@@ -3,10 +3,12 @@ from __future__ import annotations
 from typing import Any, Callable
 
 from fastapi import APIRouter, Depends, Header, status
+from sqlalchemy.orm import Session
 
 from ..application import (
     ApplicationFacade,
     AvailabilityRuleCreateCommand,
+    CompetencyCatalogService,
     AvailabilityRuleUpdateCommand,
     DemandAlternativeSelectCommand,
     DemandApproveCommand,
@@ -34,6 +36,7 @@ from ..application import (
     WorkPackageCreateCommand,
     WorkPackageUpdateCommand,
 )
+from ..infrastructure.sql import SqlCompetencyCatalogRepository
 from .schemas import (
     AvailabilityRuleCreateRequest,
     AvailabilityRuleUpdateRequest,
@@ -57,6 +60,7 @@ from .schemas import (
 
 FacadeProvider = Callable[..., Any]
 IdempotencyProvider = Callable[..., Any]
+SessionProvider = Callable[..., Any]
 
 
 def _payload(result: Any) -> dict[str, Any]:
@@ -67,16 +71,32 @@ def _json_body(body: Any) -> dict[str, Any]:
     return body.model_dump(mode="json")
 
 
-def _segment_command_values(body: SegmentCreateRequest | SegmentUpdateRequest) -> dict[str, Any]:
+def _segment_command_values(
+    body: SegmentCreateRequest | SegmentUpdateRequest,
+    competencies: CompetencyCatalogService,
+) -> tuple[dict[str, Any], bool, str | None]:
     values = body.model_dump(exclude_unset=isinstance(body, SegmentUpdateRequest))
     if "source_effort_id" in values:
         values["source_effort_row"] = values.pop("source_effort_id")
-    return values
+    competency_supplied = "required_competency_id" in body.model_fields_set
+    competency_id = values.pop("required_competency_id", None)
+    if competency_supplied:
+        values["required_competency"] = (
+            competencies.snapshot_text((competency_id,))
+            if competency_id
+            else None
+        )
+    return values, competency_supplied, competency_id
+
+
+def _catalog(session: Session) -> CompetencyCatalogService:
+    return CompetencyCatalogService(SqlCompetencyCatalogRepository(session))
 
 
 def build_command_router(
     facade_dependency: FacadeProvider,
     idempotency_dependency: IdempotencyProvider,
+    session_dependency: SessionProvider,
 ) -> APIRouter:
     router = APIRouter(prefix="/api/v1", tags=["commands"])
 
