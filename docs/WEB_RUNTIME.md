@@ -184,7 +184,7 @@ Les procédures détaillées de configuration, diagnostic, sauvegarde/restaurati
 
 ## 12. Docker / Synology
 
-La voie Docker de #263 devient le chemin cible pour un déploiement Synology. Dans ce mode, le runtime n'est plus un unique processus qui sert aussi les assets React : le frontend est construit puis servi par Nginx, tandis que FastAPI reste un conteneur API séparé sur le réseau Docker.
+La voie Docker devient la cible de déploiement Synology prévue par la tranche Docker. Dans ce mode, le runtime n'est plus un unique processus qui sert aussi les assets React : le frontend est construit puis servi par Nginx, tandis que FastAPI reste un conteneur API séparé sur le réseau Docker.
 
 Nginx conserve une origine unique pour le navigateur en proxifiant `/api/*`, `/health`, `/ready`, `/docs` et `/openapi.json` vers FastAPI.
 
