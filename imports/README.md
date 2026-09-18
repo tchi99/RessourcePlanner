@@ -17,3 +17,20 @@ Pour appliquer l'import :
 ```bash
 docker compose run --rm import-projects /imports/Projets.xlsx --apply
 ```
+
+
+## Catalogue de tâches
+
+Prévisualiser :
+
+```bash
+docker compose run --rm import-tasks "/imports/Tâches de projet.xlsx"
+```
+
+Appliquer :
+
+```bash
+docker compose run --rm import-tasks "/imports/Tâches de projet.xlsx" --apply
+```
+
+Les fichiers CSV sont également acceptés. Voir `docs/ERP_TASK_CATALOG.md` pour le mapping.
