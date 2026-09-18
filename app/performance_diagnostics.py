@@ -168,24 +168,40 @@ def read_performance_samples(
     *,
     path: Path | None = None,
     limit: int = 20,
+    backups: int = PERFORMANCE_LOG_BACKUPS,
 ) -> list[dict[str, Any]]:
+    """Read recent technical samples across the active JSONL file and rotations."""
+
     target = path or default_performance_log_path()
-    if limit <= 0 or not target.exists():
-        return []
-    try:
-        lines = target.read_text(encoding="utf-8").splitlines()
-    except OSError:
+    if limit <= 0:
         return []
 
+    # Rotation uses .1 as the newest archived file. Read oldest -> newest so
+    # slicing the tail preserves chronological order across a rotation boundary.
+    candidates = [
+        target.with_name(f"{target.name}.{index}")
+        for index in range(max(int(backups), 0), 0, -1)
+    ]
+    candidates.append(target)
+
+    lines: list[str] = []
+    for candidate in candidates:
+        if not candidate.exists():
+            continue
+        try:
+            lines.extend(candidate.read_text(encoding="utf-8").splitlines())
+        except OSError:
+            continue
+
     result: list[dict[str, Any]] = []
-    for line in lines[-limit:]:
+    for line in lines:
         try:
             parsed = json.loads(line)
         except json.JSONDecodeError:
             continue
         if isinstance(parsed, dict):
             result.append(parsed)
-    return result
+    return result[-limit:]
 
 
 def _percentile(values: Iterable[object], percentile: float) -> float:
