@@ -9,6 +9,7 @@ from app.server.runtime import (
     ALLOW_LOCAL_AUTH_NETWORK_ENV,
     AUTH_MODE_ENV,
     DATABASE_URL_ENV,
+    DEV_USER_SWITCHER_ENV,
     HOST_ENV,
     LOCAL_AUTH_NAME_ENV,
     LOCAL_AUTH_ROLES_ENV,
@@ -41,6 +42,7 @@ class ServerRuntimeTests(unittest.TestCase):
         self.assertEqual(settings.log_level, "info")
         self.assertEqual(settings.actor_name, "api")
         self.assertEqual(settings.auth_mode, "local")
+        self.assertFalse(settings.dev_user_switcher)
         assert settings.auth_principal is not None
         self.assertEqual(settings.auth_principal.auth_mode, "local")
         self.assertEqual(settings.auth_principal.roles, (ROLE_ADMIN,))
@@ -75,6 +77,28 @@ class ServerRuntimeTests(unittest.TestCase):
                 }
             )
         self.assertIn(ALLOW_LOCAL_AUTH_NETWORK_ENV, str(caught.exception))
+
+    def test_dev_user_switcher_can_be_enabled_only_for_local_auth(self) -> None:
+        settings = ServerSettings.from_environment(
+            {
+                DATABASE_URL_ENV: "sqlite+pysqlite:///:memory:",
+                DEV_USER_SWITCHER_ENV: "true",
+            }
+        )
+        self.assertTrue(settings.dev_user_switcher)
+
+        with self.assertRaises(ServerConfigurationError) as caught:
+            ServerSettings.from_environment(
+                {
+                    DATABASE_URL_ENV: "sqlite+pysqlite:///:memory:",
+                    AUTH_MODE_ENV: "oidc",
+                    DEV_USER_SWITCHER_ENV: "true",
+                    OIDC_DISCOVERY_URL_ENV: "https://identity.example.invalid/.well-known/openid-configuration",
+                    OIDC_CLIENT_ID_ENV: "resourceplanner",
+                    OIDC_REDIRECT_URI_ENV: "https://planner.example.invalid/api/v1/auth/callback",
+                }
+            )
+        self.assertIn(DEV_USER_SWITCHER_ENV, str(caught.exception))
 
     def test_oidc_mode_requires_complete_configuration(self) -> None:
         with self.assertRaises(ServerConfigurationError) as caught:
