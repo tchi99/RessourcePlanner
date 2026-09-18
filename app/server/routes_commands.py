@@ -234,14 +234,26 @@ def build_command_router(
         idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
         facade: ApplicationFacade = Depends(facade_dependency),
         idempotency: IdempotentCommandExecutor = Depends(idempotency_dependency),
+        session: Session = Depends(session_dependency),
     ) -> dict[str, Any]:
+        competencies = _catalog(session)
+        selection_supplied = "required_competency_ids" in body.model_fields_set
+        competency_ids = tuple(body.required_competency_ids or ())
+        values = body.model_dump(exclude={"required_competency_ids"})
+        if selection_supplied:
+            values["required_competencies"] = competencies.snapshot_text(competency_ids)
+
+        def action() -> dict[str, Any]:
+            result = facade.create_demand(DemandCreateCommand(**values))
+            if selection_supplied:
+                competencies.assign_demand(result.demand_number, competency_ids)
+            return _payload(result)
+
         return idempotency.execute(
             scope="demand.create",
             key=idempotency_key,
             request_payload=_json_body(body),
-            action=lambda: _payload(
-                facade.create_demand(DemandCreateCommand(**body.model_dump()))
-            ),
+            action=action,
         )
 
     @router.patch("/demands/{number}")
@@ -249,11 +261,23 @@ def build_command_router(
         number: str,
         body: DemandUpdateRequest,
         facade: ApplicationFacade = Depends(facade_dependency),
+        session: Session = Depends(session_dependency),
     ) -> dict[str, Any]:
-        values = body.model_dump(exclude_unset=True)
+        competencies = _catalog(session)
+        selection_supplied = "required_competency_ids" in body.model_fields_set
+        competency_ids = tuple(body.required_competency_ids or ())
+        values = body.model_dump(
+            exclude_unset=True,
+            exclude={"required_competency_ids"},
+        )
+        if selection_supplied:
+            values["required_competencies"] = competencies.snapshot_text(competency_ids)
         comment = str(values.pop("comment", "Demande modifiée via API") or "")
         command = DemandUpdateCommand(number=number, comment=comment, **values)
-        return _payload(facade.update_demand(command))
+        result = facade.update_demand(command)
+        if selection_supplied:
+            competencies.assign_demand(number, competency_ids)
+        return _payload(result)
 
     @router.put("/demands/{number}/periods")
     def replace_demand_periods(
