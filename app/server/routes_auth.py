@@ -26,6 +26,17 @@ def _auth_error(status: int, code: str, message: str) -> JSONResponse:
     )
 
 
+def _clear_login_cookie(response: Response, runtime: OidcRuntime) -> Response:
+    response.delete_cookie(
+        runtime.login_cookie_name,
+        path="/api/v1/auth/callback",
+        secure=runtime.secure_cookie,
+        httponly=True,
+        samesite="lax",
+    )
+    return response
+
+
 def build_auth_router(oidc_runtime: OidcRuntime | None = None) -> APIRouter:
     router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 
@@ -40,7 +51,7 @@ def build_auth_router(oidc_runtime: OidcRuntime | None = None) -> APIRouter:
     @router.get("/login")
     async def login(request: Request) -> Response:
         factory = request.app.state.session_factory
-        state, nonce, code_verifier = create_login_transaction(factory, oidc_runtime)
+        state, nonce, code_verifier, browser_binding = create_login_transaction(factory, oidc_runtime)
         try:
             target = await oidc_runtime.client.authorization_url(
                 state=state,
@@ -53,7 +64,17 @@ def build_auth_router(oidc_runtime: OidcRuntime | None = None) -> APIRouter:
                 "oidc_provider_unavailable",
                 "Le fournisseur OIDC n'est pas disponible ou sa configuration est invalide.",
             )
-        return RedirectResponse(target, status_code=302)
+        response = RedirectResponse(target, status_code=302)
+        response.set_cookie(
+            oidc_runtime.login_cookie_name,
+            browser_binding,
+            max_age=int(oidc_runtime.login_ttl.total_seconds()),
+            httponly=True,
+            secure=oidc_runtime.secure_cookie,
+            samesite="lax",
+            path="/api/v1/auth/callback",
+        )
+        return response
 
     @router.get("/callback")
     async def callback(
@@ -68,12 +89,29 @@ def build_auth_router(oidc_runtime: OidcRuntime | None = None) -> APIRouter:
             return _auth_error(400, "oidc_callback_invalid", "Le callback OIDC est incomplet.")
 
         factory = request.app.state.session_factory
-        transaction = consume_login_transaction(factory, state)
+        browser_binding = str(request.cookies.get(oidc_runtime.login_cookie_name) or "").strip()
+        if not browser_binding:
+            return _clear_login_cookie(
+                _auth_error(
+                    400,
+                    "oidc_browser_binding_missing",
+                    "La transaction de connexion OIDC n'appartient pas à ce navigateur.",
+                ),
+                oidc_runtime,
+            )
+        transaction = consume_login_transaction(
+            factory,
+            state,
+            browser_binding=browser_binding,
+        )
         if transaction is None:
-            return _auth_error(
-                400,
-                "oidc_state_invalid",
-                "La transaction de connexion OIDC est expirée ou invalide.",
+            return _clear_login_cookie(
+                _auth_error(
+                    400,
+                    "oidc_state_invalid",
+                    "La transaction de connexion OIDC est expirée, invalide ou liée à un autre navigateur.",
+                ),
+                oidc_runtime,
             )
         try:
             identity = await oidc_runtime.client.exchange_code(
@@ -82,10 +120,13 @@ def build_auth_router(oidc_runtime: OidcRuntime | None = None) -> APIRouter:
                 nonce=transaction.nonce,
             )
         except (httpx.HTTPError, OidcProtocolError, ValueError):
-            return _auth_error(
-                401,
-                "oidc_token_invalid",
-                "La réponse OIDC n'a pas pu être validée.",
+            return _clear_login_cookie(
+                _auth_error(
+                    401,
+                    "oidc_token_invalid",
+                    "La réponse OIDC n'a pas pu être validée.",
+                ),
+                oidc_runtime,
             )
 
         with factory.begin() as session:
@@ -100,13 +141,16 @@ def build_auth_router(oidc_runtime: OidcRuntime | None = None) -> APIRouter:
                 auth_mode="oidc",
             )
         if principal is None or principal.local_user_id is None:
-            return _auth_error(
-                403,
-                "oidc_user_not_registered",
-                "Cette identité Acumatica n'est pas autorisée dans RessourcePlanner.",
+            return _clear_login_cookie(
+                _auth_error(
+                    403,
+                    "oidc_user_not_registered",
+                    "Cette identité Acumatica n'est pas autorisée dans RessourcePlanner.",
+                ),
+                oidc_runtime,
             )
 
-        raw_session = create_server_session(
+        raw_session, csrf_token = create_server_session(
             factory,
             oidc_runtime,
             user_id=principal.local_user_id,
@@ -121,7 +165,16 @@ def build_auth_router(oidc_runtime: OidcRuntime | None = None) -> APIRouter:
             samesite=oidc_runtime.cookie_samesite,
             path="/",
         )
-        return response
+        response.set_cookie(
+            oidc_runtime.csrf_cookie_name,
+            csrf_token,
+            max_age=int(oidc_runtime.session_ttl.total_seconds()),
+            httponly=False,
+            secure=oidc_runtime.secure_cookie,
+            samesite=oidc_runtime.cookie_samesite,
+            path="/",
+        )
+        return _clear_login_cookie(response, oidc_runtime)
 
     @router.post("/logout", status_code=204)
     def logout(request: Request) -> Response:
@@ -137,6 +190,13 @@ def build_auth_router(oidc_runtime: OidcRuntime | None = None) -> APIRouter:
             path="/",
             secure=oidc_runtime.secure_cookie,
             httponly=True,
+            samesite=oidc_runtime.cookie_samesite,
+        )
+        response.delete_cookie(
+            oidc_runtime.csrf_cookie_name,
+            path="/",
+            secure=oidc_runtime.secure_cookie,
+            httponly=False,
             samesite=oidc_runtime.cookie_samesite,
         )
         return response

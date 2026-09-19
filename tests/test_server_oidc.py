@@ -146,7 +146,12 @@ class ServerOidcTests(unittest.TestCase):
                 self.assertNotEqual(stored.token_hash, session_token)
                 self.assertNotIn(session_token or "", stored.token_hash)
 
-            logout = client.post("/api/v1/auth/logout")
+            csrf = client.cookies.get("resourceplanner_csrf")
+            self.assertIsNotNone(csrf)
+            logout = client.post(
+                "/api/v1/auth/logout",
+                headers={"X-CSRF-Token": str(csrf)},
+            )
             self.assertEqual(logout.status_code, 204)
             after = client.get("/api/v1/auth/me")
 
@@ -240,7 +245,7 @@ class ServerOidcTests(unittest.TestCase):
 
         self.assertEqual(first.status_code, 303)
         self.assertEqual(second.status_code, 400)
-        self.assertEqual(second.json()["error"]["code"], "oidc_state_invalid")
+        self.assertEqual(second.json()["error"]["code"], "oidc_browser_binding_missing")
 
     def test_expired_and_revoked_sessions_do_not_resolve(self) -> None:
         now = datetime.now(timezone.utc)
@@ -248,11 +253,13 @@ class ServerOidcTests(unittest.TestCase):
             repository = SqlAuthSessionRepository(session)
             repository.create_session(
                 raw_token="expired-token",
+                csrf_token="expired-csrf",
                 user_id=self.user.user_id,
                 expires_at=now - timedelta(seconds=1),
             )
             repository.create_session(
                 raw_token="revoked-token",
+                csrf_token="revoked-csrf",
                 user_id=self.user.user_id,
                 expires_at=now + timedelta(hours=1),
             )

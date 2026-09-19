@@ -40,7 +40,7 @@ from .composition import (
     build_user_admin_service,
 )
 from .dev_user_switcher import DevUserSwitcherRuntime
-from .oidc import OidcRuntime
+from .oidc import OidcRuntime, oidc_csrf_guard
 from .performance import (
     InstrumentedJSONResponse,
     install_performance_middleware,
@@ -310,6 +310,7 @@ def create_api_app(
     install_authorization_middleware(
         app,
         auth_resolver or _default_auth_resolver(actor_name),
+        csrf_guard=(oidc_csrf_guard(oidc_runtime) if oidc_runtime is not None else None),
     )
     # Registered after authorization so Starlette wraps it outside auth and the
     # request performance context is already active while credentials are resolved.

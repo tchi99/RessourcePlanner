@@ -1,3 +1,4 @@
+import { csrfHeaders } from "./csrf";
 export type CommunicationContact = {
   recipient_id: string;
   audience: "technician" | "project_manager";
@@ -77,8 +78,10 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     headers: {
       Accept: "application/json",
       ...(init?.body ? { "Content-Type": "application/json" } : {}),
+      ...csrfHeaders(),
       ...(init?.headers ?? {}),
     },
+    credentials: "include",
   });
   if (!response.ok) {
     let payload: ApiErrorPayload | null = null;

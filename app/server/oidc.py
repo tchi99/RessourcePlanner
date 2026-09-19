@@ -23,6 +23,9 @@ class OidcRuntime:
     secure_cookie: bool = True
     cookie_samesite: str = "lax"
     auto_provisioning: AutoProvisioningPolicy = field(default_factory=AutoProvisioningPolicy)
+    login_cookie_name: str = "resourceplanner_oidc_login"
+    csrf_cookie_name: str = "resourceplanner_csrf"
+    csrf_header_name: str = "X-CSRF-Token"
 
     @property
     def login_ttl(self) -> timedelta:
@@ -51,26 +54,33 @@ def oidc_session_auth_resolver(cookie_name: str) -> AuthResolver:
 def create_login_transaction(
     factory: SqlSessionFactory,
     runtime: OidcRuntime,
-) -> tuple[str, str, str]:
+) -> tuple[str, str, str, str]:
     state = runtime.new_secret()
     nonce = runtime.new_secret()
     code_verifier = runtime.new_secret(64)
+    browser_binding = runtime.new_secret(48)
     with factory.begin() as session:
         SqlAuthSessionRepository(session).create_login_transaction(
             state=state,
             nonce=nonce,
             code_verifier=code_verifier,
+            browser_binding=browser_binding,
             expires_at=utc_now() + runtime.login_ttl,
         )
-    return state, nonce, code_verifier
+    return state, nonce, code_verifier, browser_binding
 
 
 def consume_login_transaction(
     factory: SqlSessionFactory,
     state: str,
+    *,
+    browser_binding: str,
 ) -> Any:
     with factory.begin() as session:
-        return SqlAuthSessionRepository(session).consume_login_transaction(state)
+        return SqlAuthSessionRepository(session).consume_login_transaction(
+            state,
+            browser_binding=browser_binding,
+        )
 
 
 def create_server_session(
@@ -78,16 +88,44 @@ def create_server_session(
     runtime: OidcRuntime,
     *,
     user_id: str,
-) -> str:
+) -> tuple[str, str]:
     raw_token = runtime.new_secret(64)
+    csrf_token = runtime.new_secret(48)
     with factory.begin() as session:
         SqlAuthSessionRepository(session).create_session(
             raw_token=raw_token,
+            csrf_token=csrf_token,
             user_id=user_id,
             expires_at=utc_now() + runtime.session_ttl,
         )
-    return raw_token
+    return raw_token, csrf_token
 
+
+
+def oidc_csrf_guard(runtime: OidcRuntime):
+    def validate(request: Request) -> bool:
+        raw_session = str(request.cookies.get(runtime.cookie_name) or "").strip()
+        cookie_token = str(request.cookies.get(runtime.csrf_cookie_name) or "").strip()
+        header_token = str(request.headers.get(runtime.csrf_header_name) or "").strip()
+        if not raw_session or not cookie_token or not header_token:
+            return False
+        if not secrets.compare_digest(cookie_token, header_token):
+            return False
+
+        origin = str(request.headers.get("origin") or "").strip()
+        if origin:
+            expected_origin = f"{request.url.scheme}://{request.url.netloc}"
+            if origin.rstrip("/").casefold() != expected_origin.rstrip("/").casefold():
+                return False
+
+        factory: SqlSessionFactory = request.app.state.session_factory
+        with factory() as session:
+            return SqlAuthSessionRepository(session).validate_csrf(
+                raw_session,
+                header_token,
+            )
+
+    return validate
 
 def revoke_server_session(
     factory: SqlSessionFactory,

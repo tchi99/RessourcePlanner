@@ -1,3 +1,4 @@
+import { csrfHeaders } from "./csrf";
 import { ApiError } from "./api";
 
 export type AuthPrincipal = {
@@ -48,7 +49,7 @@ export function getLoginUrl(): string {
 
 export async function getCurrentPrincipal(signal?: AbortSignal): Promise<AuthPrincipal> {
   const response = await fetch(`${API_BASE}/api/v1/auth/me`, {
-    headers: { Accept: "application/json" },
+    headers: { Accept: "application/json", ...csrfHeaders() },
     credentials: "include",
     signal,
   });
@@ -59,7 +60,7 @@ export async function getCurrentPrincipal(signal?: AbortSignal): Promise<AuthPri
 export async function logoutCurrentSession(): Promise<void> {
   const response = await fetch(`${API_BASE}/api/v1/auth/logout`, {
     method: "POST",
-    headers: { Accept: "application/json" },
+    headers: { Accept: "application/json", ...csrfHeaders() },
     credentials: "include",
   });
   if (!response.ok) throw await apiError(response);
@@ -79,7 +80,7 @@ export async function getDevUserSwitcher(signal?: AbortSignal): Promise<DevUserS
 export async function selectDevUser(userId: string): Promise<void> {
   const response = await fetch(`${API_BASE}/api/v1/dev/user-switcher/select`, {
     method: "POST",
-    headers: { Accept: "application/json", "Content-Type": "application/json" },
+    headers: { Accept: "application/json", "Content-Type": "application/json", ...csrfHeaders() },
     credentials: "include",
     body: JSON.stringify({ user_id: userId }),
   });
@@ -89,7 +90,7 @@ export async function selectDevUser(userId: string): Promise<void> {
 export async function resetDevUser(): Promise<void> {
   const response = await fetch(`${API_BASE}/api/v1/dev/user-switcher/reset`, {
     method: "POST",
-    headers: { Accept: "application/json" },
+    headers: { Accept: "application/json", ...csrfHeaders() },
     credentials: "include",
   });
   if (!response.ok) throw await apiError(response);

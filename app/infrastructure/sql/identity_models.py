@@ -38,6 +38,7 @@ class AuthLoginTransaction(TimestampMixin, Base):
     state_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
     nonce: Mapped[str] = mapped_column(String(255), nullable=False)
     code_verifier: Mapped[str] = mapped_column(String(255), nullable=False)
+    browser_binding_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
     consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
@@ -47,6 +48,7 @@ class AuthSession(TimestampMixin, Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
     token_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
+    csrf_token_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
     user_id: Mapped[str] = mapped_column(
         String(36),
         ForeignKey("app_users.id", ondelete="CASCADE"),

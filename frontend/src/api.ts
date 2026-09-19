@@ -1,3 +1,4 @@
+import { csrfHeaders } from "./csrf";
 export type ProjectReadModel = {
   id: string;
   number: string;
@@ -535,7 +536,8 @@ async function getJson<T>(path: string, signal?: AbortSignal): Promise<T> {
 async function postJson<T>(path: string): Promise<T> {
   const response = await fetch(`${API_BASE}${path}`, {
     method: "POST",
-    headers: { Accept: "application/json" },
+    headers: { Accept: "application/json", ...csrfHeaders() },
+    credentials: "include",
   });
   if (!response.ok) throw await responseError(response);
   return response.json() as Promise<T>;
@@ -552,9 +554,11 @@ async function sendJson<T>(
     headers: {
       Accept: "application/json",
       "Content-Type": "application/json",
+      ...csrfHeaders(),
       ...headers,
     },
     body: JSON.stringify(body),
+    credentials: "include",
   });
   if (!response.ok) throw await responseError(response);
   return response.json() as Promise<T>;
