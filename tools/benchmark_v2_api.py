@@ -20,6 +20,7 @@ from app.application.security import AuthPrincipal, ROLE_ADMIN
 from app.infrastructure.sql import Base, create_session_factory, create_sql_engine
 from app.infrastructure.sql.models import (
     Project,
+    RequestLine,
     Resource,
     ResourceAvailabilityRule,
     ResourceRequirement,
@@ -172,6 +173,29 @@ def _seed(database_url: str, spec: DatasetSpec) -> None:
                 )
             session.add_all(demands)
             session.flush()
+            session.add_all(
+                [
+                    RequestLine(
+                        id=demand.id,
+                        workforce_request_id=demand.id,
+                        position=0,
+                        kind="WORKFORCE",
+                        slot_count=max(int(demand.resource_count or 1), 1),
+                        required_competencies_snapshot=demand.required_competencies,
+                        desired_start=demand.desired_start,
+                        desired_end=demand.desired_end,
+                        desired_active_days=demand.estimated_days,
+                        estimated_hours=demand.estimated_hours,
+                        confirmation=demand.confirmation,
+                        work_package_id=demand.work_package_id,
+                        proposed_resource_id=demand.proposed_resource_id,
+                        description=demand.description,
+                        active=True,
+                    )
+                    for demand in demands
+                ]
+            )
+            session.flush()
 
             requirements: list[ResourceRequirement] = []
             for index in range(1, spec.segments + 1):
@@ -183,6 +207,7 @@ def _seed(database_url: str, spec: DatasetSpec) -> None:
                         legacy_segment_id=f"SEG-PERF-{index:05d}",
                         project_id=demand.project_id,
                         workforce_request_id=demand.id,
+                        source_request_line_id=demand.id,
                         assigned_resource_id=resource.id,
                         start_date=WINDOW_START,
                         end_date=WINDOW_END,
