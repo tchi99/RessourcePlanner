@@ -12,6 +12,7 @@ from app.application.security import (
     PERMISSION_READ,
     PERMISSIONS,
     ROLE_ADMIN,
+    ROLE_PROJECT_MANAGER,
     ROLE_TECHNICIAN,
     AuthPrincipal,
 )
@@ -55,6 +56,14 @@ class DevUserSwitcherTests(unittest.TestCase):
                     email=None,
                     roles=(ROLE_ADMIN,),
                 )
+                project_manager = users.upsert(
+                    issuer="urn:test:dev",
+                    subject="project-manager",
+                    display_name="Chargé de projet",
+                    email=None,
+                    employee_external_id="EMP-PM",
+                    roles=(ROLE_PROJECT_MANAGER,),
+                )
                 tech_a = users.upsert(
                     issuer="urn:test:dev",
                     subject="tech-a",
@@ -81,6 +90,7 @@ class DevUserSwitcherTests(unittest.TestCase):
                 )
                 self.user_ids = {
                     "admin": admin.user_id,
+                    "project_manager": project_manager.user_id,
                     "tech_a": tech_a.user_id,
                     "tech_b": tech_b.user_id,
                     "inactive": inactive.user_id,
@@ -91,6 +101,7 @@ class DevUserSwitcherTests(unittest.TestCase):
                         id="P-DEV",
                         number="P-DEV",
                         name="Projet identités dev",
+                        project_manager_external_id="EMP-PM",
                         status="Actif",
                     )
                 )
@@ -230,6 +241,22 @@ class DevUserSwitcherTests(unittest.TestCase):
         self.assertEqual(tuple(admin.json()["permissions"]), PERMISSIONS)
         self.assertEqual(integration.status_code, 503)
         self.assertEqual(integration.json()["error"]["code"], "acumatica_not_configured")
+
+    def test_project_manager_switcher_resolves_managed_context_without_resource(self) -> None:
+        with TestClient(self.app) as client:
+            client.post(
+                "/api/v1/dev/user-switcher/select",
+                json={"user_id": self.user_ids["project_manager"]},
+            )
+            context = client.get("/api/v1/me/context")
+
+        self.assertEqual(context.status_code, 200)
+        payload = context.json()
+        self.assertEqual(payload["resource"]["link_status"], "RESOURCE_NOT_FOUND")
+        self.assertEqual(payload["relations"]["managed_project_count"], 1)
+        self.assertEqual(payload["relations"]["participating_project_count"], 0)
+        self.assertEqual(payload["relations"]["personal_project_count"], 1)
+        self.assertEqual(payload["view_policy"]["default_scope"], "mine")
 
     def test_inactive_user_cannot_be_selected(self) -> None:
         with TestClient(self.app) as client:
