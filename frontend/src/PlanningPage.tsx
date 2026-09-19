@@ -153,6 +153,8 @@ function ShiftCard({
       type="button"
       className={`shift-card shift-${confirmation} ${shift.outside_standard_hours ? "shift-outside" : ""} ${excess > 0 ? "shift-overallocated" : ""} ${unplaced > 0 ? "shift-unplaced" : ""} ${dragEnabled ? "is-draggable" : ""}`}
       draggable={dragEnabled}
+      data-allocation-id={shift.allocation_id}
+      data-segment-id={shift.segment_id}
       onDragStart={(event) => {
         if (!dragEnabled) {
           event.preventDefault();
@@ -289,6 +291,7 @@ function ResourceRow({
     <div className="resource-row">
       <div
         className={`resource-cell resource-identity planning-drop-resource ${capacity?.overloaded ? "resource-overloaded" : ""}`}
+        data-resource-id={resource.id}
         title={dragEnabled ? "Déposer ici un besoin non attribué pour l’affecter à cette ressource" : undefined}
         onDragOver={(event) => {
           if (!dragEnabled || !hasSegmentDrag(event.dataTransfer)) return;
@@ -343,6 +346,8 @@ function ResourceRow({
           <div
             className={`${cellClass} planning-drop-day`}
             key={iso}
+            data-resource-id={resource.id}
+            data-day={iso}
             title={dragEnabled ? `Déposer un quart sur ${resource.name}, ${iso}` : undefined}
             onDragOver={(event) => {
               if (!dragEnabled || !hasShiftDrag(event.dataTransfer)) return;
