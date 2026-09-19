@@ -37,7 +37,7 @@ class DemandLineInput:
     estimated_hours: float | None = None
     work_package_ref: str | None = None
     task_code: str | None = None
-    proposed_technician: str | None = None
+    proposed_resource_id: str | None = None
     confirmation: str = "Confirmée"
     description: str | None = None
 
@@ -56,7 +56,7 @@ class DemandLineInput:
                 estimated_hours=self.estimated_hours,
                 work_package_ref=self.work_package_ref,
                 task_code=self.task_code,
-                proposed_technician=self.proposed_technician,
+                proposed_resource_id=self.proposed_resource_id,
                 confirmation=self.confirmation,
                 description=self.description,
                 require_complete=require_complete,
