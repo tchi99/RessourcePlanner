@@ -91,6 +91,7 @@ from .project_sync import (
 )
 from .query_models import (
     DemandHistoryReadModel,
+    MediumTermUnlinkedSegmentReadModel,
     PendingDemandLoadReadModel,
     PlanningActionReadModel,
     PlanningSnapshotReadModel,
@@ -208,6 +209,7 @@ __all__ = [
     "ManualAllocationDeleteCommand",
     "ManualAllocationReleaseCommand",
     "ManualAllocationUpdateCommand",
+    "MediumTermUnlinkedSegmentReadModel",
     "PendingDemandLoadReadModel",
     "PlanningActionReadModel",
     "PlannerQueryPort",
