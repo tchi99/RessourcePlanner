@@ -110,14 +110,7 @@ class SqlDemandRepository(DemandRepositoryPort):
                 else None
             ),
             version=max(int(request.aggregate_version or 1), 1),
-            line_mode=not (
-                len(tuple(line for line in lines if line.active)) == 1
-                and next(
-                    (line.line_id for line in lines if line.active),
-                    None,
-                )
-                == request.id
-            ),
+            line_mode=bool(request.line_mode),
             lines=lines,
         )
 
@@ -608,15 +601,6 @@ class SqlDemandRepository(DemandRepositoryPort):
             lines[0].proposed_resource_id if len(lines) == 1 else None
         )
 
-    def _has_multi_line_shape(self, request_id: str) -> bool:
-        rows = self._session.scalars(
-            select(RequestLine).where(
-                RequestLine.workforce_request_id == request_id,
-                RequestLine.active.is_(True),
-            )
-        ).all()
-        return len(rows) != 1 or (rows and rows[0].id != request_id)
-
     def _sync_legacy_request_line(self, request: WorkforceRequest) -> RequestLine:
         """Mirror the current flat request into its transitional single line.
 
@@ -720,6 +704,7 @@ class SqlDemandRepository(DemandRepositoryPort):
         self._session.flush()
         request_lines = values.get("RequestLines")
         if request_lines is not None:
+            request.line_mode = True
             self._replace_request_lines(
                 request,
                 project,
@@ -772,7 +757,7 @@ class SqlDemandRepository(DemandRepositoryPort):
         }
         if (
             request_lines is None
-            and self._has_multi_line_shape(request.id)
+            and bool(request.line_mode)
             and line_owned_flat_fields.intersection(updates)
         ):
             raise ValueError(
@@ -780,7 +765,7 @@ class SqlDemandRepository(DemandRepositoryPort):
             )
 
         project_changed = "NumeroProjet" in updates
-        if project_changed and request_lines is None and self._has_multi_line_shape(request.id):
+        if project_changed and request_lines is None and bool(request.line_mode):
             raise ValueError(
                 "Le changement de projet d'une demande gérée par lignes doit fournir lines."
             )
@@ -865,11 +850,12 @@ class SqlDemandRepository(DemandRepositoryPort):
         # NomProjet/Client/ChargeProjet intentionally remain project-owned. They are
         # projected from projects and will ultimately be mastered by Acumatica.
         if request_lines is not None:
+            request.line_mode = True
             project = self._session.get(Project, request.project_id)
             if project is None:
                 raise KeyError("Projet de la demande introuvable")
             self._replace_request_lines(request, project, tuple(request_lines))
-        elif not self._has_multi_line_shape(request.id):
+        elif not bool(request.line_mode):
             self._sync_legacy_request_line(request)
         request.aggregate_version = int(request.aggregate_version or 1) + 1
         self._session.flush()
