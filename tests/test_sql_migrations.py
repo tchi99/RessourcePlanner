@@ -122,6 +122,9 @@ class SqlMigrationTests(unittest.TestCase):
             self.assertIn("CREATE TABLE RESOURCE_REQUIREMENT_COMPETENCIES", ddl, url)
             self.assertIn("SOURCE_REQUEST_LINE_ID", ddl, url)
             self.assertIn("REQUEST_LINE_ID", ddl, url)
+            self.assertIn("AGGREGATE_VERSION", ddl, url)
+            self.assertIn("ESTIMATED_HOURS_SOURCE", ddl, url)
+            self.assertIn("DEFAULT_HOURS_PER_DAY", ddl, url)
 
     def test_request_line_migration_backfills_without_rebuilding_plan(self) -> None:
         with TemporaryDirectory() as directory:
@@ -270,7 +273,8 @@ class SqlMigrationTests(unittest.TestCase):
                     SELECT id, workforce_request_id, position, kind, slot_count,
                            required_resource_class, required_competencies_snapshot,
                            desired_start, desired_end, desired_active_days,
-                           estimated_hours, confirmation, work_package_id,
+                           estimated_hours, estimated_hours_source,
+                           default_hours_per_day, confirmation, work_package_id,
                            task_catalog_item_id, erp_task_code, erp_task_label,
                            proposed_resource_id, description, active
                     FROM request_lines
@@ -285,6 +289,8 @@ class SqlMigrationTests(unittest.TestCase):
                 self.assertEqual(line["required_competencies_snapshot"], "PLC")
                 self.assertEqual(float(line["desired_active_days"]), 3.0)
                 self.assertEqual(float(line["estimated_hours"]), 48.0)
+                self.assertEqual(line["estimated_hours_source"], "LEGACY")
+                self.assertIsNone(line["default_hours_per_day"])
                 self.assertEqual(line["work_package_id"], "WP1")
                 self.assertEqual(line["task_catalog_item_id"], "TASK1")
                 self.assertEqual(line["erp_task_code"], "T-1")
@@ -328,6 +334,12 @@ class SqlMigrationTests(unittest.TestCase):
                     [("AD1", "C1"), ("REQ1", "C1"), ("REQ2", "C1")],
                 )
 
+                self.assertEqual(
+                    connection.exec_driver_sql(
+                        "SELECT aggregate_version FROM workforce_requests WHERE id = 'D1'"
+                    ).scalar_one(),
+                    1,
+                )
                 self.assertEqual(
                     connection.exec_driver_sql(
                         "SELECT COUNT(*) FROM resource_requirements"
