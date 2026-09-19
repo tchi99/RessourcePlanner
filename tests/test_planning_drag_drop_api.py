@@ -67,6 +67,16 @@ class PlanningDragDropApiTests(unittest.TestCase):
                         active=True,
                     )
                 )
+            session.add(
+                ResourceAvailabilityRule(
+                    id="VAC-BOB-275",
+                    resource_id=bob.id,
+                    availability_type="Vacances",
+                    start_date=date(2026, 9, 23),
+                    end_date=date(2026, 9, 23),
+                    active=True,
+                )
+            )
 
             requirement = ResourceRequirement(
                 id="REQ-275",
@@ -133,7 +143,7 @@ class PlanningDragDropApiTests(unittest.TestCase):
             with TestClient(app) as client:
                 response = client.post(
                     "/api/v1/allocations/SHIFT-275/move",
-                    json={"technician": "Bob DnD", "day": "2026-09-26"},
+                    json={"technician": "Bob DnD", "day": "2026-09-23"},
                 )
                 self.assertEqual(response.status_code, 422, response.text)
                 self.assertIn("horaire standard", response.json()["error"]["message"])
