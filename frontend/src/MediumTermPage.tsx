@@ -26,6 +26,8 @@ import {
 import MediumTermCapacityPanel from "./MediumTermCapacityPanel";
 import MediumTermUnlinkedSegmentsPanel from "./MediumTermUnlinkedSegmentsPanel";
 import SegmentEditor from "./SegmentEditor";
+import { useViewScope } from "./ViewScopeContext";
+import ViewScopeSelector from "./ViewScopeSelector";
 import WorkPackageEditor from "./WorkPackageEditor";
 
 const HORIZONS = [4, 8, 12] as const;
@@ -233,6 +235,7 @@ function WorkPackageRow({
 }
 
 export default function MediumTermPage({ onOpenDemands }: { onOpenDemands: () => void }) {
+  const { scope, loading: scopeLoading } = useViewScope();
   const [horizonStart, setHorizonStart] = useState(() => startOfWeek(new Date()));
   const [horizonWeeks, setHorizonWeeks] = useState<HorizonWeeks>(8);
   const [projects, setProjects] = useState<ProjectReadModel[]>([]);
@@ -257,15 +260,22 @@ export default function MediumTermPage({ onOpenDemands }: { onOpenDemands: () =>
   const end = toIsoDate(horizonEnd);
 
   useEffect(() => {
+    if (scopeLoading) return;
     const controller = new AbortController();
     setLoading(true);
     setError(null);
+    setProjects([]);
+    setWorkPackages([]);
+    setSnapshot(null);
+    setUnlinkedSegments([]);
+    setEditor(undefined);
+    setSegmentEditorId(null);
     Promise.all([
-      getProjects(true, controller.signal),
-      getWorkPackages("", true, controller.signal),
+      getProjects(true, controller.signal, scope),
+      getWorkPackages("", true, controller.signal, scope),
       getResources(true, controller.signal),
-      getPlanningSnapshot(start, end, controller.signal),
-      getMediumTermUnlinkedSegments(start, end, controller.signal),
+      getPlanningSnapshot(start, end, controller.signal, scope),
+      getMediumTermUnlinkedSegments(start, end, controller.signal, scope),
     ])
       .then(([projectRows, packageRows, resourceRows, planning, unlinkedRows]) => {
         setProjects(projectRows);
@@ -286,7 +296,7 @@ export default function MediumTermPage({ onOpenDemands }: { onOpenDemands: () =>
         if (!controller.signal.aborted) setLoading(false);
       });
     return () => controller.abort();
-  }, [start, end, refreshKey]);
+  }, [start, end, refreshKey, scope, scopeLoading]);
 
   const weeks = useMemo(
     () => Array.from({ length: horizonWeeks }, (_, index) => addDays(horizonStart, index * 7)),
@@ -401,6 +411,7 @@ export default function MediumTermPage({ onOpenDemands }: { onOpenDemands: () =>
           </p>
         </div>
         <div className="page-actions">
+          <ViewScopeSelector />
           <button className="mt-create-package" type="button" onClick={() => setEditor(null)}>
             + WorkPackage
           </button>
@@ -434,6 +445,7 @@ export default function MediumTermPage({ onOpenDemands }: { onOpenDemands: () =>
       <MediumTermCapacityPanel
         buckets={snapshot?.capacity_buckets ?? []}
         loading={loading}
+        contextual={scope === "mine"}
       />
 
       <div className="filter-bar mt-filters">
