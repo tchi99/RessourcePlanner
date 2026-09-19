@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from functools import partial
+
 from datetime import date, time
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -23,6 +25,10 @@ from app.infrastructure.sql import (
 )
 from app.server import create_api_app
 
+
+from tests.http_test_auth import TEST_ADMIN_AUTH_RESOLVER
+
+create_api_app = partial(create_api_app, auth_resolver=TEST_ADMIN_AUTH_RESOLVER)
 
 class ManualOverallocationPolicyTests(unittest.TestCase):
     def test_impact_detects_only_an_increase_of_the_exception(self) -> None:
