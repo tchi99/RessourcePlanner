@@ -601,7 +601,12 @@ class SqlDemandRepository(DemandRepositoryPort):
             lines[0].proposed_resource_id if len(lines) == 1 else None
         )
 
-    def _sync_legacy_request_line(self, request: WorkforceRequest) -> RequestLine:
+    def _sync_legacy_request_line(
+        self,
+        request: WorkforceRequest,
+        *,
+        hours_source: str | None = None,
+    ) -> RequestLine:
         """Mirror the current flat request into its transitional single line.
 
         288B does not expose multi-line writes yet. This keeps requests created or
@@ -635,7 +640,14 @@ class SqlDemandRepository(DemandRepositoryPort):
         line.desired_end = request.desired_end
         line.desired_active_days = request.estimated_days
         line.estimated_hours = request.estimated_hours
-        if line.estimated_hours_source is None and request.estimated_hours is not None:
+        if hours_source:
+            line.estimated_hours_source = _text(hours_source)
+            line.default_hours_per_day = (
+                Decimal("8.00")
+                if _text(hours_source) == "DEFAULT_8H"
+                else None
+            )
+        elif line.estimated_hours_source is None and request.estimated_hours is not None:
             line.estimated_hours_source = "LEGACY"
         line.confirmation = request.confirmation
         line.work_package_id = request.work_package_id
@@ -711,7 +723,10 @@ class SqlDemandRepository(DemandRepositoryPort):
                 tuple(request_lines),
             )
         else:
-            self._sync_legacy_request_line(request)
+            self._sync_legacy_request_line(
+                request,
+                hours_source=_optional_text(values.get("RequestLineHoursSource")),
+            )
         self._session.flush()
         self._append_history(
             request,
@@ -856,7 +871,10 @@ class SqlDemandRepository(DemandRepositoryPort):
                 raise KeyError("Projet de la demande introuvable")
             self._replace_request_lines(request, project, tuple(request_lines))
         elif not bool(request.line_mode):
-            self._sync_legacy_request_line(request)
+            self._sync_legacy_request_line(
+                request,
+                hours_source=_optional_text(updates.get("RequestLineHoursSource")),
+            )
         request.aggregate_version = int(request.aggregate_version or 1) + 1
         self._session.flush()
         self._append_history(
