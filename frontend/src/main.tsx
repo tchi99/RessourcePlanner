@@ -5,6 +5,7 @@ import ReactDOM from "react-dom/client";
 
 import App from "./App";
 import { AuthProvider } from "./AuthContext";
+import { ViewScopeProvider } from "./ViewScopeContext";
 import "./styles.css";
 import "./shift-editor.css";
 import "./quick-shift.css";
@@ -25,7 +26,9 @@ import "./overallocation.css";
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <AuthProvider>
-      <App />
+      <ViewScopeProvider>
+        <App />
+      </ViewScopeProvider>
     </AuthProvider>
   </React.StrictMode>,
 );
