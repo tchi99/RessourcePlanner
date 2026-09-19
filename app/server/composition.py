@@ -18,6 +18,7 @@ from ..application.communications import CommunicationService, CommunicationTran
 from ..application.quick_shift_service import QuickShiftService
 from ..application.segment_service import SegmentService
 from ..application.user_admin import UserAdminService
+from ..application.user_view_context import UserViewContextRepositoryPort
 from ..infrastructure.sql import (
     LoadProfileAuditedSegmentRepository,
     OverallocationAuditedAllocationCommandAdapter,
@@ -36,6 +37,7 @@ from ..infrastructure.sql import (
     SqlWorkPackageRepository,
 )
 from ..infrastructure.sql.communication_repository import SqlCommunicationRepository
+from ..infrastructure.sql.user_view_context_repository import SqlUserViewContextRepository
 from ..infrastructure.sql.emergency_planning_audit import (
     EmergencyAwareApprovedDemandSyncAdapter,
 )
@@ -121,6 +123,14 @@ def build_user_admin_service(session: Session) -> UserAdminService:
     """Compose local identity administration inside the request transaction."""
 
     return UserAdminService(SqlUserIdentityRepository(session))
+
+
+def build_user_view_context_repository(
+    session: Session,
+) -> UserViewContextRepositoryPort:
+    """Compose stable current-user relationship reads for one request transaction."""
+
+    return SqlUserViewContextRepository(session)
 
 
 def build_competency_catalog_service(session: Session) -> CompetencyCatalogService:
