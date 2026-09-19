@@ -26,6 +26,19 @@ def upgrade() -> None:
                 nullable=False,
             )
         )
+        batch_op.add_column(
+            sa.Column(
+                "line_mode",
+                sa.Boolean(),
+                server_default=sa.false(),
+                nullable=False,
+            )
+        )
+        batch_op.create_index(
+            "ix_workforce_requests_line_mode",
+            ["line_mode"],
+            unique=False,
+        )
 
     with op.batch_alter_table("request_lines") as batch_op:
         batch_op.add_column(
@@ -53,4 +66,6 @@ def downgrade() -> None:
         batch_op.drop_column("estimated_hours_source")
 
     with op.batch_alter_table("workforce_requests") as batch_op:
+        batch_op.drop_index("ix_workforce_requests_line_mode")
+        batch_op.drop_column("line_mode")
         batch_op.drop_column("aggregate_version")
