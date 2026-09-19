@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timezone
 import hashlib
+import secrets
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -39,6 +40,7 @@ class SqlAuthSessionRepository:
         state: str,
         nonce: str,
         code_verifier: str,
+        browser_binding: str,
         expires_at: datetime,
     ) -> None:
         self._session.add(
@@ -46,6 +48,7 @@ class SqlAuthSessionRepository:
                 state_hash=_hash(state),
                 nonce=nonce,
                 code_verifier=code_verifier,
+                browser_binding_hash=_hash(browser_binding),
                 expires_at=expires_at,
             )
         )
@@ -55,6 +58,7 @@ class SqlAuthSessionRepository:
         self,
         state: str,
         *,
+        browser_binding: str,
         now: datetime | None = None,
     ) -> LoginTransactionRecord | None:
         row = self._session.scalar(
@@ -66,6 +70,12 @@ class SqlAuthSessionRepository:
         current = _aware(now or utc_now())
         if row is None or _aware(row.expires_at) <= current:
             return None
+        expected_binding = str(row.browser_binding_hash or "")
+        if not expected_binding or not secrets.compare_digest(
+            expected_binding,
+            _hash(browser_binding),
+        ):
+            return None
         row.consumed_at = current
         self._session.flush()
         return LoginTransactionRecord(nonce=row.nonce, code_verifier=row.code_verifier)
@@ -74,12 +84,14 @@ class SqlAuthSessionRepository:
         self,
         *,
         raw_token: str,
+        csrf_token: str,
         user_id: str,
         expires_at: datetime,
     ) -> None:
         self._session.add(
             AuthSession(
                 token_hash=_hash(raw_token),
+                csrf_token_hash=_hash(csrf_token),
                 user_id=user_id,
                 expires_at=expires_at,
             )
@@ -116,6 +128,26 @@ class SqlAuthSessionRepository:
             roles=record.roles,
             auth_mode=auth_mode,
         )
+
+
+    def validate_csrf(
+        self,
+        raw_token: str,
+        csrf_token: str,
+        *,
+        now: datetime | None = None,
+    ) -> bool:
+        row = self._session.scalar(
+            select(AuthSession).where(
+                AuthSession.token_hash == _hash(raw_token),
+                AuthSession.revoked_at.is_(None),
+            )
+        )
+        current = _aware(now or utc_now())
+        if row is None or _aware(row.expires_at) <= current:
+            return False
+        expected = str(row.csrf_token_hash or "")
+        return bool(expected) and secrets.compare_digest(expected, _hash(csrf_token))
 
     def revoke_session(self, raw_token: str, *, now: datetime | None = None) -> bool:
         row = self._session.scalar(
