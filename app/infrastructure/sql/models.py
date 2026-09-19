@@ -454,12 +454,18 @@ class ResourceRequirementCompetency(Base):
 
     resource_requirement_id: Mapped[str] = mapped_column(
         String(ID_LENGTH),
-        ForeignKey("resource_requirements.id"),
+        ForeignKey(
+            "resource_requirements.id",
+            name="fk_req_req_comp_requirement",
+        ),
         primary_key=True,
     )
     competency_id: Mapped[str] = mapped_column(
         String(ID_LENGTH),
-        ForeignKey("competencies.id"),
+        ForeignKey(
+            "competencies.id",
+            name="fk_req_req_comp_competency",
+        ),
         primary_key=True,
     )
 
