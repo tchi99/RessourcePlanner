@@ -45,6 +45,8 @@ class SqlPlannerQueryRepository(_BaseSqlPlannerQueryRepository):
         )
         # Medium-term capacity remains an organization-wide reference. The contextual
         # scope filters projects/work packages/cards, not the company's capacity pool.
+        single_bucket = end <= start or (end - start).days <= 6
+        global_snapshot_rows = project_ids is None and single_bucket
         return replace(
             snapshot,
             capacity_buckets=build_medium_term_capacity_buckets(
@@ -52,5 +54,9 @@ class SqlPlannerQueryRepository(_BaseSqlPlannerQueryRepository):
                 self._session,
                 start=start,
                 end=end,
+                preloaded_shifts=(snapshot.shifts if global_snapshot_rows else None),
+                preloaded_pending_loads=(
+                    snapshot.pending_loads if global_snapshot_rows else None
+                ),
             ),
         )
