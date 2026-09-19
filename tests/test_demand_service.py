@@ -295,6 +295,7 @@ class DemandServiceTests(unittest.TestCase):
         self.assertEqual(events[0][0], "update")
         self.assertEqual(events[0][2]["Statut"], "Soumise")
         self.assertEqual(events[0][2]["TempsEstimeHeures"], 48.0)
+        self.assertEqual(events[0][2]["RequestLineHoursSource"], "DEFAULT_8H")
 
     def test_simple_lifecycle_transitions_preserve_status_and_audit_semantics(self) -> None:
         service, _demands, events = self._service()
