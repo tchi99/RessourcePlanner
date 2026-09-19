@@ -296,7 +296,14 @@ export default function ShiftEditor({
               </>
             )}
             <button type="button" className="secondary-button" onClick={onClose} disabled={saving}>Annuler</button>
-            <button type="submit" className="primary-button" disabled={saving}>{saving ? "Enregistrement…" : "Enregistrer et verrouiller"}</button>
+            <button
+              type="submit"
+              className="primary-button"
+              disabled={saving}
+              aria-label="Enregistrer les modifications"
+            >
+              {saving ? "Enregistrement…" : "Enregistrer et verrouiller"}
+            </button>
           </div>
         </form>
       </section>
