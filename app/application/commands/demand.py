@@ -191,6 +191,15 @@ class DemandCreateCommand:
             estimated_days=self.estimated_days,
             resource_count=self.resource_count,
         )
+        legacy_hours_source = (
+            "EXPLICIT"
+            if self.estimated_hours is not None
+            else (
+                "DEFAULT_8H"
+                if resolved_hours is not None and self.estimated_days is not None
+                else None
+            )
+        )
         values: dict[str, Any] = {
             "NumeroProjet": text(self.project_number),
             "NomProjet": text(self.project_name),
@@ -212,6 +221,7 @@ class DemandCreateCommand:
             "TempsEstimeHeures": resolved_hours,
             "TempsEstimeJours": self.estimated_days,
             "TechnicienPropose": self.proposed_technician,
+            "RequestLineHoursSource": legacy_hours_source,
         }
         if self.lines is not None:
             values["RequestLines"] = tuple(
