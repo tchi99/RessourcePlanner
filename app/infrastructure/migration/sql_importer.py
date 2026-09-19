@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from ..sql.models import (
     Project,
+    RequestLine,
     Resource,
     ResourceAvailabilityRule,
     ResourceRequirement,
@@ -26,6 +27,7 @@ CORE_MODELS = (
     Resource,
     WorkPackage,
     WorkforceRequest,
+    RequestLine,
     WorkforceRequestHistory,
     ResourceAvailabilityRule,
     ResourceRequirement,
@@ -323,6 +325,32 @@ def import_cutover_dataset(
         demands[number] = request
     session.flush()
 
+    for request in demands.values():
+        session.add(
+            RequestLine(
+                id=request.id,
+                workforce_request_id=request.id,
+                position=0,
+                kind="WORKFORCE",
+                slot_count=max(int(request.resource_count or 1), 1),
+                required_competencies_snapshot=request.required_competencies,
+                desired_start=request.desired_start,
+                desired_end=request.desired_end,
+                desired_active_days=request.estimated_days,
+                estimated_hours=request.estimated_hours,
+                confirmation=request.confirmation,
+                work_package_id=request.work_package_id,
+                erp_task_code=request.erp_task_code,
+                erp_task_label=request.erp_task_label,
+                proposed_resource_id=request.proposed_resource_id,
+                description=request.description,
+                active=True,
+                created_at=request.created_at,
+                updated_at=request.updated_at,
+            )
+        )
+    session.flush()
+
     for row in dataset.history:
         demand_number = _text(row.get("demand_number"))
         occurred_at = _timestamp(row.get("occurred_at"))
@@ -371,6 +399,7 @@ def import_cutover_dataset(
             legacy_segment_id=identifier,
             project_id=project.id,
             workforce_request_id=request.id if request else None,
+            source_request_line_id=request.id if request else None,
             assigned_resource_id=resource.id if resource else None,
             start_date=row.get("start_date"),
             end_date=row.get("end_date"),
