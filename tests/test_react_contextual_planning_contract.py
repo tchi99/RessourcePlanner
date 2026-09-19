@@ -32,6 +32,13 @@ class ReactContextualPlanningContractTests(unittest.TestCase):
             self.assertIn("return () => controller.abort()", source)
             self.assertIn("setSnapshot(null)", source)
 
+    def test_scope_refresh_does_not_close_mutation_editors(self) -> None:
+        planning = (FRONTEND / "PlanningPage.tsx").read_text(encoding="utf-8")
+        medium = (FRONTEND / "MediumTermPage.tsx").read_text(encoding="utf-8")
+
+        self.assertNotIn("setEditingShift(null);\n    setEditingSegmentId(null);", planning)
+        self.assertNotIn("setEditor(undefined);\n    setSegmentEditorId(null);", medium)
+
     def test_planning_keeps_global_resource_catalog_for_mutation_editors(self) -> None:
         page = (FRONTEND / "PlanningPage.tsx").read_text(encoding="utf-8")
 
