@@ -235,7 +235,7 @@ function WorkPackageRow({
 }
 
 export default function MediumTermPage({ onOpenDemands }: { onOpenDemands: () => void }) {
-  const { scope, loading: scopeLoading } = useViewScope();
+  const { scope, loading: scopeLoading, error: scopeError } = useViewScope();
   const [horizonStart, setHorizonStart] = useState(() => startOfWeek(new Date()));
   const [horizonWeeks, setHorizonWeeks] = useState<HorizonWeeks>(8);
   const [projects, setProjects] = useState<ProjectReadModel[]>([]);
@@ -261,6 +261,15 @@ export default function MediumTermPage({ onOpenDemands }: { onOpenDemands: () =>
 
   useEffect(() => {
     if (scopeLoading) return;
+    if (scopeError) {
+      setLoading(false);
+      setError(scopeError);
+      setProjects([]);
+      setWorkPackages([]);
+      setSnapshot(null);
+      setUnlinkedSegments([]);
+      return;
+    }
     const controller = new AbortController();
     setLoading(true);
     setError(null);
@@ -296,7 +305,7 @@ export default function MediumTermPage({ onOpenDemands }: { onOpenDemands: () =>
         if (!controller.signal.aborted) setLoading(false);
       });
     return () => controller.abort();
-  }, [start, end, refreshKey, scope, scopeLoading]);
+  }, [start, end, refreshKey, scope, scopeLoading, scopeError]);
 
   const weeks = useMemo(
     () => Array.from({ length: horizonWeeks }, (_, index) => addDays(horizonStart, index * 7)),
