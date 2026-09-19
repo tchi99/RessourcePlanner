@@ -29,7 +29,7 @@ function apiErrorMessage(reason: unknown, fallback: string) {
 
 export default function ProjectsPage() {
   const { can } = useAuth();
-  const { scope } = useViewScope();
+  const { scope, loading: scopeLoading } = useViewScope();
   const canSyncProjects = can("sync_projects");
   const [projects, setProjects] = useState<ProjectReadModel[]>([]);
   const [integration, setIntegration] = useState<AcumaticaIntegrationStatus | null>(null);
@@ -45,6 +45,7 @@ export default function ProjectsPage() {
   const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
+    if (scopeLoading) return;
     const controller = new AbortController();
     setLoading(true);
     setError(null);
@@ -64,7 +65,7 @@ export default function ProjectsPage() {
         if (!controller.signal.aborted) setLoading(false);
       });
     return () => controller.abort();
-  }, [refreshKey, scope]);
+  }, [refreshKey, scope, scopeLoading]);
 
   const managers = useMemo(() => {
     const values = new Set(
