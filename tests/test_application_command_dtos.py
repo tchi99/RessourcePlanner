@@ -8,6 +8,7 @@ import unittest
 
 from app.application.commands import (
     DemandCreateCommand,
+    DemandLineInput,
     DemandUpdateCommand,
     ManualAllocationCreateCommand,
     QuickShiftCreateCommand,
@@ -55,6 +56,42 @@ class ApplicationCommandDtoTests(unittest.TestCase):
         self.assertEqual(values["NumeroProjet"], "P-100")
         self.assertEqual(values["DateDebutSouhaitee"], date(2026, 8, 26))
         self.assertEqual(values["NombreRessources"], 2)
+
+    def test_request_line_default_hours_are_backend_owned(self) -> None:
+        command = DemandCreateCommand(
+            project_number="P-1",
+            lines=(
+                DemandLineInput(
+                    position=0,
+                    desired_start=date(2026, 8, 24),
+                    desired_end=date(2026, 8, 26),
+                    desired_active_days=3,
+                ),
+                DemandLineInput(
+                    position=1,
+                    desired_start=date(2026, 8, 27),
+                    estimated_hours=12,
+                ),
+            ),
+        )
+
+        lines = command.to_repository_values()["RequestLines"]
+        self.assertEqual(lines[0]["estimated_hours"], 24.0)
+        self.assertEqual(lines[0]["estimated_hours_source"], "DEFAULT_8H")
+        self.assertEqual(lines[0]["default_hours_per_day"], 8.0)
+        self.assertEqual(lines[1]["estimated_hours"], 12.0)
+        self.assertEqual(lines[1]["estimated_hours_source"], "EXPLICIT")
+
+        legacy = DemandCreateCommand(
+            project_number="P-1",
+            desired_start=date(2026, 8, 24),
+            resource_count=2,
+            estimated_days=3,
+        )
+        self.assertEqual(
+            legacy.to_repository_values()["TempsEstimeHeures"],
+            48.0,
+        )
 
     def test_demand_update_is_a_closed_patch_contract(self) -> None:
         command = DemandUpdateCommand.from_mapping(
