@@ -140,6 +140,56 @@ class PendingDemandLoadReadModel:
 
 
 @dataclass(frozen=True, slots=True)
+class PlanningActionReadModel:
+    """One coordinator action shown above the operational planning board."""
+
+    kind: str
+    reference: str
+    demand_number: str | None
+    segment_id: str | None
+    project_number: str | None
+    project_name: str | None
+    task_code: str | None
+    task_label: str | None
+    start_date: date
+    end_date: date
+    planned_hours: float
+    required_competency: str | None = None
+    required_competency_id: str | None = None
+    priority: str | None = None
+    status: str | None = None
+    confirmation: str | None = None
+    project_manager: str | None = None
+    requester: str | None = None
+    emergency_override_active: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class ResourceRecommendationReadModel:
+    """Backend-ranked candidate for explicitly assigning one operational segment."""
+
+    resource_id: str
+    resource_name: str
+    resource_class: str | None
+    required_competency: str | None
+    required_class: str | None
+    competency_match: bool
+    class_match: bool
+    capacity_hours: float
+    confirmed_hours: float
+    tentative_hours: float
+    outside_standard_hours: float
+    free_after_confirmed: float
+    prudent_free: float
+    overtime_needed: float
+    enough_after_confirmed: bool
+    enough_prudent: bool
+    score: float
+    rank: int
+    recommended: bool
+
+
+@dataclass(frozen=True, slots=True)
 class MediumTermCapacityBucketReadModel:
     """One backend-authoritative weekly capacity bucket."""
 
