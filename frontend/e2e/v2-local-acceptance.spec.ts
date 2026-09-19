@@ -449,6 +449,45 @@ test("V2 local acceptance path runs through React, Chromium, FastAPI and SQLite"
 
     await closeContext(context);
   });
+
+  await test.step("coordinator drag-and-drop rejects invalid move then applies valid resource move", async () => {
+    const { context, page } = await openAs(browser, "COORDINATOR");
+    await navigateMain(page, "Planning opérationnel");
+    await page.getByRole("button", { name: /Suivante/ }).click();
+
+    await page.getByRole("button", { name: /Quick Shift/ }).click();
+    const quickShift = page.getByRole("dialog", { name: "Créer un Quick Shift" });
+    await labelled(quickShift, "Projet", "select").selectOption("P-251");
+    await labelled(quickShift, "Technicien", "select").selectOption("Alice");
+    await labelled(quickShift, "Date", "input").fill(d2);
+    await labelled(quickShift, "Heures", "input").fill("1.25");
+    await labelled(quickShift, "Confirmation", "select").selectOption("Confirmée");
+    await labelled(quickShift, "Description", "textarea").fill("Validation drag-and-drop Playwright");
+    await labelled(quickShift, "Note", "textarea").fill("DnD #275");
+    await quickShift.getByRole("button", { name: "Créer le Quick Shift" }).click();
+    await expect(quickShift).toBeHidden();
+
+    const aliceRow = page.locator(".resource-identity").filter({ hasText: "Alice" }).first().locator("..");
+    const bobRow = page.locator(".resource-identity").filter({ hasText: "Bob" }).first().locator("..");
+    const sourceCell = aliceRow.locator(`.planning-drop-day[data-day="${d2}"]`);
+    const source = sourceCell.locator('.shift-card[data-allocation-id^="MAN-"]').last();
+    await expect(source).toBeVisible();
+    const allocationId = await source.getAttribute("data-allocation-id");
+    expect(allocationId).not.toBeNull();
+
+    const invalidTarget = bobRow.locator(`.planning-drop-day[data-day="${d3}"]`);
+    await source.dragTo(invalidTarget);
+    const feedback = page.locator(".planning-drag-feedback");
+    await expect(feedback).toContainText("fenêtre du segment");
+    await expect(sourceCell.locator(`.shift-card[data-allocation-id="${allocationId}"]`)).toBeVisible();
+
+    const validTarget = bobRow.locator(`.planning-drop-day[data-day="${d2}"]`);
+    await sourceCell.locator(`.shift-card[data-allocation-id="${allocationId}"]`).dragTo(validTarget);
+    await expect(feedback).toContainText("Quart déplacé vers Bob");
+    await expect(validTarget.locator(`.shift-card[data-allocation-id="${allocationId}"]`)).toBeVisible();
+
+    await closeContext(context);
+  });
 });
 
 
