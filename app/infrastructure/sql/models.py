@@ -208,6 +208,9 @@ class WorkforceRequest(TimestampMixin, Base):
     aggregate_version: Mapped[int] = mapped_column(
         Integer, nullable=False, server_default=text("1")
     )
+    line_mode: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=false(), index=True
+    )
 
 
 class RequestLine(TimestampMixin, Base):
