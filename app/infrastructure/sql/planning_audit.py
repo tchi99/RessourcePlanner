@@ -321,6 +321,29 @@ class AuditedAllocationCommandAdapter(AllocationCommandPort):
             after=after,
         )
 
+    def move_manual(
+        self,
+        allocation_id: str,
+        technician: str,
+        day_value: Any,
+    ) -> None:
+        previous = self._journal.shift_snapshot(allocation_id)
+        self._delegate.move_manual(allocation_id, technician, day_value)
+        current = self._journal.shift_snapshot(allocation_id)
+        if previous is None or current is None:
+            return
+        entity_id, entity_reference, parent, before = previous
+        _, _, _, after = current
+        self._journal.append(
+            entity_type=ENTITY_SHIFT,
+            entity_id=entity_id,
+            entity_reference=entity_reference,
+            parent_reference=parent,
+            action="Déplacement quart",
+            before=before,
+            after=after,
+        )
+
     def release_manual(self, allocation_id: str) -> None:
         previous = self._journal.shift_snapshot(allocation_id)
         self._delegate.release_manual(allocation_id)
