@@ -359,6 +359,7 @@ def seed_demo_session(session: Session, *, today: date | None = None) -> DemoSee
             number="DEMO-1003",
             name="Architecture contrôle et MES",
             client="Client Démo A",
+            project_manager_external_id="DEV-PM-A",
             project_manager_name="Chargé projet A",
             status="Actif",
         ),
