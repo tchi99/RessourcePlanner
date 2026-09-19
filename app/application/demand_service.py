@@ -404,6 +404,7 @@ class DemandService:
                 estimated_days=existing.estimated_days,
                 resource_count=existing.resource_count,
             )
+            submit_updates["RequestLineHoursSource"] = "DEFAULT_8H"
         with self._context("submit demand"):
             call_application_port(
                 lambda: self._demands.update(
