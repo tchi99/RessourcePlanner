@@ -363,10 +363,15 @@ class SqlAllocationCommandAdapter(AllocationCommandPort):
             raise KeyError(f"Allocation {allocation_id} introuvable")
         requirement = self._requirement(shift.resource_requirement_id)
         resource = self._resource(technician)
+        requested_day = date_from_value(day_value)
+        if requested_day is None:
+            raise ValueError("La date du quart est requise.")
+        if requested_day < requirement.start_date or requested_day > requirement.end_date:
+            raise ValueError("Le quart déplacé doit demeurer dans la fenêtre du segment.")
         day, _ = self._validate_manual(
             requirement,
             resource,
-            day_value,
+            requested_day,
             shift.hours,
             bool(shift.outside_standard_hours),
             exclude_shift_id=shift.id,
