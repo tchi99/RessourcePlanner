@@ -247,7 +247,7 @@ class DemandService:
         number = self._required_identifier(command.number, entity="demand")
         existing = self._demand_or_not_found(number)
         if existing.line_mode:
-            raise ApplicationOperationError(
+            raise ApplicationConflictError(
                 "Les périodes d'une demande multi-lignes doivent être gérées par ligne avec #288D.",
                 code="demand_line_periods_unavailable",
                 context={"demand_number": number},
@@ -319,7 +319,7 @@ class DemandService:
         period_id = self._required_identifier(command.period_id, entity="period")
         existing = self._demand_or_not_found(number)
         if existing.line_mode:
-            raise ApplicationOperationError(
+            raise ApplicationConflictError(
                 "Les alternatives d'une demande multi-lignes doivent être gérées par ligne avec #288D.",
                 code="demand_line_periods_unavailable",
                 context={"demand_number": number},
@@ -410,7 +410,7 @@ class DemandService:
             context={"demand_number": number},
         )
         if existing is not None and existing.line_mode:
-            raise ApplicationOperationError(
+            raise ApplicationConflictError(
                 "L'approbation des demandes multi-lignes sera activée avec la matérialisation #288E.",
                 code="demand_line_approval_unavailable",
                 context={"demand_number": number},
