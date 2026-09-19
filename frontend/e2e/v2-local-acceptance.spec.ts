@@ -473,6 +473,7 @@ test("V2 local acceptance path runs through React, Chromium, FastAPI and SQLite"
     expect(shiftsResponse.ok()).toBeTruthy();
     const shifts = await shiftsResponse.json() as Array<{
       allocation_id: string;
+      segment_id: string;
       resource_name: string;
       work_date: string;
       note: string | null;
@@ -483,6 +484,19 @@ test("V2 local acceptance path runs through React, Chromium, FastAPI and SQLite"
     expect(createdShift!.resource_name).toBe("Alice");
     expect(createdShift!.work_date).toBe(d2);
 
+    const segmentResponse = await page.request.get(
+      `/api/v1/segments/${encodeURIComponent(createdShift!.segment_id)}`,
+    );
+    expect(segmentResponse.ok()).toBeTruthy();
+    const createdSegment = await segmentResponse.json() as {
+      segment_id: string;
+      start_date: string;
+      end_date: string;
+    };
+    expect(createdSegment.segment_id).toBe(createdShift!.segment_id);
+    expect(createdSegment.start_date).toBe(d2);
+    expect(createdSegment.end_date).toBe(d2);
+
     const aliceRow = page.locator(".resource-identity").filter({ hasText: "Alice" }).first().locator("..");
     const bobRow = page.locator(".resource-identity").filter({ hasText: "Bob" }).first().locator("..");
     const sourceCell = aliceRow.locator(`.planning-drop-day[data-day="${d2}"]`);
@@ -490,7 +504,20 @@ test("V2 local acceptance path runs through React, Chromium, FastAPI and SQLite"
     await expect(source).toBeVisible();
 
     const invalidTarget = bobRow.locator(`.planning-drop-day[data-day="${d3}"]`);
+    const invalidMoveResponsePromise = page.waitForResponse((response) => (
+      response.request().method() === "POST"
+      && response.url().includes(`/api/v1/allocations/${encodeURIComponent(allocationId)}/move`)
+    ));
     await source.dragTo(invalidTarget);
+    const invalidMoveResponse = await invalidMoveResponsePromise;
+    expect(
+      invalidMoveResponse.request().postDataJSON(),
+      "Le drag doit transmettre le quart exact et la journée cible exacte.",
+    ).toEqual({ technician: "Bob", day: d3 });
+    expect(
+      invalidMoveResponse.status(),
+      `Le backend doit refuser le déplacement hors fenêtre. Réponse: ${await invalidMoveResponse.text()}`,
+    ).toBe(422);
     const feedback = page.locator(".planning-drag-feedback");
     await expect(feedback).toContainText("fenêtre du segment");
     await expect(sourceCell.locator(`.shift-card[data-allocation-id="${allocationId}"]`)).toBeVisible();
