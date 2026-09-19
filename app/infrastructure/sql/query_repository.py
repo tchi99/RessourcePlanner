@@ -595,15 +595,31 @@ class SqlPlannerQueryRepository(PlannerQueryPort):
             )
             .order_by(ResourceRequirement.start_date, ResourceRequirement.id)
         ).all()
+        requirement_ids = tuple(requirement.id for requirement, _ in requirements)
+        full_shift_totals: dict[str, tuple[float, float]] = {}
+        if requirement_ids:
+            raw_shift_rows = self._session.execute(
+                select(
+                    Shift.resource_requirement_id,
+                    Shift.hours,
+                    Shift.outside_standard_hours,
+                ).where(Shift.resource_requirement_id.in_(requirement_ids))
+            ).all()
+            accumulated: dict[str, list[float]] = {}
+            for requirement_id, shift_hours, outside_flag in raw_shift_rows:
+                values = accumulated.setdefault(requirement_id, [0.0, 0.0])
+                values[0] += float(shift_hours)
+                if outside_flag:
+                    values[1] += float(shift_hours)
+            full_shift_totals = {
+                requirement_id: (round(values[0], 2), round(values[1], 2))
+                for requirement_id, values in accumulated.items()
+            }
+
         diagnostics: list[PlanningSegmentCapacityDiagnosticReadModel] = []
         for requirement, resource in requirements:
             segment_id = _text(requirement.legacy_segment_id) or requirement.id
-            own_shifts = shifts_by_segment.get(segment_id, [])
-            allocated = round(sum(float(shift.hours) for shift in own_shifts), 2)
-            outside = round(
-                sum(float(shift.hours) for shift in own_shifts if shift.outside_standard_hours),
-                2,
-            )
+            allocated, outside = full_shift_totals.get(requirement.id, (0.0, 0.0))
             planned = round(float(requirement.planned_hours), 2)
             unplaced = round(max(planned - allocated, 0.0), 2)
             diagnostics.append(
