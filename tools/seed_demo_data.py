@@ -26,10 +26,13 @@ from app.application.security import (  # noqa: E402
 from app.infrastructure.sql import (  # noqa: E402
     Competency,
     Project,
+    RequestLine,
+    RequestLineCompetency,
     Resource,
     ResourceAvailabilityRule,
     ResourceCompetency,
     ResourceRequirement,
+    ResourceRequirementCompetency,
     Shift,
     SqlUserIdentityRepository,
     WorkforceRequest,
@@ -105,6 +108,13 @@ def _clear_demo_project_data(session: Session) -> None:
                 )
             )
         )
+        session.execute(
+            delete(ResourceRequirementCompetency).where(
+                ResourceRequirementCompetency.resource_requirement_id.in_(
+                    requirement_ids
+                )
+            )
+        )
 
     if request_ids:
         period_ids = tuple(
@@ -141,6 +151,14 @@ def _clear_demo_project_data(session: Session) -> None:
             delete(ResourceRequirement).where(ResourceRequirement.id.in_(requirement_ids))
         )
     if request_ids:
+        session.execute(
+            delete(RequestLineCompetency).where(
+                RequestLineCompetency.request_line_id.in_(request_ids)
+            )
+        )
+        session.execute(
+            delete(RequestLine).where(RequestLine.workforce_request_id.in_(request_ids))
+        )
         session.execute(
             delete(WorkforceRequest).where(WorkforceRequest.id.in_(request_ids))
         )
@@ -500,6 +518,29 @@ def seed_demo_session(session: Session, *, today: date | None = None) -> DemoSee
     )
     session.add_all(requests)
     session.flush()
+    session.add_all(
+        [
+            RequestLine(
+                id=request.id,
+                workforce_request_id=request.id,
+                position=0,
+                kind="WORKFORCE",
+                slot_count=max(int(request.resource_count or 1), 1),
+                required_competencies_snapshot=request.required_competencies,
+                desired_start=request.desired_start,
+                desired_end=request.desired_end,
+                desired_active_days=request.estimated_days,
+                estimated_hours=request.estimated_hours,
+                confirmation=request.confirmation,
+                work_package_id=request.work_package_id,
+                proposed_resource_id=request.proposed_resource_id,
+                description=request.description,
+                active=True,
+            )
+            for request in requests
+        ]
+    )
+    session.flush()
 
     history = (
         ("DEMO-DMO-001", "Approbation", "En planification", "Demande approuvée"),
@@ -525,6 +566,7 @@ def seed_demo_session(session: Session, *, today: date | None = None) -> DemoSee
             id="DEMO-PER-002-CUM",
             period_key="DEMO-PER-002-CUM",
             workforce_request_id="DEMO-DMO-002",
+            request_line_id="DEMO-DMO-002",
             sequence=10,
             kind="CUMULATIVE",
             alternative_group=None,
@@ -541,6 +583,7 @@ def seed_demo_session(session: Session, *, today: date | None = None) -> DemoSee
             id="DEMO-PER-002-ALT-A",
             period_key="DEMO-PER-002-ALT-A",
             workforce_request_id="DEMO-DMO-002",
+            request_line_id="DEMO-DMO-002",
             sequence=20,
             kind="ALTERNATIVE",
             alternative_group="DATE-A",
@@ -557,6 +600,7 @@ def seed_demo_session(session: Session, *, today: date | None = None) -> DemoSee
             id="DEMO-PER-002-ALT-B",
             period_key="DEMO-PER-002-ALT-B",
             workforce_request_id="DEMO-DMO-002",
+            request_line_id="DEMO-DMO-002",
             sequence=30,
             kind="ALTERNATIVE",
             alternative_group="DATE-A",
@@ -575,6 +619,7 @@ def seed_demo_session(session: Session, *, today: date | None = None) -> DemoSee
     session.add(
         WorkforceRequestPeriodSelection(
             workforce_request_id="DEMO-DMO-002",
+            request_line_id="DEMO-DMO-002",
             alternative_group="DATE-A",
             period_id="DEMO-PER-002-ALT-A",
             selected_at=now,
@@ -588,6 +633,7 @@ def seed_demo_session(session: Session, *, today: date | None = None) -> DemoSee
             legacy_segment_id="DEMO-SEG-001",
             project_id="DEMO-P-1001",
             workforce_request_id="DEMO-DMO-001",
+            source_request_line_id="DEMO-DMO-001",
             assigned_resource_id="DEMO-R-AUTO-1",
             start_date=monday,
             end_date=monday + timedelta(days=2),
@@ -748,6 +794,7 @@ def seed_demo_database(database_url: str, *, today: date | None = None) -> DemoS
             "resources",
             "work_packages",
             "workforce_requests",
+            "request_lines",
             "resource_requirements",
             "shifts",
             "app_users",
