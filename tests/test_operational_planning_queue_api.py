@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from functools import partial
+
 from datetime import date, time
 from decimal import Decimal
 from pathlib import Path
@@ -24,6 +26,10 @@ from app.infrastructure.sql import (
 )
 from app.server import create_api_app
 
+
+from tests.http_test_auth import TEST_ADMIN_AUTH_RESOLVER
+
+create_api_app = partial(create_api_app, auth_resolver=TEST_ADMIN_AUTH_RESOLVER)
 
 class OperationalPlanningQueueApiTests(unittest.TestCase):
     def _database(self, directory: str) -> str:
