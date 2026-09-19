@@ -15,7 +15,7 @@ from app.application.errors import (
     ApplicationOperationError,
     ApplicationValidationError,
 )
-from app.application.read_models import DemandReadModel
+from app.application.read_models import DemandPeriodReadModel, DemandReadModel
 from app.application.runtime_services import demand_service
 from app.domain.demand_periods import DemandPeriodDefinition
 
