@@ -60,7 +60,7 @@ export async function getCurrentPrincipal(signal?: AbortSignal): Promise<AuthPri
 export async function logoutCurrentSession(): Promise<void> {
   const response = await fetch(`${API_BASE}/api/v1/auth/logout`, {
     method: "POST",
-    headers: { Accept: "application/json" },
+    headers: { Accept: "application/json", ...csrfHeaders() },
     credentials: "include",
   });
   if (!response.ok) throw await apiError(response);
@@ -90,7 +90,7 @@ export async function selectDevUser(userId: string): Promise<void> {
 export async function resetDevUser(): Promise<void> {
   const response = await fetch(`${API_BASE}/api/v1/dev/user-switcher/reset`, {
     method: "POST",
-    headers: { Accept: "application/json" },
+    headers: { Accept: "application/json", ...csrfHeaders() },
     credentials: "include",
   });
   if (!response.ok) throw await apiError(response);
