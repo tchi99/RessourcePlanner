@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from functools import partial
+
 from datetime import date, timedelta, time
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -24,6 +26,10 @@ from app.infrastructure.sql import (
 from app.server import create_api_app
 from app.server.security import required_permission
 
+
+from tests.http_test_auth import TEST_ADMIN_AUTH_RESOLVER
+
+create_api_app = partial(create_api_app, auth_resolver=TEST_ADMIN_AUTH_RESOLVER)
 
 class EmergencyOverridePolicyTests(unittest.TestCase):
     def test_only_urgent_submitted_request_overlapping_current_week_is_eligible(self) -> None:
