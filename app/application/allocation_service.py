@@ -7,6 +7,7 @@ from .command_ports import AllocationCommandPort
 from .commands import (
     ManualAllocationCreateCommand,
     ManualAllocationDeleteCommand,
+    ManualAllocationMoveCommand,
     ManualAllocationReleaseCommand,
     ManualAllocationUpdateCommand,
     SegmentAssignCommand,
@@ -140,6 +141,24 @@ class AllocationService:
             update,
             code_prefix="allocation_update",
             context={"allocation_id": identifier, "technician": tech},
+        )
+
+    def move_manual_command(self, command: ManualAllocationMoveCommand) -> None:
+        identifier = self._required(
+            command.allocation_id,
+            code="allocation_id_required",
+            message="Un identifiant d'allocation est requis.",
+        )
+        tech = self._required(
+            command.technician,
+            code="allocation_resource_required",
+            message="Un technicien est requis pour déplacer le quart.",
+        )
+        day = self._day(command.day)
+        call_application_port(
+            lambda: self._commands.move_manual(identifier, tech, day),
+            code_prefix="allocation_move",
+            context={"allocation_id": identifier, "technician": tech, "day": day.isoformat()},
         )
 
     def release_manual_command(self, command: ManualAllocationReleaseCommand) -> None:
