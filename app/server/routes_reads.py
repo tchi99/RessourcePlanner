@@ -12,6 +12,7 @@ from ..application import (
     DemandPeriodReadModel,
     DemandPlanDeltaReadModel,
     DemandReadModel,
+    MediumTermUnlinkedSegmentReadModel,
     PlannerQueryPort,
     PlanningActionReadModel,
     PlanningSnapshotReadModel,
@@ -200,6 +201,15 @@ def build_read_router(query_dependency: QueryProvider) -> APIRouter:
         queries: PlannerQueryPort = Depends(query_dependency),
     ) -> list[PlanningHistoryReadModel]:
         return list(queries.list_planning_history("SHIFT", allocation_id))
+
+    @router.get("/medium-term/unlinked-segments")
+    def medium_term_unlinked_segments(
+        start: date = Query(),
+        end: date = Query(),
+        queries: PlannerQueryPort = Depends(query_dependency),
+    ) -> list[MediumTermUnlinkedSegmentReadModel]:
+        _window(start, end)
+        return list(queries.list_medium_term_unlinked_segments(start=start, end=end))
 
     @router.get("/planning/actions")
     def planning_actions(
