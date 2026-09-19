@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import date, time
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 AvailabilityType = Literal["Horaire standard", "Vacances", "Jour férié"]
@@ -120,9 +120,43 @@ class WorkPackageUpdateRequest(StrictRequest):
     status: str | None = None
 
 
+class DemandLineRequest(StrictRequest):
+    id: str | None = None
+    position: int | None = Field(default=None, ge=0)
+    kind: Literal["WORKFORCE"] = "WORKFORCE"
+    required_resource_class: str | None = None
+    required_competency_ids: list[str] = Field(default_factory=list)
+    desired_start: date | None = None
+    desired_end: date | None = None
+    desired_active_days: int | None = Field(default=None, ge=1)
+    estimated_hours: float | None = Field(default=None, gt=0)
+    work_package_ref: str | None = None
+    task_code: str | None = None
+    proposed_technician: str | None = None
+    confirmation: str = "Confirmée"
+    description: str | None = None
+
+
+_LEGACY_DEMAND_NEED_FIELDS = frozenset(
+    {
+        "desired_start",
+        "desired_end",
+        "work_package_ref",
+        "task_code",
+        "confirmation",
+        "resource_count",
+        "required_competencies",
+        "required_competency_ids",
+        "estimated_hours",
+        "estimated_days",
+        "proposed_technician",
+    }
+)
+
+
 class DemandCreateRequest(StrictRequest):
     project_number: str
-    desired_start: date
+    desired_start: date | None = None
     submit: bool = False
     project_name: str = ""
     client: str = ""
@@ -142,6 +176,20 @@ class DemandCreateRequest(StrictRequest):
     estimated_hours: float | None = Field(default=None, ge=0)
     estimated_days: int | None = Field(default=None, ge=1)
     proposed_technician: str | None = None
+    lines: list[DemandLineRequest] | None = Field(default=None, min_length=1)
+
+    @model_validator(mode="after")
+    def validate_need_shape(self) -> "DemandCreateRequest":
+        if self.lines is not None:
+            mixed = sorted(_LEGACY_DEMAND_NEED_FIELDS.intersection(self.model_fields_set))
+            if mixed:
+                raise ValueError(
+                    "Ne mélange pas les champs de besoin plats avec lines: "
+                    + ", ".join(mixed)
+                )
+        elif self.desired_start is None:
+            raise ValueError("desired_start est requis lorsque lines est omis.")
+        return self
 
 
 class DemandUpdateRequest(StrictRequest):
@@ -165,7 +213,24 @@ class DemandUpdateRequest(StrictRequest):
     estimated_hours: float | None = Field(default=None, ge=0)
     estimated_days: int | None = Field(default=None, ge=1)
     proposed_technician: str | None = None
+    lines: list[DemandLineRequest] | None = Field(default=None, min_length=1)
+    expected_version: int | None = Field(default=None, ge=1)
     comment: str = "Demande modifiée via API"
+
+    @model_validator(mode="after")
+    def validate_need_shape(self) -> "DemandUpdateRequest":
+        if "lines" in self.model_fields_set:
+            if self.lines is None:
+                raise ValueError("lines ne peut pas être null; omets-le pour ne pas le modifier.")
+            mixed = sorted(_LEGACY_DEMAND_NEED_FIELDS.intersection(self.model_fields_set))
+            if mixed:
+                raise ValueError(
+                    "Ne mélange pas les champs de besoin plats avec lines: "
+                    + ", ".join(mixed)
+                )
+            if self.expected_version is None:
+                raise ValueError("expected_version est requis lorsque lines est fourni.")
+        return self
 
 
 class DemandPeriodRequest(StrictRequest):
