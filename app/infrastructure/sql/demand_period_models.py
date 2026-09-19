@@ -109,7 +109,10 @@ class WorkforceRequestPeriodSelection(Base):
     )
     request_line_id: Mapped[str | None] = mapped_column(
         String(ID_LENGTH),
-        ForeignKey("request_lines.id"),
+        ForeignKey(
+            "request_lines.id",
+            name="fk_period_selection_request_line",
+        ),
         nullable=True,
         index=True,
     )
