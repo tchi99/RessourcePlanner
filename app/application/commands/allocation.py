@@ -151,6 +151,13 @@ class ManualAllocationUpdateCommand:
 
 
 @dataclass(frozen=True, slots=True)
+class ManualAllocationMoveCommand:
+    allocation_id: str
+    technician: str
+    day: date
+
+
+@dataclass(frozen=True, slots=True)
 class ManualAllocationReleaseCommand:
     allocation_id: str
 
