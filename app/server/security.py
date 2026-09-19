@@ -24,6 +24,9 @@ from .performance import performance_phase
 
 AuthResolverResult = AuthPrincipal | None | Awaitable[AuthPrincipal | None]
 AuthResolver = Callable[[Request], AuthResolverResult]
+CsrfGuardResult = bool | Awaitable[bool]
+CsrfGuard = Callable[[Request], CsrfGuardResult]
+_UNSAFE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 
 _PUBLIC_PREFIXES = ("/assets/",)
 _PUBLIC_PATHS = {
@@ -109,7 +112,19 @@ async def resolve_principal(resolver: AuthResolver, request: Request) -> AuthPri
     return resolved
 
 
-def install_authorization_middleware(app: Any, resolver: AuthResolver) -> None:
+async def _csrf_allowed(guard: CsrfGuard, request: Request) -> bool:
+    result = guard(request)
+    if inspect.isawaitable(result):
+        return bool(await result)
+    return bool(result)
+
+
+def install_authorization_middleware(
+    app: Any,
+    resolver: AuthResolver,
+    *,
+    csrf_guard: CsrfGuard | None = None,
+) -> None:
     @app.middleware("http")
     async def authorize(request: Request, call_next):
         path = request.url.path
@@ -135,4 +150,15 @@ def install_authorization_middleware(app: Any, resolver: AuthResolver) -> None:
                     "Vous n'avez pas la permission requise pour cette opération.",
                     context={"required_permission": permission},
                 )
+            if (
+                csrf_guard is not None
+                and principal.auth_mode == "oidc"
+                and request.method.upper() in _UNSAFE_METHODS
+            ):
+                if not await _csrf_allowed(csrf_guard, request):
+                    return _error(
+                        403,
+                        "csrf_validation_failed",
+                        "La requête de modification ne possède pas une preuve CSRF valide.",
+                    )
         return await call_next(request)
