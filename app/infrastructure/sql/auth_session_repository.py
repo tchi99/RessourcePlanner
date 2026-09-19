@@ -84,14 +84,14 @@ class SqlAuthSessionRepository:
         self,
         *,
         raw_token: str,
-        csrf_token: str,
+        csrf_token: str | None = None,
         user_id: str,
         expires_at: datetime,
     ) -> None:
         self._session.add(
             AuthSession(
                 token_hash=_hash(raw_token),
-                csrf_token_hash=_hash(csrf_token),
+                csrf_token_hash=_hash(csrf_token) if csrf_token else None,
                 user_id=user_id,
                 expires_at=expires_at,
             )
