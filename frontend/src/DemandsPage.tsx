@@ -154,7 +154,7 @@ function DemandCard({ demand, selected, onClick }: { demand: DemandReadModel; se
 }
 
 export default function DemandsPage() {
-  const { scope } = useViewScope();
+  const { scope, loading: scopeLoading } = useViewScope();
   const [demands, setDemands] = useState<DemandReadModel[]>([]);
   const [projects, setProjects] = useState<ProjectReadModel[]>([]);
   const [resources, setResources] = useState<ResourceReadModel[]>([]);
@@ -177,6 +177,7 @@ export default function DemandsPage() {
   const createRetry = useRef<RetryReceipt | null>(null);
 
   useEffect(() => {
+    if (scopeLoading) return;
     const controller = new AbortController();
     setLoading(true);
     setError(null);
@@ -204,7 +205,7 @@ export default function DemandsPage() {
         if (!controller.signal.aborted) setLoading(false);
       });
     return () => controller.abort();
-  }, [scope]);
+  }, [scope, scopeLoading]);
 
   useEffect(() => {
     if (creating || !selectedNumber) return;
