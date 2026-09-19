@@ -114,6 +114,34 @@ class DemandCreateCommand:
                 "Une demande multi-lignes doit contenir au moins une ligne.",
                 code="demand_lines_required",
             )
+        else:
+            mixed = []
+            if self.desired_start is not None:
+                mixed.append("desired_start")
+            if self.desired_end is not None:
+                mixed.append("desired_end")
+            if self.work_package_ref is not None:
+                mixed.append("work_package_ref")
+            if self.task_code is not None:
+                mixed.append("task_code")
+            if self.confirmation != "Confirmée":
+                mixed.append("confirmation")
+            if self.resource_count != 1:
+                mixed.append("resource_count")
+            if self.required_competencies is not None:
+                mixed.append("required_competencies")
+            if self.estimated_hours is not None:
+                mixed.append("estimated_hours")
+            if self.estimated_days is not None:
+                mixed.append("estimated_days")
+            if self.proposed_technician is not None:
+                mixed.append("proposed_technician")
+            if mixed:
+                raise ApplicationValidationError(
+                    "Les champs de besoin plats ne peuvent pas être combinés avec lines.",
+                    code="demand_lines_mixed_contract",
+                    context={"fields": tuple(sorted(mixed))},
+                )
         if self.resource_count < 1:
             raise ApplicationValidationError(
                 "Le nombre de ressources doit être au moins 1.",
@@ -277,6 +305,32 @@ class DemandUpdateCommand:
                 "Une demande multi-lignes doit contenir au moins une ligne.",
                 code="demand_lines_required",
             )
+        if isinstance(self.lines, tuple):
+            flat_fields = {
+                "work_package_ref": self.work_package_ref,
+                "task_code": self.task_code,
+                "confirmation": self.confirmation,
+                "desired_start": self.desired_start,
+                "desired_end": self.desired_end,
+                "resource_count": self.resource_count,
+                "required_competencies": self.required_competencies,
+                "estimated_hours": self.estimated_hours,
+                "estimated_days": self.estimated_days,
+                "proposed_technician": self.proposed_technician,
+            }
+            mixed = tuple(
+                sorted(
+                    field
+                    for field, value in flat_fields.items()
+                    if value is not UNSET
+                )
+            )
+            if mixed:
+                raise ApplicationValidationError(
+                    "Les champs de besoin plats ne peuvent pas être combinés avec lines.",
+                    code="demand_lines_mixed_contract",
+                    context={"fields": mixed},
+                )
         if isinstance(self.resource_count, int) and self.resource_count < 1:
             raise ApplicationValidationError(
                 "Le nombre de ressources doit être au moins 1.",
