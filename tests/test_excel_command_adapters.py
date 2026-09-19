@@ -6,6 +6,7 @@ import unittest
 from unittest.mock import patch
 
 from app.infrastructure.excel import command_adapters as adapters
+from app.infrastructure.excel.demand_repository import ExcelDemandRepository
 
 
 class ExcelCommandAdapterTests(unittest.TestCase):
@@ -52,6 +53,24 @@ class ExcelCommandAdapterTests(unittest.TestCase):
         self.assertEqual(identifier, "MAN-1")
         self.assertEqual(calls[0][0], "captured-create")
         self.assertIs(calls[0][1], repository)
+
+    def test_excel_demand_adapter_rejects_multi_line_contract_explicitly(self) -> None:
+        class Repository:
+            def create_demand(self, *_args, **_kwargs):
+                raise AssertionError("Excel writer must not be called")
+
+            def update_demand(self, *_args, **_kwargs):
+                raise AssertionError("Excel writer must not be called")
+
+        demands = ExcelDemandRepository(Repository())
+        with self.assertRaisesRegex(ValueError, "runtime SQL/Web"):
+            demands.create({"RequestLines": ({"kind": "WORKFORCE"},)})
+        with self.assertRaisesRegex(ValueError, "runtime SQL/Web"):
+            demands.update(
+                "DMO-1",
+                {"RequestLines": ({"kind": "WORKFORCE"},)},
+                action="Modification",
+            )
 
     def test_planning_adapter_resolves_active_engine_alias_each_call(self) -> None:
         repository = object()
