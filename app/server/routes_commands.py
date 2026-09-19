@@ -3,8 +3,6 @@ from __future__ import annotations
 from typing import Any, Callable
 
 from fastapi import APIRouter, Depends, Header, status
-from sqlalchemy.orm import Session
-
 from ..application import (
     ApplicationFacade,
     AvailabilityRuleCreateCommand,
@@ -36,7 +34,6 @@ from ..application import (
     WorkPackageCreateCommand,
     WorkPackageUpdateCommand,
 )
-from ..infrastructure.sql import SqlCompetencyCatalogRepository
 from .schemas import (
     AvailabilityRuleCreateRequest,
     AvailabilityRuleUpdateRequest,
@@ -60,7 +57,7 @@ from .schemas import (
 
 FacadeProvider = Callable[..., Any]
 IdempotencyProvider = Callable[..., Any]
-SessionProvider = Callable[..., Any]
+CompetencyProvider = Callable[..., Any]
 
 
 def _payload(result: Any) -> dict[str, Any]:
@@ -87,10 +84,6 @@ def _segment_command_values(
             else None
         )
     return values, competency_supplied, competency_id
-
-
-def _catalog(session: Session) -> CompetencyCatalogService:
-    return CompetencyCatalogService(SqlCompetencyCatalogRepository(session))
 
 
 def build_command_router(
