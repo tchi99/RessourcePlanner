@@ -245,7 +245,7 @@ class ServerOidcTests(unittest.TestCase):
 
         self.assertEqual(first.status_code, 303)
         self.assertEqual(second.status_code, 400)
-        self.assertEqual(second.json()["error"]["code"], "oidc_state_invalid")
+        self.assertEqual(second.json()["error"]["code"], "oidc_browser_binding_missing")
 
     def test_expired_and_revoked_sessions_do_not_resolve(self) -> None:
         now = datetime.now(timezone.utc)
