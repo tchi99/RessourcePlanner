@@ -96,7 +96,7 @@ def _catalog(session: Session) -> CompetencyCatalogService:
 def build_command_router(
     facade_dependency: FacadeProvider,
     idempotency_dependency: IdempotencyProvider,
-    session_dependency: SessionProvider,
+    competency_dependency: CompetencyProvider,
 ) -> APIRouter:
     router = APIRouter(prefix="/api/v1", tags=["commands"])
 
@@ -106,9 +106,8 @@ def build_command_router(
         idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
         facade: ApplicationFacade = Depends(facade_dependency),
         idempotency: IdempotentCommandExecutor = Depends(idempotency_dependency),
-        session: Session = Depends(session_dependency),
+        competencies: CompetencyCatalogService = Depends(competency_dependency),
     ) -> dict[str, Any]:
-        competencies = _catalog(session)
         selection_supplied = "competency_ids" in body.model_fields_set
         competency_ids = tuple(body.competency_ids or ())
         values = body.model_dump(exclude={"competency_ids"})
@@ -133,9 +132,8 @@ def build_command_router(
         resource_id: str,
         body: ResourceUpdateRequest,
         facade: ApplicationFacade = Depends(facade_dependency),
-        session: Session = Depends(session_dependency),
+        competencies: CompetencyCatalogService = Depends(competency_dependency),
     ) -> dict[str, Any]:
-        competencies = _catalog(session)
         selection_supplied = "competency_ids" in body.model_fields_set
         competency_ids = tuple(body.competency_ids or ())
         values = body.model_dump(exclude_unset=True, exclude={"competency_ids"})
@@ -234,9 +232,8 @@ def build_command_router(
         idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
         facade: ApplicationFacade = Depends(facade_dependency),
         idempotency: IdempotentCommandExecutor = Depends(idempotency_dependency),
-        session: Session = Depends(session_dependency),
+        competencies: CompetencyCatalogService = Depends(competency_dependency),
     ) -> dict[str, Any]:
-        competencies = _catalog(session)
         selection_supplied = "required_competency_ids" in body.model_fields_set
         competency_ids = tuple(body.required_competency_ids or ())
         values = body.model_dump(exclude={"required_competency_ids"})
@@ -261,9 +258,8 @@ def build_command_router(
         number: str,
         body: DemandUpdateRequest,
         facade: ApplicationFacade = Depends(facade_dependency),
-        session: Session = Depends(session_dependency),
+        competencies: CompetencyCatalogService = Depends(competency_dependency),
     ) -> dict[str, Any]:
-        competencies = _catalog(session)
         selection_supplied = "required_competency_ids" in body.model_fields_set
         competency_ids = tuple(body.required_competency_ids or ())
         values = body.model_dump(
@@ -357,9 +353,8 @@ def build_command_router(
         idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
         facade: ApplicationFacade = Depends(facade_dependency),
         idempotency: IdempotentCommandExecutor = Depends(idempotency_dependency),
-        session: Session = Depends(session_dependency),
+        competencies: CompetencyCatalogService = Depends(competency_dependency),
     ) -> dict[str, Any]:
-        competencies = _catalog(session)
         values, selection_supplied, competency_id = _segment_command_values(
             body,
             competencies,
@@ -383,9 +378,8 @@ def build_command_router(
         segment_id: str,
         body: SegmentUpdateRequest,
         facade: ApplicationFacade = Depends(facade_dependency),
-        session: Session = Depends(session_dependency),
+        competencies: CompetencyCatalogService = Depends(competency_dependency),
     ) -> dict[str, Any]:
-        competencies = _catalog(session)
         values, selection_supplied, competency_id = _segment_command_values(
             body,
             competencies,
