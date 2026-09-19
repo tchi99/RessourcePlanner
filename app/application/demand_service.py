@@ -384,6 +384,13 @@ class DemandService:
 
     def approve_command(self, command: DemandApproveCommand) -> dict[str, Any]:
         number = self._required_identifier(command.number, entity="demand")
+        existing = self._demand_or_not_found(number)
+        if existing.line_mode:
+            raise ApplicationOperationError(
+                "L'approbation des demandes multi-lignes sera activée avec la matérialisation #288E.",
+                code="demand_line_approval_unavailable",
+                context={"demand_number": number},
+            )
         comment = str(command.comment or "")
         with self._context("approve demand"):
             call_application_port(
