@@ -64,6 +64,16 @@ function labelled(scope: Locator, label: string, control: "select" | "input" | "
   return scope.locator("label").filter({ hasText: label }).first().locator(control);
 }
 
+async function dragWithDataTransfer(page: Page, source: Locator, target: Locator) {
+  const dataTransfer = await page.evaluateHandle(() => new DataTransfer());
+  await source.dispatchEvent("dragstart", { dataTransfer });
+  await target.dispatchEvent("dragenter", { dataTransfer });
+  await target.dispatchEvent("dragover", { dataTransfer });
+  await target.dispatchEvent("drop", { dataTransfer });
+  await source.dispatchEvent("dragend", { dataTransfer });
+  await dataTransfer.dispose();
+}
+
 async function selectOptionContaining(select: Locator, text: string) {
   const option = select.locator("option", { hasText: text }).first();
   await expect(option).toBeAttached();
@@ -508,7 +518,7 @@ test("V2 local acceptance path runs through React, Chromium, FastAPI and SQLite"
       response.request().method() === "POST"
       && response.url().includes(`/api/v1/allocations/${encodeURIComponent(allocationId)}/move`)
     ));
-    await source.dragTo(invalidTarget);
+    await dragWithDataTransfer(page, source, invalidTarget);
     const invalidMoveResponse = await invalidMoveResponsePromise;
     expect(
       invalidMoveResponse.request().postDataJSON(),
@@ -523,7 +533,11 @@ test("V2 local acceptance path runs through React, Chromium, FastAPI and SQLite"
     await expect(sourceCell.locator(`.shift-card[data-allocation-id="${allocationId}"]`)).toBeVisible();
 
     const validTarget = bobRow.locator(`.planning-drop-day[data-day="${d2}"]`);
-    await sourceCell.locator(`.shift-card[data-allocation-id="${allocationId}"]`).dragTo(validTarget);
+    await dragWithDataTransfer(
+      page,
+      sourceCell.locator(`.shift-card[data-allocation-id="${allocationId}"]`),
+      validTarget,
+    );
     await expect(feedback).toContainText("Quart déplacé vers Bob");
     await expect(validTarget.locator(`.shift-card[data-allocation-id="${allocationId}"]`)).toBeVisible();
 
