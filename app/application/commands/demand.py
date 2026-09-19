@@ -152,11 +152,33 @@ class DemandCreateCommand:
             ("estimated_hours", self.estimated_hours),
             ("estimated_days", self.estimated_days),
         ):
-            if value is not None and value < 0:
+            if value is not None and value <= 0:
                 raise ApplicationValidationError(
-                    f"{field} ne peut pas être négatif.",
+                    f"{field} doit être supérieur à zéro lorsqu'il est renseigné.",
                     code=f"demand_{field}_invalid",
                     context={"field": field, "value": value},
+                )
+        if self.lines is None:
+            if (
+                self.estimated_hours is not None
+                and float(self.estimated_hours) < int(self.resource_count) * 0.01
+            ):
+                raise ApplicationValidationError(
+                    "Les heures totales sont insuffisantes pour produire un besoin positif par ressource.",
+                    code="demand_hours_split_invalid",
+                    context={
+                        "estimated_hours": float(self.estimated_hours),
+                        "resource_count": int(self.resource_count),
+                    },
+                )
+            if (
+                self.submit
+                and self.estimated_hours is None
+                and self.estimated_days is None
+            ):
+                raise ApplicationValidationError(
+                    "Une demande soumise doit préciser des heures ou un nombre de jours.",
+                    code="demand_effort_required",
                 )
 
     @classmethod
