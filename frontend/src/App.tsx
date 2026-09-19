@@ -180,7 +180,7 @@ export default function App() {
           {view === "my-schedule" ? (
             <TechnicianSchedulePage />
           ) : view === "planning" ? (
-            <PlanningPage />
+            <PlanningPage onOpenDemands={() => setView("demands")} />
           ) : view === "medium-term" ? (
             <MediumTermPage onOpenDemands={() => setView("demands")} />
           ) : view === "demands" ? (

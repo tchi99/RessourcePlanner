@@ -1,0 +1,252 @@
+from __future__ import annotations
+
+from datetime import date, time
+from decimal import Decimal
+from pathlib import Path
+from tempfile import TemporaryDirectory
+import unittest
+
+from fastapi.testclient import TestClient
+
+from app.infrastructure.sql import (
+    Base,
+    Competency,
+    Project,
+    Resource,
+    ResourceAvailabilityRule,
+    ResourceCompetency,
+    ResourceRequirement,
+    Shift,
+    WorkforceRequest,
+    WorkforceRequestCompetency,
+    create_session_factory,
+    create_sql_engine,
+)
+from app.server import create_api_app
+
+
+class OperationalPlanningQueueApiTests(unittest.TestCase):
+    def _database(self, directory: str) -> str:
+        path = Path(directory) / "planning-queue.db"
+        url = f"sqlite+pysqlite:///{path.as_posix()}"
+        engine = create_sql_engine(url)
+        Base.metadata.create_all(engine)
+        factory = create_session_factory(engine)
+
+        with factory.begin() as session:
+            session.add(
+                Project(
+                    id="P-273",
+                    number="P-273",
+                    name="Projet file opérationnelle",
+                    project_manager_name="CP Test",
+                    status="active",
+                )
+            )
+            session.add(
+                Competency(
+                    id="C-PLC",
+                    name="PLC",
+                    description="Programmation automate",
+                    active=True,
+                    sort_order=10,
+                )
+            )
+            session.add_all(
+                [
+                    Resource(
+                        id="R-ALICE",
+                        name="Alice",
+                        resource_class="Programmation",
+                        competencies="PLC",
+                        active=True,
+                        sort_order=10,
+                    ),
+                    Resource(
+                        id="R-BOB",
+                        name="Bob",
+                        resource_class="Installation",
+                        competencies="Installation",
+                        active=True,
+                        sort_order=20,
+                    ),
+                ]
+            )
+            session.flush()
+            session.add(
+                ResourceCompetency(resource_id="R-ALICE", competency_id="C-PLC")
+            )
+            for resource_id in ("R-ALICE", "R-BOB"):
+                session.add(
+                    ResourceAvailabilityRule(
+                        id=f"SCH-{resource_id}",
+                        resource_id=resource_id,
+                        availability_type="Horaire standard",
+                        start_date=date(2026, 1, 1),
+                        end_date=date(2027, 12, 31),
+                        weekdays="Lun,Mar,Mer,Jeu,Ven",
+                        start_time=time(7, 0),
+                        end_time=time(15, 0),
+                        active=True,
+                    )
+                )
+
+            submitted = WorkforceRequest(
+                id="WR-SUBMITTED",
+                legacy_demand_number="DMO-2026-0273",
+                project_id="P-273",
+                erp_task_code="253",
+                erp_task_label="Installation",
+                requester_name="Chargé test",
+                priority="Haute",
+                confirmation="Tentative",
+                desired_start=date(2026, 9, 21),
+                desired_end=date(2026, 9, 25),
+                resource_count=1,
+                required_competencies="PLC",
+                estimated_hours=Decimal("16"),
+                status="Soumise",
+            )
+            approved = WorkforceRequest(
+                id="WR-APPROVED",
+                legacy_demand_number="DMO-2026-0274",
+                project_id="P-273",
+                erp_task_code="310",
+                erp_task_label="Programmation",
+                requester_name="Chargé test",
+                priority="Haute",
+                confirmation="Confirmée",
+                desired_start=date(2026, 9, 21),
+                desired_end=date(2026, 9, 25),
+                resource_count=1,
+                required_competencies="PLC",
+                estimated_hours=Decimal("24"),
+                status="En planification",
+                approved_by_name="Coordonnateur test",
+            )
+            session.add_all([submitted, approved])
+            session.flush()
+            session.add_all(
+                [
+                    WorkforceRequestCompetency(
+                        workforce_request_id=submitted.id,
+                        competency_id="C-PLC",
+                    ),
+                    WorkforceRequestCompetency(
+                        workforce_request_id=approved.id,
+                        competency_id="C-PLC",
+                    ),
+                ]
+            )
+
+            target = ResourceRequirement(
+                id="REQ-TARGET",
+                legacy_segment_id="SEG-2026-0273",
+                project_id="P-273",
+                workforce_request_id=approved.id,
+                assigned_resource_id=None,
+                start_date=date(2026, 9, 21),
+                end_date=date(2026, 9, 25),
+                planned_hours=Decimal("24"),
+                status="À assigner",
+                required_competency="PLC",
+                required_competency_id="C-PLC",
+                priority="Haute",
+                confirmation="Confirmée",
+                origin="REQUEST",
+            )
+            load = ResourceRequirement(
+                id="REQ-LOAD",
+                legacy_segment_id="SEG-2026-0272",
+                project_id="P-273",
+                workforce_request_id=approved.id,
+                assigned_resource_id="R-ALICE",
+                start_date=date(2026, 9, 21),
+                end_date=date(2026, 9, 25),
+                planned_hours=Decimal("8"),
+                status="Planifié",
+                required_competency="PLC",
+                required_competency_id="C-PLC",
+                priority="Normale",
+                confirmation="Confirmée",
+                origin="REQUEST",
+            )
+            session.add_all([target, load])
+            session.flush()
+            session.add(
+                Shift(
+                    id="SHIFT-ALICE",
+                    resource_requirement_id=load.id,
+                    resource_id="R-ALICE",
+                    work_date=date(2026, 9, 21),
+                    hours=Decimal("8"),
+                    source="AUTO",
+                    locked=False,
+                    outside_standard_hours=False,
+                )
+            )
+
+        engine.dispose()
+        return url
+
+    def test_queue_restores_approval_and_unassigned_work(self) -> None:
+        with TemporaryDirectory() as directory:
+            app = create_api_app(self._database(directory))
+            with TestClient(app) as client:
+                response = client.get(
+                    "/api/v1/planning/actions",
+                    params={"start": "2026-09-21", "end": "2026-09-27"},
+                )
+
+            self.assertEqual(response.status_code, 200, response.text)
+            rows = response.json()
+            approvals = [row for row in rows if row["kind"] == "APPROVAL"]
+            assignments = [row for row in rows if row["kind"] == "ASSIGNMENT"]
+
+            self.assertEqual([row["demand_number"] for row in approvals], ["DMO-2026-0273"])
+            self.assertEqual([row["segment_id"] for row in assignments], ["SEG-2026-0273"])
+
+            approval = approvals[0]
+            self.assertEqual(approval["task_code"], "253")
+            self.assertEqual(approval["task_label"], "Installation")
+            self.assertEqual(approval["required_competency"], "PLC")
+            self.assertEqual(approval["priority"], "Haute")
+
+            assignment = assignments[0]
+            self.assertEqual(assignment["demand_number"], "DMO-2026-0274")
+            self.assertEqual(assignment["task_code"], "310")
+            self.assertEqual(assignment["required_competency_id"], "C-PLC")
+            self.assertEqual(assignment["planned_hours"], 24.0)
+
+    def test_recommendations_prioritize_competency_then_capacity(self) -> None:
+        with TemporaryDirectory() as directory:
+            app = create_api_app(self._database(directory))
+            with TestClient(app) as client:
+                response = client.get(
+                    "/api/v1/segments/SEG-2026-0273/resource-recommendations"
+                )
+
+            self.assertEqual(response.status_code, 200, response.text)
+            rows = response.json()
+            self.assertEqual([row["resource_name"] for row in rows], ["Alice", "Bob"])
+
+            alice = rows[0]
+            self.assertTrue(alice["recommended"])
+            self.assertTrue(alice["competency_match"])
+            self.assertTrue(alice["class_match"])
+            self.assertEqual(alice["required_class"], "Programmation")
+            self.assertEqual(alice["capacity_hours"], 40.0)
+            self.assertEqual(alice["confirmed_hours"], 8.0)
+            self.assertEqual(alice["tentative_hours"], 0.0)
+            self.assertEqual(alice["prudent_free"], 32.0)
+            self.assertEqual(alice["overtime_needed"], 0.0)
+
+            bob = rows[1]
+            self.assertFalse(bob["competency_match"])
+            self.assertFalse(bob["class_match"])
+            self.assertEqual(bob["prudent_free"], 40.0)
+            self.assertGreater(alice["score"], bob["score"])
+
+
+if __name__ == "__main__":
+    unittest.main()

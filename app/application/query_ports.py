@@ -8,11 +8,13 @@ from .plan_delta import DemandPlanDeltaReadModel
 from .query_models import (
     DemandHistoryReadModel,
     PendingDemandLoadReadModel,
+    PlanningActionReadModel,
     PlanningHistoryReadModel,
     PlanningSnapshotReadModel,
     ProjectReadModel,
     ResourceAvailabilityRuleReadModel,
     ResourceReadModel,
+    ResourceRecommendationReadModel,
     ShiftReadModel,
     WorkPackageReadModel,
 )
@@ -64,6 +66,18 @@ class PlannerQueryPort(Protocol):
         start: date,
         end: date,
     ) -> Sequence[PendingDemandLoadReadModel]: ...
+
+    def list_planning_actions(
+        self,
+        *,
+        start: date,
+        end: date,
+    ) -> Sequence[PlanningActionReadModel]: ...
+
+    def recommend_resources(
+        self,
+        segment_id: str,
+    ) -> Sequence[ResourceRecommendationReadModel]: ...
 
     def list_segments(
         self,

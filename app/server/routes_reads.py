@@ -13,10 +13,12 @@ from ..application import (
     DemandPlanDeltaReadModel,
     DemandReadModel,
     PlannerQueryPort,
+    PlanningActionReadModel,
     PlanningSnapshotReadModel,
     ProjectReadModel,
     ResourceAvailabilityRuleReadModel,
     ResourceReadModel,
+    ResourceRecommendationReadModel,
     SegmentReadModel,
     ShiftReadModel,
     WorkPackageReadModel,
@@ -198,6 +200,28 @@ def build_read_router(query_dependency: QueryProvider) -> APIRouter:
         queries: PlannerQueryPort = Depends(query_dependency),
     ) -> list[PlanningHistoryReadModel]:
         return list(queries.list_planning_history("SHIFT", allocation_id))
+
+    @router.get("/planning/actions")
+    def planning_actions(
+        start: date = Query(),
+        end: date = Query(),
+        queries: PlannerQueryPort = Depends(query_dependency),
+    ) -> list[PlanningActionReadModel]:
+        _window(start, end)
+        return list(queries.list_planning_actions(start=start, end=end))
+
+    @router.get("/segments/{segment_id}/resource-recommendations")
+    def resource_recommendations(
+        segment_id: str,
+        queries: PlannerQueryPort = Depends(query_dependency),
+    ) -> list[ResourceRecommendationReadModel]:
+        if queries.get_segment(segment_id) is None:
+            raise ApplicationNotFoundError(
+                f"Segment {segment_id} introuvable",
+                code="segment_not_found",
+                context={"segment_id": segment_id},
+            )
+        return list(queries.recommend_resources(segment_id))
 
     @router.get("/planning/snapshot")
     def planning_snapshot(

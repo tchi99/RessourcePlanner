@@ -1,20 +1,24 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from datetime import date
+from datetime import date, timedelta
+import unicodedata
 
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from ...application.query_models import (
     PendingDemandLoadReadModel,
+    PlanningActionReadModel,
     PlanningSnapshotReadModel,
     ProjectReadModel,
     ResourceReadModel,
+    ResourceRecommendationReadModel,
     ShiftReadModel,
 )
 from ...application.query_ports import PlannerQueryPort
 from ...application.read_models import DemandPeriodReadModel, DemandReadModel, SegmentReadModel
+from ...domain.availability_rules import availability_hours_for_day
 from ...domain.confirmation import effective_confirmation
 from ...domain.demand_periods import (
     DemandPeriodDefinition,
@@ -31,6 +35,7 @@ from ...domain.workload import (
 from .demand_period_repository import SqlDemandPeriodRepository
 from .demand_repository import SqlDemandRepository
 from .models import (
+    Competency,
     Project,
     Resource,
     ResourceAvailabilityRule,
@@ -61,6 +66,56 @@ def _text(value: object) -> str:
 def _optional_text(value: object) -> str | None:
     value_text = _text(value)
     return value_text or None
+
+
+def _normalized_text(value: object) -> str:
+    text = unicodedata.normalize("NFKD", _text(value)).encode("ascii", "ignore").decode("ascii")
+    return " ".join(text.casefold().split())
+
+
+def _resource_class_hint(value: object) -> str | None:
+    text = _normalized_text(value)
+    if not text:
+        return None
+    if "programm" in text or "automatis" in text:
+        return "Programmation"
+    if "installation" in text or "installateur" in text:
+        return "Installation"
+    if ("monteur" in text and "panneau" in text) or (
+        "panel" in text and ("builder" in text or "wire" in text)
+    ):
+        return "Monteur de panneau"
+    if "dessin" in text or "draft" in text or "cad" in text:
+        return "Dessinateur"
+    if ("gestion" in text and "projet" in text) or (
+        "charge" in text and "projet" in text
+    ):
+        return "Gestion de projet"
+    return None
+
+
+def _split_competencies(value: object) -> tuple[str, ...]:
+    raw = _text(value)
+    if not raw:
+        return ()
+    return tuple(
+        part.strip()
+        for part in raw.replace(",", ";").split(";")
+        if part.strip()
+    )
+
+
+def _availability_record(rule: ResourceAvailabilityRule) -> dict[str, object]:
+    return {
+        "Type": rule.availability_type,
+        "Actif": bool(rule.active),
+        "Technicien": rule.resource_id or "",
+        "DateDebut": rule.start_date,
+        "DateFin": rule.end_date,
+        "JoursSemaine": rule.weekdays,
+        "HeureDebut": rule.start_time,
+        "HeureFin": rule.end_time,
+    }
 
 
 def _demand_overlaps(row: DemandReadModel, start: date, end: date) -> bool:
@@ -338,6 +393,279 @@ class SqlPlannerQueryRepository(PlannerQueryPort):
                 )
             )
 
+        return tuple(result)
+
+    def list_planning_actions(
+        self,
+        *,
+        start: date,
+        end: date,
+    ) -> tuple[PlanningActionReadModel, ...]:
+        """Return the coordinator inbox that historically sat above NiceGUI planning."""
+
+        if end < start:
+            start, end = end, start
+        demands = {row.number: row for row in self.list_demands()}
+        result: list[PlanningActionReadModel] = []
+
+        for pending in self.list_pending_loads(start=start, end=end):
+            demand = demands.get(pending.demand_number)
+            if demand is None:
+                continue
+            competency_id = (
+                demand.required_competency_ids[0]
+                if len(demand.required_competency_ids) == 1
+                else None
+            )
+            result.append(
+                PlanningActionReadModel(
+                    kind="APPROVAL",
+                    reference=demand.number,
+                    demand_number=demand.number,
+                    segment_id=None,
+                    project_number=demand.project_number,
+                    project_name=demand.project_name,
+                    task_code=demand.task_code,
+                    task_label=demand.task_label,
+                    start_date=pending.start_date,
+                    end_date=pending.end_date,
+                    planned_hours=float(
+                        pending.projected_hours
+                        if pending.projected_hours is not None
+                        else pending.window_hours
+                    ),
+                    required_competency=demand.required_competencies,
+                    required_competency_id=competency_id,
+                    priority=demand.priority,
+                    status=demand.status,
+                    confirmation=demand.confirmation,
+                    project_manager=demand.project_manager,
+                    requester=demand.requester,
+                    emergency_override_active=bool(demand.emergency_override_active),
+                )
+            )
+
+        for segment in self.list_segments(
+            start=start,
+            end=end,
+            include_cancelled=False,
+        ):
+            if segment.resource_name:
+                continue
+            if _normalized_text(segment.status) in {"annule", "termine"}:
+                continue
+            demand = demands.get(segment.demand_number or "")
+            if demand is not None and not (
+                demand.status == "En planification" or demand.emergency_override_active
+            ):
+                # A submitted modification keeps the old plan visible, but should not
+                # invite assigning that stale plan until it is approved again.
+                continue
+            if segment.start_date is None or segment.end_date is None:
+                continue
+            result.append(
+                PlanningActionReadModel(
+                    kind="ASSIGNMENT",
+                    reference=segment.segment_id,
+                    demand_number=segment.demand_number,
+                    segment_id=segment.segment_id,
+                    project_number=segment.project_number,
+                    project_name=segment.project_name,
+                    task_code=demand.task_code if demand is not None else None,
+                    task_label=demand.task_label if demand is not None else None,
+                    start_date=segment.start_date,
+                    end_date=segment.end_date,
+                    planned_hours=float(segment.planned_hours),
+                    required_competency=segment.required_competency,
+                    required_competency_id=segment.required_competency_id,
+                    priority=segment.priority,
+                    status=segment.status,
+                    confirmation=segment.confirmation,
+                    project_manager=segment.project_manager,
+                    requester=segment.requester,
+                    emergency_override_active=(
+                        bool(demand.emergency_override_active)
+                        if demand is not None
+                        else False
+                    ),
+                )
+            )
+
+        kind_order = {"APPROVAL": 0, "ASSIGNMENT": 1}
+        return tuple(
+            sorted(
+                result,
+                key=lambda row: (
+                    row.start_date,
+                    kind_order.get(row.kind, 9),
+                    _text(row.project_number),
+                    row.reference,
+                ),
+            )
+        )
+
+    def recommend_resources(
+        self,
+        segment_id: str,
+    ) -> tuple[ResourceRecommendationReadModel, ...]:
+        """Rank schedulable resources using the V1.6 competency/capacity semantics."""
+
+        segment = self.get_segment(segment_id)
+        if segment is None or segment.start_date is None or segment.end_date is None:
+            return ()
+        start = segment.start_date
+        end = segment.end_date
+        if end < start:
+            start, end = end, start
+
+        resources = self.list_schedulable_resources(start=start, end=end)
+        if not resources:
+            return ()
+        rules = self._session.scalars(
+            select(ResourceAvailabilityRule).where(ResourceAvailabilityRule.active.is_(True))
+        ).all()
+        availability = tuple(_availability_record(rule) for rule in rules)
+        shifts = self.list_shifts(start=start, end=end)
+
+        catalog_row = (
+            self._session.get(Competency, segment.required_competency_id)
+            if segment.required_competency_id
+            else None
+        )
+        required_names = list(_split_competencies(segment.required_competency))
+        if not required_names and catalog_row is not None:
+            required_names.append(catalog_row.name)
+        required_keys = {_normalized_text(name) for name in required_names if _text(name)}
+        class_hints = {
+            hint
+            for hint in (
+                *(_resource_class_hint(name) for name in required_names),
+                _resource_class_hint(catalog_row.description) if catalog_row is not None else None,
+            )
+            if hint
+        }
+        required_class = next(iter(class_hints)) if len(class_hints) == 1 else None
+        required_hours = max(float(segment.planned_hours), 0.0)
+        candidates: list[dict[str, object]] = []
+
+        for resource in resources:
+            capacity = 0.0
+            cursor = start
+            while cursor <= end:
+                capacity += availability_hours_for_day(availability, resource.id, cursor)
+                cursor += timedelta(days=1)
+
+            confirmed = 0.0
+            tentative = 0.0
+            outside = 0.0
+            for shift in shifts:
+                if shift.resource_id != resource.id or shift.segment_id == segment.segment_id:
+                    continue
+                shift_hours = float(shift.hours)
+                if shift.outside_standard_hours:
+                    outside += shift_hours
+                elif shift.load_kind == "FIRM":
+                    confirmed += shift_hours
+                else:
+                    tentative += shift_hours
+
+            free_after_confirmed = max(capacity - confirmed, 0.0)
+            prudent_free = max(capacity - confirmed - tentative, 0.0)
+            overtime_needed = max(required_hours - prudent_free, 0.0)
+            resource_skill_keys = {
+                _normalized_text(name)
+                for name in _split_competencies(resource.competencies)
+            }
+            if required_keys:
+                competency_match = required_keys.issubset(resource_skill_keys)
+            elif segment.required_competency_id:
+                competency_match = segment.required_competency_id in resource.competency_ids
+            else:
+                competency_match = True
+            class_match = (
+                required_class is None
+                or _normalized_text(resource.resource_class) == _normalized_text(required_class)
+            )
+            enough_prudent = prudent_free + 0.01 >= required_hours
+            enough_after_confirmed = free_after_confirmed + 0.01 >= required_hours
+
+            score = 0.0
+            if competency_match:
+                score += 20000.0
+            if class_match:
+                score += 10000.0
+            if enough_prudent:
+                score += 5000.0
+            elif enough_after_confirmed:
+                score += 2500.0
+            score += min(prudent_free, required_hours) * 10.0
+            score -= tentative * 2.0
+            score -= overtime_needed * 8.0
+
+            candidates.append(
+                {
+                    "resource": resource,
+                    "competency_match": competency_match,
+                    "class_match": class_match,
+                    "capacity": round(capacity, 2),
+                    "confirmed": round(confirmed, 2),
+                    "tentative": round(tentative, 2),
+                    "outside": round(outside, 2),
+                    "free_after_confirmed": round(free_after_confirmed, 2),
+                    "prudent_free": round(prudent_free, 2),
+                    "overtime_needed": round(overtime_needed, 2),
+                    "enough_after_confirmed": enough_after_confirmed,
+                    "enough_prudent": enough_prudent,
+                    "score": round(score, 2),
+                }
+            )
+
+        candidates.sort(
+            key=lambda row: (
+                -int(bool(row["competency_match"])),
+                -int(bool(row["class_match"])),
+                -int(bool(row["enough_prudent"])),
+                -float(row["score"]),
+                -float(row["prudent_free"]),
+                str(row["resource"].name).casefold(),
+            )
+        )
+
+        result: list[ResourceRecommendationReadModel] = []
+        for index, row in enumerate(candidates, start=1):
+            resource = row["resource"]
+            recommended = (
+                index == 1
+                and bool(row["competency_match"])
+                and bool(row["class_match"])
+            )
+            result.append(
+                ResourceRecommendationReadModel(
+                    resource_id=resource.id,
+                    resource_name=resource.name,
+                    resource_class=resource.resource_class,
+                    required_competency=(
+                        "; ".join(required_names)
+                        if required_names
+                        else segment.required_competency
+                    ),
+                    required_class=required_class,
+                    competency_match=bool(row["competency_match"]),
+                    class_match=bool(row["class_match"]),
+                    capacity_hours=float(row["capacity"]),
+                    confirmed_hours=float(row["confirmed"]),
+                    tentative_hours=float(row["tentative"]),
+                    outside_standard_hours=float(row["outside"]),
+                    free_after_confirmed=float(row["free_after_confirmed"]),
+                    prudent_free=float(row["prudent_free"]),
+                    overtime_needed=float(row["overtime_needed"]),
+                    enough_after_confirmed=bool(row["enough_after_confirmed"]),
+                    enough_prudent=bool(row["enough_prudent"]),
+                    score=float(row["score"]),
+                    rank=index,
+                    recommended=recommended,
+                )
+            )
         return tuple(result)
 
     def list_segments(

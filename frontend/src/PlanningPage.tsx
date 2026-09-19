@@ -3,9 +3,11 @@ import { useEffect, useMemo, useState } from "react";
 import {
   ApiError,
   PendingDemandLoadReadModel,
+  PlanningActionReadModel,
   PlanningSnapshotReadModel,
   ResourceReadModel,
   ShiftReadModel,
+  getPlanningActions,
   getPlanningSnapshot,
 } from "./api";
 import {
@@ -18,6 +20,7 @@ import {
   toIsoDate,
   weekDays,
 } from "./dates";
+import PlanningActionPanel from "./PlanningActionPanel";
 import QuickShiftEditor from "./QuickShiftEditor";
 import ShiftEditor from "./ShiftEditor";
 
@@ -63,6 +66,22 @@ function shiftText(shift: ShiftReadModel) {
     shift.project_manager,
     shift.requester,
     shift.note,
+  ].filter(Boolean).join(" "));
+}
+
+function actionText(action: PlanningActionReadModel) {
+  return normalize([
+    action.reference,
+    action.demand_number,
+    action.segment_id,
+    action.project_number,
+    action.project_name,
+    action.task_code,
+    action.task_label,
+    action.required_competency,
+    action.priority,
+    action.project_manager,
+    action.requester,
   ].filter(Boolean).join(" "));
 }
 
@@ -205,9 +224,10 @@ function ResourceRow({
   );
 }
 
-export default function PlanningPage() {
+export default function PlanningPage({ onOpenDemands }: { onOpenDemands?: () => void }) {
   const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date()));
   const [snapshot, setSnapshot] = useState<PlanningSnapshotReadModel | null>(null);
+  const [actions, setActions] = useState<PlanningActionReadModel[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
@@ -227,8 +247,14 @@ export default function PlanningPage() {
     const controller = new AbortController();
     setLoading(true);
     setError(null);
-    getPlanningSnapshot(start, end, controller.signal)
-      .then(setSnapshot)
+    Promise.all([
+      getPlanningSnapshot(start, end, controller.signal),
+      getPlanningActions(start, end, controller.signal),
+    ])
+      .then(([planning, planningActions]) => {
+        setSnapshot(planning);
+        setActions(planningActions);
+      })
       .catch((reason: unknown) => {
         if (reason instanceof DOMException && reason.name === "AbortError") return;
         if (reason instanceof ApiError) {
@@ -246,14 +272,14 @@ export default function PlanningPage() {
   const projectOptions = useMemo(() => {
     if (!snapshot) return [];
     const values = new Map<string, string>();
-    [...snapshot.shifts, ...snapshot.pending_loads].forEach((item) => {
+    [...snapshot.shifts, ...snapshot.pending_loads, ...actions].forEach((item) => {
       if (!item.project_number) return;
       values.set(item.project_number, item.project_name
         ? `${item.project_number} — ${item.project_name}`
         : item.project_number);
     });
     return [...values.entries()].sort((left, right) => left[1].localeCompare(right[1], "fr-CA"));
-  }, [snapshot]);
+  }, [snapshot, actions]);
 
   const query = normalize(search);
 
@@ -291,6 +317,14 @@ export default function PlanningPage() {
     return [...groups.entries()].sort((left, right) => left[0].localeCompare(right[0], "fr-CA"));
   }, [snapshot, shiftsPassingGlobalFilters, project, confirmation, query]);
 
+
+  const visibleActions = useMemo(() => actions.filter((action) => {
+    if (project !== "all" && action.project_number !== project) return false;
+    if (query && !actionText(action).includes(query)) return false;
+    if (confirmation !== "all" && confirmationKind(action.confirmation) !== confirmation) return false;
+    return true;
+  }), [actions, project, confirmation, query]);
+
   const visiblePendingLoads = useMemo(() => {
     if (!snapshot) return [];
     return snapshot.pending_loads.filter((load) => {
@@ -326,6 +360,13 @@ export default function PlanningPage() {
           </div>
         </div>
       </div>
+
+      <PlanningActionPanel
+        actions={visibleActions}
+        loading={loading}
+        onOpenDemands={onOpenDemands}
+        onAssigned={() => setRefreshKey((value) => value + 1)}
+      />
 
       <div className="metric-grid">
         <article>
