@@ -18,6 +18,7 @@ from .commands import (
     DemandUpdateCommand,
 )
 from .errors import (
+    ApplicationConflictError,
     ApplicationNotFoundError,
     ApplicationOperationError,
     ApplicationValidationError,
@@ -48,6 +49,7 @@ BUSINESS_DEMAND_FIELDS = frozenset(
         "TempsEstimeHeures",
         "TempsEstimeJours",
         "TechnicienPropose",
+        "RequestLines",
     }
 )
 
@@ -177,6 +179,25 @@ class DemandService:
         existing = self._demand_or_not_found(number)
 
         data = command.to_repository_values()
+        expected_version = data.pop("ExpectedVersion", None)
+        if "RequestLines" in data:
+            if expected_version is None:
+                raise ApplicationValidationError(
+                    "expected_version est requis pour modifier les lignes d'une demande.",
+                    code="demand_version_required",
+                    context={"demand_number": number},
+                )
+            if int(expected_version) != int(existing.version):
+                raise ApplicationConflictError(
+                    "La demande a été modifiée depuis sa lecture.",
+                    code="demand_version_conflict",
+                    context={
+                        "demand_number": number,
+                        "expected_version": int(expected_version),
+                        "current_version": int(existing.version),
+                    },
+                )
+            data["ExpectedVersion"] = int(expected_version)
         if "NumeroProjet" in data and not str(data["NumeroProjet"] or "").strip():
             raise ApplicationValidationError(
                 "Le projet est requis.",
@@ -327,6 +348,28 @@ class DemandService:
 
     def submit_command(self, command: DemandSubmitCommand) -> None:
         number = self._required_identifier(command.number, entity="demand")
+        existing = self._demand_or_not_found(number)
+        active_lines = tuple(line for line in existing.lines if line.active)
+        if active_lines:
+            for line in active_lines:
+                if line.kind != "WORKFORCE":
+                    raise ApplicationValidationError(
+                        "Seules les lignes WORKFORCE peuvent être soumises dans cette tranche.",
+                        code="demand_line_kind_unsupported",
+                        context={"line_id": line.line_id, "kind": line.kind},
+                    )
+                if line.desired_start is None:
+                    raise ApplicationValidationError(
+                        "Chaque ligne doit avoir une date de début avant soumission.",
+                        code="demand_line_start_required",
+                        context={"line_id": line.line_id},
+                    )
+                if line.estimated_hours is None or line.estimated_hours <= 0:
+                    raise ApplicationValidationError(
+                        "Chaque ligne doit avoir un effort résolu avant soumission.",
+                        code="demand_line_effort_required",
+                        context={"line_id": line.line_id},
+                    )
         with self._context("submit demand"):
             call_application_port(
                 lambda: self._demands.update(
