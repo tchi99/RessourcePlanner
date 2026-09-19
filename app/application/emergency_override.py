@@ -144,7 +144,7 @@ class EmergencyDemandService(DemandService):
 
         existing = self._demand_or_not_found(number)
         if existing.line_mode:
-            raise ApplicationOperationError(
+            raise ApplicationConflictError(
                 "La planification urgente des demandes multi-lignes sera activée avec #288E.",
                 code="demand_line_emergency_unavailable",
                 context={"demand_number": number},
