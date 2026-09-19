@@ -138,7 +138,9 @@ export default function PlanningActionPanel({
     setRecommendationError(null);
     try {
       await assignSegment(selectedAction.segment_id, candidate.resource_name);
-      closeRecommendations();
+      setSelectedAction(null);
+      setRecommendations([]);
+      setRecommendationError(null);
       onAssigned();
     } catch (reason: unknown) {
       if (reason instanceof ApiError) {
