@@ -77,6 +77,7 @@ class PlannerQueryPort(Protocol):
         *,
         start: date,
         end: date,
+        project_ids: Sequence[str] | None = None,
     ) -> Sequence[PendingDemandLoadReadModel]: ...
 
     def list_medium_term_unlinked_segments(
@@ -84,6 +85,7 @@ class PlannerQueryPort(Protocol):
         *,
         start: date,
         end: date,
+        project_ids: Sequence[str] | None = None,
     ) -> Sequence[MediumTermUnlinkedSegmentReadModel]: ...
 
     def planning_capacity_grid(
@@ -91,6 +93,8 @@ class PlannerQueryPort(Protocol):
         *,
         start: date,
         end: date,
+        project_ids: Sequence[str] | None = None,
+        include_resource_ids: Sequence[str] = (),
     ) -> PlanningCapacityGridReadModel: ...
 
     def list_planning_actions(
@@ -98,6 +102,7 @@ class PlannerQueryPort(Protocol):
         *,
         start: date,
         end: date,
+        project_ids: Sequence[str] | None = None,
     ) -> Sequence[PlanningActionReadModel]: ...
 
     def recommend_resources(
@@ -111,6 +116,7 @@ class PlannerQueryPort(Protocol):
         start: date | None = None,
         end: date | None = None,
         include_cancelled: bool = False,
+        project_ids: Sequence[str] | None = None,
     ) -> Sequence[SegmentReadModel]: ...
 
     def get_segment(self, segment_id: str) -> SegmentReadModel | None: ...
@@ -128,6 +134,7 @@ class PlannerQueryPort(Protocol):
         end: date | None = None,
         resource_name: str | None = None,
         resource_id: str | None = None,
+        project_ids: Sequence[str] | None = None,
     ) -> Sequence[ShiftReadModel]: ...
 
     def planning_snapshot(
@@ -135,4 +142,6 @@ class PlannerQueryPort(Protocol):
         *,
         start: date,
         end: date,
+        project_ids: Sequence[str] | None = None,
+        include_resource_ids: Sequence[str] = (),
     ) -> PlanningSnapshotReadModel: ...
