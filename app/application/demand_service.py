@@ -360,8 +360,16 @@ class DemandService:
 
     def submit_command(self, command: DemandSubmitCommand) -> None:
         number = self._required_identifier(command.number, entity="demand")
-        existing = self._demand_or_not_found(number)
-        active_lines = tuple(line for line in existing.lines if line.active)
+        existing = call_application_port(
+            lambda: self._demands.get(number),
+            code_prefix="demand_lookup",
+            context={"demand_number": number},
+        )
+        active_lines = (
+            tuple(line for line in existing.lines if line.active)
+            if existing is not None
+            else ()
+        )
         if active_lines:
             for line in active_lines:
                 if line.kind != "WORKFORCE":
