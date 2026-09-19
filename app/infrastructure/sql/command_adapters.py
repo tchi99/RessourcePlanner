@@ -352,6 +352,37 @@ class SqlAllocationCommandAdapter(AllocationCommandPort):
         self._session.flush()
         self._planning.rebuild()
 
+    def move_manual(
+        self,
+        allocation_id: str,
+        technician: str,
+        day_value: Any,
+    ) -> None:
+        shift = self._shift(allocation_id)
+        if shift is None:
+            raise KeyError(f"Allocation {allocation_id} introuvable")
+        requirement = self._requirement(shift.resource_requirement_id)
+        resource = self._resource(technician)
+        day, _ = self._validate_manual(
+            requirement,
+            resource,
+            day_value,
+            shift.hours,
+            bool(shift.outside_standard_hours),
+            exclude_shift_id=shift.id,
+        )
+
+        requirement.assigned_resource_id = resource.id
+        if requirement.status == "À assigner":
+            requirement.status = "Planifié"
+        shift.resource_id = resource.id
+        shift.work_date = day
+        shift.allocation_type = requirement.planning_type
+        shift.source = "MANUAL"
+        shift.locked = True
+        self._session.flush()
+        self._planning.rebuild()
+
     def release_manual(self, allocation_id: str) -> None:
         shift = self._shift(allocation_id)
         if shift is None:
