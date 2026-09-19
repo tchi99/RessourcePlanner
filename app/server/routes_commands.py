@@ -13,6 +13,7 @@ from ..application import (
     DemandCancelCommand,
     DemandCorrectionCommand,
     DemandCreateCommand,
+    DemandLineInput,
     DemandEmergencyOverrideCommand,
     DemandPeriodInput,
     DemandPeriodsReplaceCommand,
@@ -41,6 +42,7 @@ from .schemas import (
     AvailabilityRuleUpdateRequest,
     DemandAlternativeSelectionRequest,
     DemandCreateRequest,
+    DemandLineRequest,
     DemandPeriodsReplaceRequest,
     DemandUpdateRequest,
     ManualAllocationRequest,
@@ -68,6 +70,30 @@ def _payload(result: Any) -> dict[str, Any]:
 
 def _json_body(body: Any) -> dict[str, Any]:
     return body.model_dump(mode="json")
+
+
+def _demand_line_inputs(
+    lines: list[DemandLineRequest] | None,
+    competencies: CompetencyCatalogService,
+) -> tuple[DemandLineInput, ...] | None:
+    if lines is None:
+        return None
+    result: list[DemandLineInput] = []
+    for index, line in enumerate(lines):
+        competency_ids = tuple(line.required_competency_ids or ())
+        values = line.model_dump(exclude={"required_competency_ids"})
+        values["position"] = (
+            line.position if line.position is not None else index
+        )
+        values["line_id"] = values.pop("id", None)
+        values["required_competency_ids"] = competency_ids
+        values["required_competencies"] = (
+            competencies.snapshot_text(competency_ids)
+            if competency_ids
+            else None
+        )
+        result.append(DemandLineInput(**values))
+    return tuple(result)
 
 
 def _segment_command_values(
@@ -231,13 +257,16 @@ def build_command_router(
     ) -> dict[str, Any]:
         selection_supplied = "required_competency_ids" in body.model_fields_set
         competency_ids = tuple(body.required_competency_ids or ())
-        values = body.model_dump(exclude={"required_competency_ids"})
+        line_inputs = _demand_line_inputs(body.lines, competencies)
+        values = body.model_dump(exclude={"required_competency_ids", "lines"})
         if selection_supplied:
             values["required_competencies"] = competencies.snapshot_text(competency_ids)
+        if line_inputs is not None:
+            values["lines"] = line_inputs
 
         def action() -> dict[str, Any]:
             result = facade.create_demand(DemandCreateCommand(**values))
-            if selection_supplied:
+            if selection_supplied and line_inputs is None:
                 competencies.assign_demand(result.demand_number, competency_ids)
             return _payload(result)
 
@@ -257,16 +286,23 @@ def build_command_router(
     ) -> dict[str, Any]:
         selection_supplied = "required_competency_ids" in body.model_fields_set
         competency_ids = tuple(body.required_competency_ids or ())
+        line_inputs = (
+            _demand_line_inputs(body.lines, competencies)
+            if "lines" in body.model_fields_set
+            else None
+        )
         values = body.model_dump(
             exclude_unset=True,
-            exclude={"required_competency_ids"},
+            exclude={"required_competency_ids", "lines"},
         )
         if selection_supplied:
             values["required_competencies"] = competencies.snapshot_text(competency_ids)
+        if "lines" in body.model_fields_set:
+            values["lines"] = line_inputs
         comment = str(values.pop("comment", "Demande modifiée via API") or "")
         command = DemandUpdateCommand(number=number, comment=comment, **values)
         result = facade.update_demand(command)
-        if selection_supplied:
+        if selection_supplied and "lines" not in body.model_fields_set:
             competencies.assign_demand(number, competency_ids)
         return _payload(result)
 
