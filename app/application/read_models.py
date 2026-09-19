@@ -72,6 +72,7 @@ class DemandReadModel:
     task_label: str | None = None
     resource_count: int = 1
     required_competencies: str | None = None
+    required_competency_ids: tuple[str, ...] = ()
     estimated_hours: float | None = None
     estimated_days: float | None = None
     proposed_resource: str | None = None
@@ -151,6 +152,7 @@ class SegmentReadModel:
     description: str | None = None
     origin: str | None = None
     required_competency: str | None = None
+    required_competency_id: str | None = None
     planning_type: str | None = None
     priority: str | None = None
     outside_standard_hours: bool = False

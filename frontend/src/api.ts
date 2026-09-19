@@ -41,6 +41,26 @@ export type TaskCatalogItemReadModel = {
   expenses_enabled: boolean | null;
 };
 
+export type CompetencyReadModel = {
+  id: string;
+  name: string;
+  description: string | null;
+  active: boolean;
+  sort_order: number;
+};
+
+export type CompetencyWrite = {
+  name: string;
+  description: string | null;
+  active: boolean;
+  sort_order: number;
+};
+
+export type CompetencyMutationResult = {
+  competency_id: string;
+  action: string;
+};
+
 export type WorkPackageReadModel = {
   id: string;
   reference: string;
@@ -76,6 +96,7 @@ export type ResourceReadModel = {
   email: string | null;
   resource_class: string | null;
   competencies: string | null;
+  competency_ids: string[];
   note: string | null;
   active: boolean;
   sort_order: number;
@@ -87,6 +108,7 @@ export type ResourceWrite = {
   email: string | null;
   resource_class: string | null;
   competencies: string | null;
+  competency_ids: string[];
   note: string | null;
   active: boolean;
   sort_order: number;
@@ -153,6 +175,7 @@ export type DemandReadModel = {
   task_label: string | null;
   resource_count: number;
   required_competencies: string | null;
+  required_competency_ids: string[];
   estimated_hours: number | null;
   estimated_days: number | null;
   proposed_resource: string | null;
@@ -171,6 +194,7 @@ export type SegmentReadModel = {
   description: string | null;
   origin: string | null;
   required_competency: string | null;
+  required_competency_id: string | null;
   planning_type: string | null;
   priority: string | null;
   outside_standard_hours: boolean;
@@ -311,6 +335,7 @@ export type DemandWrite = {
   description: string;
   resource_count: number;
   required_competencies: string | null;
+  required_competency_ids: string[];
   estimated_hours: number | null;
   estimated_days: number | null;
   proposed_technician: string | null;
@@ -453,6 +478,34 @@ export function getTaskCatalog(
   return getJson<TaskCatalogItemReadModel[]>(
     `/api/v1/task-catalog?${params.toString()}`,
     signal,
+  );
+}
+
+export function getCompetencies(
+  query = "",
+  activeOnly = true,
+  signal?: AbortSignal,
+) {
+  const params = new URLSearchParams({ active_only: String(activeOnly) });
+  if (query.trim()) params.set("q", query.trim());
+  return getJson<CompetencyReadModel[]>(`/api/v1/competencies?${params.toString()}`, signal);
+}
+
+export function createCompetency(payload: CompetencyWrite) {
+  return sendJson<CompetencyMutationResult>("/api/v1/competencies", "POST", payload);
+}
+
+export function updateCompetency(competencyId: string, payload: Partial<CompetencyWrite>) {
+  return sendJson<CompetencyMutationResult>(
+    `/api/v1/competencies/${encodeURIComponent(competencyId)}`,
+    "PATCH",
+    payload,
+  );
+}
+
+export function deactivateCompetency(competencyId: string) {
+  return postJson<CompetencyMutationResult>(
+    `/api/v1/competencies/${encodeURIComponent(competencyId)}/deactivate`,
   );
 }
 

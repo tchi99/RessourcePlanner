@@ -27,16 +27,19 @@ EXPECTED_TABLES = {
     "communication_contacts",
     "communication_messages",
     "communication_snapshot_lines",
+    "competencies",
     "planning_change_history",
     "projects",
     "resources",
     "work_packages",
     "workforce_requests",
+    "workforce_request_competencies",
     "workforce_request_history",
     "workforce_request_periods",
     "workforce_request_period_selections",
     "workforce_request_period_requirements",
     "resource_availability_rules",
+    "resource_competencies",
     "resource_requirements",
     "shifts",
     "task_catalog_items",
@@ -62,6 +65,9 @@ class SqlSchemaTests(unittest.TestCase):
         communication_snapshots = Base.metadata.tables["communication_snapshot_lines"].c
         planning_history = Base.metadata.tables["planning_change_history"].c
         task_catalog = Base.metadata.tables["task_catalog_items"].c
+        competencies = Base.metadata.tables["competencies"].c
+        resource_competencies = Base.metadata.tables["resource_competencies"].c
+        request_competencies = Base.metadata.tables["workforce_request_competencies"].c
 
         self.assertFalse(requirements.project_id.nullable)
         self.assertTrue(requirements.workforce_request_id.nullable)
@@ -116,6 +122,14 @@ class SqlSchemaTests(unittest.TestCase):
         self.assertFalse(task_catalog.label.nullable)
         self.assertFalse(task_catalog.status.nullable)
         self.assertFalse(task_catalog.active.nullable)
+        self.assertFalse(competencies.name.nullable)
+        self.assertFalse(competencies.active.nullable)
+        self.assertFalse(competencies.sort_order.nullable)
+        self.assertFalse(resource_competencies.resource_id.nullable)
+        self.assertFalse(resource_competencies.competency_id.nullable)
+        self.assertFalse(request_competencies.workforce_request_id.nullable)
+        self.assertFalse(request_competencies.competency_id.nullable)
+        self.assertTrue(requirements.required_competency_id.nullable)
 
     def test_metadata_creates_all_tables_on_sqlite_memory(self) -> None:
         engine = create_engine("sqlite+pysqlite:///:memory:")

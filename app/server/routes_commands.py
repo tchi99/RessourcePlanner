@@ -3,10 +3,10 @@ from __future__ import annotations
 from typing import Any, Callable
 
 from fastapi import APIRouter, Depends, Header, status
-
 from ..application import (
     ApplicationFacade,
     AvailabilityRuleCreateCommand,
+    CompetencyCatalogService,
     AvailabilityRuleUpdateCommand,
     DemandAlternativeSelectCommand,
     DemandApproveCommand,
@@ -57,6 +57,7 @@ from .schemas import (
 
 FacadeProvider = Callable[..., Any]
 IdempotencyProvider = Callable[..., Any]
+CompetencyProvider = Callable[..., Any]
 
 
 def _payload(result: Any) -> dict[str, Any]:
@@ -67,16 +68,28 @@ def _json_body(body: Any) -> dict[str, Any]:
     return body.model_dump(mode="json")
 
 
-def _segment_command_values(body: SegmentCreateRequest | SegmentUpdateRequest) -> dict[str, Any]:
+def _segment_command_values(
+    body: SegmentCreateRequest | SegmentUpdateRequest,
+    competencies: CompetencyCatalogService,
+) -> tuple[dict[str, Any], bool, str | None]:
     values = body.model_dump(exclude_unset=isinstance(body, SegmentUpdateRequest))
     if "source_effort_id" in values:
         values["source_effort_row"] = values.pop("source_effort_id")
-    return values
+    competency_supplied = "required_competency_id" in body.model_fields_set
+    competency_id = values.pop("required_competency_id", None)
+    if competency_supplied:
+        values["required_competency"] = (
+            competencies.snapshot_text((competency_id,))
+            if competency_id
+            else None
+        )
+    return values, competency_supplied, competency_id
 
 
 def build_command_router(
     facade_dependency: FacadeProvider,
     idempotency_dependency: IdempotencyProvider,
+    competency_dependency: CompetencyProvider,
 ) -> APIRouter:
     router = APIRouter(prefix="/api/v1", tags=["commands"])
 
@@ -86,14 +99,25 @@ def build_command_router(
         idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
         facade: ApplicationFacade = Depends(facade_dependency),
         idempotency: IdempotentCommandExecutor = Depends(idempotency_dependency),
+        competencies: CompetencyCatalogService = Depends(competency_dependency),
     ) -> dict[str, Any]:
+        selection_supplied = "competency_ids" in body.model_fields_set
+        competency_ids = tuple(body.competency_ids or ())
+        values = body.model_dump(exclude={"competency_ids"})
+        if selection_supplied:
+            values["competencies"] = competencies.snapshot_text(competency_ids)
+
+        def action() -> dict[str, Any]:
+            result = facade.create_resource(ResourceCreateCommand(**values))
+            if selection_supplied:
+                competencies.assign_resource(result.resource_id, competency_ids)
+            return _payload(result)
+
         return idempotency.execute(
             scope="resource.create",
             key=idempotency_key,
             request_payload=_json_body(body),
-            action=lambda: _payload(
-                facade.create_resource(ResourceCreateCommand(**body.model_dump()))
-            ),
+            action=action,
         )
 
     @router.patch("/resources/{resource_id}")
@@ -101,15 +125,19 @@ def build_command_router(
         resource_id: str,
         body: ResourceUpdateRequest,
         facade: ApplicationFacade = Depends(facade_dependency),
+        competencies: CompetencyCatalogService = Depends(competency_dependency),
     ) -> dict[str, Any]:
-        return _payload(
-            facade.update_resource(
-                ResourceUpdateCommand(
-                    resource_id=resource_id,
-                    **body.model_dump(exclude_unset=True),
-                )
-            )
+        selection_supplied = "competency_ids" in body.model_fields_set
+        competency_ids = tuple(body.competency_ids or ())
+        values = body.model_dump(exclude_unset=True, exclude={"competency_ids"})
+        if selection_supplied:
+            values["competencies"] = competencies.snapshot_text(competency_ids)
+        result = facade.update_resource(
+            ResourceUpdateCommand(resource_id=resource_id, **values)
         )
+        if selection_supplied:
+            competencies.assign_resource(resource_id, competency_ids)
+        return _payload(result)
 
     @router.post("/resources/{resource_id}/deactivate")
     def deactivate_resource(
@@ -197,14 +225,25 @@ def build_command_router(
         idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
         facade: ApplicationFacade = Depends(facade_dependency),
         idempotency: IdempotentCommandExecutor = Depends(idempotency_dependency),
+        competencies: CompetencyCatalogService = Depends(competency_dependency),
     ) -> dict[str, Any]:
+        selection_supplied = "required_competency_ids" in body.model_fields_set
+        competency_ids = tuple(body.required_competency_ids or ())
+        values = body.model_dump(exclude={"required_competency_ids"})
+        if selection_supplied:
+            values["required_competencies"] = competencies.snapshot_text(competency_ids)
+
+        def action() -> dict[str, Any]:
+            result = facade.create_demand(DemandCreateCommand(**values))
+            if selection_supplied:
+                competencies.assign_demand(result.demand_number, competency_ids)
+            return _payload(result)
+
         return idempotency.execute(
             scope="demand.create",
             key=idempotency_key,
             request_payload=_json_body(body),
-            action=lambda: _payload(
-                facade.create_demand(DemandCreateCommand(**body.model_dump()))
-            ),
+            action=action,
         )
 
     @router.patch("/demands/{number}")
@@ -212,11 +251,22 @@ def build_command_router(
         number: str,
         body: DemandUpdateRequest,
         facade: ApplicationFacade = Depends(facade_dependency),
+        competencies: CompetencyCatalogService = Depends(competency_dependency),
     ) -> dict[str, Any]:
-        values = body.model_dump(exclude_unset=True)
+        selection_supplied = "required_competency_ids" in body.model_fields_set
+        competency_ids = tuple(body.required_competency_ids or ())
+        values = body.model_dump(
+            exclude_unset=True,
+            exclude={"required_competency_ids"},
+        )
+        if selection_supplied:
+            values["required_competencies"] = competencies.snapshot_text(competency_ids)
         comment = str(values.pop("comment", "Demande modifiée via API") or "")
         command = DemandUpdateCommand(number=number, comment=comment, **values)
-        return _payload(facade.update_demand(command))
+        result = facade.update_demand(command)
+        if selection_supplied:
+            competencies.assign_demand(number, competency_ids)
+        return _payload(result)
 
     @router.put("/demands/{number}/periods")
     def replace_demand_periods(
@@ -296,16 +346,24 @@ def build_command_router(
         idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
         facade: ApplicationFacade = Depends(facade_dependency),
         idempotency: IdempotentCommandExecutor = Depends(idempotency_dependency),
+        competencies: CompetencyCatalogService = Depends(competency_dependency),
     ) -> dict[str, Any]:
+        values, selection_supplied, competency_id = _segment_command_values(
+            body,
+            competencies,
+        )
+
+        def action() -> dict[str, Any]:
+            result = facade.create_segment(SegmentCreateCommand(**values))
+            if selection_supplied:
+                competencies.assign_segment(result.segment_id, competency_id)
+            return _payload(result)
+
         return idempotency.execute(
             scope="segment.create",
             key=idempotency_key,
             request_payload=_json_body(body),
-            action=lambda: _payload(
-                facade.create_segment(
-                    SegmentCreateCommand(**_segment_command_values(body))
-                )
-            ),
+            action=action,
         )
 
     @router.patch("/segments/{segment_id}")
@@ -313,12 +371,18 @@ def build_command_router(
         segment_id: str,
         body: SegmentUpdateRequest,
         facade: ApplicationFacade = Depends(facade_dependency),
+        competencies: CompetencyCatalogService = Depends(competency_dependency),
     ) -> dict[str, Any]:
-        return _payload(
-            facade.update_segment(
-                SegmentUpdateCommand(segment_id=segment_id, **_segment_command_values(body))
-            )
+        values, selection_supplied, competency_id = _segment_command_values(
+            body,
+            competencies,
         )
+        result = facade.update_segment(
+            SegmentUpdateCommand(segment_id=segment_id, **values)
+        )
+        if selection_supplied:
+            competencies.assign_segment(segment_id, competency_id)
+        return _payload(result)
 
     @router.post("/segments/{segment_id}/cancel")
     def cancel_segment(

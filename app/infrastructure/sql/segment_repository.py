@@ -101,6 +101,7 @@ class SqlSegmentRepository(SegmentRepositoryPort):
             description=_optional_text(requirement.description),
             origin=_optional_text(requirement.origin),
             required_competency=_optional_text(requirement.required_competency),
+            required_competency_id=_optional_text(requirement.required_competency_id),
             planning_type=_optional_text(requirement.planning_type),
             priority=_optional_text(requirement.priority),
             outside_standard_hours=bool(requirement.outside_standard_hours_allowed),

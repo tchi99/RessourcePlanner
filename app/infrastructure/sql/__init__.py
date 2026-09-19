@@ -22,6 +22,7 @@ from .communication_models import (
     CommunicationSnapshotLine,
 )
 from .communication_repository import SqlCommunicationRepository
+from .competency_catalog_repository import SqlCompetencyCatalogRepository
 from .demand_period_models import (
     WorkforceRequestPeriod,
     WorkforceRequestPeriodRequirement,
@@ -42,13 +43,16 @@ from .models import (
     ORIGIN_AD_HOC,
     ORIGIN_QUICK_SHIFT,
     ORIGIN_REQUEST,
+    Competency,
     Project,
     Resource,
+    ResourceCompetency,
     TaskCatalogEntry,
     ResourceAvailabilityRule,
     ResourceRequirement,
     Shift,
     WorkforceRequest,
+    WorkforceRequestCompetency,
     WorkforceRequestHistory,
     WorkPackage,
 )
@@ -86,6 +90,7 @@ __all__ = [
     "AuthSession",
     "Base",
     "CommandIdempotencyReceipt",
+    "Competency",
     "CommunicationBatchRow",
     "CommunicationContact",
     "CommunicationMessageRow",
@@ -104,6 +109,7 @@ __all__ = [
     "RESOURCE_REQUIREMENT_NUMBER_INDEX",
     "Resource",
     "ResourceAvailabilityRule",
+    "ResourceCompetency",
     "ResourceRequirement",
     "Shift",
     "TaskCatalogEntry",
@@ -112,6 +118,7 @@ __all__ = [
     "SqlAuthSessionRepository",
     "SqlCommandIdempotencyAdapter",
     "SqlCommunicationRepository",
+    "SqlCompetencyCatalogRepository",
     "SqlDemandPeriodRepository",
     "SqlDemandRepository",
     "SqlEmergencyDemandRepository",
@@ -138,6 +145,7 @@ __all__ = [
     "WORKFORCE_REQUEST_NUMBER_INDEX",
     "WorkPackage",
     "WorkforceRequest",
+    "WorkforceRequestCompetency",
     "WorkforceRequestHistory",
     "WorkforceRequestPeriod",
     "WorkforceRequestPeriodRequirement",

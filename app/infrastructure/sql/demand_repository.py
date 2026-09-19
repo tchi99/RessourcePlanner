@@ -17,6 +17,7 @@ from .models import (
     Resource,
     TaskCatalogEntry,
     WorkforceRequest,
+    WorkforceRequestCompetency,
     WorkforceRequestHistory,
     WorkPackage,
 )
@@ -51,12 +52,13 @@ class SqlDemandRepository(DemandRepositoryPort):
         self._session = session
         self._actor_name = _text(actor_name)
 
-    @staticmethod
     def _read_model(
+        self,
         request: WorkforceRequest,
         project: Project,
         work_package: WorkPackage | None,
         proposed_resource: Resource | None,
+        competency_ids: tuple[str, ...] = (),
     ) -> DemandReadModel:
         return DemandReadModel(
             # During the first SQL cutover the existing NoDemande is preserved in
@@ -86,6 +88,7 @@ class SqlDemandRepository(DemandRepositoryPort):
             task_label=_optional_text(request.erp_task_label),
             resource_count=max(int(request.resource_count or 1), 1),
             required_competencies=_optional_text(request.required_competencies),
+            required_competency_ids=competency_ids,
             estimated_hours=(
                 float(request.estimated_hours)
                 if request.estimated_hours is not None
@@ -102,6 +105,32 @@ class SqlDemandRepository(DemandRepositoryPort):
                 else None
             ),
         )
+
+    def _competency_ids_by_request(
+        self,
+        request_ids: Sequence[str],
+    ) -> dict[str, tuple[str, ...]]:
+        identifiers = tuple(str(value) for value in request_ids if str(value))
+        if not identifiers:
+            return {}
+        grouped: dict[str, list[str]] = {identifier: [] for identifier in identifiers}
+        rows = self._session.execute(
+            select(
+                WorkforceRequestCompetency.workforce_request_id,
+                WorkforceRequestCompetency.competency_id,
+            )
+            .where(WorkforceRequestCompetency.workforce_request_id.in_(identifiers))
+            .order_by(
+                WorkforceRequestCompetency.workforce_request_id,
+                WorkforceRequestCompetency.competency_id,
+            )
+        ).all()
+        for request_id, competency_id in rows:
+            grouped.setdefault(request_id, []).append(competency_id)
+        return {
+            request_id: tuple(competency_ids)
+            for request_id, competency_ids in grouped.items()
+        }
 
     def _row_query(self):
         proposed_resource = aliased(Resource)
@@ -123,8 +152,17 @@ class SqlDemandRepository(DemandRepositoryPort):
                 WorkforceRequest.id,
             )
         ).all()
+        competency_ids = self._competency_ids_by_request(
+            tuple(request.id for request, _project, _work_package, _resource in rows)
+        )
         return tuple(
-            self._read_model(request, project, work_package, proposed_resource)
+            self._read_model(
+                request,
+                project,
+                work_package,
+                proposed_resource,
+                competency_ids.get(request.id, ()),
+            )
             for request, project, work_package, proposed_resource in rows
         )
 
@@ -141,7 +179,14 @@ class SqlDemandRepository(DemandRepositoryPort):
         if row is None:
             return None
         request, project, work_package, proposed_resource = row
-        return self._read_model(request, project, work_package, proposed_resource)
+        competency_ids = self._competency_ids_by_request((request.id,))
+        return self._read_model(
+            request,
+            project,
+            work_package,
+            proposed_resource,
+            competency_ids.get(request.id, ()),
+        )
 
     def _request(self, number: str) -> WorkforceRequest:
         wanted = _text(number)

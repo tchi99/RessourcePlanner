@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from ..application import (
     AllocationService,
     ApplicationFacade,
+    CompetencyCatalogService,
     EmergencyApplicationFacade,
     EmergencyDemandService,
     IdempotentCommandExecutor,
@@ -22,6 +23,7 @@ from ..infrastructure.sql import (
     OverallocationAuditedAllocationCommandAdapter,
     OverallocationAuditedSegmentRepository,
     SqlCommandIdempotencyAdapter,
+    SqlCompetencyCatalogRepository,
     SqlDemandPeriodRepository,
     SqlEmergencyDemandRepository,
     SqlOverallocationAllocationCommandAdapter,
@@ -119,6 +121,12 @@ def build_user_admin_service(session: Session) -> UserAdminService:
     """Compose local identity administration inside the request transaction."""
 
     return UserAdminService(SqlUserIdentityRepository(session))
+
+
+def build_competency_catalog_service(session: Session) -> CompetencyCatalogService:
+    """Compose competency catalogue operations inside the request transaction."""
+
+    return CompetencyCatalogService(SqlCompetencyCatalogRepository(session))
 
 
 def build_communication_service(

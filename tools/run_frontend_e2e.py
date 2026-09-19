@@ -34,9 +34,11 @@ from app.application.security import (
 )
 from app.infrastructure.sql import (
     Base,
+    Competency,
     Project,
     Resource,
     ResourceAvailabilityRule,
+    ResourceCompetency,
     SqlUserIdentityRepository,
     TaskCatalogEntry,
     create_session_factory,
@@ -144,6 +146,13 @@ def _seed(database_url: str) -> None:
             )
             session.add_all(
                 [
+                    Competency(id="C-PLC", name="PLC", description="Programmation automate", active=True, sort_order=10),
+                    Competency(id="C-SCADA", name="SCADA", description="Supervision industrielle", active=True, sort_order=20),
+                    Competency(id="C-MES", name="MES", description="Systèmes d'exécution manufacturière", active=True, sort_order=30),
+                ]
+            )
+            session.add_all(
+                [
                     Resource(
                         id="R-ALICE",
                         external_id="EMP-ALICE",
@@ -167,6 +176,14 @@ def _seed(database_url: str) -> None:
                 ]
             )
             session.flush()
+            session.add_all(
+                [
+                    ResourceCompetency(resource_id="R-ALICE", competency_id="C-SCADA"),
+                    ResourceCompetency(resource_id="R-ALICE", competency_id="C-MES"),
+                    ResourceCompetency(resource_id="R-BOB", competency_id="C-PLC"),
+                    ResourceCompetency(resource_id="R-BOB", competency_id="C-SCADA"),
+                ]
+            )
             for resource_id, suffix in (("R-ALICE", "ALICE"), ("R-BOB", "BOB")):
                 session.add(
                     ResourceAvailabilityRule(

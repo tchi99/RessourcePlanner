@@ -76,6 +76,20 @@ class TaskCatalogEntry(TimestampMixin, Base):
     expenses_enabled: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
 
 
+class Competency(TimestampMixin, Base):
+    __tablename__ = "competencies"
+    __table_args__ = (
+        UniqueConstraint("name", name="uq_competencies_name"),
+        Index("ix_competencies_active_order", "active", "sort_order"),
+    )
+
+    id: Mapped[str] = mapped_column(String(ID_LENGTH), primary_key=True, default=new_id)
+    name: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=true(), index=True)
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+
+
 class Resource(TimestampMixin, Base):
     __tablename__ = "resources"
 
@@ -88,6 +102,21 @@ class Resource(TimestampMixin, Base):
     note: Mapped[str | None] = mapped_column(Text, nullable=True)
     active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=true(), index=True)
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+
+
+class ResourceCompetency(Base):
+    __tablename__ = "resource_competencies"
+
+    resource_id: Mapped[str] = mapped_column(
+        String(ID_LENGTH),
+        ForeignKey("resources.id"),
+        primary_key=True,
+    )
+    competency_id: Mapped[str] = mapped_column(
+        String(ID_LENGTH),
+        ForeignKey("competencies.id"),
+        primary_key=True,
+    )
 
 
 class WorkPackage(TimestampMixin, Base):
@@ -178,6 +207,21 @@ class WorkforceRequest(TimestampMixin, Base):
     emergency_override_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
+class WorkforceRequestCompetency(Base):
+    __tablename__ = "workforce_request_competencies"
+
+    workforce_request_id: Mapped[str] = mapped_column(
+        String(ID_LENGTH),
+        ForeignKey("workforce_requests.id"),
+        primary_key=True,
+    )
+    competency_id: Mapped[str] = mapped_column(
+        String(ID_LENGTH),
+        ForeignKey("competencies.id"),
+        primary_key=True,
+    )
+
+
 class WorkforceRequestHistory(Base):
     __tablename__ = "workforce_request_history"
     __table_args__ = (
@@ -263,6 +307,9 @@ class ResourceRequirement(TimestampMixin, Base):
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     source_effort_id: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
     required_competency: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
+    required_competency_id: Mapped[str | None] = mapped_column(
+        String(ID_LENGTH), ForeignKey("competencies.id"), nullable=True, index=True
+    )
     planning_type: Mapped[str] = mapped_column(String(32), nullable=False, server_default=text("'Flexible'"), index=True)
     priority: Mapped[str] = mapped_column(String(32), nullable=False, server_default=text("'Normale'"), index=True)
     outside_standard_hours_allowed: Mapped[bool] = mapped_column(

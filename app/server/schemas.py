@@ -15,11 +15,33 @@ class StrictRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class CompetencyCreateRequest(StrictRequest):
+    name: str = Field(min_length=1)
+    description: str | None = None
+    active: bool = True
+    sort_order: int = Field(default=0, ge=0)
+
+
+class CompetencyUpdateRequest(StrictRequest):
+    name: str | None = None
+    description: str | None = None
+    active: bool | None = None
+    sort_order: int | None = Field(default=None, ge=0)
+
+    @field_validator("name", "active", "sort_order", mode="before")
+    @classmethod
+    def reject_null_required_competency_fields(cls, value: object) -> object:
+        if value is None:
+            raise ValueError("Ce champ ne peut pas être null; omets-le pour ne pas le modifier.")
+        return value
+
+
 class ResourceCreateRequest(StrictRequest):
     name: str = Field(min_length=1)
     email: str | None = None
     resource_class: str | None = None
     competencies: str | None = None
+    competency_ids: list[str] | None = None
     note: str | None = None
     active: bool = True
     sort_order: int = Field(default=0, ge=0)
@@ -31,6 +53,7 @@ class ResourceUpdateRequest(StrictRequest):
     email: str | None = None
     resource_class: str | None = None
     competencies: str | None = None
+    competency_ids: list[str] | None = None
     note: str | None = None
     active: bool | None = None
     sort_order: int | None = Field(default=None, ge=0)
@@ -115,6 +138,7 @@ class DemandCreateRequest(StrictRequest):
     location: str = ""
     resource_count: int = Field(default=1, ge=1)
     required_competencies: str | None = None
+    required_competency_ids: list[str] | None = None
     estimated_hours: float | None = Field(default=None, ge=0)
     estimated_days: int | None = Field(default=None, ge=1)
     proposed_technician: str | None = None
@@ -137,6 +161,7 @@ class DemandUpdateRequest(StrictRequest):
     location: str | None = None
     resource_count: int | None = Field(default=None, ge=1)
     required_competencies: str | None = None
+    required_competency_ids: list[str] | None = None
     estimated_hours: float | None = Field(default=None, ge=0)
     estimated_days: int | None = Field(default=None, ge=1)
     proposed_technician: str | None = None
@@ -185,6 +210,7 @@ class SegmentCreateRequest(StrictRequest):
     description: str = ""
     source_effort_id: str | None = None
     required_competency: str | None = None
+    required_competency_id: str | None = None
     planning_type: str = "Flexible"
     priority: str = "Normale"
     outside_standard_hours: bool = False
@@ -204,6 +230,7 @@ class SegmentUpdateRequest(StrictRequest):
     description: str | None = None
     source_effort_id: str | None = None
     required_competency: str | None = None
+    required_competency_id: str | None = None
     planning_type: str | None = None
     priority: str | None = None
     outside_standard_hours: bool | None = None

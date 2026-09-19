@@ -34,6 +34,14 @@ from .command_ports import (
     ApprovedDemandSyncPort,
     PlanningCommandPort,
 )
+from .competency_catalog import (
+    CompetencyCatalogRepositoryPort,
+    CompetencyCatalogService,
+    CompetencyCreateCommand,
+    CompetencyMutationResult,
+    CompetencyReadModel,
+    CompetencyUpdateCommand,
+)
 from .employee_sync import (
     EmployeeSourcePort,
     EmployeeSyncRepositoryPort,
@@ -154,6 +162,12 @@ __all__ = [
     "AvailabilityRuleCreateCommand",
     "AvailabilityRuleMutationResult",
     "AvailabilityRuleUpdateCommand",
+    "CompetencyCatalogRepositoryPort",
+    "CompetencyCatalogService",
+    "CompetencyCreateCommand",
+    "CompetencyMutationResult",
+    "CompetencyReadModel",
+    "CompetencyUpdateCommand",
     "CommandIdempotencyPort",
     "DemandAlternativeSelectCommand",
     "DemandAlternativeSelectionResult",

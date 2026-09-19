@@ -2,6 +2,7 @@ import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   ApiError,
+  CompetencyReadModel,
   DemandReadModel,
   DemandWrite,
   ProjectReadModel,
@@ -9,6 +10,7 @@ import {
   TaskCatalogItemReadModel,
   WorkPackageReadModel,
   createDemand,
+  getCompetencies,
   getDemand,
   getDemands,
   getProjects,
@@ -17,6 +19,7 @@ import {
   getWorkPackages,
   updateDemand,
 } from "./api";
+import CompetencyPicker from "./CompetencyPicker";
 
 type FormState = {
   project_number: string;
@@ -29,7 +32,7 @@ type FormState = {
   desired_end: string;
   description: string;
   resource_count: string;
-  required_competencies: string;
+  required_competency_ids: string[];
   estimated_hours: string;
   estimated_days: string;
   proposed_technician: string;
@@ -81,7 +84,7 @@ function emptyForm(projectNumber = ""): FormState {
     desired_end: "",
     description: "",
     resource_count: "1",
-    required_competencies: "",
+    required_competency_ids: [],
     estimated_hours: "",
     estimated_days: "",
     proposed_technician: "",
@@ -100,7 +103,7 @@ function formFromDemand(demand: DemandReadModel): FormState {
     desired_end: demand.desired_end ?? "",
     description: demand.description ?? "",
     resource_count: String(demand.resource_count || 1),
-    required_competencies: demand.required_competencies ?? "",
+    required_competency_ids: demand.required_competency_ids ?? [],
     estimated_hours: demand.estimated_hours == null ? "" : String(demand.estimated_hours),
     estimated_days: demand.estimated_days == null ? "" : String(demand.estimated_days),
     proposed_technician: demand.proposed_resource ?? "",
@@ -152,6 +155,7 @@ export default function DemandsPage() {
   const [demands, setDemands] = useState<DemandReadModel[]>([]);
   const [projects, setProjects] = useState<ProjectReadModel[]>([]);
   const [resources, setResources] = useState<ResourceReadModel[]>([]);
+  const [competencies, setCompetencies] = useState<CompetencyReadModel[]>([]);
   const [tasks, setTasks] = useState<TaskCatalogItemReadModel[]>([]);
   const [workPackages, setWorkPackages] = useState<WorkPackageReadModel[]>([]);
   const [selectedNumber, setSelectedNumber] = useState<string | null>(null);
@@ -177,11 +181,13 @@ export default function DemandsPage() {
       getDemands(controller.signal),
       getProjects(true, controller.signal),
       getResources(true, controller.signal),
+      getCompetencies("", false, controller.signal),
     ])
-      .then(([demandRows, projectRows, resourceRows]) => {
+      .then(([demandRows, projectRows, resourceRows, competencyRows]) => {
         setDemands(demandRows);
         setProjects(projectRows);
         setResources(resourceRows);
+        setCompetencies(competencyRows);
         setSelectedNumber((current) => {
           if (current && demandRows.some((row) => row.number === current)) return current;
           return demandRows[0]?.number ?? null;
@@ -372,7 +378,8 @@ export default function DemandsPage() {
       desired_end: form.desired_end || null,
       description: form.description.trim(),
       resource_count: resourceCount,
-      required_competencies: form.required_competencies.trim() || null,
+      required_competencies: null,
+      required_competency_ids: form.required_competency_ids,
       estimated_hours: estimatedHours,
       estimated_days: estimatedDays,
       proposed_technician: form.proposed_technician || null,
@@ -627,10 +634,19 @@ export default function DemandsPage() {
                   <small>Décrit le parallélisme; ne multiplie jamais les heures estimées.</small>
                 </label>
 
-                <label>
-                  <span>Compétences requises</span>
-                  <input value={form.required_competencies} onChange={(event) => setField("required_competencies", event.target.value)} disabled={saving} placeholder="SCADA, PLC, mise en service…" />
-                </label>
+                <CompetencyPicker
+                  competencies={competencies}
+                  selectedIds={form.required_competency_ids}
+                  onChange={(ids) => setField("required_competency_ids", ids)}
+                  disabled={saving}
+                  label="Compétences requises"
+                  placeholder="Rechercher une compétence requise…"
+                />
+                {form.required_competency_ids.length === 0 && selectedDemand?.required_competencies && (
+                  <small className="legacy-competency-note">
+                    Valeur historique à convertir au catalogue : {selectedDemand.required_competencies}
+                  </small>
+                )}
 
                 <label>
                   <span>Heures estimées totales</span>

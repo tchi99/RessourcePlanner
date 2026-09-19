@@ -14,6 +14,7 @@ from ..application import (
     ApplicationConflictError,
     ApplicationError,
     ApplicationFacade,
+    CompetencyCatalogService,
     ApplicationNotFoundError,
     ApplicationOperationError,
     ApplicationValidationError,
@@ -32,6 +33,7 @@ from ..infrastructure.sql import (
 )
 from .composition import (
     build_communication_service,
+    build_competency_catalog_service,
     build_sql_facade,
     build_sql_idempotency_executor,
     build_sql_query_port,
@@ -47,6 +49,7 @@ from .performance import (
 from .readiness import DatabaseReadinessError, check_database_readiness
 from .routes_auth import build_auth_router
 from .routes_commands import build_command_router
+from .routes_competencies import build_competency_router
 from .routes_communications import build_communication_router
 from .routes_dev_user_switcher import build_dev_user_switcher_router
 from .routes_integrations import build_integration_router
@@ -63,6 +66,7 @@ IdempotencyDependency = Callable[[], Iterator[IdempotentCommandExecutor]]
 QueryDependency = Callable[[], Iterator[PlannerQueryPort]]
 UserAdminDependency = Callable[..., Any]
 CommunicationDependency = Callable[..., Any]
+CompetencyDependency = Callable[[], Iterator[CompetencyCatalogService]]
 
 
 def application_error_status(exc: ApplicationError) -> int:
@@ -166,6 +170,21 @@ def make_user_admin_dependency(
     return dependency
 
 
+def make_competency_dependency(
+    factory: SqlSessionFactory,
+    *,
+    session_dependency: SessionDependency | None = None,
+) -> CompetencyDependency:
+    request_session = session_dependency or make_session_dependency(factory)
+
+    def dependency(
+        session: Session = Depends(request_session),
+    ) -> Iterator[CompetencyCatalogService]:
+        yield build_competency_catalog_service(session)
+
+    return dependency
+
+
 def make_communication_dependency(
     factory: SqlSessionFactory,
     *,
@@ -259,6 +278,10 @@ def create_api_app(
         session_dependency=session_dependency,
         transport=communication_transport,
     )
+    competency_dependency = make_competency_dependency(
+        factory,
+        session_dependency=session_dependency,
+    )
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
@@ -280,6 +303,7 @@ def create_api_app(
     app.state.query_dependency = query_dependency
     app.state.user_admin_dependency = user_admin_dependency
     app.state.communication_dependency = communication_dependency
+    app.state.competency_dependency = competency_dependency
     app.state.runtime_dependencies = dict(runtime_dependencies or {})
     app.state.dev_user_switcher_enabled = dev_user_switcher_runtime is not None
 
@@ -359,8 +383,15 @@ def create_api_app(
     if dev_user_switcher_runtime is not None:
         app.include_router(build_dev_user_switcher_router(dev_user_switcher_runtime))
     app.include_router(build_user_admin_router(user_admin_dependency))
-    app.include_router(build_command_router(facade_dependency, idempotency_dependency))
+    app.include_router(
+        build_command_router(
+            facade_dependency,
+            idempotency_dependency,
+            competency_dependency,
+        )
+    )
     app.include_router(build_read_router(query_dependency))
+    app.include_router(build_competency_router(competency_dependency))
     app.include_router(build_task_catalog_router(session_dependency))
     app.include_router(build_me_router(query_dependency))
     app.include_router(build_communication_router(communication_dependency))
