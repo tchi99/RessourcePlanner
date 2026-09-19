@@ -132,7 +132,7 @@ class DemandLineRequest(StrictRequest):
     estimated_hours: float | None = Field(default=None, gt=0)
     work_package_ref: str | None = None
     task_code: str | None = None
-    proposed_technician: str | None = None
+    proposed_resource_id: str | None = None
     confirmation: str = "Confirmée"
     description: str | None = None
 
