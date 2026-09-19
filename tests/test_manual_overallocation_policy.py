@@ -122,7 +122,11 @@ class ManualOverallocationHttpTests(unittest.TestCase):
     def test_keep_exception_is_explicit_visible_audited_and_rebuild_safe(self) -> None:
         with TemporaryDirectory() as directory:
             database_url, today = self._database(directory)
-            app = create_api_app(\n                database_url,\n                actor_name="coord-surallocation",\n                auth_resolver=test_admin_auth_resolver("coord-surallocation"),\n            )
+            app = create_api_app(
+                database_url,
+                actor_name="coord-surallocation",
+                auth_resolver=test_admin_auth_resolver("coord-surallocation"),
+            )
 
             with TestClient(app, raise_server_exceptions=False) as client:
                 first = client.post(
@@ -195,7 +199,11 @@ class ManualOverallocationHttpTests(unittest.TestCase):
     def test_increase_planned_regularizes_at_creation_time(self) -> None:
         with TemporaryDirectory() as directory:
             database_url, today = self._database(directory)
-            app = create_api_app(\n                database_url,\n                actor_name="coord-surallocation",\n                auth_resolver=test_admin_auth_resolver("coord-surallocation"),\n            )
+            app = create_api_app(
+                database_url,
+                actor_name="coord-surallocation",
+                auth_resolver=test_admin_auth_resolver("coord-surallocation"),
+            )
 
             with TestClient(app, raise_server_exceptions=False) as client:
                 first = client.post(
@@ -228,7 +236,11 @@ class ManualOverallocationHttpTests(unittest.TestCase):
     def test_reducing_planned_hours_requires_explicit_segment_exception(self) -> None:
         with TemporaryDirectory() as directory:
             database_url, today = self._database(directory)
-            app = create_api_app(\n                database_url,\n                actor_name="coord-surallocation",\n                auth_resolver=test_admin_auth_resolver("coord-surallocation"),\n            )
+            app = create_api_app(
+                database_url,
+                actor_name="coord-surallocation",
+                auth_resolver=test_admin_auth_resolver("coord-surallocation"),
+            )
 
             with TestClient(app, raise_server_exceptions=False) as client:
                 first = client.post(
