@@ -277,6 +277,25 @@ class DemandServiceTests(unittest.TestCase):
         self.assertEqual(str(raised.exception), "sync failed")
         self.assertEqual([event[0] for event in events], ["update", "sync"])
 
+    def test_submit_resolves_legacy_days_to_eight_hour_workdays(self) -> None:
+        service, _demands, events = self._service(
+            record=DemandReadModel(
+                number="DMO-DAYS",
+                status="Brouillon",
+                desired_start=date(2026, 8, 24),
+                desired_end=date(2026, 8, 28),
+                resource_count=2,
+                estimated_days=3,
+                estimated_hours=None,
+            )
+        )
+
+        service.submit("DMO-DAYS")
+
+        self.assertEqual(events[0][0], "update")
+        self.assertEqual(events[0][2]["Statut"], "Soumise")
+        self.assertEqual(events[0][2]["TempsEstimeHeures"], 48.0)
+
     def test_simple_lifecycle_transitions_preserve_status_and_audit_semantics(self) -> None:
         service, _demands, events = self._service()
         service.submit("DMO-10")
