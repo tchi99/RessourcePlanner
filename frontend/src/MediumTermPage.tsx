@@ -239,6 +239,7 @@ export default function MediumTermPage({ onOpenDemands }: { onOpenDemands: () =>
   const [horizonStart, setHorizonStart] = useState(() => startOfWeek(new Date()));
   const [horizonWeeks, setHorizonWeeks] = useState<HorizonWeeks>(8);
   const [projects, setProjects] = useState<ProjectReadModel[]>([]);
+  const [catalogProjects, setCatalogProjects] = useState<ProjectReadModel[]>([]);
   const [workPackages, setWorkPackages] = useState<WorkPackageReadModel[]>([]);
   const [resources, setResources] = useState<ResourceReadModel[]>([]);
   const [unlinkedSegments, setUnlinkedSegments] = useState<MediumTermUnlinkedSegmentReadModel[]>([]);
@@ -279,13 +280,15 @@ export default function MediumTermPage({ onOpenDemands }: { onOpenDemands: () =>
     setUnlinkedSegments([]);
     Promise.all([
       getProjects(true, controller.signal, scope),
+      getProjects(true, controller.signal, "global"),
       getWorkPackages("", true, controller.signal, scope),
       getResources(true, controller.signal),
       getPlanningSnapshot(start, end, controller.signal, scope),
       getMediumTermUnlinkedSegments(start, end, controller.signal, scope),
     ])
-      .then(([projectRows, packageRows, resourceRows, planning, unlinkedRows]) => {
+      .then(([projectRows, projectCatalogRows, packageRows, resourceRows, planning, unlinkedRows]) => {
         setProjects(projectRows);
+        setCatalogProjects(projectCatalogRows);
         setWorkPackages(packageRows);
         setResources(resourceRows);
         setSnapshot(planning);
@@ -563,7 +566,7 @@ export default function MediumTermPage({ onOpenDemands }: { onOpenDemands: () =>
 
       {editor !== undefined && (
         <WorkPackageEditor
-          projects={projects}
+          projects={catalogProjects}
           workPackage={editor}
           defaultProjectNumber={editor?.project_number || defaultProject}
           onClose={() => setEditor(undefined)}
