@@ -430,7 +430,9 @@ class SqlPlannerQueryRepository(PlannerQueryPort):
         ).all()
         work_packages = self._session.scalars(select(WorkPackage)).all()
         package_by_reference: dict[str, WorkPackage] = {}
+        package_by_id: dict[str, WorkPackage] = {}
         for package in work_packages:
+            package_by_id[package.id] = package
             package_by_reference[package.id] = package
             legacy = _text(package.legacy_effort_id)
             if legacy:
@@ -443,7 +445,7 @@ class SqlPlannerQueryRepository(PlannerQueryPort):
             current_ref = _optional_text(requirement.source_effort_id)
 
             if request is not None and request.work_package_id:
-                package = self._session.get(WorkPackage, request.work_package_id)
+                package = package_by_id.get(request.work_package_id)
                 if package is not None:
                     continue
                 classification = "BROKEN_REFERENCE"
