@@ -20,9 +20,14 @@ QueryProvider = Callable[..., Any]
 
 def build_me_router(
     query_dependency: QueryProvider,
-    user_view_context_dependency: QueryProvider,
+    user_view_context_dependency: QueryProvider | None = None,
 ) -> APIRouter:
     router = APIRouter(prefix="/api/v1/me", tags=["me"])
+
+    def no_context_repository() -> None:
+        return None
+
+    context_dependency = user_view_context_dependency or no_context_repository
 
     @router.get("/schedule")
     def schedule(
@@ -30,9 +35,7 @@ def build_me_router(
         start: date = Query(),
         end: date = Query(),
         queries: PlannerQueryPort = Depends(query_dependency),
-        context_repository: UserViewContextRepositoryPort = Depends(
-            user_view_context_dependency
-        ),
+        context_repository: Any = Depends(context_dependency),
     ) -> TechnicianScheduleReadModel:
         principal: AuthPrincipal = request.state.auth_principal
         return TechnicianScheduleService(
@@ -44,14 +47,14 @@ def build_me_router(
             end=end,
         )
 
-    @router.get("/context")
-    def context(
-        request: Request,
-        repository: UserViewContextRepositoryPort = Depends(
-            user_view_context_dependency
-        ),
-    ) -> UserViewContextReadModel:
-        principal: AuthPrincipal = request.state.auth_principal
-        return UserViewContextService(repository).read(principal)
+    if user_view_context_dependency is not None:
+
+        @router.get("/context")
+        def context(
+            request: Request,
+            repository: Any = Depends(context_dependency),
+        ) -> UserViewContextReadModel:
+            principal: AuthPrincipal = request.state.auth_principal
+            return UserViewContextService(repository).read(principal)
 
     return router
