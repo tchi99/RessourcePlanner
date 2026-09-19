@@ -121,81 +121,106 @@ class SqlDemandRepository(DemandRepositoryPort):
             lines=lines,
         )
 
-    def _competency_ids_by_request(
+    def _aggregate_children(
         self,
         request_ids: Sequence[str],
-    ) -> dict[str, tuple[str, ...]]:
+    ) -> tuple[
+        dict[str, tuple[str, ...]],
+        dict[str, tuple[DemandLineReadModel, ...]],
+    ]:
+        """Load request competencies and RequestLine projections in one batch query."""
+
         identifiers = tuple(str(value) for value in request_ids if str(value))
         if not identifiers:
-            return {}
-        grouped: dict[str, list[str]] = {identifier: [] for identifier in identifiers}
-        rows = self._session.execute(
-            select(
-                WorkforceRequestCompetency.workforce_request_id,
-                WorkforceRequestCompetency.competency_id,
-            )
-            .where(WorkforceRequestCompetency.workforce_request_id.in_(identifiers))
-            .order_by(
-                WorkforceRequestCompetency.workforce_request_id,
-                WorkforceRequestCompetency.competency_id,
-            )
-        ).all()
-        for request_id, competency_id in rows:
-            grouped.setdefault(request_id, []).append(competency_id)
-        return {
-            request_id: tuple(competency_ids)
-            for request_id, competency_ids in grouped.items()
-        }
+            return {}, {}
 
-    def _line_competency_ids(
-        self,
-        line_ids: Sequence[str],
-    ) -> dict[str, tuple[str, ...]]:
-        identifiers = tuple(str(value) for value in line_ids if str(value))
-        if not identifiers:
-            return {}
-        grouped: dict[str, list[str]] = {identifier: [] for identifier in identifiers}
-        rows = self._session.execute(
-            select(
-                RequestLineCompetency.request_line_id,
-                RequestLineCompetency.competency_id,
-            )
-            .where(RequestLineCompetency.request_line_id.in_(identifiers))
-            .order_by(
-                RequestLineCompetency.request_line_id,
-                RequestLineCompetency.competency_id,
-            )
-        ).all()
-        for line_id, competency_id in rows:
-            grouped.setdefault(line_id, []).append(competency_id)
-        return {line_id: tuple(values) for line_id, values in grouped.items()}
-
-    def _lines_by_request(
-        self,
-        request_ids: Sequence[str],
-    ) -> dict[str, tuple[DemandLineReadModel, ...]]:
-        identifiers = tuple(str(value) for value in request_ids if str(value))
-        if not identifiers:
-            return {}
+        request_competency = aliased(WorkforceRequestCompetency)
+        line_competency = aliased(RequestLineCompetency)
         proposed_resource = aliased(Resource)
+
         rows = self._session.execute(
-            select(RequestLine, WorkPackage, proposed_resource)
-            .outerjoin(WorkPackage, RequestLine.work_package_id == WorkPackage.id)
+            select(
+                WorkforceRequest.id,
+                RequestLine,
+                WorkPackage,
+                proposed_resource,
+                request_competency.competency_id,
+                line_competency.competency_id,
+            )
+            .select_from(WorkforceRequest)
+            .outerjoin(
+                RequestLine,
+                RequestLine.workforce_request_id == WorkforceRequest.id,
+            )
+            .outerjoin(
+                WorkPackage,
+                RequestLine.work_package_id == WorkPackage.id,
+            )
             .outerjoin(
                 proposed_resource,
                 RequestLine.proposed_resource_id == proposed_resource.id,
             )
-            .where(RequestLine.workforce_request_id.in_(identifiers))
+            .outerjoin(
+                request_competency,
+                request_competency.workforce_request_id == WorkforceRequest.id,
+            )
+            .outerjoin(
+                line_competency,
+                line_competency.request_line_id == RequestLine.id,
+            )
+            .where(WorkforceRequest.id.in_(identifiers))
             .order_by(
-                RequestLine.workforce_request_id,
+                WorkforceRequest.id,
                 RequestLine.position,
                 RequestLine.id,
+                request_competency.competency_id,
+                line_competency.competency_id,
             )
         ).all()
-        competency_ids = self._line_competency_ids(tuple(line.id for line, _wp, _r in rows))
-        grouped: dict[str, list[DemandLineReadModel]] = {identifier: [] for identifier in identifiers}
-        for line, work_package, resource in rows:
-            grouped.setdefault(line.workforce_request_id, []).append(
+
+        request_competencies: dict[str, set[str]] = {
+            identifier: set() for identifier in identifiers
+        }
+        line_competencies: dict[str, set[str]] = {}
+        line_rows: dict[
+            str,
+            tuple[str, RequestLine, WorkPackage | None, Resource | None],
+        ] = {}
+
+        for (
+            request_id,
+            line,
+            work_package,
+            resource,
+            request_competency_id,
+            line_competency_id,
+        ) in rows:
+            if request_competency_id is not None:
+                request_competencies.setdefault(request_id, set()).add(
+                    request_competency_id
+                )
+            if line is None:
+                continue
+            line_rows.setdefault(
+                line.id,
+                (request_id, line, work_package, resource),
+            )
+            if line_competency_id is not None:
+                line_competencies.setdefault(line.id, set()).add(line_competency_id)
+
+        grouped_lines: dict[str, list[DemandLineReadModel]] = {
+            identifier: [] for identifier in identifiers
+        }
+        ordered_line_rows = sorted(
+            line_rows.values(),
+            key=lambda row: (
+                row[0],
+                int(row[1].position or 0),
+                row[1].id,
+            ),
+        )
+        for request_id, line, work_package, resource in ordered_line_rows:
+            grouped_lines.setdefault(request_id, []).append(
                 DemandLineReadModel(
                     line_id=line.id,
                     position=int(line.position or 0),
@@ -205,7 +230,9 @@ class SqlDemandRepository(DemandRepositoryPort):
                     required_competencies=_optional_text(
                         line.required_competencies_snapshot
                     ),
-                    required_competency_ids=competency_ids.get(line.id, ()),
+                    required_competency_ids=tuple(
+                        sorted(line_competencies.get(line.id, set()))
+                    ),
                     desired_start=line.desired_start,
                     desired_end=line.desired_end,
                     desired_active_days=(
@@ -244,7 +271,17 @@ class SqlDemandRepository(DemandRepositoryPort):
                     active=bool(line.active),
                 )
             )
-        return {key: tuple(value) for key, value in grouped.items()}
+
+        return (
+            {
+                request_id: tuple(sorted(values))
+                for request_id, values in request_competencies.items()
+            },
+            {
+                request_id: tuple(values)
+                for request_id, values in grouped_lines.items()
+            },
+        )
 
     def _row_query(self):
         proposed_resource = aliased(Resource)
@@ -279,8 +316,7 @@ class SqlDemandRepository(DemandRepositoryPort):
         request_ids = tuple(
             request.id for request, _project, _work_package, _resource in rows
         )
-        competency_ids = self._competency_ids_by_request(request_ids)
-        lines_by_request = self._lines_by_request(request_ids)
+        competency_ids, lines_by_request = self._aggregate_children(request_ids)
         return tuple(
             self._read_model(
                 request,
@@ -306,8 +342,7 @@ class SqlDemandRepository(DemandRepositoryPort):
         if row is None:
             return None
         request, project, work_package, proposed_resource = row
-        competency_ids = self._competency_ids_by_request((request.id,))
-        lines_by_request = self._lines_by_request((request.id,))
+        competency_ids, lines_by_request = self._aggregate_children((request.id,))
         return self._read_model(
             request,
             project,
