@@ -204,12 +204,13 @@ class DemandService:
                 code="demand_project_required",
                 context={"field": "project_number"},
             )
-        start = data.get("DateDebutSouhaitee", existing.desired_start)
-        end = data.get("DateFinSouhaitee", existing.desired_end)
-        self._validate_window(
-            start if isinstance(start, date) else None,
-            end if isinstance(end, date) else None,
-        )
+        if "RequestLines" not in data and not existing.line_mode:
+            start = data.get("DateDebutSouhaitee", existing.desired_start)
+            end = data.get("DateFinSouhaitee", existing.desired_end)
+            self._validate_window(
+                start if isinstance(start, date) else None,
+                end if isinstance(end, date) else None,
+            )
 
         reapproval_required = (
             existing.status == "En planification"
