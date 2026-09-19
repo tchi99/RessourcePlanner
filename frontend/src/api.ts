@@ -567,8 +567,13 @@ async function sendJson<T>(
   return response.json() as Promise<T>;
 }
 
-export function getMediumTermUnlinkedSegments(start: string, end: string, signal?: AbortSignal) {
-  const params = new URLSearchParams({ start, end });
+export function getMediumTermUnlinkedSegments(
+  start: string,
+  end: string,
+  signal?: AbortSignal,
+  scope: ViewScope = "global",
+) {
+  const params = new URLSearchParams({ start, end, scope });
   return getJson<MediumTermUnlinkedSegmentReadModel[]>(
     `/api/v1/medium-term/unlinked-segments?${params.toString()}`,
     signal,
@@ -586,21 +591,36 @@ export function linkDemandToWorkPackage(number: string, workPackageRef: string) 
   );
 }
 
-export function getPlanningSnapshot(start: string, end: string, signal?: AbortSignal) {
-  const params = new URLSearchParams({ start, end });
+export function getPlanningSnapshot(
+  start: string,
+  end: string,
+  signal?: AbortSignal,
+  scope: ViewScope = "global",
+) {
+  const params = new URLSearchParams({ start, end, scope });
   return getJson<PlanningSnapshotReadModel>(`/api/v1/planning/snapshot?${params.toString()}`, signal);
 }
 
-export function getPlanningCapacityGrid(start: string, end: string, signal?: AbortSignal) {
-  const params = new URLSearchParams({ start, end });
+export function getPlanningCapacityGrid(
+  start: string,
+  end: string,
+  signal?: AbortSignal,
+  scope: ViewScope = "global",
+) {
+  const params = new URLSearchParams({ start, end, scope });
   return getJson<PlanningCapacityGridReadModel>(
     `/api/v1/planning/capacity-grid?${params.toString()}`,
     signal,
   );
 }
 
-export function getPlanningActions(start: string, end: string, signal?: AbortSignal) {
-  const params = new URLSearchParams({ start, end });
+export function getPlanningActions(
+  start: string,
+  end: string,
+  signal?: AbortSignal,
+  scope: ViewScope = "global",
+) {
+  const params = new URLSearchParams({ start, end, scope });
   return getJson<PlanningActionReadModel[]>(`/api/v1/planning/actions?${params.toString()}`, signal);
 }
 
