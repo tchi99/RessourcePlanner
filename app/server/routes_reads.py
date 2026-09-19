@@ -237,6 +237,14 @@ def build_read_router(
     ) -> list[SegmentReadModel]:
         _window(start, end)
         project_ids = _project_ids_for_scope(request, scope, context_repository)
+        if project_ids is None:
+            return list(
+                queries.list_segments(
+                    start=start,
+                    end=end,
+                    include_cancelled=include_cancelled,
+                )
+            )
         return list(
             queries.list_segments(
                 start=start,
@@ -285,6 +293,14 @@ def build_read_router(
     ) -> list[ShiftReadModel]:
         _window(start, end)
         project_ids = _project_ids_for_scope(request, scope, context_repository)
+        if project_ids is None:
+            return list(
+                queries.list_shifts(
+                    start=start,
+                    end=end,
+                    resource_name=resource_name,
+                )
+            )
         return list(
             queries.list_shifts(
                 start=start,
@@ -312,6 +328,13 @@ def build_read_router(
     ) -> list[MediumTermUnlinkedSegmentReadModel]:
         _window(start, end)
         project_ids = _project_ids_for_scope(request, scope, context_repository)
+        if project_ids is None:
+            return list(
+                queries.list_medium_term_unlinked_segments(
+                    start=start,
+                    end=end,
+                )
+            )
         return list(
             queries.list_medium_term_unlinked_segments(
                 start=start,
@@ -335,6 +358,8 @@ def build_read_router(
             scope,
             context_repository,
         )
+        if project_ids is None:
+            return queries.planning_capacity_grid(start=start, end=end)
         return queries.planning_capacity_grid(
             start=start,
             end=end,
@@ -353,6 +378,8 @@ def build_read_router(
     ) -> list[PlanningActionReadModel]:
         _window(start, end)
         project_ids = _project_ids_for_scope(request, scope, context_repository)
+        if project_ids is None:
+            return list(queries.list_planning_actions(start=start, end=end))
         return list(
             queries.list_planning_actions(
                 start=start,
@@ -389,6 +416,8 @@ def build_read_router(
             scope,
             context_repository,
         )
+        if project_ids is None:
+            return queries.planning_snapshot(start=start, end=end)
         return queries.planning_snapshot(
             start=start,
             end=end,
