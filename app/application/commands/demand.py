@@ -4,7 +4,11 @@ from dataclasses import dataclass
 from datetime import date
 from typing import Any, Mapping
 
-from ...domain.request_lines import default_legacy_hours, normalize_request_line
+from ...domain.request_lines import (
+    RequestLinePolicyError,
+    default_legacy_hours,
+    normalize_request_line,
+)
 from ..errors import ApplicationValidationError
 from .common import (
     UNSET,
@@ -38,24 +42,32 @@ class DemandLineInput:
     description: str | None = None
 
     def to_repository_values(self, *, require_complete: bool) -> dict[str, object]:
-        return normalize_request_line(
-            line_id=self.line_id,
-            position=self.position,
-            kind=self.kind,
-            required_resource_class=self.required_resource_class,
-            required_competency_ids=self.required_competency_ids,
-            required_competencies=self.required_competencies,
-            desired_start=self.desired_start,
-            desired_end=self.desired_end,
-            desired_active_days=self.desired_active_days,
-            estimated_hours=self.estimated_hours,
-            work_package_ref=self.work_package_ref,
-            task_code=self.task_code,
-            proposed_technician=self.proposed_technician,
-            confirmation=self.confirmation,
-            description=self.description,
-            require_complete=require_complete,
-        ).to_repository_values()
+        try:
+            normalized = normalize_request_line(
+                line_id=self.line_id,
+                position=self.position,
+                kind=self.kind,
+                required_resource_class=self.required_resource_class,
+                required_competency_ids=self.required_competency_ids,
+                required_competencies=self.required_competencies,
+                desired_start=self.desired_start,
+                desired_end=self.desired_end,
+                desired_active_days=self.desired_active_days,
+                estimated_hours=self.estimated_hours,
+                work_package_ref=self.work_package_ref,
+                task_code=self.task_code,
+                proposed_technician=self.proposed_technician,
+                confirmation=self.confirmation,
+                description=self.description,
+                require_complete=require_complete,
+            )
+        except RequestLinePolicyError as exc:
+            raise ApplicationValidationError(
+                str(exc),
+                code=exc.code,
+                context=exc.context,
+            ) from exc
+        return normalized.to_repository_values()
 
 
 @dataclass(frozen=True, slots=True)
