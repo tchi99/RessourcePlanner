@@ -7,6 +7,7 @@ import {
   getResourceRecommendations,
 } from "./api";
 import { useAuth } from "./AuthContext";
+import { writeSegmentDrag } from "./planningDragDrop";
 import { assignSegment } from "./segments-api";
 
 type Props = {
@@ -35,16 +36,33 @@ function ActionCard({
   onRecommend,
   onOpenDemands,
   onOpenSegment,
+  canDragAssignment,
 }: {
   action: PlanningActionReadModel;
   onRecommend: (action: PlanningActionReadModel) => void;
   onOpenDemands?: () => void;
   onOpenSegment?: (segmentId: string) => void;
+  canDragAssignment: boolean;
 }) {
   const assignment = action.kind === "ASSIGNMENT";
   const task = [action.task_code, action.task_label].filter(Boolean).join(" — ");
+  const draggable = assignment && Boolean(action.segment_id) && canDragAssignment;
   return (
-    <article className={`planning-action-card action-${action.kind.toLowerCase()}`}>
+    <article
+      className={`planning-action-card action-${action.kind.toLowerCase()} ${draggable ? "is-draggable" : ""}`}
+      draggable={draggable}
+      onDragStart={(event) => {
+        if (!draggable || !action.segment_id) {
+          event.preventDefault();
+          return;
+        }
+        writeSegmentDrag(event.dataTransfer, {
+          kind: "SEGMENT",
+          segment_id: action.segment_id,
+        });
+      }}
+      title={draggable ? "Glisser ce besoin sur une ressource pour l’attribuer" : undefined}
+    >
       <div className="planning-action-card-heading">
         <div>
           <span className="planning-action-kicker">
@@ -67,6 +85,7 @@ function ActionCard({
         {action.priority && <span>Priorité : {action.priority}</span>}
         {action.confirmation && <span>{action.confirmation}</span>}
         {action.emergency_override_active && <span>⚠ Dérogation urgente</span>}
+        {draggable && <span className="drag-hint">↕ Glisser vers une ressource</span>}
       </div>
 
       <div className="planning-action-buttons">
@@ -196,6 +215,7 @@ export default function PlanningActionPanel({
                       onRecommend={openRecommendations}
                       onOpenDemands={onOpenDemands}
                       onOpenSegment={onOpenSegment}
+                      canDragAssignment={canAssign}
                     />
                   ))
                   : <div className="planning-action-empty compact">Aucune demande à approuver.</div>}
