@@ -235,6 +235,54 @@ class MediumTermCapacityBucketReadModel:
 
 
 @dataclass(frozen=True, slots=True)
+class PlanningDayCapacityReadModel:
+    day: date
+    capacity_hours: float
+    confirmed_hours: float
+    tentative_hours: float
+    outside_standard_hours: float
+    total_hours: float
+    prudent_free: float
+    available: bool
+    overloaded: bool
+    reason: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class PlanningResourceCapacityReadModel:
+    resource_id: str
+    resource_name: str
+    resource_class: str | None
+    capacity_hours: float
+    confirmed_hours: float
+    tentative_hours: float
+    outside_standard_hours: float
+    prudent_free: float
+    overloaded: bool
+    days: tuple[PlanningDayCapacityReadModel, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class PlanningSegmentCapacityDiagnosticReadModel:
+    segment_id: str
+    resource_id: str | None
+    resource_name: str | None
+    planned_hours: float
+    allocated_hours: float
+    outside_standard_hours: float
+    unplaced_hours: float
+    requires_outside_standard_hours: bool
+
+
+@dataclass(frozen=True, slots=True)
+class PlanningCapacityGridReadModel:
+    start: date
+    end: date
+    resources: tuple[PlanningResourceCapacityReadModel, ...]
+    segment_diagnostics: tuple[PlanningSegmentCapacityDiagnosticReadModel, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class PlanningSnapshotReadModel:
     """Canonical, transaction-coherent planning window exposed to web clients."""
 
