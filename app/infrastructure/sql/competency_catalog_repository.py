@@ -13,9 +13,12 @@ from ...application.competency_catalog import (
 from .base import new_id
 from .models import (
     Competency,
+    RequestLine,
+    RequestLineCompetency,
     Resource,
     ResourceCompetency,
     ResourceRequirement,
+    ResourceRequirementCompetency,
     WorkforceRequest,
     WorkforceRequestCompetency,
 )
@@ -200,6 +203,23 @@ class SqlCompetencyCatalogRepository(CompetencyCatalogRepositoryPort):
             ]
         )
         request.required_competencies = self._snapshot(rows)
+        line = self._session.get(RequestLine, request.id)
+        if line is not None:
+            self._session.execute(
+                delete(RequestLineCompetency).where(
+                    RequestLineCompetency.request_line_id == line.id
+                )
+            )
+            self._session.add_all(
+                [
+                    RequestLineCompetency(
+                        request_line_id=line.id,
+                        competency_id=row.id,
+                    )
+                    for row in rows
+                ]
+            )
+            line.required_competencies_snapshot = request.required_competencies
         self._session.flush()
 
     def set_segment_competency(
@@ -226,6 +246,18 @@ class SqlCompetencyCatalogRepository(CompetencyCatalogRepositoryPort):
                 raise KeyError(f"Compétence {normalized} introuvable")
             requirement.required_competency_id = row.id
             requirement.required_competency = row.name
+        self._session.execute(
+            delete(ResourceRequirementCompetency).where(
+                ResourceRequirementCompetency.resource_requirement_id == requirement.id
+            )
+        )
+        if requirement.required_competency_id is not None:
+            self._session.add(
+                ResourceRequirementCompetency(
+                    resource_requirement_id=requirement.id,
+                    competency_id=requirement.required_competency_id,
+                )
+            )
         self._session.flush()
 
     def _synchronize_linked_snapshots(self, competency_id: str) -> None:
@@ -252,6 +284,9 @@ class SqlCompetencyCatalogRepository(CompetencyCatalogRepositoryPort):
                 request.required_competencies = self._snapshot(
                     self._request_competencies(request_id)
                 )
+                line = self._session.get(RequestLine, request_id)
+                if line is not None:
+                    line.required_competencies_snapshot = request.required_competencies
 
         competency = self._session.get(Competency, competency_id)
         if competency is not None:
