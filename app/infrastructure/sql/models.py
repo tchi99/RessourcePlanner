@@ -207,6 +207,124 @@ class WorkforceRequest(TimestampMixin, Base):
     emergency_override_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
+class RequestLine(TimestampMixin, Base):
+    """Planifiable child need under one workforce-request workflow header.
+
+    New multi-line requests will normally use one slot per line. slot_count exists
+    to preserve grouped legacy requests during the additive transition without
+    multiplying historical effort or breaking shared alternatives.
+    """
+
+    __tablename__ = "request_lines"
+    __table_args__ = (
+        CheckConstraint("position >= 0", name="request_line_position_non_negative"),
+        CheckConstraint("slot_count >= 1", name="request_line_slot_count_positive"),
+        CheckConstraint(
+            "kind IN ('WORKFORCE', 'ASSET', 'WORKCENTER')",
+            name="request_line_kind_supported",
+        ),
+        CheckConstraint(
+            "desired_end IS NULL OR desired_start IS NULL OR desired_end >= desired_start",
+            name="request_line_date_window",
+        ),
+        CheckConstraint(
+            "estimated_hours IS NULL OR estimated_hours >= 0",
+            name="request_line_hours_non_negative",
+        ),
+        CheckConstraint(
+            "desired_active_days IS NULL OR desired_active_days >= 0",
+            name="request_line_days_non_negative",
+        ),
+        Index(
+            "ix_request_lines_request_position",
+            "workforce_request_id",
+            "position",
+        ),
+        Index(
+            "ix_request_lines_request_active",
+            "workforce_request_id",
+            "active",
+        ),
+        Index("ix_request_lines_window", "desired_start", "desired_end"),
+    )
+
+    id: Mapped[str] = mapped_column(String(ID_LENGTH), primary_key=True, default=new_id)
+    workforce_request_id: Mapped[str] = mapped_column(
+        String(ID_LENGTH),
+        ForeignKey("workforce_requests.id"),
+        nullable=False,
+        index=True,
+    )
+    position: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    kind: Mapped[str] = mapped_column(
+        String(32), nullable=False, server_default=text("'WORKFORCE'"), index=True
+    )
+    slot_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default=text("1")
+    )
+    required_resource_class: Mapped[str | None] = mapped_column(
+        String(64), nullable=True, index=True
+    )
+    required_competencies_snapshot: Mapped[str | None] = mapped_column(
+        Text, nullable=True
+    )
+    desired_start: Mapped[date | None] = mapped_column(Date, nullable=True, index=True)
+    desired_end: Mapped[date | None] = mapped_column(Date, nullable=True, index=True)
+    desired_active_days: Mapped[Decimal | None] = mapped_column(
+        Numeric(12, 2), nullable=True
+    )
+    estimated_hours: Mapped[Decimal | None] = mapped_column(
+        Numeric(12, 2), nullable=True
+    )
+    confirmation: Mapped[str] = mapped_column(
+        String(32),
+        nullable=False,
+        server_default=text("'Confirmée'"),
+        index=True,
+    )
+    work_package_id: Mapped[str | None] = mapped_column(
+        String(ID_LENGTH),
+        ForeignKey("work_packages.id"),
+        nullable=True,
+        index=True,
+    )
+    task_catalog_item_id: Mapped[str | None] = mapped_column(
+        String(ID_LENGTH),
+        ForeignKey("task_catalog_items.id"),
+        nullable=True,
+        index=True,
+    )
+    erp_task_code: Mapped[str | None] = mapped_column(
+        String(64), nullable=True, index=True
+    )
+    erp_task_label: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    proposed_resource_id: Mapped[str | None] = mapped_column(
+        String(ID_LENGTH),
+        ForeignKey("resources.id"),
+        nullable=True,
+        index=True,
+    )
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    active: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=true(), index=True
+    )
+
+
+class RequestLineCompetency(Base):
+    __tablename__ = "request_line_competencies"
+
+    request_line_id: Mapped[str] = mapped_column(
+        String(ID_LENGTH),
+        ForeignKey("request_lines.id"),
+        primary_key=True,
+    )
+    competency_id: Mapped[str] = mapped_column(
+        String(ID_LENGTH),
+        ForeignKey("competencies.id"),
+        primary_key=True,
+    )
+
+
 class WorkforceRequestCompetency(Base):
     __tablename__ = "workforce_request_competencies"
 
@@ -293,6 +411,9 @@ class ResourceRequirement(TimestampMixin, Base):
     workforce_request_id: Mapped[str | None] = mapped_column(
         String(ID_LENGTH), ForeignKey("workforce_requests.id"), nullable=True, index=True
     )
+    source_request_line_id: Mapped[str | None] = mapped_column(
+        String(ID_LENGTH), ForeignKey("request_lines.id"), nullable=True, index=True
+    )
     assigned_resource_id: Mapped[str | None] = mapped_column(
         String(ID_LENGTH), ForeignKey("resources.id"), nullable=True, index=True
     )
@@ -324,6 +445,29 @@ class ResourceRequirement(TimestampMixin, Base):
     origin: Mapped[str] = mapped_column(String(32), nullable=False, server_default=text("'REQUEST'"), index=True)
     created_by_external_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
     created_by_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+
+class ResourceRequirementCompetency(Base):
+    """Canonical competency snapshot for one materialized requirement."""
+
+    __tablename__ = "resource_requirement_competencies"
+
+    resource_requirement_id: Mapped[str] = mapped_column(
+        String(ID_LENGTH),
+        ForeignKey(
+            "resource_requirements.id",
+            name="fk_req_req_comp_requirement",
+        ),
+        primary_key=True,
+    )
+    competency_id: Mapped[str] = mapped_column(
+        String(ID_LENGTH),
+        ForeignKey(
+            "competencies.id",
+            name="fk_req_req_comp_competency",
+        ),
+        primary_key=True,
+    )
 
 
 class Shift(TimestampMixin, Base):

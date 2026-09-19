@@ -68,6 +68,12 @@ class WorkforceRequestPeriod(TimestampMixin, Base):
         nullable=False,
         index=True,
     )
+    request_line_id: Mapped[str | None] = mapped_column(
+        String(ID_LENGTH),
+        ForeignKey("request_lines.id"),
+        nullable=True,
+        index=True,
+    )
     sequence: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
     kind: Mapped[str] = mapped_column(
         String(32), nullable=False, server_default=text("'CUMULATIVE'"), index=True
@@ -100,6 +106,15 @@ class WorkforceRequestPeriodSelection(Base):
         String(ID_LENGTH),
         ForeignKey("workforce_requests.id"),
         primary_key=True,
+    )
+    request_line_id: Mapped[str | None] = mapped_column(
+        String(ID_LENGTH),
+        ForeignKey(
+            "request_lines.id",
+            name="fk_period_selection_request_line",
+        ),
+        nullable=True,
+        index=True,
     )
     alternative_group: Mapped[str] = mapped_column(String(64), primary_key=True)
     period_id: Mapped[str] = mapped_column(

@@ -14,6 +14,7 @@ from ...application.repository_ports import DemandRepositoryPort
 from .base import utc_now
 from .models import (
     Project,
+    RequestLine,
     Resource,
     TaskCatalogEntry,
     WorkforceRequest,
@@ -273,6 +274,50 @@ class SqlDemandRepository(DemandRepositoryPort):
             raise KeyError(f"Ressource {resource_name} introuvable")
         return resource
 
+    def _sync_legacy_request_line(self, request: WorkforceRequest) -> RequestLine:
+        """Mirror the current flat request into its transitional single line.
+
+        288B does not expose multi-line writes yet. This keeps requests created or
+        edited between the schema rollout and 288C coherent without making the line
+        authoritative prematurely.
+        """
+
+        line = self._session.get(RequestLine, request.id)
+        if line is None:
+            line = RequestLine(
+                id=request.id,
+                workforce_request_id=request.id,
+                position=0,
+                kind="WORKFORCE",
+            )
+            self._session.add(line)
+
+        project = self._session.get(Project, request.project_id)
+        task_id = None
+        if project is not None and request.erp_task_code:
+            task_id = self._session.scalar(
+                select(TaskCatalogEntry.id).where(
+                    TaskCatalogEntry.project_number == project.number,
+                    TaskCatalogEntry.task_code == request.erp_task_code,
+                )
+            )
+
+        line.slot_count = max(int(request.resource_count or 1), 1)
+        line.required_competencies_snapshot = request.required_competencies
+        line.desired_start = request.desired_start
+        line.desired_end = request.desired_end
+        line.desired_active_days = request.estimated_days
+        line.estimated_hours = request.estimated_hours
+        line.confirmation = request.confirmation
+        line.work_package_id = request.work_package_id
+        line.task_catalog_item_id = task_id
+        line.erp_task_code = request.erp_task_code
+        line.erp_task_label = request.erp_task_label
+        line.proposed_resource_id = request.proposed_resource_id
+        line.description = request.description
+        line.active = True
+        return line
+
     def _next_request_number(self) -> str:
         year = date.today().year
         prefix = f"DMO-{year}-"
@@ -327,6 +372,8 @@ class SqlDemandRepository(DemandRepositoryPort):
             status=status,
         )
         self._session.add(request)
+        self._session.flush()
+        self._sync_legacy_request_line(request)
         self._session.flush()
         self._append_history(
             request,
@@ -427,6 +474,7 @@ class SqlDemandRepository(DemandRepositoryPort):
 
         # NomProjet/Client/ChargeProjet intentionally remain project-owned. They are
         # projected from projects and will ultimately be mastered by Acumatica.
+        self._sync_legacy_request_line(request)
         self._session.flush()
         self._append_history(
             request,

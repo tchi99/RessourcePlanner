@@ -30,6 +30,9 @@ EXPECTED_TABLES = {
     "competencies",
     "planning_change_history",
     "projects",
+    "request_lines",
+    "request_line_competencies",
+    "resource_requirement_competencies",
     "resources",
     "work_packages",
     "workforce_requests",
@@ -68,14 +71,23 @@ class SqlSchemaTests(unittest.TestCase):
         competencies = Base.metadata.tables["competencies"].c
         resource_competencies = Base.metadata.tables["resource_competencies"].c
         request_competencies = Base.metadata.tables["workforce_request_competencies"].c
+        request_lines = Base.metadata.tables["request_lines"].c
+        line_competencies = Base.metadata.tables["request_line_competencies"].c
+        requirement_competencies = Base.metadata.tables[
+            "resource_requirement_competencies"
+        ].c
+        selections = Base.metadata.tables["workforce_request_period_selections"].c
 
         self.assertFalse(requirements.project_id.nullable)
         self.assertTrue(requirements.workforce_request_id.nullable)
+        self.assertTrue(requirements.source_request_line_id.nullable)
         self.assertTrue(requests.work_package_id.nullable)
         self.assertTrue(requests.erp_task_code.nullable)
         self.assertTrue(requests.erp_task_label.nullable)
         self.assertFalse(requests.project_id.nullable)
         self.assertFalse(periods.workforce_request_id.nullable)
+        self.assertTrue(periods.request_line_id.nullable)
+        self.assertTrue(selections.request_line_id.nullable)
         self.assertFalse(periods.start_date.nullable)
         self.assertFalse(periods.end_date.nullable)
         self.assertFalse(period_requirements.resource_requirement_id.nullable)
@@ -129,6 +141,20 @@ class SqlSchemaTests(unittest.TestCase):
         self.assertFalse(resource_competencies.competency_id.nullable)
         self.assertFalse(request_competencies.workforce_request_id.nullable)
         self.assertFalse(request_competencies.competency_id.nullable)
+        self.assertFalse(request_lines.workforce_request_id.nullable)
+        self.assertFalse(request_lines.position.nullable)
+        self.assertFalse(request_lines.kind.nullable)
+        self.assertFalse(request_lines.slot_count.nullable)
+        self.assertTrue(request_lines.required_resource_class.nullable)
+        self.assertTrue(request_lines.required_competencies_snapshot.nullable)
+        self.assertTrue(request_lines.desired_active_days.nullable)
+        self.assertTrue(request_lines.estimated_hours.nullable)
+        self.assertFalse(request_lines.confirmation.nullable)
+        self.assertFalse(request_lines.active.nullable)
+        self.assertFalse(line_competencies.request_line_id.nullable)
+        self.assertFalse(line_competencies.competency_id.nullable)
+        self.assertFalse(requirement_competencies.resource_requirement_id.nullable)
+        self.assertFalse(requirement_competencies.competency_id.nullable)
         self.assertTrue(requirements.required_competency_id.nullable)
 
     def test_metadata_creates_all_tables_on_sqlite_memory(self) -> None:

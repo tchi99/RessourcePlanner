@@ -16,7 +16,7 @@ from .demand_period_models import (
     WorkforceRequestPeriod,
     WorkforceRequestPeriodSelection,
 )
-from .models import Resource, WorkforceRequest, WorkforceRequestHistory
+from .models import RequestLine, Resource, WorkforceRequest, WorkforceRequestHistory
 
 
 def _text(value: object) -> str:
@@ -142,6 +142,11 @@ class SqlDemandPeriodRepository(DemandPeriodRepositoryPort):
                 WorkforceRequestPeriod(
                     period_key=_text(period.period_id),
                     workforce_request_id=request.id,
+                    request_line_id=(
+                        request.id
+                        if self._session.get(RequestLine, request.id) is not None
+                        else None
+                    ),
                     sequence=sequence,
                     kind=_text(period.kind).upper(),
                     alternative_group=_text(period.alternative_group) or None,
@@ -205,6 +210,11 @@ class SqlDemandPeriodRepository(DemandPeriodRepositoryPort):
         if selection is None:
             selection = WorkforceRequestPeriodSelection(
                 workforce_request_id=request.id,
+                request_line_id=(
+                    request.id
+                    if self._session.get(RequestLine, request.id) is not None
+                    else None
+                ),
                 alternative_group=group,
                 period_id=period.id,
                 selected_at=selected_at,
@@ -212,6 +222,11 @@ class SqlDemandPeriodRepository(DemandPeriodRepositoryPort):
             )
             self._session.add(selection)
         else:
+            selection.request_line_id = (
+                request.id
+                if self._session.get(RequestLine, request.id) is not None
+                else selection.request_line_id
+            )
             selection.period_id = period.id
             selection.selected_at = selected_at
             selection.selected_by_name = self._actor_name or None

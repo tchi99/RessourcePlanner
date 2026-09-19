@@ -9,6 +9,7 @@ from app.domain.demand_periods import PERIOD_KIND_ALTERNATIVE, DemandPeriodDefin
 from app.infrastructure.sql import (
     Base,
     Project,
+    RequestLine,
     Resource,
     SqlDemandPeriodRepository,
     WorkforceRequest,
@@ -56,6 +57,23 @@ class SqlDemandPeriodRepositoryTests(unittest.TestCase):
                     ),
                 ]
             )
+            session.flush()
+            session.add_all(
+                [
+                    RequestLine(
+                        id="D1",
+                        workforce_request_id="D1",
+                        position=0,
+                        kind="WORKFORCE",
+                    ),
+                    RequestLine(
+                        id="D2",
+                        workforce_request_id="D2",
+                        position=0,
+                        kind="WORKFORCE",
+                    ),
+                ]
+            )
 
     def tearDown(self) -> None:
         self.engine.dispose()
@@ -95,6 +113,12 @@ class SqlDemandPeriodRepositoryTests(unittest.TestCase):
             )
             self.assertFalse(any(row.selected for row in rows))
             self.assertEqual(repository.selections_for_demand("DMO-1"), {})
+            physical = session.scalars(
+                select(WorkforceRequestPeriod).where(
+                    WorkforceRequestPeriod.workforce_request_id == "D1"
+                )
+            ).all()
+            self.assertEqual({row.request_line_id for row in physical}, {"D1"})
 
     def test_selection_is_unique_per_group_and_can_switch_options(self) -> None:
         with transactional_session(self.factory) as session:
@@ -126,6 +150,9 @@ class SqlDemandPeriodRepositoryTests(unittest.TestCase):
                 select(func.count()).select_from(WorkforceRequestPeriodSelection)
             )
             self.assertEqual(selection_count, 1)
+            selection = session.scalar(select(WorkforceRequestPeriodSelection))
+            assert selection is not None
+            self.assertEqual(selection.request_line_id, "D1")
 
     def test_replacing_definition_versions_rows_and_clears_old_selection(self) -> None:
         with transactional_session(self.factory) as session:

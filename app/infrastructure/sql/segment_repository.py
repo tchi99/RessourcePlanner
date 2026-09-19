@@ -17,8 +17,11 @@ from .demand_period_models import WorkforceRequestPeriod, WorkforceRequestPeriod
 from .models import (
     ORIGIN_REQUEST,
     Project,
+    RequestLine,
+    RequestLineCompetency,
     Resource,
     ResourceRequirement,
+    ResourceRequirementCompetency,
     WorkforceRequest,
 )
 
@@ -250,6 +253,34 @@ class SqlSegmentRepository(SegmentRepositoryPort):
             )
         return project, request
 
+    def _attach_legacy_request_line(
+        self,
+        requirement: ResourceRequirement,
+        request: WorkforceRequest | None,
+    ) -> None:
+        """Attach transitional line provenance without changing segment semantics."""
+
+        if request is None:
+            requirement.source_request_line_id = None
+            return
+        line = self._session.get(RequestLine, request.id)
+        if line is None:
+            requirement.source_request_line_id = None
+            return
+        requirement.source_request_line_id = line.id
+        competency_ids = self._session.scalars(
+            select(RequestLineCompetency.competency_id).where(
+                RequestLineCompetency.request_line_id == line.id
+            )
+        ).all()
+        for competency_id in competency_ids:
+            self._session.add(
+                ResourceRequirementCompetency(
+                    resource_requirement_id=requirement.id,
+                    competency_id=competency_id,
+                )
+            )
+
     def create(self, values: Mapping[str, Any]) -> str:
         project, request = self._resolve_project_and_request(
             project_number=values.get("NumeroProjet"),
@@ -299,6 +330,8 @@ class SqlSegmentRepository(SegmentRepositoryPort):
         )
         self._session.add(requirement)
         self._session.flush()
+        self._attach_legacy_request_line(requirement, request)
+        self._session.flush()
         return identifier
 
     def update(self, segment_id: str, updates: Mapping[str, Any]) -> None:
@@ -308,6 +341,8 @@ class SqlSegmentRepository(SegmentRepositoryPort):
         if "NoDemande" in updates:
             request = self._request(updates.get("NoDemande"))
             requirement.workforce_request_id = request.id if request else None
+            line = self._session.get(RequestLine, request.id) if request is not None else None
+            requirement.source_request_line_id = line.id if line is not None else None
         elif requirement.workforce_request_id:
             request = self._session.get(WorkforceRequest, requirement.workforce_request_id)
 
