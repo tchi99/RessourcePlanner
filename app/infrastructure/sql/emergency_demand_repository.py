@@ -21,12 +21,14 @@ class SqlEmergencyDemandRepository(SqlDemandRepository):
         project: Project,
         work_package: WorkPackage | None,
         proposed_resource: Resource | None,
+        competency_ids: tuple[str, ...] = (),
     ) -> DemandReadModel:
         base = super()._read_model(
             request,
             project,
             work_package,
             proposed_resource,
+            competency_ids,
         )
         return replace(
             base,
