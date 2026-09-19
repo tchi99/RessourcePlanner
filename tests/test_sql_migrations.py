@@ -123,6 +123,7 @@ class SqlMigrationTests(unittest.TestCase):
             self.assertIn("SOURCE_REQUEST_LINE_ID", ddl, url)
             self.assertIn("REQUEST_LINE_ID", ddl, url)
             self.assertIn("AGGREGATE_VERSION", ddl, url)
+            self.assertIn("LINE_MODE", ddl, url)
             self.assertIn("ESTIMATED_HOURS_SOURCE", ddl, url)
             self.assertIn("DEFAULT_HOURS_PER_DAY", ddl, url)
 
@@ -334,12 +335,12 @@ class SqlMigrationTests(unittest.TestCase):
                     [("AD1", "C1"), ("REQ1", "C1"), ("REQ2", "C1")],
                 )
 
-                self.assertEqual(
-                    connection.exec_driver_sql(
-                        "SELECT aggregate_version FROM workforce_requests WHERE id = 'D1'"
-                    ).scalar_one(),
-                    1,
-                )
+                version_row = connection.exec_driver_sql(
+                    "SELECT aggregate_version, line_mode "
+                    "FROM workforce_requests WHERE id = 'D1'"
+                ).one()
+                self.assertEqual(version_row[0], 1)
+                self.assertEqual(version_row[1], 0)
                 self.assertEqual(
                     connection.exec_driver_sql(
                         "SELECT COUNT(*) FROM resource_requirements"
