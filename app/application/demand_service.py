@@ -205,6 +205,26 @@ class DemandService:
                     },
                 )
             data["ExpectedVersion"] = int(expected_version)
+        if "RequestLines" not in data and not existing.line_mode:
+            final_count = int(data.get("NombreRessources", existing.resource_count) or 1)
+            final_hours = data.get("TempsEstimeHeures", existing.estimated_hours)
+            if final_hours is not None:
+                numeric_hours = float(final_hours)
+                if numeric_hours <= 0:
+                    raise ApplicationValidationError(
+                        "Les heures doivent être supérieures à zéro lorsqu'elles sont renseignées.",
+                        code="demand_estimated_hours_invalid",
+                        context={"estimated_hours": numeric_hours},
+                    )
+                if numeric_hours < final_count * 0.01:
+                    raise ApplicationValidationError(
+                        "Les heures totales sont insuffisantes pour produire un besoin positif par ressource.",
+                        code="demand_hours_split_invalid",
+                        context={
+                            "estimated_hours": numeric_hours,
+                            "resource_count": final_count,
+                        },
+                    )
         if "NumeroProjet" in data and not str(data["NumeroProjet"] or "").strip():
             raise ApplicationValidationError(
                 "Le projet est requis.",
@@ -399,6 +419,17 @@ class DemandService:
                         context={"line_id": line.line_id},
                     )
         submit_updates: dict[str, Any] = {"Statut": "Soumise"}
+        if (
+            existing is not None
+            and not existing.line_mode
+            and existing.estimated_hours is None
+            and existing.estimated_days is None
+        ):
+            raise ApplicationValidationError(
+                "Une demande soumise doit préciser des heures ou un nombre de jours.",
+                code="demand_effort_required",
+                context={"demand_number": number},
+            )
         if (
             existing is not None
             and not existing.line_mode
