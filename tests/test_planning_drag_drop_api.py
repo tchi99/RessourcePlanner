@@ -137,6 +137,49 @@ class PlanningDragDropApiTests(unittest.TestCase):
             self.assertEqual(moved["note"], "Quart généré")
             self.assertTrue(any(row["action"] == "Déplacement quart" for row in history))
 
+    def test_quick_shift_move_cannot_leave_its_single_day_segment(self) -> None:
+        with TemporaryDirectory() as directory:
+            app = create_api_app(self._database(directory))
+            with TestClient(app) as client:
+                created = client.post(
+                    "/api/v1/quick-shifts",
+                    json={
+                        "project_number": "P-275",
+                        "project_name": "Projet drag drop",
+                        "technician": "Alice DnD",
+                        "day": "2026-09-24",
+                        "hours": 2,
+                        "outside_standard_hours": False,
+                        "note": "Quick Shift fenêtre #275",
+                        "description": "Quick Shift fenêtre",
+                        "confirmation": "Confirmée",
+                    },
+                )
+                self.assertEqual(created.status_code, 201, created.text)
+                allocation_id = created.json()["allocation_id"]
+                segment_id = created.json()["segment_id"]
+
+                segment = client.get(f"/api/v1/segments/{segment_id}").json()
+                self.assertEqual(segment["start_date"], "2026-09-24")
+                self.assertEqual(segment["end_date"], "2026-09-24")
+
+                response = client.post(
+                    f"/api/v1/allocations/{allocation_id}/move",
+                    json={"technician": "Bob DnD", "day": "2026-09-25"},
+                )
+                self.assertEqual(response.status_code, 422, response.text)
+                self.assertIn("fenêtre du segment", response.json()["error"]["message"])
+
+                shifts = client.get(
+                    "/api/v1/shifts",
+                    params={"start": "2026-09-21", "end": "2026-09-27"},
+                ).json()
+
+            original = next(row for row in shifts if row["allocation_id"] == allocation_id)
+            self.assertEqual(original["resource_name"], "Alice DnD")
+            self.assertEqual(original["work_date"], "2026-09-24")
+            self.assertTrue(original["locked"])
+
     def test_move_rejected_outside_standard_schedule_rolls_back(self) -> None:
         with TemporaryDirectory() as directory:
             app = create_api_app(self._database(directory))
