@@ -7,6 +7,7 @@ from app.application.security import ROLE_ADMIN, ROLE_COORDINATOR
 from app.server.runtime import (
     ACTOR_NAME_ENV,
     ALLOW_LOCAL_AUTH_NETWORK_ENV,
+    API_DOCS_ENABLED_ENV,
     AUTH_MODE_ENV,
     DATABASE_URL_ENV,
     DEV_USER_SWITCHER_ENV,
@@ -43,6 +44,7 @@ class ServerRuntimeTests(unittest.TestCase):
         self.assertEqual(settings.actor_name, "api")
         self.assertEqual(settings.auth_mode, "local")
         self.assertFalse(settings.dev_user_switcher)
+        self.assertTrue(settings.api_docs_enabled)
         assert settings.auth_principal is not None
         self.assertEqual(settings.auth_principal.auth_mode, "local")
         self.assertEqual(settings.auth_principal.roles, (ROLE_ADMIN,))
@@ -133,6 +135,20 @@ class ServerRuntimeTests(unittest.TestCase):
         self.assertEqual(settings.oidc.client_id, "resourceplanner")
         self.assertEqual(settings.oidc.scopes, ("openid", "profile", "email"))
         self.assertTrue(settings.oidc_secure_cookie)
+        self.assertFalse(settings.api_docs_enabled)
+
+    def test_api_docs_can_be_explicitly_enabled_for_oidc(self) -> None:
+        settings = ServerSettings.from_environment(
+            {
+                DATABASE_URL_ENV: "sqlite+pysqlite:///:memory:",
+                AUTH_MODE_ENV: "oidc",
+                OIDC_DISCOVERY_URL_ENV: "https://identity.example.invalid/.well-known/openid-configuration",
+                OIDC_CLIENT_ID_ENV: "resourceplanner",
+                OIDC_REDIRECT_URI_ENV: "https://planner.example.invalid/api/v1/auth/callback",
+                API_DOCS_ENABLED_ENV: "true",
+            }
+        )
+        self.assertTrue(settings.api_docs_enabled)
 
     def test_oidc_scopes_must_include_openid(self) -> None:
         with self.assertRaises(ServerConfigurationError) as caught:
