@@ -5,11 +5,15 @@ from datetime import date
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Iterable
 
-from ..application.errors import ApplicationValidationError
-
-
 DEFAULT_WORKDAY_HOURS = Decimal("8.00")
 CENT = Decimal("0.01")
+
+
+class RequestLinePolicyError(ValueError):
+    def __init__(self, message: str, *, code: str, context: dict[str, object] | None = None):
+        super().__init__(message)
+        self.code = code
+        self.context = context or {}
 
 
 @dataclass(frozen=True, slots=True)
@@ -81,25 +85,25 @@ def normalize_request_line(
 ) -> NormalizedRequestLine:
     normalized_kind = str(kind or "WORKFORCE").strip().upper()
     if normalized_kind != "WORKFORCE":
-        raise ApplicationValidationError(
+        raise RequestLinePolicyError(
             "Seules les lignes WORKFORCE sont supportées dans cette tranche.",
             code="demand_line_kind_unsupported",
             context={"kind": normalized_kind},
         )
     if position < 0:
-        raise ApplicationValidationError(
+        raise RequestLinePolicyError(
             "La position de ligne ne peut pas être négative.",
             code="demand_line_position_invalid",
             context={"position": position},
         )
     if desired_start is None and require_complete:
-        raise ApplicationValidationError(
+        raise RequestLinePolicyError(
             "La date de début est requise pour chaque ligne.",
             code="demand_line_start_required",
             context={"position": position},
         )
     if desired_start is not None and desired_end is not None and desired_end < desired_start:
-        raise ApplicationValidationError(
+        raise RequestLinePolicyError(
             "La date de fin d'une ligne ne peut pas précéder sa date de début.",
             code="demand_line_date_window_invalid",
             context={
@@ -110,7 +114,7 @@ def normalize_request_line(
         )
     if desired_active_days is not None:
         if int(desired_active_days) < 1:
-            raise ApplicationValidationError(
+            raise RequestLinePolicyError(
                 "Le nombre de jours actifs d'une ligne doit être au moins 1.",
                 code="demand_line_active_days_invalid",
                 context={"position": position, "desired_active_days": desired_active_days},
@@ -119,7 +123,7 @@ def normalize_request_line(
             window_end = desired_end or desired_start
             available = (window_end - desired_start).days + 1
             if int(desired_active_days) > available:
-                raise ApplicationValidationError(
+                raise RequestLinePolicyError(
                     "Le nombre de jours actifs dépasse la fenêtre de la ligne.",
                     code="demand_line_active_days_window_invalid",
                     context={
@@ -135,7 +139,7 @@ def normalize_request_line(
     if estimated_hours is not None:
         hours = Decimal(str(estimated_hours)).quantize(CENT, rounding=ROUND_HALF_UP)
         if hours <= 0:
-            raise ApplicationValidationError(
+            raise RequestLinePolicyError(
                 "Les heures d'une ligne WORKFORCE doivent être supérieures à zéro.",
                 code="demand_line_hours_invalid",
                 context={"position": position, "estimated_hours": float(hours)},
@@ -148,7 +152,7 @@ def normalize_request_line(
         hours_source = "DEFAULT_8H"
         default_hours_per_day = float(DEFAULT_WORKDAY_HOURS)
     elif require_complete:
-        raise ApplicationValidationError(
+        raise RequestLinePolicyError(
             "Chaque ligne doit préciser des heures ou un nombre de jours actifs.",
             code="demand_line_effort_required",
             context={"position": position},
