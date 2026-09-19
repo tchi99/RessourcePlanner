@@ -1,10 +1,8 @@
 from __future__ import annotations
 
-from collections.abc import Iterator
-from typing import Callable
+from typing import Any, Callable
 
 from fastapi import APIRouter, Depends, Query, status
-from sqlalchemy.orm import Session
 
 from ..application import (
     CompetencyCatalogService,
@@ -12,18 +10,13 @@ from ..application import (
     CompetencyReadModel,
     CompetencyUpdateCommand,
 )
-from ..infrastructure.sql import SqlCompetencyCatalogRepository
 from .schemas import CompetencyCreateRequest, CompetencyUpdateRequest
 
 
-SessionProvider = Callable[[], Iterator[Session]]
+CompetencyProvider = Callable[..., Any]
 
 
-def _service(session: Session) -> CompetencyCatalogService:
-    return CompetencyCatalogService(SqlCompetencyCatalogRepository(session))
-
-
-def build_competency_router(session_dependency: SessionProvider) -> APIRouter:
+def build_competency_router(competency_dependency: CompetencyProvider) -> APIRouter:
     router = APIRouter(prefix="/api/v1/competencies", tags=["competencies"])
 
     @router.get("")
@@ -31,10 +24,10 @@ def build_competency_router(session_dependency: SessionProvider) -> APIRouter:
         q: str | None = Query(default=None),
         active_only: bool = True,
         limit: int = Query(default=200, ge=1, le=500),
-        session: Session = Depends(session_dependency),
+        competencies: CompetencyCatalogService = Depends(competency_dependency),
     ) -> list[CompetencyReadModel]:
         return list(
-            _service(session).list(
+            competencies.list(
                 query=q,
                 active_only=active_only,
                 limit=limit,
@@ -44,9 +37,9 @@ def build_competency_router(session_dependency: SessionProvider) -> APIRouter:
     @router.post("", status_code=status.HTTP_201_CREATED)
     def create_competency(
         body: CompetencyCreateRequest,
-        session: Session = Depends(session_dependency),
+        competencies: CompetencyCatalogService = Depends(competency_dependency),
     ) -> dict[str, object]:
-        return _service(session).create(
+        return competencies.create(
             CompetencyCreateCommand(**body.model_dump())
         ).to_dict()
 
@@ -54,9 +47,9 @@ def build_competency_router(session_dependency: SessionProvider) -> APIRouter:
     def update_competency(
         competency_id: str,
         body: CompetencyUpdateRequest,
-        session: Session = Depends(session_dependency),
+        competencies: CompetencyCatalogService = Depends(competency_dependency),
     ) -> dict[str, object]:
-        return _service(session).update(
+        return competencies.update(
             CompetencyUpdateCommand(
                 competency_id=competency_id,
                 **body.model_dump(exclude_unset=True),
@@ -66,8 +59,8 @@ def build_competency_router(session_dependency: SessionProvider) -> APIRouter:
     @router.post("/{competency_id}/deactivate")
     def deactivate_competency(
         competency_id: str,
-        session: Session = Depends(session_dependency),
+        competencies: CompetencyCatalogService = Depends(competency_dependency),
     ) -> dict[str, object]:
-        return _service(session).deactivate(competency_id).to_dict()
+        return competencies.deactivate(competency_id).to_dict()
 
     return router
