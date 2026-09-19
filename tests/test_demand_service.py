@@ -103,6 +103,7 @@ class DemandServiceTests(unittest.TestCase):
                 "NumeroProjet": "5094",
                 "DateDebutSouhaitee": "2026-08-25",
                 "Description": "Travail",
+                "TempsEstimeHeures": 8,
                 "Statut": "En planification",
                 "NoDemande": "FORBIDDEN",
                 "ApprouvePar": "x",
