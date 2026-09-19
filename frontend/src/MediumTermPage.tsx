@@ -277,8 +277,6 @@ export default function MediumTermPage({ onOpenDemands }: { onOpenDemands: () =>
     setWorkPackages([]);
     setSnapshot(null);
     setUnlinkedSegments([]);
-    setEditor(undefined);
-    setSegmentEditorId(null);
     Promise.all([
       getProjects(true, controller.signal, scope),
       getWorkPackages("", true, controller.signal, scope),
