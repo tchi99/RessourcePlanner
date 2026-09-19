@@ -35,6 +35,7 @@ from app.application.security import (
 from app.infrastructure.sql import (
     Base,
     Competency,
+    CommunicationContact,
     Project,
     Resource,
     ResourceAvailabilityRule,
@@ -54,7 +55,7 @@ from app.server.frontend import attach_frontend
 
 ROLE_IDENTITIES = {
     ROLE_ADMIN: ("Administrateur E2E", None),
-    ROLE_PROJECT_MANAGER: ("Chargé E2E", None),
+    ROLE_PROJECT_MANAGER: ("Chargé E2E", "EMP-PM"),
     ROLE_COORDINATOR: ("Coordonnateur E2E", None),
     ROLE_TECHNICIAN: ("Technicien Alice", "EMP-ALICE"),
 }
@@ -128,6 +129,7 @@ def _seed(database_url: str) -> None:
                     number="P-251",
                     name="Projet Playwright V2",
                     client="Client E2E",
+                    project_manager_external_id="EMP-PM",
                     project_manager_name="Chargé E2E",
                     status="Actif",
                 )
@@ -197,11 +199,21 @@ def _seed(database_url: str) -> None:
                     )
                 )
 
+            session.add(
+                CommunicationContact(
+                    recipient_id="pm:EMP-PM",
+                    audience="project_manager",
+                    display_name="Chargé E2E",
+                    email=f"pm{chr(64)}{address_domain}",
+                    active=True,
+                )
+            )
+
             users = SqlUserIdentityRepository(session)
             for subject, display_name, role, employee_external_id in (
                 ("admin", "Administrateur Démo", ROLE_ADMIN, None),
                 ("coordinator", "Coordonnateur Démo", ROLE_COORDINATOR, None),
-                ("project-manager", "Chargé de projet Démo", ROLE_PROJECT_MANAGER, None),
+                ("project-manager", "Chargé de projet Démo", ROLE_PROJECT_MANAGER, "EMP-PM"),
                 ("manager", "Gestionnaire Démo", ROLE_MANAGER, None),
                 ("technician-a", "Technicien Démo A", ROLE_TECHNICIAN, "EMP-ALICE"),
                 ("technician-b", "Technicien Démo B", ROLE_TECHNICIAN, "EMP-BOB"),

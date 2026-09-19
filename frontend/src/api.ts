@@ -1,4 +1,7 @@
 import { csrfHeaders } from "./csrf";
+
+export type ViewScope = "mine" | "global";
+
 export type ProjectReadModel = {
   id: string;
   number: string;
@@ -608,8 +611,15 @@ export function getResourceRecommendations(segmentId: string, signal?: AbortSign
   );
 }
 
-export function getProjects(activeOnly = true, signal?: AbortSignal) {
-  const params = new URLSearchParams({ active_only: String(activeOnly) });
+export function getProjects(
+  activeOnly = true,
+  signal?: AbortSignal,
+  scope: ViewScope = "global",
+) {
+  const params = new URLSearchParams({
+    active_only: String(activeOnly),
+    scope,
+  });
   return getJson<ProjectReadModel[]>(`/api/v1/projects?${params.toString()}`, signal);
 }
 
@@ -666,10 +676,16 @@ export function deactivateCompetency(competencyId: string) {
   );
 }
 
-export function getWorkPackages(projectNumber: string, activeOnly = true, signal?: AbortSignal) {
+export function getWorkPackages(
+  projectNumber: string,
+  activeOnly = true,
+  signal?: AbortSignal,
+  scope: ViewScope = "global",
+) {
   const params = new URLSearchParams({
     project_number: projectNumber,
     active_only: String(activeOnly),
+    scope,
   });
   return getJson<WorkPackageReadModel[]>(`/api/v1/work-packages?${params.toString()}`, signal);
 }
@@ -759,8 +775,12 @@ export function deactivateAvailabilityRule(ruleId: string) {
   );
 }
 
-export function getDemands(signal?: AbortSignal) {
-  return getJson<DemandReadModel[]>("/api/v1/demands", signal);
+export function getDemands(
+  signal?: AbortSignal,
+  scope: ViewScope = "global",
+) {
+  const params = new URLSearchParams({ scope });
+  return getJson<DemandReadModel[]>(`/api/v1/demands?${params.toString()}`, signal);
 }
 
 export function getDemand(number: string, signal?: AbortSignal) {

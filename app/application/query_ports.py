@@ -26,13 +26,19 @@ from .read_models import DemandPeriodReadModel, DemandReadModel, SegmentReadMode
 class PlannerQueryPort(Protocol):
     """Read-only canonical query surface required by web clients."""
 
-    def list_projects(self, *, active_only: bool = False) -> Sequence[ProjectReadModel]: ...
+    def list_projects(
+        self,
+        *,
+        active_only: bool = False,
+        project_ids: Sequence[str] | None = None,
+    ) -> Sequence[ProjectReadModel]: ...
 
     def list_work_packages(
         self,
         *,
         project_number: str | None = None,
         active_only: bool = True,
+        project_ids: Sequence[str] | None = None,
     ) -> Sequence[WorkPackageReadModel]: ...
 
     def list_resources(self, *, active_only: bool = True) -> Sequence[ResourceReadModel]: ...
@@ -52,7 +58,11 @@ class PlannerQueryPort(Protocol):
         end: date,
     ) -> Sequence[ResourceReadModel]: ...
 
-    def list_demands(self) -> Sequence[DemandReadModel]: ...
+    def list_demands(
+        self,
+        *,
+        project_ids: Sequence[str] | None = None,
+    ) -> Sequence[DemandReadModel]: ...
 
     def get_demand(self, number: str) -> DemandReadModel | None: ...
 

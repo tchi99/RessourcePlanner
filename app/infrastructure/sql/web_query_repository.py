@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
+
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -54,12 +56,19 @@ class SqlPlannerQueryRepositoryWeb(SqlPlannerQueryRepository):
         *,
         project_number: str | None = None,
         active_only: bool = True,
+        project_ids: Sequence[str] | None = None,
     ) -> tuple[WorkPackageReadModel, ...]:
         statement = (
             select(WorkPackage, Project)
             .join(Project, WorkPackage.project_id == Project.id)
             .order_by(Project.number, WorkPackage.start_date, WorkPackage.name, WorkPackage.id)
         )
+        if project_ids is not None:
+            identifiers = tuple(str(value) for value in project_ids if str(value))
+            if not identifiers:
+                return ()
+            statement = statement.where(Project.id.in_(identifiers))
+
         wanted_project = _text(project_number)
         if wanted_project:
             statement = statement.where(Project.number == wanted_project)

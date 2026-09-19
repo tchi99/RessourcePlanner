@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Protocol
 
+from .errors import ApplicationValidationError
 from .query_models import ResourceReadModel
 from .security import (
     AuthPrincipal,
@@ -43,6 +44,12 @@ class ResolvedUserRelations:
         return tuple(
             dict.fromkeys((*self.managed_project_ids, *self.participating_project_ids))
         )
+
+
+@dataclass(frozen=True, slots=True)
+class ProjectScopeResolution:
+    scope: str
+    project_ids: tuple[str, ...] | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -151,13 +158,45 @@ class UserViewContextService:
             participating_project_ids=tuple(participating_project_ids),
         )
 
-    def _default_scope(self, principal: AuthPrincipal) -> str:
+    def available_scopes(self, principal: AuthPrincipal) -> tuple[str, ...]:
+        return (
+            (SCOPE_MINE, SCOPE_GLOBAL)
+            if principal.has_permission(PERMISSION_READ)
+            else (SCOPE_MINE,)
+        )
+
+    def default_scope(self, principal: AuthPrincipal) -> str:
         roles = frozenset(principal.roles)
         if roles & self._TRANSVERSE_ROLES:
             return SCOPE_GLOBAL
         if roles & self._PERSONAL_ROLES:
             return SCOPE_MINE
         return SCOPE_GLOBAL
+
+    def resolve_project_scope(
+        self,
+        principal: AuthPrincipal,
+        requested_scope: str | None = None,
+    ) -> ProjectScopeResolution:
+        scope = str(requested_scope or self.default_scope(principal)).strip().casefold()
+        available_scopes = self.available_scopes(principal)
+        if scope not in available_scopes:
+            raise ApplicationValidationError(
+                "Le périmètre d'affichage demandé n'est pas disponible pour cet utilisateur.",
+                code="view_scope_not_available",
+                context={
+                    "requested_scope": scope,
+                    "available_scopes": list(available_scopes),
+                },
+            )
+        if scope == SCOPE_GLOBAL:
+            return ProjectScopeResolution(scope=scope, project_ids=None)
+
+        relations = self.resolve_relations(principal)
+        return ProjectScopeResolution(
+            scope=scope,
+            project_ids=relations.personal_project_ids,
+        )
 
     def read(self, principal: AuthPrincipal) -> UserViewContextReadModel:
         relations = self.resolve_relations(principal)
@@ -167,11 +206,7 @@ class UserViewContextService:
         elif relations.resource_link_status == LINK_STATUS_RESOURCE_NOT_FOUND:
             diagnostics.append("resource_not_found")
 
-        available_scopes = (
-            (SCOPE_MINE, SCOPE_GLOBAL)
-            if principal.has_permission(PERMISSION_READ)
-            else (SCOPE_MINE,)
-        )
+        available_scopes = self.available_scopes(principal)
         resource = relations.resource
         return UserViewContextReadModel(
             resource=UserViewResourceReadModel(
@@ -186,7 +221,7 @@ class UserViewContextService:
             ),
             view_policy=UserViewPolicyReadModel(
                 available_scopes=available_scopes,
-                default_scope=self._default_scope(principal),
+                default_scope=self.default_scope(principal),
             ),
             diagnostics=tuple(diagnostics),
         )

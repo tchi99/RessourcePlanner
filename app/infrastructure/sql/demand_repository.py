@@ -144,9 +144,19 @@ class SqlDemandRepository(DemandRepositoryPort):
             )
         )
 
-    def list(self) -> Sequence[DemandReadModel]:
+    def list(
+        self,
+        *,
+        project_ids: Sequence[str] | None = None,
+    ) -> Sequence[DemandReadModel]:
+        statement = self._row_query()
+        if project_ids is not None:
+            identifiers = tuple(str(value) for value in project_ids if str(value))
+            if not identifiers:
+                return ()
+            statement = statement.where(WorkforceRequest.project_id.in_(identifiers))
         rows = self._session.execute(
-            self._row_query().order_by(
+            statement.order_by(
                 WorkforceRequest.desired_start,
                 WorkforceRequest.legacy_demand_number,
                 WorkforceRequest.id,

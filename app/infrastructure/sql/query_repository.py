@@ -197,8 +197,19 @@ class SqlPlannerQueryRepository(PlannerQueryPort):
             for resource_id, competency_ids in grouped.items()
         }
 
-    def list_projects(self, *, active_only: bool = False) -> tuple[ProjectReadModel, ...]:
-        rows = self._session.scalars(select(Project).order_by(Project.number)).all()
+    def list_projects(
+        self,
+        *,
+        active_only: bool = False,
+        project_ids: Sequence[str] | None = None,
+    ) -> tuple[ProjectReadModel, ...]:
+        statement = select(Project)
+        if project_ids is not None:
+            identifiers = tuple(str(value) for value in project_ids if str(value))
+            if not identifiers:
+                return ()
+            statement = statement.where(Project.id.in_(identifiers))
+        rows = self._session.scalars(statement.order_by(Project.number)).all()
         result: list[ProjectReadModel] = []
         for project in rows:
             status = _text(project.status) or "active"
@@ -273,8 +284,12 @@ class SqlPlannerQueryRepository(PlannerQueryPort):
             for resource in rows
         )
 
-    def list_demands(self) -> tuple[DemandReadModel, ...]:
-        return tuple(self._demands.list())
+    def list_demands(
+        self,
+        *,
+        project_ids: Sequence[str] | None = None,
+    ) -> tuple[DemandReadModel, ...]:
+        return tuple(self._demands.list(project_ids=project_ids))
 
     def get_demand(self, number: str) -> DemandReadModel | None:
         return self._demands.get(number)

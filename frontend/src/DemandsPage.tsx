@@ -20,6 +20,8 @@ import {
   updateDemand,
 } from "./api";
 import CompetencyPicker from "./CompetencyPicker";
+import { useViewScope } from "./ViewScopeContext";
+import ViewScopeSelector from "./ViewScopeSelector";
 
 type FormState = {
   project_number: string;
@@ -152,6 +154,7 @@ function DemandCard({ demand, selected, onClick }: { demand: DemandReadModel; se
 }
 
 export default function DemandsPage() {
+  const { scope, loading: scopeLoading } = useViewScope();
   const [demands, setDemands] = useState<DemandReadModel[]>([]);
   const [projects, setProjects] = useState<ProjectReadModel[]>([]);
   const [resources, setResources] = useState<ResourceReadModel[]>([]);
@@ -174,12 +177,13 @@ export default function DemandsPage() {
   const createRetry = useRef<RetryReceipt | null>(null);
 
   useEffect(() => {
+    if (scopeLoading) return;
     const controller = new AbortController();
     setLoading(true);
     setError(null);
     Promise.all([
-      getDemands(controller.signal),
-      getProjects(true, controller.signal),
+      getDemands(controller.signal, scope),
+      getProjects(true, controller.signal, scope),
       getResources(true, controller.signal),
       getCompetencies("", false, controller.signal),
     ])
@@ -201,7 +205,7 @@ export default function DemandsPage() {
         if (!controller.signal.aborted) setLoading(false);
       });
     return () => controller.abort();
-  }, []);
+  }, [scope, scopeLoading]);
 
   useEffect(() => {
     if (creating || !selectedNumber) return;
@@ -232,7 +236,7 @@ export default function DemandsPage() {
     }
     const controller = new AbortController();
     Promise.all([
-      getWorkPackages(projectNumber, false, controller.signal),
+      getWorkPackages(projectNumber, false, controller.signal, scope),
       getTaskCatalog(projectNumber, "", false, controller.signal),
     ])
       .then(([packageRows, taskRows]) => {
@@ -244,7 +248,7 @@ export default function DemandsPage() {
         setError(messageFromError(reason));
       });
     return () => controller.abort();
-  }, [form.project_number]);
+  }, [form.project_number, scope]);
 
   const statusOptions = useMemo(
     () => [...new Set(demands.map((row) => row.status).filter(Boolean))].sort((a, b) => a.localeCompare(b, "fr-CA")),
@@ -287,7 +291,10 @@ export default function DemandsPage() {
   );
 
   async function reloadDemand(number: string) {
-    const [rows, detail] = await Promise.all([getDemands(), getDemand(number)]);
+    const [rows, detail] = await Promise.all([
+      getDemands(undefined, scope),
+      getDemand(number),
+    ]);
     setDemands(rows);
     setSelectedNumber(detail.number);
     setSelectedDemand(detail);
@@ -430,9 +437,12 @@ export default function DemandsPage() {
           <h1>Demandes</h1>
           <p>Création et modification des besoins avant leur transformation en périodes, approbation et plan opérationnel.</p>
         </div>
-        <button type="button" className="primary-button demand-new-button" onClick={beginCreate} disabled={saving}>
-          + Nouvelle demande
-        </button>
+        <div className="page-heading-actions">
+          <ViewScopeSelector />
+          <button type="button" className="primary-button demand-new-button" onClick={beginCreate} disabled={saving}>
+            + Nouvelle demande
+          </button>
+        </div>
       </div>
 
       {error && <div className="error-panel"><strong>Action impossible.</strong><span>{error}</span></div>}
