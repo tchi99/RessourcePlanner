@@ -252,6 +252,11 @@ class SegmentAssignRequest(StrictRequest):
     technician: str
 
 
+class AllocationMoveRequest(StrictRequest):
+    technician: str = Field(min_length=1)
+    day: date
+
+
 class ManualAllocationRequest(StrictRequest):
     technician: str
     day: date

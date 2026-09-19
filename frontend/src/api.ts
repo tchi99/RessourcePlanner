@@ -456,6 +456,11 @@ export type DemandMutationResult = {
   reapproval_required: boolean;
 };
 
+export type AllocationMoveWrite = {
+  technician: string;
+  day: string;
+};
+
 export type ManualAllocationUpdate = {
   technician: string;
   day: string;
@@ -802,6 +807,14 @@ export function selectDemandAlternative(
     `/api/v1/demands/${encodeURIComponent(number)}/alternative-groups/${encodeURIComponent(alternativeGroup)}/selection`,
     "PUT",
     { period_id: periodId },
+  );
+}
+
+export function moveAllocation(allocationId: string, payload: AllocationMoveWrite) {
+  return sendJson<Record<string, unknown>>(
+    `/api/v1/allocations/${encodeURIComponent(allocationId)}/move`,
+    "POST",
+    payload,
   );
 }
 

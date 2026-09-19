@@ -64,6 +64,16 @@ function labelled(scope: Locator, label: string, control: "select" | "input" | "
   return scope.locator("label").filter({ hasText: label }).first().locator(control);
 }
 
+async function dragWithDataTransfer(page: Page, source: Locator, target: Locator) {
+  const dataTransfer = await page.evaluateHandle(() => new DataTransfer());
+  await source.dispatchEvent("dragstart", { dataTransfer });
+  await target.dispatchEvent("dragenter", { dataTransfer });
+  await target.dispatchEvent("dragover", { dataTransfer });
+  await target.dispatchEvent("drop", { dataTransfer });
+  await source.dispatchEvent("dragend", { dataTransfer });
+  await dataTransfer.dispose();
+}
+
 async function selectOptionContaining(select: Locator, text: string) {
   const option = select.locator("option", { hasText: text }).first();
   await expect(option).toBeAttached();
@@ -446,6 +456,90 @@ test("V2 local acceptance path runs through React, Chromium, FastAPI and SQLite"
     await expect(page.getByRole("button", { name: /Périodes & alternatives/ })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Workflow", exact: true })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Urgence", exact: true })).toHaveCount(0);
+
+    await closeContext(context);
+  });
+
+  await test.step("coordinator drag-and-drop rejects invalid move then applies valid resource move", async () => {
+    const { context, page } = await openAs(browser, "COORDINATOR");
+    await navigateMain(page, "Planning opérationnel");
+    await page.getByRole("button", { name: /Suivante/ }).click();
+
+    await page.getByRole("button", { name: /Quick Shift/ }).click();
+    const quickShift = page.getByRole("dialog", { name: "Créer un Quick Shift" });
+    await labelled(quickShift, "Projet", "select").selectOption("P-251");
+    await labelled(quickShift, "Technicien", "select").selectOption("Alice");
+    await labelled(quickShift, "Date", "input").fill(d2);
+    await labelled(quickShift, "Heures", "input").fill("1.25");
+    await labelled(quickShift, "Confirmation", "select").selectOption("Confirmée");
+    await labelled(quickShift, "Description", "textarea").fill("Validation drag-and-drop Playwright");
+    await labelled(quickShift, "Note", "textarea").fill("DnD #275");
+    await quickShift.getByRole("button", { name: "Créer le Quick Shift" }).click();
+    await expect(quickShift).toBeHidden();
+
+    const shiftsResponse = await page.request.get(
+      `/api/v1/shifts?start=${d1}&end=${d5}`,
+    );
+    expect(shiftsResponse.ok()).toBeTruthy();
+    const shifts = await shiftsResponse.json() as Array<{
+      allocation_id: string;
+      segment_id: string;
+      resource_name: string;
+      work_date: string;
+      note: string | null;
+    }>;
+    const createdShift = shifts.find((row) => row.note === "DnD #275");
+    expect(createdShift, "Quart Quick Shift DnD introuvable après création").toBeDefined();
+    const allocationId = createdShift!.allocation_id;
+    expect(createdShift!.resource_name).toBe("Alice");
+    expect(createdShift!.work_date).toBe(d2);
+
+    const segmentResponse = await page.request.get(
+      `/api/v1/segments/${encodeURIComponent(createdShift!.segment_id)}`,
+    );
+    expect(segmentResponse.ok()).toBeTruthy();
+    const createdSegment = await segmentResponse.json() as {
+      segment_id: string;
+      start_date: string;
+      end_date: string;
+    };
+    expect(createdSegment.segment_id).toBe(createdShift!.segment_id);
+    expect(createdSegment.start_date).toBe(d2);
+    expect(createdSegment.end_date).toBe(d2);
+
+    const aliceRow = page.locator(".resource-identity").filter({ hasText: "Alice" }).first().locator("..");
+    const bobRow = page.locator(".resource-identity").filter({ hasText: "Bob" }).first().locator("..");
+    const sourceCell = aliceRow.locator(`.planning-drop-day[data-day="${d2}"]`);
+    const source = sourceCell.locator(`.shift-card[data-allocation-id="${allocationId}"]`);
+    await expect(source).toBeVisible();
+
+    const invalidTarget = bobRow.locator(`.planning-drop-day[data-day="${d3}"]`);
+    const invalidMoveResponsePromise = page.waitForResponse((response) => (
+      response.request().method() === "POST"
+      && response.url().includes(`/api/v1/allocations/${encodeURIComponent(allocationId)}/move`)
+    ));
+    await dragWithDataTransfer(page, source, invalidTarget);
+    const invalidMoveResponse = await invalidMoveResponsePromise;
+    expect(
+      invalidMoveResponse.request().postDataJSON(),
+      "Le drag doit transmettre le quart exact et la journée cible exacte.",
+    ).toEqual({ technician: "Bob", day: d3 });
+    expect(
+      invalidMoveResponse.status(),
+      `Le backend doit refuser le déplacement hors fenêtre. Réponse: ${await invalidMoveResponse.text()}`,
+    ).toBe(422);
+    const feedback = page.locator(".planning-drag-feedback");
+    await expect(feedback).toContainText("fenêtre du segment");
+    await expect(sourceCell.locator(`.shift-card[data-allocation-id="${allocationId}"]`)).toBeVisible();
+
+    const validTarget = bobRow.locator(`.planning-drop-day[data-day="${d2}"]`);
+    await dragWithDataTransfer(
+      page,
+      sourceCell.locator(`.shift-card[data-allocation-id="${allocationId}"]`),
+      validTarget,
+    );
+    await expect(feedback).toContainText("Quart déplacé vers Bob");
+    await expect(validTarget.locator(`.shift-card[data-allocation-id="${allocationId}"]`)).toBeVisible();
 
     await closeContext(context);
   });

@@ -13,6 +13,7 @@ import {
   getPlanningActions,
   getPlanningCapacityGrid,
   getPlanningSnapshot,
+  moveAllocation,
 } from "./api";
 import {
   addDays,
@@ -24,6 +25,17 @@ import {
   toIsoDate,
   weekDays,
 } from "./dates";
+import { useAuth } from "./AuthContext";
+import {
+  SegmentDragPayload,
+  ShiftDragPayload,
+  hasSegmentDrag,
+  hasShiftDrag,
+  readSegmentDrag,
+  readShiftDrag,
+  writeShiftDrag,
+} from "./planningDragDrop";
+import { assignSegment } from "./segments-api";
 import ManualAllocationEditor from "./ManualAllocationEditor";
 import PlanningActionPanel from "./PlanningActionPanel";
 import QuickShiftEditor from "./QuickShiftEditor";
@@ -114,10 +126,12 @@ function ShiftCard({
   shift,
   diagnostic,
   onEdit,
+  dragEnabled,
 }: {
   shift: ShiftReadModel;
   diagnostic: PlanningSegmentCapacityDiagnosticReadModel | null;
   onEdit: (shift: ShiftReadModel) => void;
+  dragEnabled: boolean;
 }) {
   const confirmation = confirmationKind(shift.confirmation);
   const emergencyOverride = Boolean((shift as EmergencyShiftReadModel).emergency_override_active);
@@ -137,11 +151,26 @@ function ShiftCard({
   return (
     <button
       type="button"
-      className={`shift-card shift-${confirmation} ${shift.outside_standard_hours ? "shift-outside" : ""} ${excess > 0 ? "shift-overallocated" : ""} ${unplaced > 0 ? "shift-unplaced" : ""}`}
+      className={`shift-card shift-${confirmation} ${shift.outside_standard_hours ? "shift-outside" : ""} ${excess > 0 ? "shift-overallocated" : ""} ${unplaced > 0 ? "shift-unplaced" : ""} ${dragEnabled ? "is-draggable" : ""}`}
+      draggable={dragEnabled}
+      data-allocation-id={shift.allocation_id}
+      data-segment-id={shift.segment_id}
+      onDragStart={(event) => {
+        if (!dragEnabled) {
+          event.preventDefault();
+          return;
+        }
+        writeShiftDrag(event.dataTransfer, {
+          kind: "SHIFT",
+          allocation_id: shift.allocation_id,
+          resource_id: shift.resource_id,
+          work_date: shift.work_date,
+        });
+      }}
       onClick={() => onEdit(shift)}
       aria-label={`Modifier le quart ${shift.project_number || shift.project_name || shift.allocation_id}, ${hours(shift.hours)} heures${emergencyOverride ? ", dérogation urgente active" : ""}${excess > 0 ? `, surallocation manuelle de ${hours(excess)} heures` : ""}${unplaced > 0 ? `, ${hours(unplaced)} heures non placées` : ""}`}
       title={[
-        "Cliquer pour modifier",
+        dragEnabled ? "Glisser vers une autre ressource/journée, ou cliquer pour modifier" : "Cliquer pour modifier",
         emergencyOverride ? "⚠ Dérogation d’approbation urgente — régularisation requise" : null,
         excess > 0 ? `⚠ Surallocation manuelle : ${hours(overallocationShift.segment_locked_hours)} h verrouillées pour ${hours(overallocationShift.segment_planned_hours)} h prévues` : null,
         unplaced > 0 ? `⚠ Capacité standard insuffisante : ${hours(unplaced)} h du segment restent à placer` : null,
@@ -239,6 +268,9 @@ function ResourceRow({
   diagnostics,
   onEditShift,
   onOpenDemands,
+  dragEnabled,
+  onDropShift,
+  onDropSegment,
 }: {
   resource: ResourceReadModel;
   days: Date[];
@@ -248,13 +280,35 @@ function ResourceRow({
   diagnostics: Map<string, PlanningSegmentCapacityDiagnosticReadModel>;
   onEditShift: (shift: ShiftReadModel) => void;
   onOpenDemands?: () => void;
+  dragEnabled: boolean;
+  onDropShift: (payload: ShiftDragPayload, resource: ResourceReadModel, day: string) => void;
+  onDropSegment: (payload: SegmentDragPayload, resource: ResourceReadModel) => void;
 }) {
   const total = shifts.reduce((sum, shift) => sum + Number(shift.hours || 0), 0);
   const dayCapacity = new Map((capacity?.days ?? []).map((row) => [row.day, row]));
 
   return (
     <div className="resource-row">
-      <div className={`resource-cell resource-identity ${capacity?.overloaded ? "resource-overloaded" : ""}`}>
+      <div
+        className={`resource-cell resource-identity planning-drop-resource ${capacity?.overloaded ? "resource-overloaded" : ""}`}
+        data-resource-id={resource.id}
+        title={dragEnabled ? "Déposer ici un besoin non attribué pour l’affecter à cette ressource" : undefined}
+        onDragOver={(event) => {
+          if (!dragEnabled || !hasSegmentDrag(event.dataTransfer)) return;
+          event.preventDefault();
+          event.dataTransfer.dropEffect = "move";
+          event.currentTarget.classList.add("is-drop-target");
+        }}
+        onDragLeave={(event) => event.currentTarget.classList.remove("is-drop-target")}
+        onDrop={(event) => {
+          event.currentTarget.classList.remove("is-drop-target");
+          if (!dragEnabled) return;
+          const payload = readSegmentDrag(event.dataTransfer);
+          if (!payload) return;
+          event.preventDefault();
+          onDropSegment(payload, resource);
+        }}
+      >
         <strong>{resource.name}</strong>
         <span>{resource.competencies || resource.resource_class || "Ressource"}</span>
         {capacity ? (
@@ -289,7 +343,28 @@ function ResourceRow({
         ].filter(Boolean).join(" ");
 
         return (
-          <div className={cellClass} key={iso}>
+          <div
+            className={`${cellClass} planning-drop-day`}
+            key={iso}
+            data-resource-id={resource.id}
+            data-day={iso}
+            title={dragEnabled ? `Déposer un quart sur ${resource.name}, ${iso}` : undefined}
+            onDragOver={(event) => {
+              if (!dragEnabled || !hasShiftDrag(event.dataTransfer)) return;
+              event.preventDefault();
+              event.dataTransfer.dropEffect = "move";
+              event.currentTarget.classList.add("is-drop-target");
+            }}
+            onDragLeave={(event) => event.currentTarget.classList.remove("is-drop-target")}
+            onDrop={(event) => {
+              event.currentTarget.classList.remove("is-drop-target");
+              if (!dragEnabled) return;
+              const payload = readShiftDrag(event.dataTransfer);
+              if (!payload) return;
+              event.preventDefault();
+              onDropShift(payload, resource, iso);
+            }}
+          >
             {cellCapacity && (
               <div className={`day-capacity ${cellCapacity.overloaded ? "is-overloaded" : ""} ${!cellCapacity.available ? "is-unavailable" : ""}`}>
                 {cellCapacity.available ? (
@@ -309,6 +384,7 @@ function ResourceRow({
                 shift={shift}
                 diagnostic={diagnostics.get(shift.segment_id) ?? null}
                 onEdit={onEditShift}
+                dragEnabled={dragEnabled}
                 key={shift.allocation_id}
               />
             ))}
@@ -328,6 +404,8 @@ function ResourceRow({
 }
 
 export default function PlanningPage({ onOpenDemands }: { onOpenDemands?: () => void }) {
+  const { can } = useAuth();
+  const canManagePlanning = can("manage_planning");
   const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date()));
   const [snapshot, setSnapshot] = useState<PlanningSnapshotReadModel | null>(null);
   const [capacityGrid, setCapacityGrid] = useState<PlanningCapacityGridReadModel | null>(null);
@@ -344,6 +422,11 @@ export default function PlanningPage({ onOpenDemands }: { onOpenDemands?: () => 
   const [editingSegmentId, setEditingSegmentId] = useState<string | null>(null);
   const [quickShiftOpen, setQuickShiftOpen] = useState(false);
   const [manualAllocationOpen, setManualAllocationOpen] = useState(false);
+  const [dropBusy, setDropBusy] = useState<string | null>(null);
+  const [dragFeedback, setDragFeedback] = useState<{
+    tone: "success" | "error" | "info";
+    message: string;
+  } | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
 
   const days = useMemo(() => weekDays(weekStart), [weekStart]);
@@ -521,6 +604,77 @@ export default function PlanningPage({ onOpenDemands }: { onOpenDemands?: () => 
 
   const visibleResourceCount = visibleResourceGroups.reduce((sum, [, rows]) => sum + rows.length, 0);
 
+  async function moveShiftFromDrop(
+    payload: ShiftDragPayload,
+    targetResource: ResourceReadModel,
+    targetDay: string,
+  ) {
+    if (!canManagePlanning || dropBusy) return;
+    if (payload.resource_id === targetResource.id && payload.work_date === targetDay) {
+      setDragFeedback({ tone: "info", message: "Le quart est déjà dans cette cellule; aucune modification appliquée." });
+      return;
+    }
+
+    setDropBusy(`shift:${payload.allocation_id}`);
+    setDragFeedback(null);
+    try {
+      await moveAllocation(payload.allocation_id, {
+        technician: targetResource.name,
+        day: targetDay,
+      });
+      setDragFeedback({
+        tone: "success",
+        message: `Quart déplacé vers ${targetResource.name} le ${targetDay} et verrouillé comme décision manuelle.`,
+      });
+      setRefreshKey((value) => value + 1);
+    } catch (reason: unknown) {
+      if (reason instanceof ApiError) {
+        setDragFeedback({
+          tone: "error",
+          message: `${reason.message}${reason.code ? ` (${reason.code})` : ""}`,
+        });
+      } else {
+        setDragFeedback({
+          tone: "error",
+          message: reason instanceof Error ? reason.message : "Impossible de déplacer le quart.",
+        });
+      }
+    } finally {
+      setDropBusy(null);
+    }
+  }
+
+  async function assignSegmentFromDrop(
+    payload: SegmentDragPayload,
+    targetResource: ResourceReadModel,
+  ) {
+    if (!canManagePlanning || dropBusy) return;
+    setDropBusy(`segment:${payload.segment_id}`);
+    setDragFeedback(null);
+    try {
+      await assignSegment(payload.segment_id, targetResource.name);
+      setDragFeedback({
+        tone: "success",
+        message: `Besoin ${payload.segment_id} attribué à ${targetResource.name}; le moteur a recalculé son placement.`,
+      });
+      setRefreshKey((value) => value + 1);
+    } catch (reason: unknown) {
+      if (reason instanceof ApiError) {
+        setDragFeedback({
+          tone: "error",
+          message: `${reason.message}${reason.code ? ` (${reason.code})` : ""}`,
+        });
+      } else {
+        setDragFeedback({
+          tone: "error",
+          message: reason instanceof Error ? reason.message : "Impossible d’attribuer le besoin.",
+        });
+      }
+    } finally {
+      setDropBusy(null);
+    }
+  }
+
   return (
     <section className="planning-page">
       <div className="page-heading">
@@ -551,6 +705,16 @@ export default function PlanningPage({ onOpenDemands }: { onOpenDemands?: () => 
         onOpenSegment={setEditingSegmentId}
         onAssigned={() => setRefreshKey((value) => value + 1)}
       />
+
+      {dragFeedback && (
+        <div
+          className={`planning-drag-feedback is-${dragFeedback.tone}`}
+          role={dragFeedback.tone === "error" ? "alert" : "status"}
+        >
+          <span>{dragFeedback.message}</span>
+          <button type="button" onClick={() => setDragFeedback(null)} aria-label="Fermer le message">×</button>
+        </div>
+      )}
 
       <div className="metric-grid">
         <article>
@@ -663,6 +827,12 @@ export default function PlanningPage({ onOpenDemands }: { onOpenDemands?: () => 
             <div>
               <strong>Ressources et quarts</strong>
               <span>{loading ? "Actualisation…" : `${visibleResourceCount} ressource(s)`}</span>
+              {canManagePlanning && (
+                <small className="planning-drag-help">
+                  Glisser un quart vers une cellule pour le déplacer; glisser un besoin « À attribuer » sur le nom d’une ressource pour l’affecter.
+                  Les boutons et éditeurs restent disponibles comme alternative clavier.
+                </small>
+              )}
             </div>
             <div className="legend">
               <span><i className="legend-dot confirmed" />Confirmée</span>
@@ -703,6 +873,9 @@ export default function PlanningPage({ onOpenDemands }: { onOpenDemands?: () => 
                       diagnostics={diagnosticsBySegment}
                       onEditShift={setEditingShift}
                       onOpenDemands={onOpenDemands}
+                      dragEnabled={canManagePlanning && !dropBusy}
+                      onDropShift={(payload, target, day) => void moveShiftFromDrop(payload, target, day)}
+                      onDropSegment={(payload, target) => void assignSegmentFromDrop(payload, target)}
                       key={resource.id}
                     />
                   ))}

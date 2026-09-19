@@ -21,6 +21,7 @@ from ..application import (
     IdempotentCommandExecutor,
     ManualAllocationCreateCommand,
     ManualAllocationDeleteCommand,
+    ManualAllocationMoveCommand,
     ManualAllocationReleaseCommand,
     ManualAllocationUpdateCommand,
     PlanningRebuildCommand,
@@ -35,6 +36,7 @@ from ..application import (
     WorkPackageUpdateCommand,
 )
 from .schemas import (
+    AllocationMoveRequest,
     AvailabilityRuleCreateRequest,
     AvailabilityRuleUpdateRequest,
     DemandAlternativeSelectionRequest,
@@ -440,6 +442,22 @@ def build_command_router(
                     confirmation=confirmation,
                     clear_confirmation_override=confirmation is None,
                     **values,
+                )
+            )
+        )
+
+    @router.post("/allocations/{allocation_id}/move")
+    def move_allocation(
+        allocation_id: str,
+        body: AllocationMoveRequest,
+        facade: ApplicationFacade = Depends(facade_dependency),
+    ) -> dict[str, Any]:
+        return _payload(
+            facade.move_allocation(
+                ManualAllocationMoveCommand(
+                    allocation_id=allocation_id,
+                    technician=body.technician,
+                    day=body.day,
                 )
             )
         )

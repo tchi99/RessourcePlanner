@@ -1,6 +1,7 @@
 from .allocation import (
     ManualAllocationCreateCommand,
     ManualAllocationDeleteCommand,
+    ManualAllocationMoveCommand,
     ManualAllocationReleaseCommand,
     ManualAllocationUpdateCommand,
     SegmentAssignCommand,
@@ -35,6 +36,7 @@ __all__ = [
     "DemandUpdateCommand",
     "ManualAllocationCreateCommand",
     "ManualAllocationDeleteCommand",
+    "ManualAllocationMoveCommand",
     "ManualAllocationReleaseCommand",
     "ManualAllocationUpdateCommand",
     "PlanningRebuildCommand",

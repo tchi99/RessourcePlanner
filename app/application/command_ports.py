@@ -37,6 +37,13 @@ class AllocationCommandPort(Protocol):
         overallocation_policy: str | None = None,
     ) -> None: ...
 
+    def move_manual(
+        self,
+        allocation_id: str,
+        technician: str,
+        day_value: Any,
+    ) -> None: ...
+
     def release_manual(self, allocation_id: str) -> None: ...
 
     def delete_manual(self, allocation_id: str) -> None: ...
