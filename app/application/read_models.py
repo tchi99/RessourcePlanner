@@ -67,6 +67,7 @@ class DemandLineReadModel:
     work_package_name: str | None = None
     task_code: str | None = None
     task_label: str | None = None
+    proposed_resource_id: str | None = None
     proposed_resource: str | None = None
     description: str | None = None
     active: bool = True
