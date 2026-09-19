@@ -332,6 +332,27 @@ export type ResourceRecommendationReadModel = {
   recommended: boolean;
 };
 
+export type MediumTermUnlinkedSegmentReadModel = {
+  segment_id: string;
+  demand_number: string | null;
+  project_number: string;
+  project_name: string;
+  task_code: string | null;
+  task_label: string | null;
+  start_date: string;
+  end_date: string;
+  planned_hours: number;
+  resource_name: string | null;
+  status: string;
+  origin: string;
+  classification: "REQUEST_UNLINKED" | "AD_HOC_ALLOWED" | "BROKEN_REFERENCE" | "ORPHAN_SEGMENT";
+  anomaly: boolean;
+  link_target: "DEMAND" | "SEGMENT";
+  current_work_package_ref: string | null;
+  reapproval_on_link: boolean;
+  description: string | null;
+};
+
 export type MediumTermCapacityBucketReadModel = {
   week_start: string;
   week_end: string;
@@ -488,6 +509,25 @@ async function sendJson<T>(
   });
   if (!response.ok) throw await responseError(response);
   return response.json() as Promise<T>;
+}
+
+export function getMediumTermUnlinkedSegments(start: string, end: string, signal?: AbortSignal) {
+  const params = new URLSearchParams({ start, end });
+  return getJson<MediumTermUnlinkedSegmentReadModel[]>(
+    `/api/v1/medium-term/unlinked-segments?${params.toString()}`,
+    signal,
+  );
+}
+
+export function linkDemandToWorkPackage(number: string, workPackageRef: string) {
+  return sendJson<DemandMutationResult>(
+    `/api/v1/demands/${encodeURIComponent(number)}`,
+    "PATCH",
+    {
+      work_package_ref: workPackageRef,
+      comment: "Rattachement au WorkPackage depuis la vue Moyen terme",
+    },
+  );
 }
 
 export function getPlanningSnapshot(start: string, end: string, signal?: AbortSignal) {

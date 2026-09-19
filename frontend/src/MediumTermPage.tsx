@@ -3,12 +3,16 @@ import { CSSProperties, useEffect, useMemo, useState } from "react";
 import {
   ApiError,
   DemandReadModel,
+  MediumTermUnlinkedSegmentReadModel,
   PendingDemandLoadReadModel,
   PlanningSnapshotReadModel,
   ProjectReadModel,
+  ResourceReadModel,
   WorkPackageReadModel,
+  getMediumTermUnlinkedSegments,
   getPlanningSnapshot,
   getProjects,
+  getResources,
   getWorkPackages,
 } from "./api";
 import {
@@ -20,6 +24,8 @@ import {
   toIsoDate,
 } from "./dates";
 import MediumTermCapacityPanel from "./MediumTermCapacityPanel";
+import MediumTermUnlinkedSegmentsPanel from "./MediumTermUnlinkedSegmentsPanel";
+import SegmentEditor from "./SegmentEditor";
 import WorkPackageEditor from "./WorkPackageEditor";
 
 const HORIZONS = [4, 8, 12] as const;
@@ -231,6 +237,8 @@ export default function MediumTermPage({ onOpenDemands }: { onOpenDemands: () =>
   const [horizonWeeks, setHorizonWeeks] = useState<HorizonWeeks>(8);
   const [projects, setProjects] = useState<ProjectReadModel[]>([]);
   const [workPackages, setWorkPackages] = useState<WorkPackageReadModel[]>([]);
+  const [resources, setResources] = useState<ResourceReadModel[]>([]);
+  const [unlinkedSegments, setUnlinkedSegments] = useState<MediumTermUnlinkedSegmentReadModel[]>([]);
   const [snapshot, setSnapshot] = useState<PlanningSnapshotReadModel | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -238,6 +246,7 @@ export default function MediumTermPage({ onOpenDemands }: { onOpenDemands: () =>
   const [projectFilter, setProjectFilter] = useState("all");
   const [managerFilter, setManagerFilter] = useState("all");
   const [editor, setEditor] = useState<WorkPackageReadModel | null | undefined>(undefined);
+  const [segmentEditorId, setSegmentEditorId] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
 
   const horizonEnd = useMemo(
@@ -254,12 +263,16 @@ export default function MediumTermPage({ onOpenDemands }: { onOpenDemands: () =>
     Promise.all([
       getProjects(true, controller.signal),
       getWorkPackages("", true, controller.signal),
+      getResources(true, controller.signal),
       getPlanningSnapshot(start, end, controller.signal),
+      getMediumTermUnlinkedSegments(start, end, controller.signal),
     ])
-      .then(([projectRows, packageRows, planning]) => {
+      .then(([projectRows, packageRows, resourceRows, planning, unlinkedRows]) => {
         setProjects(projectRows);
         setWorkPackages(packageRows);
+        setResources(resourceRows);
         setSnapshot(planning);
+        setUnlinkedSegments(unlinkedRows);
       })
       .catch((reason: unknown) => {
         if (reason instanceof DOMException && reason.name === "AbortError") return;
@@ -409,6 +422,15 @@ export default function MediumTermPage({ onOpenDemands }: { onOpenDemands: () =>
         <article><span>Charges potentielles</span><strong>{loading ? "—" : visiblePending}</strong><small>Calculées par le backend</small></article>
       </div>
 
+      <MediumTermUnlinkedSegmentsPanel
+        rows={unlinkedSegments}
+        workPackages={workPackages}
+        loading={loading}
+        onOpenDemands={onOpenDemands}
+        onOpenSegment={setSegmentEditorId}
+        onLinked={() => setRefreshKey((value) => value + 1)}
+      />
+
       <MediumTermCapacityPanel
         buckets={snapshot?.capacity_buckets ?? []}
         loading={loading}
@@ -505,6 +527,20 @@ export default function MediumTermPage({ onOpenDemands }: { onOpenDemands: () =>
         <span><i className="draft" /> Brouillon / autre état</span>
         <small>Capacité, exposition et résiduel proviennent du snapshot FastAPI; React ne recalcule ni la projection ni le non-double-comptage.</small>
       </div>
+
+      {segmentEditorId && (
+        <SegmentEditor
+          open
+          segmentId={segmentEditorId}
+          demand={null}
+          resources={resources}
+          onClose={() => setSegmentEditorId(null)}
+          onSaved={() => {
+            setSegmentEditorId(null);
+            setRefreshKey((value) => value + 1);
+          }}
+        />
+      )}
 
       {editor !== undefined && (
         <WorkPackageEditor

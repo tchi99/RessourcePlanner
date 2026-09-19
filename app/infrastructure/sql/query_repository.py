@@ -8,6 +8,7 @@ from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from ...application.query_models import (
+    MediumTermUnlinkedSegmentReadModel,
     PendingDemandLoadReadModel,
     PlanningActionReadModel,
     PlanningSnapshotReadModel,
@@ -43,6 +44,7 @@ from .models import (
     ResourceRequirement,
     Shift,
     WorkforceRequest,
+    WorkPackage,
 )
 from .segment_repository import SqlSegmentRepository
 
@@ -393,6 +395,110 @@ class SqlPlannerQueryRepository(PlannerQueryPort):
                 )
             )
 
+        return tuple(result)
+
+    def list_medium_term_unlinked_segments(
+        self,
+        *,
+        start: date,
+        end: date,
+    ) -> tuple[MediumTermUnlinkedSegmentReadModel, ...]:
+        """Expose active segments with no valid medium-term WorkPackage classification."""
+
+        if end < start:
+            start, end = end, start
+
+        rows = self._session.execute(
+            select(ResourceRequirement, Project, WorkforceRequest, Resource)
+            .join(Project, ResourceRequirement.project_id == Project.id)
+            .outerjoin(
+                WorkforceRequest,
+                ResourceRequirement.workforce_request_id == WorkforceRequest.id,
+            )
+            .outerjoin(Resource, ResourceRequirement.assigned_resource_id == Resource.id)
+            .where(
+                ResourceRequirement.status.notin_(("Annulé", "Terminé")),
+                ResourceRequirement.end_date >= start,
+                ResourceRequirement.start_date <= end,
+            )
+            .order_by(
+                ResourceRequirement.start_date,
+                Project.number,
+                ResourceRequirement.legacy_segment_id,
+                ResourceRequirement.id,
+            )
+        ).all()
+        work_packages = self._session.scalars(select(WorkPackage)).all()
+        package_by_reference: dict[str, WorkPackage] = {}
+        package_by_id: dict[str, WorkPackage] = {}
+        for package in work_packages:
+            package_by_id[package.id] = package
+            package_by_reference[package.id] = package
+            legacy = _text(package.legacy_effort_id)
+            if legacy:
+                package_by_reference[legacy] = package
+
+        result: list[MediumTermUnlinkedSegmentReadModel] = []
+        for requirement, project, request, resource in rows:
+            segment_id = _text(requirement.legacy_segment_id) or requirement.id
+            origin = _text(requirement.origin) or "REQUEST"
+            current_ref = _optional_text(requirement.source_effort_id)
+
+            if request is not None and request.work_package_id:
+                package = package_by_id.get(request.work_package_id)
+                if package is not None:
+                    continue
+                classification = "BROKEN_REFERENCE"
+                anomaly = True
+                link_target = "DEMAND"
+            elif request is not None:
+                classification = "REQUEST_UNLINKED"
+                anomaly = True
+                link_target = "DEMAND"
+            else:
+                linked_package = package_by_reference.get(current_ref or "")
+                if linked_package is not None and linked_package.project_id == project.id:
+                    continue
+                if current_ref:
+                    classification = "BROKEN_REFERENCE"
+                    anomaly = True
+                elif origin in {"QUICK_SHIFT", "AD_HOC"}:
+                    classification = "AD_HOC_ALLOWED"
+                    anomaly = False
+                else:
+                    classification = "ORPHAN_SEGMENT"
+                    anomaly = True
+                link_target = "SEGMENT"
+
+            demand_number = (
+                _text(request.legacy_demand_number) or request.id
+                if request is not None
+                else None
+            )
+            result.append(
+                MediumTermUnlinkedSegmentReadModel(
+                    segment_id=segment_id,
+                    demand_number=demand_number,
+                    project_number=project.number,
+                    project_name=project.name,
+                    task_code=_optional_text(request.erp_task_code) if request is not None else None,
+                    task_label=_optional_text(request.erp_task_label) if request is not None else None,
+                    start_date=requirement.start_date,
+                    end_date=requirement.end_date,
+                    planned_hours=float(requirement.planned_hours),
+                    resource_name=_optional_text(resource.name) if resource is not None else None,
+                    status=_text(requirement.status),
+                    origin=origin,
+                    classification=classification,
+                    anomaly=anomaly,
+                    link_target=link_target,
+                    current_work_package_ref=current_ref,
+                    reapproval_on_link=(
+                        request is not None and request.status == "En planification"
+                    ),
+                    description=_optional_text(requirement.description),
+                )
+            )
         return tuple(result)
 
     def list_planning_actions(

@@ -7,6 +7,7 @@ from typing import Protocol
 from .plan_delta import DemandPlanDeltaReadModel
 from .query_models import (
     DemandHistoryReadModel,
+    MediumTermUnlinkedSegmentReadModel,
     PendingDemandLoadReadModel,
     PlanningActionReadModel,
     PlanningHistoryReadModel,
@@ -66,6 +67,13 @@ class PlannerQueryPort(Protocol):
         start: date,
         end: date,
     ) -> Sequence[PendingDemandLoadReadModel]: ...
+
+    def list_medium_term_unlinked_segments(
+        self,
+        *,
+        start: date,
+        end: date,
+    ) -> Sequence[MediumTermUnlinkedSegmentReadModel]: ...
 
     def list_planning_actions(
         self,
