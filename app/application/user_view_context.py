@@ -1,0 +1,192 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Protocol
+
+from .query_models import ResourceReadModel
+from .security import (
+    AuthPrincipal,
+    PERMISSION_READ,
+    ROLE_ADMIN,
+    ROLE_COORDINATOR,
+    ROLE_MANAGER,
+    ROLE_PROJECT_MANAGER,
+    ROLE_TECHNICIAN,
+)
+
+
+LINK_STATUS_UNLINKED = "UNLINKED"
+LINK_STATUS_RESOURCE_NOT_FOUND = "RESOURCE_NOT_FOUND"
+LINK_STATUS_LINKED = "LINKED"
+
+SCOPE_MINE = "mine"
+SCOPE_GLOBAL = "global"
+
+
+@dataclass(frozen=True, slots=True)
+class PersonalResourceResolution:
+    employee_external_id: str | None
+    link_status: str
+    resource: ResourceReadModel | None
+
+
+@dataclass(frozen=True, slots=True)
+class ResolvedUserRelations:
+    employee_external_id: str | None
+    resource_link_status: str
+    resource: ResourceReadModel | None
+    managed_project_ids: tuple[str, ...]
+    participating_project_ids: tuple[str, ...]
+
+    @property
+    def personal_project_ids(self) -> tuple[str, ...]:
+        return tuple(
+            dict.fromkeys((*self.managed_project_ids, *self.participating_project_ids))
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class UserViewResourceReadModel:
+    id: str | None
+    link_status: str
+    active: bool | None
+
+
+@dataclass(frozen=True, slots=True)
+class UserViewRelationsReadModel:
+    managed_project_count: int
+    participating_project_count: int
+    personal_project_count: int
+
+
+@dataclass(frozen=True, slots=True)
+class UserViewPolicyReadModel:
+    available_scopes: tuple[str, ...]
+    default_scope: str
+
+
+@dataclass(frozen=True, slots=True)
+class UserViewContextReadModel:
+    resource: UserViewResourceReadModel
+    relations: UserViewRelationsReadModel
+    view_policy: UserViewPolicyReadModel
+    diagnostics: tuple[str, ...]
+
+
+class UserViewContextRepositoryPort(Protocol):
+    def get_resource_by_external_id(
+        self,
+        employee_external_id: str,
+    ) -> ResourceReadModel | None: ...
+
+    def list_managed_project_ids(
+        self,
+        employee_external_id: str,
+    ) -> tuple[str, ...]: ...
+
+    def list_participating_project_ids(
+        self,
+        resource_id: str,
+    ) -> tuple[str, ...]: ...
+
+
+def resolve_personal_resource(
+    principal: AuthPrincipal,
+    repository: UserViewContextRepositoryPort,
+) -> PersonalResourceResolution:
+    employee_external_id = str(principal.employee_external_id or "").strip() or None
+    if employee_external_id is None:
+        return PersonalResourceResolution(
+            employee_external_id=None,
+            link_status=LINK_STATUS_UNLINKED,
+            resource=None,
+        )
+
+    resource = repository.get_resource_by_external_id(employee_external_id)
+    if resource is None:
+        return PersonalResourceResolution(
+            employee_external_id=employee_external_id,
+            link_status=LINK_STATUS_RESOURCE_NOT_FOUND,
+            resource=None,
+        )
+
+    return PersonalResourceResolution(
+        employee_external_id=employee_external_id,
+        link_status=LINK_STATUS_LINKED,
+        resource=resource,
+    )
+
+
+class UserViewContextService:
+    """Resolve display context from stable business relationships, never from names."""
+
+    _TRANSVERSE_ROLES = frozenset({ROLE_ADMIN, ROLE_COORDINATOR, ROLE_MANAGER})
+    _PERSONAL_ROLES = frozenset({ROLE_PROJECT_MANAGER, ROLE_TECHNICIAN})
+
+    def __init__(self, repository: UserViewContextRepositoryPort) -> None:
+        self._repository = repository
+
+    def resolve_relations(self, principal: AuthPrincipal) -> ResolvedUserRelations:
+        resource_resolution = resolve_personal_resource(principal, self._repository)
+        employee_external_id = resource_resolution.employee_external_id
+
+        managed_project_ids = (
+            self._repository.list_managed_project_ids(employee_external_id)
+            if employee_external_id is not None
+            else ()
+        )
+        participating_project_ids = (
+            self._repository.list_participating_project_ids(
+                resource_resolution.resource.id
+            )
+            if resource_resolution.resource is not None
+            else ()
+        )
+
+        return ResolvedUserRelations(
+            employee_external_id=employee_external_id,
+            resource_link_status=resource_resolution.link_status,
+            resource=resource_resolution.resource,
+            managed_project_ids=tuple(managed_project_ids),
+            participating_project_ids=tuple(participating_project_ids),
+        )
+
+    def _default_scope(self, principal: AuthPrincipal) -> str:
+        roles = frozenset(principal.roles)
+        if roles & self._TRANSVERSE_ROLES:
+            return SCOPE_GLOBAL
+        if roles & self._PERSONAL_ROLES:
+            return SCOPE_MINE
+        return SCOPE_GLOBAL
+
+    def read(self, principal: AuthPrincipal) -> UserViewContextReadModel:
+        relations = self.resolve_relations(principal)
+        diagnostics: list[str] = []
+        if relations.employee_external_id is None:
+            diagnostics.append("employee_external_id_missing")
+        elif relations.resource_link_status == LINK_STATUS_RESOURCE_NOT_FOUND:
+            diagnostics.append("resource_not_found")
+
+        available_scopes = (
+            (SCOPE_MINE, SCOPE_GLOBAL)
+            if principal.has_permission(PERMISSION_READ)
+            else (SCOPE_MINE,)
+        )
+        resource = relations.resource
+        return UserViewContextReadModel(
+            resource=UserViewResourceReadModel(
+                id=resource.id if resource is not None else None,
+                link_status=relations.resource_link_status,
+                active=resource.active if resource is not None else None,
+            ),
+            relations=UserViewRelationsReadModel(
+                managed_project_count=len(relations.managed_project_ids),
+                participating_project_count=len(relations.participating_project_ids),
+                personal_project_count=len(relations.personal_project_ids),
+            ),
+            view_policy=UserViewPolicyReadModel(
+                available_scopes=available_scopes,
+                default_scope=self._default_scope(principal),
+            ),
+            diagnostics=tuple(diagnostics),
+        )
