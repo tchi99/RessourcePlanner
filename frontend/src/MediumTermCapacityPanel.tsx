@@ -50,9 +50,11 @@ function CapacityCell({ bucket }: { bucket: MediumTermCapacityBucketReadModel })
 export default function MediumTermCapacityPanel({
   buckets,
   loading,
+  contextual,
 }: {
   buckets: MediumTermCapacityBucketReadModel[];
   loading: boolean;
+  contextual: boolean;
 }) {
   const totals = useMemo(
     () => buckets.filter((bucket) => bucket.resource_class === null),
@@ -84,6 +86,7 @@ export default function MediumTermCapacityPanel({
         </div>
         <p>
           F = ferme · T = plan courant tentative · S = demande soumise additive. Les propositions ↻ remplacent un plan existant et ne sont jamais additionnées à l’exposition.
+          {contextual && " Référence organisationnelle globale : cette capacité n’est pas filtrée par « Mon périmètre »."}
         </p>
       </header>
 
