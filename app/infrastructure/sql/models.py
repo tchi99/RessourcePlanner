@@ -205,6 +205,9 @@ class WorkforceRequest(TimestampMixin, Base):
     emergency_override_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     emergency_override_by_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     emergency_override_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    aggregate_version: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default=text("1")
+    )
 
 
 class RequestLine(TimestampMixin, Base):
@@ -274,6 +277,12 @@ class RequestLine(TimestampMixin, Base):
         Numeric(12, 2), nullable=True
     )
     estimated_hours: Mapped[Decimal | None] = mapped_column(
+        Numeric(12, 2), nullable=True
+    )
+    estimated_hours_source: Mapped[str | None] = mapped_column(
+        String(32), nullable=True
+    )
+    default_hours_per_day: Mapped[Decimal | None] = mapped_column(
         Numeric(12, 2), nullable=True
     )
     confirmation: Mapped[str] = mapped_column(
