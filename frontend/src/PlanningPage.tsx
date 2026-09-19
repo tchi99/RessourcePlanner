@@ -456,8 +456,6 @@ export default function PlanningPage({ onOpenDemands }: { onOpenDemands?: () => 
     setSnapshot(null);
     setActions([]);
     setCapacityGrid(null);
-    setEditingShift(null);
-    setEditingSegmentId(null);
     Promise.all([
       getPlanningSnapshot(start, end, controller.signal, scope),
       getPlanningActions(start, end, controller.signal, scope),
