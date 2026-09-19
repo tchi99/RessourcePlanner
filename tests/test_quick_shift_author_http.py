@@ -47,7 +47,11 @@ class QuickShiftAuthorHttpTests(unittest.TestCase):
                 session.add(Resource(id="R1", name="Alice", active=True))
             engine.dispose()
 
-            app = create_api_app(\n                database_url,\n                actor_name="Coordonnateur",\n                auth_resolver=test_admin_auth_resolver("Coordonnateur"),\n            )
+            app = create_api_app(
+                database_url,
+                actor_name="Coordonnateur",
+                auth_resolver=test_admin_auth_resolver("Coordonnateur"),
+            )
             with TestClient(app, raise_server_exceptions=False) as client:
                 created = client.post(
                     "/api/v1/quick-shifts",
