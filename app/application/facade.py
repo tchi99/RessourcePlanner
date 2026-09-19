@@ -12,6 +12,7 @@ from .commands import (
     DemandUpdateCommand,
     ManualAllocationCreateCommand,
     ManualAllocationDeleteCommand,
+    ManualAllocationMoveCommand,
     ManualAllocationReleaseCommand,
     ManualAllocationUpdateCommand,
     PlanningRebuildCommand,
@@ -233,6 +234,13 @@ class ApplicationFacade:
     ) -> AllocationMutationResult:
         self._allocations.update_manual_command(command)
         return AllocationMutationResult(_identifier(command.allocation_id), action="updated")
+
+    def move_allocation(
+        self,
+        command: ManualAllocationMoveCommand,
+    ) -> AllocationMutationResult:
+        self._allocations.move_manual_command(command)
+        return AllocationMutationResult(_identifier(command.allocation_id), action="moved")
 
     def release_allocation(
         self,
