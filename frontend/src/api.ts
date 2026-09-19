@@ -288,6 +288,50 @@ export type PendingDemandLoadReadModel = {
   periods: DemandPeriodReadModel[];
 };
 
+export type PlanningActionReadModel = {
+  kind: "APPROVAL" | "ASSIGNMENT";
+  reference: string;
+  demand_number: string | null;
+  segment_id: string | null;
+  project_number: string | null;
+  project_name: string | null;
+  task_code: string | null;
+  task_label: string | null;
+  start_date: string;
+  end_date: string;
+  planned_hours: number;
+  required_competency: string | null;
+  required_competency_id: string | null;
+  priority: string | null;
+  status: string | null;
+  confirmation: string | null;
+  project_manager: string | null;
+  requester: string | null;
+  emergency_override_active: boolean;
+};
+
+export type ResourceRecommendationReadModel = {
+  resource_id: string;
+  resource_name: string;
+  resource_class: string | null;
+  required_competency: string | null;
+  required_class: string | null;
+  competency_match: boolean;
+  class_match: boolean;
+  capacity_hours: number;
+  confirmed_hours: number;
+  tentative_hours: number;
+  outside_standard_hours: number;
+  free_after_confirmed: number;
+  prudent_free: number;
+  overtime_needed: number;
+  enough_after_confirmed: boolean;
+  enough_prudent: boolean;
+  score: number;
+  rank: number;
+  recommended: boolean;
+};
+
 export type MediumTermCapacityBucketReadModel = {
   week_start: string;
   week_end: string;
@@ -449,6 +493,18 @@ async function sendJson<T>(
 export function getPlanningSnapshot(start: string, end: string, signal?: AbortSignal) {
   const params = new URLSearchParams({ start, end });
   return getJson<PlanningSnapshotReadModel>(`/api/v1/planning/snapshot?${params.toString()}`, signal);
+}
+
+export function getPlanningActions(start: string, end: string, signal?: AbortSignal) {
+  const params = new URLSearchParams({ start, end });
+  return getJson<PlanningActionReadModel[]>(`/api/v1/planning/actions?${params.toString()}`, signal);
+}
+
+export function getResourceRecommendations(segmentId: string, signal?: AbortSignal) {
+  return getJson<ResourceRecommendationReadModel[]>(
+    `/api/v1/segments/${encodeURIComponent(segmentId)}/resource-recommendations`,
+    signal,
+  );
 }
 
 export function getProjects(activeOnly = true, signal?: AbortSignal) {
