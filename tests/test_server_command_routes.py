@@ -124,6 +124,7 @@ class ServerCommandRouteTests(unittest.TestCase):
                             {
                                 "required_resource_class": "Automatisation",
                                 "required_competency_ids": ["C1"],
+                                "proposed_resource_id": "R1",
                                 "desired_start": "2026-08-24",
                                 "desired_end": "2026-08-26",
                                 "desired_active_days": 3
@@ -155,6 +156,8 @@ class ServerCommandRouteTests(unittest.TestCase):
                 self.assertEqual(active[0]["estimated_hours_source"], "DEFAULT_8H")
                 self.assertEqual(active[0]["default_hours_per_day"], 8.0)
                 self.assertEqual(active[0]["required_competency_ids"], ["C1"])
+                self.assertEqual(active[0]["proposed_resource_id"], "R1")
+                self.assertEqual(active[0]["proposed_resource"], "Alice")
                 self.assertEqual(active[1]["estimated_hours"], 12.0)
                 self.assertEqual(active[1]["estimated_hours_source"], "EXPLICIT")
 
@@ -169,6 +172,7 @@ class ServerCommandRouteTests(unittest.TestCase):
                                 "id": first_id,
                                 "required_resource_class": "Automatisation",
                                 "required_competency_ids": ["C1"],
+                                "proposed_resource_id": "R1",
                                 "desired_start": "2026-08-24",
                                 "desired_end": "2026-08-26",
                                 "desired_active_days": 3
