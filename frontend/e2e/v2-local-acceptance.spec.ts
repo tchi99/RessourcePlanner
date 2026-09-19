@@ -467,13 +467,27 @@ test("V2 local acceptance path runs through React, Chromium, FastAPI and SQLite"
     await quickShift.getByRole("button", { name: "Créer le Quick Shift" }).click();
     await expect(quickShift).toBeHidden();
 
+    const shiftsResponse = await page.request.get(
+      `/api/v1/shifts?start=${d1}&end=${d5}`,
+    );
+    expect(shiftsResponse.ok()).toBeTruthy();
+    const shifts = await shiftsResponse.json() as Array<{
+      allocation_id: string;
+      resource_name: string;
+      work_date: string;
+      note: string | null;
+    }>;
+    const createdShift = shifts.find((row) => row.note === "DnD #275");
+    expect(createdShift, "Quart Quick Shift DnD introuvable après création").toBeDefined();
+    const allocationId = createdShift!.allocation_id;
+    expect(createdShift!.resource_name).toBe("Alice");
+    expect(createdShift!.work_date).toBe(d2);
+
     const aliceRow = page.locator(".resource-identity").filter({ hasText: "Alice" }).first().locator("..");
     const bobRow = page.locator(".resource-identity").filter({ hasText: "Bob" }).first().locator("..");
     const sourceCell = aliceRow.locator(`.planning-drop-day[data-day="${d2}"]`);
-    const source = sourceCell.locator('.shift-card[data-allocation-id^="MAN-"]').last();
+    const source = sourceCell.locator(`.shift-card[data-allocation-id="${allocationId}"]`);
     await expect(source).toBeVisible();
-    const allocationId = await source.getAttribute("data-allocation-id");
-    expect(allocationId).not.toBeNull();
 
     const invalidTarget = bobRow.locator(`.planning-drop-day[data-day="${d3}"]`);
     await source.dragTo(invalidTarget);
