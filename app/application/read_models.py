@@ -102,6 +102,7 @@ class DemandReadModel:
     estimated_days: float | None = None
     proposed_resource: str | None = None
     version: int = 1
+    line_mode: bool = False
     lines: tuple[DemandLineReadModel, ...] = ()
     emergency_override_active: bool = False
     emergency_override_reason: str | None = None
