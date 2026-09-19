@@ -17,6 +17,7 @@ from app.application.errors import (
 )
 from app.application.read_models import DemandReadModel
 from app.application.runtime_services import demand_service
+from app.domain.demand_periods import DemandPeriodDefinition
 
 
 class _Demands:
@@ -163,6 +164,31 @@ class DemandServiceTests(unittest.TestCase):
                 for event in events
                 if isinstance(event, tuple)
             )
+        )
+
+    def test_period_change_detection_includes_desired_active_days(self) -> None:
+        definition = DemandPeriodDefinition(
+            period_id="PER-1",
+            start_date=date(2026, 8, 25),
+            end_date=date(2026, 8, 29),
+            hours=24,
+            desired_active_days=3,
+        )
+        persisted = DemandPeriodReadModel(
+            period_id="PER-1",
+            demand_number="DMO-PERIOD",
+            sequence=0,
+            kind="CUMULATIVE",
+            start_date=date(2026, 8, 25),
+            end_date=date(2026, 8, 29),
+            hours=24,
+            confirmation="Tentative",
+            desired_active_days=2,
+        )
+
+        self.assertNotEqual(
+            DemandService._period_signature_from_definition(definition),
+            DemandService._period_signature_from_read_model(persisted),
         )
 
     def test_modify_unapproved_demand_does_not_force_reapproval(self) -> None:
