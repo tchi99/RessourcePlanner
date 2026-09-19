@@ -32,7 +32,7 @@ class NormalizedRequestLine:
     default_hours_per_day: float | None
     work_package_ref: str | None
     task_code: str | None
-    proposed_technician: str | None
+    proposed_resource_id: str | None
     confirmation: str
     description: str | None
 
@@ -53,7 +53,7 @@ class NormalizedRequestLine:
             "default_hours_per_day": self.default_hours_per_day,
             "work_package_ref": self.work_package_ref,
             "task_code": self.task_code,
-            "proposed_technician": self.proposed_technician,
+            "proposed_resource_id": self.proposed_resource_id,
             "confirmation": self.confirmation,
             "description": self.description,
         }
@@ -78,7 +78,7 @@ def normalize_request_line(
     estimated_hours: float | None,
     work_package_ref: str | None,
     task_code: str | None,
-    proposed_technician: str | None,
+    proposed_resource_id: str | None,
     confirmation: str,
     description: str | None,
     require_complete: bool,
@@ -176,7 +176,7 @@ def normalize_request_line(
         default_hours_per_day=default_hours_per_day,
         work_package_ref=_clean_optional(work_package_ref),
         task_code=_clean_optional(task_code),
-        proposed_technician=_clean_optional(proposed_technician),
+        proposed_resource_id=_clean_optional(proposed_resource_id),
         confirmation=str(confirmation or "Confirmée").strip() or "Confirmée",
         description=_clean_optional(description),
     )
