@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from collections.abc import Sequence
 from datetime import date
 
 from ...application.query_models import PlanningSnapshotReadModel, ShiftReadModel
@@ -18,19 +19,32 @@ class SqlPlannerQueryRepository(_BaseSqlPlannerQueryRepository):
         end: date | None = None,
         resource_name: str | None = None,
         resource_id: str | None = None,
+        project_ids: Sequence[str] | None = None,
     ) -> tuple[ShiftReadModel, ...]:
-        rows = super().list_shifts(
+        return super().list_shifts(
             start=start,
             end=end,
             resource_name=resource_name,
+            resource_id=resource_id,
+            project_ids=project_ids,
         )
-        wanted_id = str(resource_id or "").strip()
-        if not wanted_id:
-            return rows
-        return tuple(row for row in rows if row.resource_id == wanted_id)
 
-    def planning_snapshot(self, *, start: date, end: date) -> PlanningSnapshotReadModel:
-        snapshot = super().planning_snapshot(start=start, end=end)
+    def planning_snapshot(
+        self,
+        *,
+        start: date,
+        end: date,
+        project_ids: Sequence[str] | None = None,
+        include_resource_ids: Sequence[str] = (),
+    ) -> PlanningSnapshotReadModel:
+        snapshot = super().planning_snapshot(
+            start=start,
+            end=end,
+            project_ids=project_ids,
+            include_resource_ids=include_resource_ids,
+        )
+        # Medium-term capacity remains an organization-wide reference. The contextual
+        # scope filters projects/work packages/cards, not the company's capacity pool.
         return replace(
             snapshot,
             capacity_buckets=build_medium_term_capacity_buckets(
