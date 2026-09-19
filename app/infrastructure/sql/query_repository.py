@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import date
 
 from sqlalchemy import or_, select
@@ -109,14 +110,31 @@ class SqlPlannerQueryRepository(PlannerQueryPort):
         self._periods = SqlDemandPeriodRepository(session)
         self._segments = SqlSegmentRepository(session)
 
-    def _resource_competency_ids(self, resource_id: str) -> tuple[str, ...]:
-        return tuple(
-            self._session.scalars(
-                select(ResourceCompetency.competency_id).where(
-                    ResourceCompetency.resource_id == resource_id
-                )
-            ).all()
-        )
+    def _resource_competency_ids_by_resource(
+        self,
+        resource_ids: Sequence[str],
+    ) -> dict[str, tuple[str, ...]]:
+        identifiers = tuple(str(value) for value in resource_ids if str(value))
+        if not identifiers:
+            return {}
+        grouped: dict[str, list[str]] = {identifier: [] for identifier in identifiers}
+        rows = self._session.execute(
+            select(
+                ResourceCompetency.resource_id,
+                ResourceCompetency.competency_id,
+            )
+            .where(ResourceCompetency.resource_id.in_(identifiers))
+            .order_by(
+                ResourceCompetency.resource_id,
+                ResourceCompetency.competency_id,
+            )
+        ).all()
+        for resource_id, competency_id in rows:
+            grouped.setdefault(resource_id, []).append(competency_id)
+        return {
+            resource_id: tuple(competency_ids)
+            for resource_id, competency_ids in grouped.items()
+        }
 
     def list_projects(self, *, active_only: bool = False) -> tuple[ProjectReadModel, ...]:
         rows = self._session.scalars(select(Project).order_by(Project.number)).all()
@@ -147,7 +165,13 @@ class SqlPlannerQueryRepository(PlannerQueryPort):
         rows = self._session.scalars(
             statement.order_by(Resource.sort_order, Resource.name)
         ).all()
-        return tuple(_resource_read_model(resource, self._resource_competency_ids(resource.id)) for resource in rows)
+        competency_ids = self._resource_competency_ids_by_resource(
+            tuple(resource.id for resource in rows)
+        )
+        return tuple(
+            _resource_read_model(resource, competency_ids.get(resource.id, ()))
+            for resource in rows
+        )
 
     def list_schedulable_resources(
         self,
@@ -180,7 +204,13 @@ class SqlPlannerQueryRepository(PlannerQueryPort):
             )
             .order_by(Resource.sort_order, Resource.name)
         ).all()
-        return tuple(_resource_read_model(resource, self._resource_competency_ids(resource.id)) for resource in rows)
+        competency_ids = self._resource_competency_ids_by_resource(
+            tuple(resource.id for resource in rows)
+        )
+        return tuple(
+            _resource_read_model(resource, competency_ids.get(resource.id, ()))
+            for resource in rows
+        )
 
     def list_demands(self) -> tuple[DemandReadModel, ...]:
         return tuple(self._demands.list())
@@ -209,10 +239,14 @@ class SqlPlannerQueryRepository(PlannerQueryPort):
             )
         ).all()
         result: list[PendingDemandLoadReadModel] = []
+        demands_by_number = {
+            demand.number: demand
+            for demand in self._demands.list()
+        }
 
         for request in requests:
             number = _text(request.legacy_demand_number) or request.id
-            demand = self._demands.get(number)
+            demand = demands_by_number.get(number)
             if demand is None:
                 continue
 
