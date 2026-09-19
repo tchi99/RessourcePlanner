@@ -110,6 +110,14 @@ class SqlDemandRepository(DemandRepositoryPort):
                 else None
             ),
             version=max(int(request.aggregate_version or 1), 1),
+            line_mode=not (
+                len(tuple(line for line in lines if line.active)) == 1
+                and next(
+                    (line.line_id for line in lines if line.active),
+                    None,
+                )
+                == request.id
+            ),
             lines=lines,
         )
 
