@@ -88,10 +88,9 @@ class ApplicationCommandDtoTests(unittest.TestCase):
             resource_count=2,
             estimated_days=3,
         )
-        self.assertEqual(
-            legacy.to_repository_values()["TempsEstimeHeures"],
-            48.0,
-        )
+        legacy_values = legacy.to_repository_values()
+        self.assertEqual(legacy_values["TempsEstimeHeures"], 48.0)
+        self.assertEqual(legacy_values["RequestLineHoursSource"], "DEFAULT_8H")
 
     def test_demand_update_is_a_closed_patch_contract(self) -> None:
         command = DemandUpdateCommand.from_mapping(
