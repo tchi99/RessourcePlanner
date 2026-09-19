@@ -51,6 +51,7 @@ function ActionCard({
     <article
       className={`planning-action-card action-${action.kind.toLowerCase()} ${draggable ? "is-draggable" : ""}`}
       draggable={draggable}
+      data-segment-id={action.segment_id || undefined}
       onDragStart={(event) => {
         if (!draggable || !action.segment_id) {
           event.preventDefault();
