@@ -257,6 +257,7 @@ class SqlDemandRepository(DemandRepositoryPort):
                     ),
                     task_code=_optional_text(line.erp_task_code),
                     task_label=_optional_text(line.erp_task_label),
+                    proposed_resource_id=_optional_text(line.proposed_resource_id),
                     proposed_resource=(
                         _optional_text(resource.name) if resource is not None else None
                     ),
@@ -420,6 +421,15 @@ class SqlDemandRepository(DemandRepositoryPort):
             raise KeyError(f"Ressource {resource_name} introuvable")
         return resource
 
+    def _resource_by_id(self, identifier: object) -> Resource | None:
+        resource_id = _text(identifier)
+        if not resource_id:
+            return None
+        resource = self._session.get(Resource, resource_id)
+        if resource is None:
+            raise KeyError(f"Ressource {resource_id} introuvable")
+        return resource
+
     def _competencies(self, identifiers: Sequence[str]) -> tuple[Competency, ...]:
         wanted = tuple(dict.fromkeys(_text(value) for value in identifiers if _text(value)))
         if not wanted:
@@ -487,7 +497,7 @@ class SqlDemandRepository(DemandRepositoryPort):
                 project_id=project.id,
             )
             task = self._task(raw.get("task_code"), project_number=project.number)
-            proposed = self._resource(raw.get("proposed_technician"))
+            proposed = self._resource_by_id(raw.get("proposed_resource_id"))
             competencies = self._competencies(
                 tuple(raw.get("required_competency_ids") or ())
             )
