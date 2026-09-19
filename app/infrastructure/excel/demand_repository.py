@@ -46,6 +46,10 @@ class ExcelDemandRepository(DemandRepositoryPort):
         )
 
     def create(self, values: Mapping[str, Any], *, submit: bool = False) -> str:
+        if "RequestLines" in values:
+            raise ValueError(
+                "Les demandes multi-lignes sont disponibles uniquement dans le runtime SQL/Web."
+            )
         return str(self._repository.create_demand(dict(values), submit=submit))
 
     def update(
@@ -56,6 +60,10 @@ class ExcelDemandRepository(DemandRepositoryPort):
         action: str,
         comment: str = "",
     ) -> None:
+        if "RequestLines" in updates:
+            raise ValueError(
+                "Les demandes multi-lignes sont disponibles uniquement dans le runtime SQL/Web."
+            )
         self._repository.update_demand(
             str(number),
             dict(updates),
