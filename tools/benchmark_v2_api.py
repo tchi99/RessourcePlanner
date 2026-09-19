@@ -16,6 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from app.application.security import AuthPrincipal, ROLE_ADMIN
 from app.infrastructure.sql import Base, create_session_factory, create_sql_engine
 from app.infrastructure.sql.models import (
     Project,
@@ -35,7 +36,20 @@ from app.performance_baseline import (
 )
 from app.performance_diagnostics import read_performance_samples
 from app.server import create_api_app
+from app.server.security import static_auth_resolver
 
+
+PERFORMANCE_AUTH_RESOLVER = static_auth_resolver(
+    AuthPrincipal.from_roles(
+        local_user_id=None,
+        issuer="urn:resourceplanner:benchmark",
+        subject="benchmark-admin",
+        display_name="Benchmark V2",
+        email=None,
+        roles=(ROLE_ADMIN,),
+        auth_mode="test",
+    )
+)
 
 WINDOW_START = date(2026, 1, 5)
 WINDOW_END = date(2026, 1, 9)
@@ -223,7 +237,11 @@ def run_dataset(name: str, *, iterations: int, root: Path) -> dict[str, object]:
     log_path = root / f"{name}.performance.jsonl"
     database_url = f"sqlite+pysqlite:///{database_path.as_posix()}"
     _seed(database_url, spec)
-    app = create_api_app(database_url, performance_log_path=log_path)
+    app = create_api_app(
+        database_url,
+        auth_resolver=PERFORMANCE_AUTH_RESOLVER,
+        performance_log_path=log_path,
+    )
     with TestClient(app) as client:
         # Warm caches and SQLAlchemy compilation before collecting comparable samples.
         for endpoint in ENDPOINTS:
