@@ -8,9 +8,14 @@ from types import ModuleType
 import unittest
 from unittest.mock import patch
 
-from app.application.commands import DemandApproveCommand, DemandUpdateCommand
+from app.application.commands import (
+    DemandApproveCommand,
+    DemandLineInput,
+    DemandUpdateCommand,
+)
 from app.application.demand_service import DemandService
 from app.application.errors import (
+    ApplicationConflictError,
     ApplicationNotFoundError,
     ApplicationOperationError,
     ApplicationValidationError,
@@ -165,6 +170,37 @@ class DemandServiceTests(unittest.TestCase):
                 if isinstance(event, tuple)
             )
         )
+
+    def test_approved_demand_line_conversion_waits_for_288e_snapshots(self) -> None:
+        service, _demands, events = self._service(
+            record=DemandReadModel(
+                number="DMO-APPROVED",
+                status="En planification",
+                desired_start=date(2026, 8, 25),
+                desired_end=date(2026, 8, 29),
+                version=1,
+            )
+        )
+
+        with self.assertRaises(ApplicationConflictError) as raised:
+            service.modify_command(
+                DemandUpdateCommand(
+                    number="DMO-APPROVED",
+                    expected_version=1,
+                    lines=(
+                        DemandLineInput(
+                            desired_start=date(2026, 8, 25),
+                            desired_active_days=1,
+                        ),
+                    ),
+                )
+            )
+
+        self.assertEqual(
+            raised.exception.code,
+            "demand_line_reapproval_unavailable",
+        )
+        self.assertEqual(events, [])
 
     def test_period_change_detection_includes_desired_active_days(self) -> None:
         definition = DemandPeriodDefinition(
