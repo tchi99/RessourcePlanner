@@ -92,10 +92,12 @@ from .project_sync import (
 from .query_models import (
     DemandHistoryReadModel,
     PendingDemandLoadReadModel,
+    PlanningActionReadModel,
     PlanningSnapshotReadModel,
     ProjectReadModel,
     ResourceAvailabilityRuleReadModel,
     ResourceReadModel,
+    ResourceRecommendationReadModel,
     ShiftReadModel,
     WorkPackageReadModel,
 )
@@ -207,6 +209,7 @@ __all__ = [
     "ManualAllocationReleaseCommand",
     "ManualAllocationUpdateCommand",
     "PendingDemandLoadReadModel",
+    "PlanningActionReadModel",
     "PlannerQueryPort",
     "PlanningCommandPort",
     "PlanningReadRepositoryPort",
@@ -227,6 +230,7 @@ __all__ = [
     "ResourceCreateCommand",
     "ResourceMutationResult",
     "ResourceReadModel",
+    "ResourceRecommendationReadModel",
     "ResourceUpdateCommand",
     "SegmentAssignCommand",
     "SegmentCancelCommand",
