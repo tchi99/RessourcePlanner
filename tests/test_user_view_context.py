@@ -154,7 +154,7 @@ class UserViewContextTests(unittest.TestCase):
             issuer="urn:test",
             subject="user",
             display_name="Utilisateur test",
-            email="renamed@example.invalid",
+            email=None,
             employee_external_id=employee_external_id,
             roles=roles,
             auth_mode="local",
