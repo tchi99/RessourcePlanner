@@ -11,6 +11,10 @@ from ...application.query_models import (
     MediumTermUnlinkedSegmentReadModel,
     PendingDemandLoadReadModel,
     PlanningActionReadModel,
+    PlanningCapacityGridReadModel,
+    PlanningDayCapacityReadModel,
+    PlanningResourceCapacityReadModel,
+    PlanningSegmentCapacityDiagnosticReadModel,
     PlanningSnapshotReadModel,
     ProjectReadModel,
     ResourceReadModel,
@@ -19,7 +23,7 @@ from ...application.query_models import (
 )
 from ...application.query_ports import PlannerQueryPort
 from ...application.read_models import DemandPeriodReadModel, DemandReadModel, SegmentReadModel
-from ...domain.availability_rules import availability_hours_for_day
+from ...domain.availability_rules import availability_hours_for_day, availability_state_for_day
 from ...domain.confirmation import effective_confirmation
 from ...domain.demand_periods import (
     DemandPeriodDefinition,
@@ -500,6 +504,127 @@ class SqlPlannerQueryRepository(PlannerQueryPort):
                 )
             )
         return tuple(result)
+
+    def planning_capacity_grid(
+        self,
+        *,
+        start: date,
+        end: date,
+    ) -> PlanningCapacityGridReadModel:
+        """Return backend-authoritative daily/weekly capacity diagnostics for React."""
+
+        if end < start:
+            start, end = end, start
+        resources = self.list_schedulable_resources(start=start, end=end)
+        rules = self._session.scalars(
+            select(ResourceAvailabilityRule).where(ResourceAvailabilityRule.active.is_(True))
+        ).all()
+        availability = tuple(_availability_record(rule) for rule in rules)
+        shifts = self.list_shifts(start=start, end=end)
+
+        shifts_by_resource_day: dict[tuple[str, date], list[ShiftReadModel]] = {}
+        shifts_by_segment: dict[str, list[ShiftReadModel]] = {}
+        for shift in shifts:
+            shifts_by_resource_day.setdefault((shift.resource_id, shift.work_date), []).append(shift)
+            shifts_by_segment.setdefault(shift.segment_id, []).append(shift)
+
+        resource_rows: list[PlanningResourceCapacityReadModel] = []
+        for resource in resources:
+            day_rows: list[PlanningDayCapacityReadModel] = []
+            cursor = start
+            while cursor <= end:
+                state = availability_state_for_day(availability, resource.id, cursor)
+                own = shifts_by_resource_day.get((resource.id, cursor), [])
+                confirmed = 0.0
+                tentative = 0.0
+                outside = 0.0
+                for shift in own:
+                    amount = float(shift.hours)
+                    if shift.outside_standard_hours:
+                        outside += amount
+                    elif shift.load_kind == "FIRM":
+                        confirmed += amount
+                    else:
+                        tentative += amount
+                total = confirmed + tentative + outside
+                prudent_free = max(float(state.hours) - confirmed - tentative, 0.0)
+                overloaded = confirmed + tentative > float(state.hours) + 0.01
+                day_rows.append(
+                    PlanningDayCapacityReadModel(
+                        day=cursor,
+                        capacity_hours=round(float(state.hours), 2),
+                        confirmed_hours=round(confirmed, 2),
+                        tentative_hours=round(tentative, 2),
+                        outside_standard_hours=round(outside, 2),
+                        total_hours=round(total, 2),
+                        prudent_free=round(prudent_free, 2),
+                        available=bool(state.available),
+                        overloaded=overloaded,
+                        reason=state.reason,
+                    )
+                )
+                cursor += timedelta(days=1)
+
+            capacity = round(sum(row.capacity_hours for row in day_rows), 2)
+            confirmed = round(sum(row.confirmed_hours for row in day_rows), 2)
+            tentative = round(sum(row.tentative_hours for row in day_rows), 2)
+            outside = round(sum(row.outside_standard_hours for row in day_rows), 2)
+            resource_rows.append(
+                PlanningResourceCapacityReadModel(
+                    resource_id=resource.id,
+                    resource_name=resource.name,
+                    resource_class=resource.resource_class,
+                    capacity_hours=capacity,
+                    confirmed_hours=confirmed,
+                    tentative_hours=tentative,
+                    outside_standard_hours=outside,
+                    prudent_free=round(max(capacity - confirmed - tentative, 0.0), 2),
+                    overloaded=any(row.overloaded for row in day_rows),
+                    days=tuple(day_rows),
+                )
+            )
+
+        requirements = self._session.execute(
+            select(ResourceRequirement, Resource)
+            .outerjoin(Resource, ResourceRequirement.assigned_resource_id == Resource.id)
+            .where(
+                ResourceRequirement.status.notin_(("Annulé", "Terminé")),
+                ResourceRequirement.end_date >= start,
+                ResourceRequirement.start_date <= end,
+                ResourceRequirement.assigned_resource_id.is_not(None),
+            )
+            .order_by(ResourceRequirement.start_date, ResourceRequirement.id)
+        ).all()
+        diagnostics: list[PlanningSegmentCapacityDiagnosticReadModel] = []
+        for requirement, resource in requirements:
+            segment_id = _text(requirement.legacy_segment_id) or requirement.id
+            own_shifts = shifts_by_segment.get(segment_id, [])
+            allocated = round(sum(float(shift.hours) for shift in own_shifts), 2)
+            outside = round(
+                sum(float(shift.hours) for shift in own_shifts if shift.outside_standard_hours),
+                2,
+            )
+            planned = round(float(requirement.planned_hours), 2)
+            unplaced = round(max(planned - allocated, 0.0), 2)
+            diagnostics.append(
+                PlanningSegmentCapacityDiagnosticReadModel(
+                    segment_id=segment_id,
+                    resource_id=resource.id if resource is not None else None,
+                    resource_name=resource.name if resource is not None else None,
+                    planned_hours=planned,
+                    allocated_hours=allocated,
+                    outside_standard_hours=outside,
+                    unplaced_hours=unplaced,
+                    requires_outside_standard_hours=unplaced > 0.01,
+                )
+            )
+
+        return PlanningCapacityGridReadModel(
+            start=start,
+            end=end,
+            resources=tuple(resource_rows),
+            segment_diagnostics=tuple(diagnostics),
+        )
 
     def list_planning_actions(
         self,
