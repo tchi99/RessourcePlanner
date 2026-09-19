@@ -20,7 +20,7 @@ from .models import (
     WorkPackage,
 )
 from .planning_audit import PlanningChangeHistory
-from .query_repository import SqlPlannerQueryRepository
+from .capacity_query_repository import SqlPlannerQueryRepository
 
 
 INACTIVE_WORK_PACKAGE_STATUSES = {
