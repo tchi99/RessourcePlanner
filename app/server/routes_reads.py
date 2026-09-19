@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 from datetime import date
-from typing import Any, Callable
+from typing import Any, Callable, Literal
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 
 from ..application import (
     ApplicationNotFoundError,
@@ -26,9 +26,31 @@ from ..application import (
     WorkPackageReadModel,
 )
 from ..application.query_models import PlanningHistoryReadModel
+from ..application.security import AuthPrincipal
+from ..application.user_view_context import (
+    SCOPE_GLOBAL,
+    SCOPE_MINE,
+    UserViewContextRepositoryPort,
+    UserViewContextService,
+)
 
 
 QueryProvider = Callable[..., Any]
+ViewScope = Literal["mine", "global"]
+
+
+def _project_ids_for_scope(
+    request: Request,
+    scope: ViewScope,
+    repository: UserViewContextRepositoryPort | None,
+) -> tuple[str, ...] | None:
+    if repository is None:
+        return None
+    principal: AuthPrincipal = request.state.auth_principal
+    return UserViewContextService(repository).resolve_project_scope(
+        principal,
+        scope,
+    ).project_ids
 
 
 def _window(start: date | None, end: date | None) -> None:
@@ -40,26 +62,57 @@ def _window(start: date | None, end: date | None) -> None:
         )
 
 
-def build_read_router(query_dependency: QueryProvider) -> APIRouter:
+def build_read_router(
+    query_dependency: QueryProvider,
+    user_view_context_dependency: QueryProvider | None = None,
+) -> APIRouter:
     router = APIRouter(prefix="/api/v1", tags=["reads"])
+
+    def no_context_repository() -> None:
+        return None
+
+    context_dependency = user_view_context_dependency or no_context_repository
 
     @router.get("/projects")
     def list_projects(
+        request: Request,
         active_only: bool = False,
+        scope: ViewScope = Query(default=SCOPE_GLOBAL),
         queries: PlannerQueryPort = Depends(query_dependency),
+        context_repository: Any = Depends(context_dependency),
     ) -> list[ProjectReadModel]:
-        return list(queries.list_projects(active_only=active_only))
+        project_ids = _project_ids_for_scope(request, scope, context_repository)
+        if project_ids is None:
+            return list(queries.list_projects(active_only=active_only))
+        return list(
+            queries.list_projects(
+                active_only=active_only,
+                project_ids=project_ids,
+            )
+        )
 
     @router.get("/work-packages")
     def list_work_packages(
+        request: Request,
         project_number: str | None = Query(default=None),
         active_only: bool = True,
+        scope: ViewScope = Query(default=SCOPE_GLOBAL),
         queries: PlannerQueryPort = Depends(query_dependency),
+        context_repository: Any = Depends(context_dependency),
     ) -> list[WorkPackageReadModel]:
+        project_ids = _project_ids_for_scope(request, scope, context_repository)
+        if project_ids is None:
+            return list(
+                queries.list_work_packages(
+                    project_number=project_number,
+                    active_only=active_only,
+                )
+            )
         return list(
             queries.list_work_packages(
                 project_number=project_number,
                 active_only=active_only,
+                project_ids=project_ids,
             )
         )
 
@@ -87,9 +140,15 @@ def build_read_router(query_dependency: QueryProvider) -> APIRouter:
 
     @router.get("/demands")
     def list_demands(
+        request: Request,
+        scope: ViewScope = Query(default=SCOPE_GLOBAL),
         queries: PlannerQueryPort = Depends(query_dependency),
+        context_repository: Any = Depends(context_dependency),
     ) -> list[DemandReadModel]:
-        return list(queries.list_demands())
+        project_ids = _project_ids_for_scope(request, scope, context_repository)
+        if project_ids is None:
+            return list(queries.list_demands())
+        return list(queries.list_demands(project_ids=project_ids))
 
     @router.get("/demands/{number}")
     def get_demand(
