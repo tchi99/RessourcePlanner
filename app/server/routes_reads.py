@@ -53,6 +53,27 @@ def _project_ids_for_scope(
     ).project_ids
 
 
+def _planning_scope_context(
+    request: Request,
+    scope: ViewScope,
+    repository: UserViewContextRepositoryPort | None,
+) -> tuple[tuple[str, ...] | None, tuple[str, ...]]:
+    if repository is None:
+        return None, ()
+    principal: AuthPrincipal = request.state.auth_principal
+    service = UserViewContextService(repository)
+    resolution = service.resolve_project_scope(principal, scope)
+    if resolution.project_ids is None:
+        return None, ()
+    relations = service.resolve_relations(principal)
+    personal_resource_ids = (
+        (relations.resource.id,)
+        if relations.resource is not None
+        else ()
+    )
+    return resolution.project_ids, personal_resource_ids
+
+
 def _window(start: date | None, end: date | None) -> None:
     if start is not None and end is not None and end < start:
         raise ApplicationValidationError(
@@ -206,14 +227,23 @@ def build_read_router(
 
     @router.get("/segments")
     def list_segments(
+        request: Request,
         start: date | None = Query(default=None),
         end: date | None = Query(default=None),
         include_cancelled: bool = False,
+        scope: ViewScope = Query(default=SCOPE_GLOBAL),
         queries: PlannerQueryPort = Depends(query_dependency),
+        context_repository: Any = Depends(context_dependency),
     ) -> list[SegmentReadModel]:
         _window(start, end)
+        project_ids = _project_ids_for_scope(request, scope, context_repository)
         return list(
-            queries.list_segments(start=start, end=end, include_cancelled=include_cancelled)
+            queries.list_segments(
+                start=start,
+                end=end,
+                include_cancelled=include_cancelled,
+                project_ids=project_ids,
+            )
         )
 
     @router.get("/segments/{segment_id}")
@@ -245,14 +275,23 @@ def build_read_router(
 
     @router.get("/shifts")
     def list_shifts(
+        request: Request,
         start: date | None = Query(default=None),
         end: date | None = Query(default=None),
         resource_name: str | None = Query(default=None),
+        scope: ViewScope = Query(default=SCOPE_GLOBAL),
         queries: PlannerQueryPort = Depends(query_dependency),
+        context_repository: Any = Depends(context_dependency),
     ) -> list[ShiftReadModel]:
         _window(start, end)
+        project_ids = _project_ids_for_scope(request, scope, context_repository)
         return list(
-            queries.list_shifts(start=start, end=end, resource_name=resource_name)
+            queries.list_shifts(
+                start=start,
+                end=end,
+                resource_name=resource_name,
+                project_ids=project_ids,
+            )
         )
 
     @router.get("/shifts/{allocation_id}/history")
@@ -264,30 +303,63 @@ def build_read_router(
 
     @router.get("/medium-term/unlinked-segments")
     def medium_term_unlinked_segments(
+        request: Request,
         start: date = Query(),
         end: date = Query(),
+        scope: ViewScope = Query(default=SCOPE_GLOBAL),
         queries: PlannerQueryPort = Depends(query_dependency),
+        context_repository: Any = Depends(context_dependency),
     ) -> list[MediumTermUnlinkedSegmentReadModel]:
         _window(start, end)
-        return list(queries.list_medium_term_unlinked_segments(start=start, end=end))
+        project_ids = _project_ids_for_scope(request, scope, context_repository)
+        return list(
+            queries.list_medium_term_unlinked_segments(
+                start=start,
+                end=end,
+                project_ids=project_ids,
+            )
+        )
 
     @router.get("/planning/capacity-grid")
     def planning_capacity_grid(
+        request: Request,
         start: date = Query(),
         end: date = Query(),
+        scope: ViewScope = Query(default=SCOPE_GLOBAL),
         queries: PlannerQueryPort = Depends(query_dependency),
+        context_repository: Any = Depends(context_dependency),
     ) -> PlanningCapacityGridReadModel:
         _window(start, end)
-        return queries.planning_capacity_grid(start=start, end=end)
+        project_ids, personal_resource_ids = _planning_scope_context(
+            request,
+            scope,
+            context_repository,
+        )
+        return queries.planning_capacity_grid(
+            start=start,
+            end=end,
+            project_ids=project_ids,
+            include_resource_ids=personal_resource_ids,
+        )
 
     @router.get("/planning/actions")
     def planning_actions(
+        request: Request,
         start: date = Query(),
         end: date = Query(),
+        scope: ViewScope = Query(default=SCOPE_GLOBAL),
         queries: PlannerQueryPort = Depends(query_dependency),
+        context_repository: Any = Depends(context_dependency),
     ) -> list[PlanningActionReadModel]:
         _window(start, end)
-        return list(queries.list_planning_actions(start=start, end=end))
+        project_ids = _project_ids_for_scope(request, scope, context_repository)
+        return list(
+            queries.list_planning_actions(
+                start=start,
+                end=end,
+                project_ids=project_ids,
+            )
+        )
 
     @router.get("/segments/{segment_id}/resource-recommendations")
     def resource_recommendations(
@@ -304,11 +376,24 @@ def build_read_router(
 
     @router.get("/planning/snapshot")
     def planning_snapshot(
+        request: Request,
         start: date = Query(),
         end: date = Query(),
+        scope: ViewScope = Query(default=SCOPE_GLOBAL),
         queries: PlannerQueryPort = Depends(query_dependency),
+        context_repository: Any = Depends(context_dependency),
     ) -> PlanningSnapshotReadModel:
         _window(start, end)
-        return queries.planning_snapshot(start=start, end=end)
+        project_ids, personal_resource_ids = _planning_scope_context(
+            request,
+            scope,
+            context_repository,
+        )
+        return queries.planning_snapshot(
+            start=start,
+            end=end,
+            project_ids=project_ids,
+            include_resource_ids=personal_resource_ids,
+        )
 
     return router
