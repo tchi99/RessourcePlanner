@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { useAuth } from "./AuthContext";
+import { useViewScope } from "./ViewScopeContext";
+import ViewScopeSelector from "./ViewScopeSelector";
 import {
   AcumaticaIntegrationStatus,
   ApiError,
@@ -27,6 +29,7 @@ function apiErrorMessage(reason: unknown, fallback: string) {
 
 export default function ProjectsPage() {
   const { can } = useAuth();
+  const { scope } = useViewScope();
   const canSyncProjects = can("sync_projects");
   const [projects, setProjects] = useState<ProjectReadModel[]>([]);
   const [integration, setIntegration] = useState<AcumaticaIntegrationStatus | null>(null);
@@ -46,7 +49,7 @@ export default function ProjectsPage() {
     setLoading(true);
     setError(null);
     Promise.all([
-      getProjects(false, controller.signal),
+      getProjects(false, controller.signal, scope),
       getAcumaticaIntegrationStatus(controller.signal),
     ])
       .then(([projectRows, status]) => {
@@ -61,7 +64,7 @@ export default function ProjectsPage() {
         if (!controller.signal.aborted) setLoading(false);
       });
     return () => controller.abort();
-  }, [refreshKey]);
+  }, [refreshKey, scope]);
 
   const managers = useMemo(() => {
     const values = new Set(
@@ -105,7 +108,7 @@ export default function ProjectsPage() {
       setSyncMessage(
         `${result.received} reçu(s) · ${result.created} créé(s) · ${result.updated} mis à jour · ${result.unchanged} inchangé(s)`,
       );
-      const projectRows = await getProjects(false);
+      const projectRows = await getProjects(false, undefined, scope);
       setProjects(projectRows);
     } catch (reason: unknown) {
       setSyncError(apiErrorMessage(reason, "La synchronisation Acumatica a échoué."));
@@ -124,14 +127,17 @@ export default function ProjectsPage() {
             Référentiel local utilisé par la planification. Les métadonnées ERP sont synchronisées vers SQL avant d’être consommées par React.
           </p>
         </div>
-        <button
-          className="projects-refresh"
-          type="button"
-          onClick={() => setRefreshKey((value) => value + 1)}
-          disabled={loading || syncing}
-        >
-          Actualiser
-        </button>
+        <div className="page-heading-actions">
+          <ViewScopeSelector />
+          <button
+            className="projects-refresh"
+            type="button"
+            onClick={() => setRefreshKey((value) => value + 1)}
+            disabled={loading || syncing}
+          >
+            Actualiser
+          </button>
+        </div>
       </div>
 
       <div className="metric-grid projects-metrics">
