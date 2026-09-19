@@ -190,6 +190,30 @@ class ResourceRecommendationReadModel:
 
 
 @dataclass(frozen=True, slots=True)
+class MediumTermUnlinkedSegmentReadModel:
+    """Segment visible in medium-term planning without a valid WorkPackage link."""
+
+    segment_id: str
+    demand_number: str | None
+    project_number: str
+    project_name: str
+    task_code: str | None
+    task_label: str | None
+    start_date: date
+    end_date: date
+    planned_hours: float
+    resource_name: str | None
+    status: str
+    origin: str
+    classification: str
+    anomaly: bool
+    link_target: str
+    current_work_package_ref: str | None = None
+    reapproval_on_link: bool = False
+    description: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class MediumTermCapacityBucketReadModel:
     """One backend-authoritative weekly capacity bucket."""
 
