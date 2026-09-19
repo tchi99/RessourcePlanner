@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from datetime import date
 from typing import Any, Mapping
 
+from ...domain.request_lines import default_legacy_hours, normalize_request_line
 from ..errors import ApplicationValidationError
 from .common import (
     UNSET,
@@ -19,9 +20,48 @@ from .common import (
 
 
 @dataclass(frozen=True, slots=True)
+class DemandLineInput:
+    line_id: str | None = None
+    position: int = 0
+    kind: str = "WORKFORCE"
+    required_resource_class: str | None = None
+    required_competency_ids: tuple[str, ...] = ()
+    required_competencies: str | None = None
+    desired_start: date | None = None
+    desired_end: date | None = None
+    desired_active_days: int | None = None
+    estimated_hours: float | None = None
+    work_package_ref: str | None = None
+    task_code: str | None = None
+    proposed_technician: str | None = None
+    confirmation: str = "Confirmée"
+    description: str | None = None
+
+    def to_repository_values(self, *, require_complete: bool) -> dict[str, object]:
+        return normalize_request_line(
+            line_id=self.line_id,
+            position=self.position,
+            kind=self.kind,
+            required_resource_class=self.required_resource_class,
+            required_competency_ids=self.required_competency_ids,
+            required_competencies=self.required_competencies,
+            desired_start=self.desired_start,
+            desired_end=self.desired_end,
+            desired_active_days=self.desired_active_days,
+            estimated_hours=self.estimated_hours,
+            work_package_ref=self.work_package_ref,
+            task_code=self.task_code,
+            proposed_technician=self.proposed_technician,
+            confirmation=self.confirmation,
+            description=self.description,
+            require_complete=require_complete,
+        ).to_repository_values()
+
+
+@dataclass(frozen=True, slots=True)
 class DemandCreateCommand:
     project_number: str
-    desired_start: date
+    desired_start: date | None = None
     submit: bool = False
     project_name: str = ""
     client: str = ""
@@ -41,6 +81,7 @@ class DemandCreateCommand:
     estimated_hours: float | None = None
     estimated_days: float | None = None
     proposed_technician: str | None = None
+    lines: tuple[DemandLineInput, ...] | None = None
 
     def __post_init__(self) -> None:
         required_text(
@@ -48,7 +89,19 @@ class DemandCreateCommand:
             field="demand_project",
             message="Le projet est requis.",
         )
-        validate_date_window(self.desired_start, self.desired_end, prefix="demand")
+        if self.lines is None:
+            if self.desired_start is None:
+                raise ApplicationValidationError(
+                    "La date de début est requise pour une demande sans lignes.",
+                    code="demand_start_required",
+                    context={"field": "desired_start"},
+                )
+            validate_date_window(self.desired_start, self.desired_end, prefix="demand")
+        elif not self.lines:
+            raise ApplicationValidationError(
+                "Une demande multi-lignes doit contenir au moins une ligne.",
+                code="demand_lines_required",
+            )
         if self.resource_count < 1:
             raise ApplicationValidationError(
                 "Le nombre de ressources doit être au moins 1.",
@@ -121,7 +174,12 @@ class DemandCreateCommand:
         )
 
     def to_repository_values(self) -> dict[str, Any]:
-        return {
+        resolved_hours = default_legacy_hours(
+            estimated_hours=self.estimated_hours,
+            estimated_days=self.estimated_days,
+            resource_count=self.resource_count,
+        )
+        values: dict[str, Any] = {
             "NumeroProjet": text(self.project_number),
             "NomProjet": text(self.project_name),
             "Client": text(self.client),
@@ -139,10 +197,16 @@ class DemandCreateCommand:
             "Lieu": text(self.location),
             "NombreRessources": int(self.resource_count),
             "CompetencesRequises": self.required_competencies,
-            "TempsEstimeHeures": self.estimated_hours,
+            "TempsEstimeHeures": resolved_hours,
             "TempsEstimeJours": self.estimated_days,
             "TechnicienPropose": self.proposed_technician,
         }
+        if self.lines is not None:
+            values["RequestLines"] = tuple(
+                line.to_repository_values(require_complete=bool(self.submit))
+                for line in self.lines
+            )
+        return values
 
 
 @dataclass(frozen=True, slots=True)
@@ -169,6 +233,8 @@ class DemandUpdateCommand:
     estimated_hours: float | None | UnsetType = UNSET
     estimated_days: float | None | UnsetType = UNSET
     proposed_technician: str | None | UnsetType = UNSET
+    lines: tuple[DemandLineInput, ...] | UnsetType = UNSET
+    expected_version: int | UnsetType = UNSET
 
     def __post_init__(self) -> None:
         required_text(
@@ -178,6 +244,17 @@ class DemandUpdateCommand:
         )
         if isinstance(self.desired_start, date) and isinstance(self.desired_end, date):
             validate_date_window(self.desired_start, self.desired_end, prefix="demand")
+        if isinstance(self.expected_version, int) and self.expected_version < 1:
+            raise ApplicationValidationError(
+                "La version attendue doit être au moins 1.",
+                code="demand_version_invalid",
+                context={"field": "expected_version", "value": self.expected_version},
+            )
+        if isinstance(self.lines, tuple) and not self.lines:
+            raise ApplicationValidationError(
+                "Une demande multi-lignes doit contenir au moins une ligne.",
+                code="demand_lines_required",
+            )
         if isinstance(self.resource_count, int) and self.resource_count < 1:
             raise ApplicationValidationError(
                 "Le nombre de ressources doit être au moins 1.",
@@ -310,6 +387,13 @@ class DemandUpdateCommand:
             "TempsEstimeJours": self.estimated_days,
             "TechnicienPropose": self.proposed_technician,
         }
+        if self.lines is not UNSET:
+            values["RequestLines"] = tuple(
+                line.to_repository_values(require_complete=False)
+                for line in self.lines
+            )
+        if self.expected_version is not UNSET:
+            values["ExpectedVersion"] = self.expected_version
         return {key: value for key, value in values.items() if value is not UNSET}
 
 
