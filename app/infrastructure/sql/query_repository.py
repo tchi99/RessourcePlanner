@@ -302,13 +302,18 @@ class SqlPlannerQueryRepository(PlannerQueryPort):
         *,
         start: date,
         end: date,
+        project_ids: Sequence[str] | None = None,
     ) -> tuple[PendingDemandLoadReadModel, ...]:
         """Project submitted requests without mutating or double-counting approved work."""
 
+        statement = select(WorkforceRequest).where(WorkforceRequest.status == "Soumise")
+        if project_ids is not None:
+            identifiers = tuple(str(value) for value in project_ids if str(value))
+            if not identifiers:
+                return ()
+            statement = statement.where(WorkforceRequest.project_id.in_(identifiers))
         requests = self._session.scalars(
-            select(WorkforceRequest)
-            .where(WorkforceRequest.status == "Soumise")
-            .order_by(
+            statement.order_by(
                 WorkforceRequest.desired_start,
                 WorkforceRequest.legacy_demand_number,
                 WorkforceRequest.id,
@@ -317,7 +322,7 @@ class SqlPlannerQueryRepository(PlannerQueryPort):
         result: list[PendingDemandLoadReadModel] = []
         demands_by_number = {
             demand.number: demand
-            for demand in self._demands.list()
+            for demand in self._demands.list(project_ids=project_ids)
         }
 
         for request in requests:
@@ -421,13 +426,14 @@ class SqlPlannerQueryRepository(PlannerQueryPort):
         *,
         start: date,
         end: date,
+        project_ids: Sequence[str] | None = None,
     ) -> tuple[MediumTermUnlinkedSegmentReadModel, ...]:
         """Expose active segments with no valid medium-term WorkPackage classification."""
 
         if end < start:
             start, end = end, start
 
-        rows = self._session.execute(
+        statement = (
             select(ResourceRequirement, Project, WorkforceRequest, Resource)
             .join(Project, ResourceRequirement.project_id == Project.id)
             .outerjoin(
@@ -440,14 +446,25 @@ class SqlPlannerQueryRepository(PlannerQueryPort):
                 ResourceRequirement.end_date >= start,
                 ResourceRequirement.start_date <= end,
             )
-            .order_by(
+        )
+        work_package_statement = select(WorkPackage)
+        if project_ids is not None:
+            identifiers = tuple(str(value) for value in project_ids if str(value))
+            if not identifiers:
+                return ()
+            statement = statement.where(ResourceRequirement.project_id.in_(identifiers))
+            work_package_statement = work_package_statement.where(
+                WorkPackage.project_id.in_(identifiers)
+            )
+        rows = self._session.execute(
+            statement.order_by(
                 ResourceRequirement.start_date,
                 Project.number,
                 ResourceRequirement.legacy_segment_id,
                 ResourceRequirement.id,
             )
         ).all()
-        work_packages = self._session.scalars(select(WorkPackage)).all()
+        work_packages = self._session.scalars(work_package_statement).all()
         package_by_reference: dict[str, WorkPackage] = {}
         package_by_id: dict[str, WorkPackage] = {}
         for package in work_packages:
@@ -525,23 +542,98 @@ class SqlPlannerQueryRepository(PlannerQueryPort):
         *,
         start: date,
         end: date,
+        project_ids: Sequence[str] | None = None,
+        include_resource_ids: Sequence[str] = (),
     ) -> PlanningCapacityGridReadModel:
-        """Return backend-authoritative daily/weekly capacity diagnostics for React."""
+        """Return capacity for visible resources using their real organization-wide load.
+
+        project_ids limits which project work selects resources and diagnostics.
+        Capacity and occupied hours for those resources still include every project so
+        a contextual view never invents free capacity by hiding outside commitments.
+        """
 
         if end < start:
             start, end = end, start
-        resources = self.list_schedulable_resources(start=start, end=end)
+
+        identifiers: tuple[str, ...] | None = None
+        if project_ids is not None:
+            identifiers = tuple(str(value) for value in project_ids if str(value))
+
         rules = self._session.scalars(
             select(ResourceAvailabilityRule).where(ResourceAvailabilityRule.active.is_(True))
         ).all()
         availability = tuple(_availability_record(rule) for rule in rules)
-        shifts = self.list_shifts(start=start, end=end)
+
+        requirement_statement = (
+            select(ResourceRequirement, Resource)
+            .outerjoin(Resource, ResourceRequirement.assigned_resource_id == Resource.id)
+            .where(
+                ResourceRequirement.status.notin_(("Annulé", "Terminé")),
+                ResourceRequirement.end_date >= start,
+                ResourceRequirement.start_date <= end,
+                ResourceRequirement.assigned_resource_id.is_not(None),
+            )
+        )
+        if identifiers is not None:
+            if identifiers:
+                requirement_statement = requirement_statement.where(
+                    ResourceRequirement.project_id.in_(identifiers)
+                )
+            else:
+                requirement_statement = requirement_statement.where(False)
+        requirements = self._session.execute(
+            requirement_statement.order_by(
+                ResourceRequirement.start_date,
+                ResourceRequirement.id,
+            )
+        ).all()
+
+        if identifiers is None:
+            resources = self.list_schedulable_resources(start=start, end=end)
+            occupied_shifts = self.list_shifts(start=start, end=end)
+        else:
+            contextual_shifts = self.list_shifts(
+                start=start,
+                end=end,
+                project_ids=identifiers,
+            )
+            pending = self.list_pending_loads(
+                start=start,
+                end=end,
+                project_ids=identifiers,
+            )
+            all_resources = self.list_resources(active_only=False)
+            resource_by_name = {resource.name: resource for resource in all_resources}
+            visible_ids = {
+                str(value)
+                for value in include_resource_ids
+                if str(value)
+            }
+            visible_ids.update(shift.resource_id for shift in contextual_shifts)
+            visible_ids.update(
+                resource.id
+                for _, resource in requirements
+                if resource is not None
+            )
+            visible_ids.update(
+                resource_by_name[pending_load.proposed_resource].id
+                for pending_load in pending
+                if pending_load.proposed_resource in resource_by_name
+            )
+            resources = tuple(
+                resource
+                for resource in all_resources
+                if resource.id in visible_ids
+            )
+            occupied_shifts = tuple(
+                shift
+                for shift in self.list_shifts(start=start, end=end)
+                if shift.resource_id in visible_ids
+            )
 
         shifts_by_resource_day: dict[tuple[str, date], list[ShiftReadModel]] = {}
-        shifts_by_segment: dict[str, list[ShiftReadModel]] = {}
-        for shift in shifts:
+        for shift in occupied_shifts:
             shifts_by_resource_day.setdefault((shift.resource_id, shift.work_date), []).append(shift)
-            shifts_by_segment.setdefault(shift.segment_id, []).append(shift)
 
         resource_rows: list[PlanningResourceCapacityReadModel] = []
         for resource in resources:
@@ -599,17 +691,6 @@ class SqlPlannerQueryRepository(PlannerQueryPort):
                 )
             )
 
-        requirements = self._session.execute(
-            select(ResourceRequirement, Resource)
-            .outerjoin(Resource, ResourceRequirement.assigned_resource_id == Resource.id)
-            .where(
-                ResourceRequirement.status.notin_(("Annulé", "Terminé")),
-                ResourceRequirement.end_date >= start,
-                ResourceRequirement.start_date <= end,
-                ResourceRequirement.assigned_resource_id.is_not(None),
-            )
-            .order_by(ResourceRequirement.start_date, ResourceRequirement.id)
-        ).all()
         requirement_ids = tuple(requirement.id for requirement, _ in requirements)
         full_shift_totals: dict[str, tuple[float, float]] = {}
         if requirement_ids:
@@ -662,15 +743,23 @@ class SqlPlannerQueryRepository(PlannerQueryPort):
         *,
         start: date,
         end: date,
+        project_ids: Sequence[str] | None = None,
     ) -> tuple[PlanningActionReadModel, ...]:
         """Return the coordinator inbox that historically sat above NiceGUI planning."""
 
         if end < start:
             start, end = end, start
-        demands = {row.number: row for row in self.list_demands()}
+        demands = {
+            row.number: row
+            for row in self.list_demands(project_ids=project_ids)
+        }
         result: list[PlanningActionReadModel] = []
 
-        for pending in self.list_pending_loads(start=start, end=end):
+        for pending in self.list_pending_loads(
+            start=start,
+            end=end,
+            project_ids=project_ids,
+        ):
             demand = demands.get(pending.demand_number)
             if demand is None:
                 continue
@@ -711,6 +800,7 @@ class SqlPlannerQueryRepository(PlannerQueryPort):
             start=start,
             end=end,
             include_cancelled=False,
+            project_ids=project_ids,
         ):
             if segment.resource_name:
                 continue
@@ -936,10 +1026,28 @@ class SqlPlannerQueryRepository(PlannerQueryPort):
         start: date | None = None,
         end: date | None = None,
         include_cancelled: bool = False,
+        project_ids: Sequence[str] | None = None,
     ) -> tuple[SegmentReadModel, ...]:
+        if project_ids is not None:
+            identifiers = tuple(str(value) for value in project_ids if str(value))
+            if not identifiers:
+                return ()
+            allowed_project_numbers = set(
+                self._session.scalars(
+                    select(Project.number).where(Project.id.in_(identifiers))
+                ).all()
+            )
+        else:
+            allowed_project_numbers = None
+
         rows = self._segments.list(include_cancelled=include_cancelled)
         result: list[SegmentReadModel] = []
         for row in rows:
+            if (
+                allowed_project_numbers is not None
+                and row.project_number not in allowed_project_numbers
+            ):
+                continue
             if start is not None and row.end_date is not None and row.end_date < start:
                 continue
             if end is not None and row.start_date is not None and row.start_date > end:
@@ -957,6 +1065,7 @@ class SqlPlannerQueryRepository(PlannerQueryPort):
         end: date | None = None,
         resource_name: str | None = None,
         resource_id: str | None = None,
+        project_ids: Sequence[str] | None = None,
     ) -> tuple[ShiftReadModel, ...]:
         statement = (
             select(Shift, ResourceRequirement, Resource, Project, WorkforceRequest)
@@ -975,6 +1084,11 @@ class SqlPlannerQueryRepository(PlannerQueryPort):
             statement = statement.where(Shift.work_date >= start)
         if end is not None:
             statement = statement.where(Shift.work_date <= end)
+        if project_ids is not None:
+            identifiers = tuple(str(value) for value in project_ids if str(value))
+            if not identifiers:
+                return ()
+            statement = statement.where(ResourceRequirement.project_id.in_(identifiers))
         wanted_resource = _text(resource_name)
         if wanted_resource:
             statement = statement.where(Resource.name == wanted_resource)
@@ -1035,14 +1149,60 @@ class SqlPlannerQueryRepository(PlannerQueryPort):
         *,
         start: date,
         end: date,
+        project_ids: Sequence[str] | None = None,
+        include_resource_ids: Sequence[str] = (),
     ) -> PlanningSnapshotReadModel:
-        """Read the web planning window inside the caller-owned SQL transaction."""
+        """Read one planning window while keeping capacity semantics separate from scope."""
 
         demands = tuple(
-            row for row in self.list_demands() if _demand_overlaps(row, start, end)
+            row
+            for row in self.list_demands(project_ids=project_ids)
+            if _demand_overlaps(row, start, end)
         )
-        shifts = self.list_shifts(start=start, end=end)
-        pending_loads = self.list_pending_loads(start=start, end=end)
+        shifts = self.list_shifts(
+            start=start,
+            end=end,
+            project_ids=project_ids,
+        )
+        pending_loads = self.list_pending_loads(
+            start=start,
+            end=end,
+            project_ids=project_ids,
+        )
+        segments = self.list_segments(
+            start=start,
+            end=end,
+            include_cancelled=False,
+            project_ids=project_ids,
+        )
+
+        if project_ids is None:
+            resources = self.list_schedulable_resources(start=start, end=end)
+        else:
+            all_resources = self.list_resources(active_only=False)
+            resource_by_name = {resource.name: resource for resource in all_resources}
+            visible_ids = {
+                str(value)
+                for value in include_resource_ids
+                if str(value)
+            }
+            visible_ids.update(shift.resource_id for shift in shifts)
+            visible_ids.update(
+                resource_by_name[segment.resource_name].id
+                for segment in segments
+                if segment.resource_name in resource_by_name
+            )
+            visible_ids.update(
+                resource_by_name[pending.proposed_resource].id
+                for pending in pending_loads
+                if pending.proposed_resource in resource_by_name
+            )
+            resources = tuple(
+                resource
+                for resource in all_resources
+                if resource.id in visible_ids
+            )
+
         totals = WorkloadTotals()
         for shift in shifts:
             totals = totals.add(shift.hours, shift.confirmation)
@@ -1065,9 +1225,9 @@ class SqlPlannerQueryRepository(PlannerQueryPort):
         return PlanningSnapshotReadModel(
             start=start,
             end=end,
-            resources=self.list_schedulable_resources(start=start, end=end),
+            resources=resources,
             demands=demands,
-            segments=self.list_segments(start=start, end=end, include_cancelled=False),
+            segments=segments,
             shifts=shifts,
             pending_loads=pending_loads,
             firm_hours=totals.firm_hours,
