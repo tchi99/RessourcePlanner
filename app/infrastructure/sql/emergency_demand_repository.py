@@ -15,14 +15,14 @@ from .models import (
 
 
 class SqlEmergencyDemandRepository(SqlDemandRepository):
-    @staticmethod
     def _read_model(
+        self,
         request: WorkforceRequest,
         project: Project,
         work_package: WorkPackage | None,
         proposed_resource: Resource | None,
     ) -> DemandReadModel:
-        base = SqlDemandRepository._read_model(
+        base = super()._read_model(
             request,
             project,
             work_package,
