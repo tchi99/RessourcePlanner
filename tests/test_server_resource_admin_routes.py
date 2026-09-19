@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from functools import partial
+
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
@@ -9,6 +11,10 @@ from fastapi.testclient import TestClient
 from app.infrastructure.sql import Base, create_sql_engine
 from app.server import create_api_app
 
+
+from tests.http_test_auth import TEST_ADMIN_AUTH_RESOLVER
+
+create_api_app = partial(create_api_app, auth_resolver=TEST_ADMIN_AUTH_RESOLVER)
 
 class ServerResourceAdminRouteTests(unittest.TestCase):
     def _database(self, directory: str) -> str:

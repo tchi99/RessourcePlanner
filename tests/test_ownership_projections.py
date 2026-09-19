@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from functools import partial
+
 from datetime import date
 from decimal import Decimal
 from pathlib import Path
@@ -31,6 +33,10 @@ DAY = date(2026, 8, 24)
 ROOT = Path(__file__).resolve().parents[1]
 APP = ROOT / "app"
 
+
+from tests.http_test_auth import TEST_ADMIN_AUTH_RESOLVER
+
+create_api_app = partial(create_api_app, auth_resolver=TEST_ADMIN_AUTH_RESOLVER)
 
 class OwnershipProjectionTests(unittest.TestCase):
     def _database(self, directory: str) -> str:

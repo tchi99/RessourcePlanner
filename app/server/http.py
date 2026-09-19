@@ -24,7 +24,7 @@ from ..application import (
 )
 from ..application.communications import CommunicationService, CommunicationTransportPort
 from ..application.errors import ApplicationUnavailableError
-from ..application.security import AuthPrincipal, ROLE_ADMIN
+from ..application.security import AuthPrincipal
 from ..infrastructure.sql import (
     SqlSessionFactory,
     create_session_factory,
@@ -57,7 +57,7 @@ from .routes_me import build_me_router
 from .routes_reads import build_read_router
 from .routes_task_catalog import build_task_catalog_router
 from .routes_user_admin import build_user_admin_router
-from .security import AuthResolver, install_authorization_middleware, static_auth_resolver
+from .security import AuthResolver, install_authorization_middleware
 
 
 SessionDependency = Callable[[], Iterator[Session]]
@@ -222,19 +222,6 @@ def _request_validation_response(exc: RequestValidationError) -> JSONResponse:
     )
 
 
-def _default_auth_resolver(actor_name: str) -> AuthResolver:
-    principal = AuthPrincipal.from_roles(
-        local_user_id=None,
-        issuer="urn:resourceplanner:test",
-        subject="test-admin",
-        display_name=actor_name,
-        email=None,
-        roles=(ROLE_ADMIN,),
-        auth_mode="test",
-    )
-    return static_auth_resolver(principal)
-
-
 def create_api_app(
     database_url: str,
     *,
@@ -242,12 +229,18 @@ def create_api_app(
     project_source: ProjectSourcePort | None = None,
     acumatica_info: dict[str, Any] | None = None,
     auth_resolver: AuthResolver | None = None,
+    api_docs_enabled: bool = True,
     oidc_runtime: OidcRuntime | None = None,
     dev_user_switcher_runtime: DevUserSwitcherRuntime | None = None,
     communication_transport: CommunicationTransportPort | None = None,
     performance_log_path: Path | None = None,
     runtime_dependencies: dict[str, Any] | None = None,
 ) -> FastAPI:
+    if auth_resolver is None:
+        raise ValueError(
+            "create_api_app exige un auth_resolver explicite; "
+            "aucune identité privilégiée implicite n'est autorisée."
+        )
     if oidc_runtime is not None and dev_user_switcher_runtime is not None:
         raise ValueError("OIDC et le sélecteur d’utilisateur de développement sont mutuellement exclusifs.")
 
@@ -294,6 +287,9 @@ def create_api_app(
         title="RessourcePlanner API",
         version="1.0.0-dev",
         lifespan=lifespan,
+        docs_url="/docs" if api_docs_enabled else None,
+        redoc_url="/redoc" if api_docs_enabled else None,
+        openapi_url="/openapi.json" if api_docs_enabled else None,
         default_response_class=InstrumentedJSONResponse,
     )
     app.state.database_dialect = engine.dialect.name
@@ -309,7 +305,7 @@ def create_api_app(
 
     install_authorization_middleware(
         app,
-        auth_resolver or _default_auth_resolver(actor_name),
+        auth_resolver,
         csrf_guard=(oidc_csrf_guard(oidc_runtime) if oidc_runtime is not None else None),
     )
     # Registered after authorization so Starlette wraps it outside auth and the

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from functools import partial
+
 from datetime import date
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -21,6 +23,10 @@ from app.server import create_api_app
 DAY = date(2026, 9, 10)
 
 
+from tests.http_test_auth import TEST_ADMIN_AUTH_RESOLVER, test_admin_auth_resolver
+
+create_api_app = partial(create_api_app, auth_resolver=TEST_ADMIN_AUTH_RESOLVER)
+
 class QuickShiftAuthorHttpTests(unittest.TestCase):
     def test_quick_shift_actor_is_taken_from_server_context_not_request_body(self) -> None:
         with TemporaryDirectory() as directory:
@@ -41,7 +47,11 @@ class QuickShiftAuthorHttpTests(unittest.TestCase):
                 session.add(Resource(id="R1", name="Alice", active=True))
             engine.dispose()
 
-            app = create_api_app(database_url, actor_name="Coordonnateur")
+            app = create_api_app(
+                database_url,
+                actor_name="Coordonnateur",
+                auth_resolver=test_admin_auth_resolver("Coordonnateur"),
+            )
             with TestClient(app, raise_server_exceptions=False) as client:
                 created = client.post(
                     "/api/v1/quick-shifts",

@@ -44,6 +44,7 @@ OIDC_COOKIE_NAME_ENV = "RESOURCEPLANNER_OIDC_COOKIE_NAME"
 OIDC_SESSION_HOURS_ENV = "RESOURCEPLANNER_OIDC_SESSION_HOURS"
 OIDC_SECURE_COOKIE_ENV = "RESOURCEPLANNER_OIDC_SECURE_COOKIE"
 OIDC_AUTO_PROVISION_ENV = "RESOURCEPLANNER_OIDC_AUTO_PROVISION"
+API_DOCS_ENABLED_ENV = "RESOURCEPLANNER_API_DOCS_ENABLED"
 ACUMATICA_BASE_URL_ENV = "RESOURCEPLANNER_ACUMATICA_BASE_URL"
 ACUMATICA_ACCESS_TOKEN_ENV = "RESOURCEPLANNER_ACUMATICA_ACCESS_TOKEN"
 ACUMATICA_ENDPOINT_ENV = "RESOURCEPLANNER_ACUMATICA_ENDPOINT"
@@ -297,6 +298,7 @@ class ServerSettings:
     oidc_session_hours: int = 8
     oidc_secure_cookie: bool = True
     oidc_auto_provision: bool = False
+    api_docs_enabled: bool = True
     embedding: EmbeddingSettings = field(default_factory=EmbeddingSettings)
     acumatica: AcumaticaProjectSourceSettings | None = field(default=None, repr=False)
     m365: MicrosoftGraphCommunicationSettings | None = field(default=None, repr=False)
@@ -360,6 +362,11 @@ class ServerSettings:
                 default=False,
             )
 
+        api_docs_enabled = _bool(
+            values.get(API_DOCS_ENABLED_ENV),
+            default=auth_mode == "local",
+        )
+
         try:
             embedding = EmbeddingSettings.from_environment(
                 values,
@@ -383,6 +390,7 @@ class ServerSettings:
             oidc_session_hours=oidc_session_hours,
             oidc_secure_cookie=oidc_secure_cookie,
             oidc_auto_provision=oidc_auto_provision,
+            api_docs_enabled=api_docs_enabled,
             embedding=embedding,
             acumatica=_acumatica_settings(values),
             m365=_m365_settings(values),
@@ -441,6 +449,7 @@ def create_configured_app(settings: ServerSettings | None = None) -> FastAPI:
             resolved.acumatica.safe_summary() if resolved.acumatica is not None else None
         ),
         auth_resolver=auth_resolver,
+        api_docs_enabled=resolved.api_docs_enabled,
         oidc_runtime=oidc_runtime,
         dev_user_switcher_runtime=dev_user_switcher_runtime,
         communication_transport=communication_transport,

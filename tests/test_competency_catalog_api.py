@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from functools import partial
+
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
@@ -27,6 +29,10 @@ def project_manager_resolver(_request):
         auth_mode="test",
     )
 
+
+from tests.http_test_auth import TEST_ADMIN_AUTH_RESOLVER
+
+create_api_app = partial(create_api_app, auth_resolver=TEST_ADMIN_AUTH_RESOLVER)
 
 class CompetencyCatalogApiTests(unittest.TestCase):
     def _database_url(self, directory: str) -> str:

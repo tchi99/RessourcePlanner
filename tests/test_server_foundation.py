@@ -23,9 +23,26 @@ from app.infrastructure.sql import (
     transactional_session,
 )
 from app.server import build_sql_facade, create_api_app
+from app.server.security import static_auth_resolver
 
 
 class ServerFoundationTests(unittest.TestCase):
+    def test_api_factory_requires_explicit_auth_resolver(self) -> None:
+        with self.assertRaises(ValueError) as caught:
+            create_api_app("sqlite+pysqlite:///:memory:")
+        self.assertIn("auth_resolver explicite", str(caught.exception))
+
+    def test_api_docs_can_be_disabled_explicitly(self) -> None:
+        app = create_api_app(
+            "sqlite+pysqlite:///:memory:",
+            auth_resolver=static_auth_resolver(None),
+            api_docs_enabled=False,
+        )
+        with TestClient(app) as client:
+            self.assertEqual(client.get("/docs").status_code, 404)
+            self.assertEqual(client.get("/redoc").status_code, 404)
+            self.assertEqual(client.get("/openapi.json").status_code, 404)
+
     def test_sql_composition_builds_real_application_facade(self) -> None:
         engine = create_sql_engine("sqlite+pysqlite:///:memory:")
         Base.metadata.create_all(engine)
@@ -59,7 +76,7 @@ class ServerFoundationTests(unittest.TestCase):
         with TemporaryDirectory() as directory:
             database_path = Path(directory) / "health.db"
             database_url = f"sqlite:///{database_path.as_posix()}"
-            app = create_api_app(database_url)
+            app = create_api_app(database_url, auth_resolver=static_auth_resolver(None))
 
             with TestClient(app) as client:
                 response = client.get("/health")
@@ -84,7 +101,11 @@ class ServerFoundationTests(unittest.TestCase):
                 session.add(Project(id="P1", number="P-1", name="Projet API"))
             setup_engine.dispose()
 
-            app = create_api_app(database_url, actor_name="Jean")
+            app = create_api_app(
+                database_url,
+                actor_name="Jean",
+                auth_resolver=static_auth_resolver(None),
+            )
             facade_dependency = app.state.facade_dependency
 
             @app.post("/_test/rollback")
@@ -118,7 +139,10 @@ class ServerFoundationTests(unittest.TestCase):
     def test_application_error_is_translated_to_stable_http_contract(self) -> None:
         with TemporaryDirectory() as directory:
             database_path = Path(directory) / "errors.db"
-            app = create_api_app(f"sqlite:///{database_path.as_posix()}")
+            app = create_api_app(
+                f"sqlite:///{database_path.as_posix()}",
+                auth_resolver=static_auth_resolver(None),
+            )
 
             @app.get("/_test/validation")
             def validation_failure() -> None:

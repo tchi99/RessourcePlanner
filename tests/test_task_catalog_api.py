@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from functools import partial
+
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
@@ -15,6 +17,10 @@ from app.infrastructure.sql import (
 )
 from app.server import create_api_app
 
+
+from tests.http_test_auth import TEST_ADMIN_AUTH_RESOLVER
+
+create_api_app = partial(create_api_app, auth_resolver=TEST_ADMIN_AUTH_RESOLVER)
 
 class TaskCatalogApiTests(unittest.TestCase):
     def test_search_and_demand_selection_use_project_scoped_task_code(self) -> None:

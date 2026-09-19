@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from functools import partial
+
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
@@ -13,6 +15,10 @@ from app.server import create_api_app
 from app.server.readiness import expected_alembic_head
 from app.server.security import static_auth_resolver
 
+
+from tests.http_test_auth import TEST_ADMIN_AUTH_RESOLVER
+
+create_api_app = partial(create_api_app, auth_resolver=TEST_ADMIN_AUTH_RESOLVER)
 
 class FailingExternalProjectSource:
     def list_projects(self):

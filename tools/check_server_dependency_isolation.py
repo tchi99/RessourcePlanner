@@ -13,6 +13,7 @@ if str(ROOT) not in sys.path:
 from fastapi.testclient import TestClient
 
 from app.server import create_api_app
+from app.server.security import static_auth_resolver
 
 
 FORBIDDEN_RUNTIME_MODULES = ("nicegui", "xlwings", "openpyxl")
@@ -33,7 +34,10 @@ def main() -> int:
         )
         return 1
 
-    app = create_api_app("sqlite+pysqlite:///:memory:")
+    app = create_api_app(
+        "sqlite+pysqlite:///:memory:",
+        auth_resolver=static_auth_resolver(None),
+    )
     with TestClient(app) as client:
         response = client.get("/health")
         if response.status_code != 200:

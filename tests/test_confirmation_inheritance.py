@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from functools import partial
+
 from datetime import date, time
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -27,6 +29,10 @@ from app.server import create_api_app
 
 DAY = date(2026, 8, 24)  # lundi
 
+
+from tests.http_test_auth import TEST_ADMIN_AUTH_RESOLVER
+
+create_api_app = partial(create_api_app, auth_resolver=TEST_ADMIN_AUTH_RESOLVER)
 
 class ConfirmationPolicyTests(unittest.TestCase):
     def test_policy_normalizes_common_confirmed_spellings_and_inherits(self) -> None:
