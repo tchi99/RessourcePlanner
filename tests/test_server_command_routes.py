@@ -213,6 +213,60 @@ class ServerCommandRouteTests(unittest.TestCase):
                     "demand_version_conflict",
                 )
 
+    def test_legacy_single_line_can_switch_authority_without_changing_line_id(self) -> None:
+        with TemporaryDirectory() as directory:
+            database_url, _ = self._database(directory)
+            app = create_api_app(database_url)
+            with TestClient(app, raise_server_exceptions=False) as client:
+                created = client.post(
+                    "/api/v1/demands",
+                    json={
+                        "project_number": "P-1",
+                        "desired_start": "2026-08-24",
+                        "estimated_hours": 8
+                    },
+                )
+                self.assertEqual(created.status_code, 201, created.text)
+                number = created.json()["demand_number"]
+                legacy = client.get(f"/api/v1/demands/{number}").json()
+                self.assertFalse(legacy["line_mode"])
+                self.assertEqual(len(legacy["lines"]), 1)
+                legacy_line_id = legacy["lines"][0]["line_id"]
+
+                converted = client.patch(
+                    f"/api/v1/demands/{number}",
+                    json={
+                        "expected_version": legacy["version"],
+                        "lines": [
+                            {
+                                "id": legacy_line_id,
+                                "desired_start": "2026-08-24",
+                                "desired_active_days": 1
+                            }
+                        ]
+                    },
+                )
+                self.assertEqual(converted.status_code, 200, converted.text)
+
+                current = client.get(f"/api/v1/demands/{number}").json()
+                self.assertTrue(current["line_mode"])
+                self.assertEqual(current["lines"][0]["line_id"], legacy_line_id)
+                self.assertEqual(current["lines"][0]["estimated_hours"], 8.0)
+                self.assertEqual(
+                    current["lines"][0]["estimated_hours_source"],
+                    "DEFAULT_8H",
+                )
+
+                flat_edit = client.patch(
+                    f"/api/v1/demands/{number}",
+                    json={"estimated_hours": 4},
+                )
+                self.assertEqual(flat_edit.status_code, 422, flat_edit.text)
+                self.assertEqual(
+                    flat_edit.json()["error"]["code"],
+                    "demand_update_invalid",
+                )
+
     def test_multi_line_payload_cannot_mix_legacy_need_fields(self) -> None:
         with TemporaryDirectory() as directory:
             database_url, _ = self._database(directory)
