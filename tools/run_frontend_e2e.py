@@ -35,6 +35,7 @@ from app.application.security import (
 from app.infrastructure.sql import (
     Base,
     Competency,
+    CommunicationContact,
     Project,
     Resource,
     ResourceAvailabilityRule,
@@ -197,6 +198,16 @@ def _seed(database_url: str) -> None:
                         active=True,
                     )
                 )
+
+            session.add(
+                CommunicationContact(
+                    recipient_id="pm:EMP-PM",
+                    audience="project_manager",
+                    display_name="Chargé E2E",
+                    email=f"pm{chr(64)}{address_domain}",
+                    active=True,
+                )
+            )
 
             users = SqlUserIdentityRepository(session)
             for subject, display_name, role, employee_external_id in (
