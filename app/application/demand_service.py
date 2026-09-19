@@ -396,8 +396,12 @@ class DemandService:
 
     def approve_command(self, command: DemandApproveCommand) -> dict[str, Any]:
         number = self._required_identifier(command.number, entity="demand")
-        existing = self._demand_or_not_found(number)
-        if existing.line_mode:
+        existing = call_application_port(
+            lambda: self._demands.get(number),
+            code_prefix="demand_lookup",
+            context={"demand_number": number},
+        )
+        if existing is not None and existing.line_mode:
             raise ApplicationOperationError(
                 "L'approbation des demandes multi-lignes sera activée avec la matérialisation #288E.",
                 code="demand_line_approval_unavailable",
