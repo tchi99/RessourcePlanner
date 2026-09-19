@@ -236,6 +236,7 @@ export default function PlanningActionPanel({
                       onRecommend={openRecommendations}
                       onOpenDemands={onOpenDemands}
                       onOpenSegment={onOpenSegment}
+                      canDragAssignment={canAssign}
                     />
                   ))
                   : <div className="planning-action-empty compact">Tous les besoins sont attribués.</div>}
