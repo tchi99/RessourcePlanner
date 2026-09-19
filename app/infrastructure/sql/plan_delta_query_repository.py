@@ -11,6 +11,7 @@ from ...application.plan_delta import (
     DemandPlanDeltaItemReadModel,
     DemandPlanDeltaReadModel,
 )
+from ...domain.active_days import split_total_workforce_hours
 from ...domain.availability_rules import availability_hours_for_day
 from ...domain.confirmation import CONFIRMATION_CONFIRMED, normalize_confirmation
 from ...domain.plan_comparison import (
@@ -202,8 +203,8 @@ class SqlPlannerQueryRepositoryWithPlanDelta(SqlPlannerQueryRepositoryWeb):
             for link, period in rows
         }
 
-    def _effective_periods(self, request_id: str) -> list[WorkforceRequestPeriod]:
-        periods = list(
+    def _active_periods(self, request_id: str) -> list[WorkforceRequestPeriod]:
+        return list(
             self._delta_session.scalars(
                 select(WorkforceRequestPeriod)
                 .where(
@@ -213,6 +214,14 @@ class SqlPlannerQueryRepositoryWithPlanDelta(SqlPlannerQueryRepositoryWeb):
                 .order_by(WorkforceRequestPeriod.sequence, WorkforceRequestPeriod.id)
             ).all()
         )
+
+    def _effective_periods(
+        self,
+        request_id: str,
+        *,
+        active_periods: list[WorkforceRequestPeriod] | None = None,
+    ) -> list[WorkforceRequestPeriod]:
+        periods = active_periods if active_periods is not None else self._active_periods(request_id)
         selections = {
             row.alternative_group: row.period_id
             for row in self._delta_session.scalars(
@@ -328,10 +337,16 @@ class SqlPlannerQueryRepositoryWithPlanDelta(SqlPlannerQueryRepositoryWeb):
             for row in self._delta_session.scalars(select(Resource)).all()
         }
         period_key_by_requirement = self._period_key_by_requirement(request.id)
-        periods = self._effective_periods(request.id)
+        active_periods = self._active_periods(request.id)
+        periods = self._effective_periods(request.id, active_periods=active_periods)
         proposed: list[dict[str, object]] = []
 
-        if periods:
+        if active_periods:
+            # Detailed periods replace the simple request envelope. An unresolved
+            # alternative group therefore proposes no requirement instead of
+            # silently falling back to the legacy envelope.
+            if not periods:
+                return []
             current_by_period: dict[str, list[ResourceRequirement]] = defaultdict(list)
             for requirement in current:
                 key = period_key_by_requirement.get(requirement.id)
@@ -348,6 +363,7 @@ class SqlPlannerQueryRepositoryWithPlanDelta(SqlPlannerQueryRepositoryWeb):
                     ),
                 )
                 desired = max(int(period.resource_count or 1), 1)
+                split_hours = split_total_workforce_hours(period.hours, desired)
                 inherited_confirmation = normalize_confirmation(period.confirmation)
                 for index in range(desired):
                     requirement = ranked[index] if index < len(ranked) else None
@@ -364,7 +380,7 @@ class SqlPlannerQueryRepositoryWithPlanDelta(SqlPlannerQueryRepositoryWeb):
                             resource=resource,
                             start_date=period.start_date,
                             end_date=period.end_date,
-                            hours=float(period.hours),
+                            hours=split_hours[index],
                             confirmation=inherited_confirmation,
                             description=period.note or request.description,
                             synthetic_id=f"PREVIEW-{period.period_key}-{index + 1}",

@@ -15,6 +15,8 @@ from app.infrastructure.sql import (
     ResourceRequirement,
     Shift,
     WorkforceRequest,
+    WorkforceRequestPeriod,
+    WorkforceRequestPeriodRequirement,
     create_session_factory,
     create_sql_engine,
     transactional_session,
@@ -71,20 +73,38 @@ class SqlPlanDeltaPreviewTests(unittest.TestCase):
         self.factory = create_session_factory(self.engine)
         with transactional_session(self.factory) as session:
             session.add(Project(id="P1", number="P-1", name="Projet delta"))
-            session.add(Resource(id="R1", name="Alice", active=True))
+            session.add_all(
+                [
+                    Resource(id="R1", name="Alice", active=True),
+                    Resource(id="R2", name="Bob", active=True),
+                ]
+            )
             session.flush()
-            session.add(
-                ResourceAvailabilityRule(
-                    id="SCH-R1",
-                    resource_id="R1",
-                    availability_type="Horaire standard",
-                    start_date=D1,
-                    end_date=D2,
-                    weekdays="Lun,Mar",
-                    start_time=time(8, 0),
-                    end_time=time(16, 0),
-                    active=True,
-                )
+            session.add_all(
+                [
+                    ResourceAvailabilityRule(
+                        id="SCH-R1",
+                        resource_id="R1",
+                        availability_type="Horaire standard",
+                        start_date=D1,
+                        end_date=D2,
+                        weekdays="Lun,Mar",
+                        start_time=time(8, 0),
+                        end_time=time(16, 0),
+                        active=True,
+                    ),
+                    ResourceAvailabilityRule(
+                        id="SCH-R2",
+                        resource_id="R2",
+                        availability_type="Horaire standard",
+                        start_date=D1,
+                        end_date=D2,
+                        weekdays="Lun,Mar",
+                        start_time=time(8, 0),
+                        end_time=time(16, 0),
+                        active=True,
+                    ),
+                ]
             )
 
     def tearDown(self) -> None:
@@ -203,6 +223,205 @@ class SqlPlanDeltaPreviewTests(unittest.TestCase):
             self.assertEqual(current_requirement.start_date, D1)
             self.assertEqual(current_requirement.end_date, D1)
             self.assertEqual(current_shift.work_date, D1)
+
+    def test_unresolved_alternatives_do_not_fall_back_to_simple_envelope(self) -> None:
+        with transactional_session(self.factory) as session:
+            session.add(
+                WorkforceRequest(
+                    id="D-ALT",
+                    legacy_demand_number="DEM-ALT",
+                    project_id="P1",
+                    desired_start=D1,
+                    desired_end=D2,
+                    estimated_hours=Decimal("8"),
+                    resource_count=1,
+                    proposed_resource_id="R1",
+                    status="Soumise",
+                )
+            )
+            session.flush()
+            session.add(
+                ResourceRequirement(
+                    id="REQ-ALT",
+                    legacy_segment_id="SEG-ALT",
+                    project_id="P1",
+                    workforce_request_id="D-ALT",
+                    assigned_resource_id="R1",
+                    start_date=D1,
+                    end_date=D1,
+                    planned_hours=Decimal("8"),
+                    status="Planifié",
+                    planning_type="Flexible",
+                    origin="REQUEST",
+                )
+            )
+            session.add_all(
+                [
+                    WorkforceRequestPeriod(
+                        id="PER-A",
+                        period_key="OPT-A",
+                        workforce_request_id="D-ALT",
+                        sequence=0,
+                        kind="ALTERNATIVE",
+                        alternative_group="VISITE",
+                        start_date=D1,
+                        end_date=D1,
+                        hours=Decimal("8"),
+                        confirmation="Tentative",
+                        resource_count=1,
+                        active=True,
+                    ),
+                    WorkforceRequestPeriod(
+                        id="PER-B",
+                        period_key="OPT-B",
+                        workforce_request_id="D-ALT",
+                        sequence=1,
+                        kind="ALTERNATIVE",
+                        alternative_group="VISITE",
+                        start_date=D2,
+                        end_date=D2,
+                        hours=Decimal("8"),
+                        confirmation="Tentative",
+                        resource_count=1,
+                        active=True,
+                    ),
+                ]
+            )
+            session.flush()
+            session.add(
+                Shift(
+                    id="SHIFT-ALT",
+                    legacy_allocation_id="AUTO-ALT",
+                    resource_requirement_id="REQ-ALT",
+                    resource_id="R1",
+                    work_date=D1,
+                    hours=Decimal("8"),
+                    allocation_type="Auto",
+                    source="AUTO",
+                    locked=False,
+                )
+            )
+            session.flush()
+
+            result = SqlPlannerQueryRepositoryWithPlanDelta(session).demand_plan_delta("DEM-ALT")
+
+            self.assertIsNotNone(result)
+            assert result is not None
+            self.assertTrue(result.available)
+            self.assertTrue(result.has_changes)
+            self.assertEqual(result.cancel_count, 1)
+            self.assertEqual(result.add_count, 0)
+            self.assertEqual(result.proposed_hours, 0.0)
+
+    def test_period_preview_splits_total_hours_across_resource_count(self) -> None:
+        with transactional_session(self.factory) as session:
+            session.add(
+                WorkforceRequest(
+                    id="D-PERIOD",
+                    legacy_demand_number="DEM-PERIOD",
+                    project_id="P1",
+                    desired_start=D1,
+                    desired_end=D1,
+                    estimated_hours=Decimal("16"),
+                    resource_count=2,
+                    status="Soumise",
+                )
+            )
+            session.flush()
+            period = WorkforceRequestPeriod(
+                id="PER-CUM",
+                period_key="CUM-1",
+                workforce_request_id="D-PERIOD",
+                sequence=0,
+                kind="CUMULATIVE",
+                alternative_group=None,
+                start_date=D1,
+                end_date=D1,
+                hours=Decimal("16"),
+                confirmation="Confirmée",
+                resource_count=2,
+                active=True,
+            )
+            session.add(period)
+            session.add_all(
+                [
+                    ResourceRequirement(
+                        id="REQ-P1",
+                        legacy_segment_id="SEG-P1",
+                        project_id="P1",
+                        workforce_request_id="D-PERIOD",
+                        assigned_resource_id="R1",
+                        start_date=D1,
+                        end_date=D1,
+                        planned_hours=Decimal("8"),
+                        status="Planifié",
+                        planning_type="Flexible",
+                        origin="REQUEST",
+                    ),
+                    ResourceRequirement(
+                        id="REQ-P2",
+                        legacy_segment_id="SEG-P2",
+                        project_id="P1",
+                        workforce_request_id="D-PERIOD",
+                        assigned_resource_id="R2",
+                        start_date=D1,
+                        end_date=D1,
+                        planned_hours=Decimal("8"),
+                        status="Planifié",
+                        planning_type="Flexible",
+                        origin="REQUEST",
+                    ),
+                ]
+            )
+            session.flush()
+            session.add_all(
+                [
+                    WorkforceRequestPeriodRequirement(
+                        resource_requirement_id="REQ-P1",
+                        period_id="PER-CUM",
+                    ),
+                    WorkforceRequestPeriodRequirement(
+                        resource_requirement_id="REQ-P2",
+                        period_id="PER-CUM",
+                    ),
+                    Shift(
+                        id="SHIFT-P1",
+                        legacy_allocation_id="AUTO-P1",
+                        resource_requirement_id="REQ-P1",
+                        resource_id="R1",
+                        work_date=D1,
+                        hours=Decimal("8"),
+                        allocation_type="Flexible",
+                        source="AUTO",
+                        locked=False,
+                    ),
+                    Shift(
+                        id="SHIFT-P2",
+                        legacy_allocation_id="AUTO-P2",
+                        resource_requirement_id="REQ-P2",
+                        resource_id="R2",
+                        work_date=D1,
+                        hours=Decimal("8"),
+                        allocation_type="Flexible",
+                        source="AUTO",
+                        locked=False,
+                    ),
+                ]
+            )
+            session.flush()
+
+            result = SqlPlannerQueryRepositoryWithPlanDelta(session).demand_plan_delta(
+                "DEM-PERIOD"
+            )
+
+            self.assertIsNotNone(result)
+            assert result is not None
+            self.assertTrue(result.available)
+            self.assertFalse(result.has_changes)
+            self.assertEqual(result.add_count, 0)
+            self.assertEqual(result.modify_count, 0)
+            self.assertEqual(result.move_count, 0)
+            self.assertEqual(result.cancel_count, 0)
 
 
 if __name__ == "__main__":

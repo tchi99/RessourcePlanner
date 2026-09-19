@@ -120,6 +120,7 @@ class DemandService:
             period.confirmation,
             period.proposed_resource,
             int(period.resource_count),
+            period.desired_active_days,
             period.note,
         )
 
@@ -135,6 +136,7 @@ class DemandService:
             period.confirmation,
             period.proposed_resource,
             int(period.resource_count),
+            period.desired_active_days,
             period.note or "",
         )
 
