@@ -6,6 +6,7 @@ from datetime import date, datetime
 from typing import Any, ContextManager
 
 from ..domain.demand_periods import DemandPeriodDefinition, validate_period_definitions
+from ..domain.request_lines import default_legacy_hours
 from .command_ports import ApprovedDemandSyncPort, PlanningCommandPort
 from .commands import (
     DemandAlternativeSelectCommand,
@@ -368,7 +369,7 @@ class DemandService:
         )
         active_lines = (
             tuple(line for line in existing.lines if line.active)
-            if existing is not None
+            if existing is not None and existing.line_mode
             else ()
         )
         if active_lines:
@@ -391,11 +392,23 @@ class DemandService:
                         code="demand_line_effort_required",
                         context={"line_id": line.line_id},
                     )
+        submit_updates: dict[str, Any] = {"Statut": "Soumise"}
+        if (
+            existing is not None
+            and not existing.line_mode
+            and existing.estimated_hours is None
+            and existing.estimated_days is not None
+        ):
+            submit_updates["TempsEstimeHeures"] = default_legacy_hours(
+                estimated_hours=None,
+                estimated_days=existing.estimated_days,
+                resource_count=existing.resource_count,
+            )
         with self._context("submit demand"):
             call_application_port(
                 lambda: self._demands.update(
                     number,
-                    {"Statut": "Soumise"},
+                    submit_updates,
                     action="Soumission",
                     comment="Demande soumise pour approbation",
                 ),
