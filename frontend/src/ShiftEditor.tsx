@@ -10,7 +10,9 @@ import {
   OverallocationApiError,
   OverallocationContext,
   OverallocationPolicy,
+  deleteManualAllocation,
   overallocationContext,
+  releaseManualAllocation,
   updateAllocationWithOverallocation,
 } from "./manualOverallocationApi";
 import PlanningHistoryPanel from "./PlanningHistoryPanel";
@@ -127,6 +129,43 @@ export default function ShiftEditor({
   async function submit(event: FormEvent) {
     event.preventDefault();
     await save(null);
+  }
+
+  async function releaseManual() {
+    if (saving || !shift.locked) return;
+    setSaving(true);
+    setError(null);
+    try {
+      await releaseManualAllocation(shift.allocation_id);
+      onSaved();
+    } catch (reason: unknown) {
+      if (reason instanceof ApiError) {
+        setError(`${reason.message}${reason.code ? ` (${reason.code})` : ""}`);
+      } else {
+        setError(reason instanceof Error ? reason.message : "Impossible de remettre le quart en automatique.");
+      }
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function deleteManual() {
+    if (saving || !shift.locked) return;
+    if (!window.confirm("Supprimer ce quart manuel? Le reliquat du segment redeviendra disponible au recalcul.")) return;
+    setSaving(true);
+    setError(null);
+    try {
+      await deleteManualAllocation(shift.allocation_id);
+      onSaved();
+    } catch (reason: unknown) {
+      if (reason instanceof ApiError) {
+        setError(`${reason.message}${reason.code ? ` (${reason.code})` : ""}`);
+      } else {
+        setError(reason instanceof Error ? reason.message : "Impossible de supprimer le quart manuel.");
+      }
+    } finally {
+      setSaving(false);
+    }
   }
 
   if (!canManagePlanning) return null;
@@ -246,8 +285,18 @@ export default function ShiftEditor({
           <PlanningHistoryPanel entityType="SHIFT" reference={shift.allocation_id} />
 
           <div className="dialog-actions">
+            {shift.locked && (
+              <>
+                <button type="button" className="secondary-button" onClick={() => void releaseManual()} disabled={saving}>
+                  Revenir à l’automatique
+                </button>
+                <button type="button" className="danger-button" onClick={() => void deleteManual()} disabled={saving}>
+                  Supprimer le quart manuel
+                </button>
+              </>
+            )}
             <button type="button" className="secondary-button" onClick={onClose} disabled={saving}>Annuler</button>
-            <button type="submit" className="primary-button" disabled={saving}>{saving ? "Enregistrement…" : "Enregistrer les modifications"}</button>
+            <button type="submit" className="primary-button" disabled={saving}>{saving ? "Enregistrement…" : "Enregistrer et verrouiller"}</button>
           </div>
         </form>
       </section>
