@@ -54,9 +54,10 @@ DEMO_RESOURCE_IDS = (
     "DEMO-R-PM-1",
 )
 DEV_IDENTITY_ISSUER = "urn:resourceplanner:dev"
-DEV_TECHNICIAN_EXTERNAL_IDS = {
+DEV_RESOURCE_EXTERNAL_IDS = {
     "DEMO-R-AUTO-1": "DEV-TECH-A",
     "DEMO-R-AUTO-2": "DEV-TECH-B",
+    "DEMO-R-PM-1": "DEV-PM-TECH",
 }
 
 
@@ -241,8 +242,8 @@ def _upsert_demo_resources(
         resource.name = name
         resource.resource_class = resource_class
         resource.competencies = competencies
-        if resource_id in DEV_TECHNICIAN_EXTERNAL_IDS:
-            resource.external_id = DEV_TECHNICIAN_EXTERNAL_IDS[resource_id]
+        if resource_id in DEV_RESOURCE_EXTERNAL_IDS:
+            resource.external_id = DEV_RESOURCE_EXTERNAL_IDS[resource_id]
         resource.note = "Ressource de démonstration locale"
         resource.active = True
         resource.sort_order = sort_order
@@ -293,21 +294,32 @@ def _upsert_demo_resources(
 def _upsert_dev_users(session: Session) -> int:
     repository = SqlUserIdentityRepository(session)
     definitions = (
-        ("admin", "Administrateur Démo", ROLE_ADMIN, None),
-        ("coordinator", "Coordonnateur Démo", ROLE_COORDINATOR, None),
-        ("project-manager", "Chargé de projet Démo", ROLE_PROJECT_MANAGER, None),
-        ("manager", "Gestionnaire Démo", ROLE_MANAGER, None),
-        ("technician-a", "Technicien Démo A", ROLE_TECHNICIAN, "DEV-TECH-A"),
-        ("technician-b", "Technicien Démo B", ROLE_TECHNICIAN, "DEV-TECH-B"),
+        ("admin", "Administrateur Démo", (ROLE_ADMIN,), None),
+        ("coordinator", "Coordonnateur Démo", (ROLE_COORDINATOR,), None),
+        (
+            "project-manager",
+            "Chargé de projet Démo",
+            (ROLE_PROJECT_MANAGER,),
+            "DEV-PM-A",
+        ),
+        ("manager", "Gestionnaire Démo", (ROLE_MANAGER,), None),
+        ("technician-a", "Technicien Démo A", (ROLE_TECHNICIAN,), "DEV-TECH-A"),
+        ("technician-b", "Technicien Démo B", (ROLE_TECHNICIAN,), "DEV-TECH-B"),
+        (
+            "project-technician",
+            "Chargé de projet / Technicien Démo",
+            (ROLE_PROJECT_MANAGER, ROLE_TECHNICIAN),
+            "DEV-PM-TECH",
+        ),
     )
-    for subject, display_name, role, employee_external_id in definitions:
+    for subject, display_name, roles, employee_external_id in definitions:
         repository.upsert(
             issuer=DEV_IDENTITY_ISSUER,
             subject=subject,
             display_name=display_name,
             email=None,
             employee_external_id=employee_external_id,
-            roles=(role,),
+            roles=roles,
             active=True,
         )
     return len(definitions)
@@ -329,6 +341,7 @@ def seed_demo_session(session: Session, *, today: date | None = None) -> DemoSee
             number="DEMO-1001",
             name="Modernisation traitement d'eau",
             client="Client Démo A",
+            project_manager_external_id="DEV-PM-A",
             project_manager_name="Chargé projet A",
             status="Actif",
         ),
@@ -337,6 +350,7 @@ def seed_demo_session(session: Session, *, today: date | None = None) -> DemoSee
             number="DEMO-1002",
             name="Ligne d'emballage",
             client="Client Démo B",
+            project_manager_external_id="DEV-PM-TECH",
             project_manager_name="Chargé projet B",
             status="Actif",
         ),
