@@ -61,7 +61,11 @@ class ServerCommandRouteTests(unittest.TestCase):
     def test_create_and_patch_demand_use_canonical_http_fields(self) -> None:
         with TemporaryDirectory() as directory:
             database_url, _ = self._database(directory)
-            app = create_api_app(\n                database_url,\n                actor_name="Jean",\n                auth_resolver=test_admin_auth_resolver("Jean"),\n            )
+            app = create_api_app(
+                database_url,
+                actor_name="Jean",
+                auth_resolver=test_admin_auth_resolver("Jean"),
+            )
             with TestClient(app, raise_server_exceptions=False) as client:
                 created = client.post(
                     "/api/v1/demands",
@@ -168,7 +172,11 @@ class ServerCommandRouteTests(unittest.TestCase):
     def test_quick_shift_route_creates_locked_shift_without_fake_request(self) -> None:
         with TemporaryDirectory() as directory:
             database_url, _ = self._database(directory)
-            app = create_api_app(\n                database_url,\n                actor_name="Jean",\n                auth_resolver=test_admin_auth_resolver("Jean"),\n            )
+            app = create_api_app(
+                database_url,
+                actor_name="Jean",
+                auth_resolver=test_admin_auth_resolver("Jean"),
+            )
             with TestClient(app, raise_server_exceptions=False) as client:
                 response = client.post(
                     "/api/v1/quick-shifts",
