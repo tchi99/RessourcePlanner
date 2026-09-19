@@ -371,6 +371,50 @@ export type MediumTermCapacityBucketReadModel = {
   state: "available" | "warning" | "overloaded" | "unavailable";
 };
 
+export type PlanningDayCapacityReadModel = {
+  day: string;
+  capacity_hours: number;
+  confirmed_hours: number;
+  tentative_hours: number;
+  outside_standard_hours: number;
+  total_hours: number;
+  prudent_free: number;
+  available: boolean;
+  overloaded: boolean;
+  reason: string | null;
+};
+
+export type PlanningResourceCapacityReadModel = {
+  resource_id: string;
+  resource_name: string;
+  resource_class: string | null;
+  capacity_hours: number;
+  confirmed_hours: number;
+  tentative_hours: number;
+  outside_standard_hours: number;
+  prudent_free: number;
+  overloaded: boolean;
+  days: PlanningDayCapacityReadModel[];
+};
+
+export type PlanningSegmentCapacityDiagnosticReadModel = {
+  segment_id: string;
+  resource_id: string | null;
+  resource_name: string | null;
+  planned_hours: number;
+  allocated_hours: number;
+  outside_standard_hours: number;
+  unplaced_hours: number;
+  requires_outside_standard_hours: boolean;
+};
+
+export type PlanningCapacityGridReadModel = {
+  start: string;
+  end: string;
+  resources: PlanningResourceCapacityReadModel[];
+  segment_diagnostics: PlanningSegmentCapacityDiagnosticReadModel[];
+};
+
 export type PlanningSnapshotReadModel = {
   start: string;
   end: string;
@@ -533,6 +577,14 @@ export function linkDemandToWorkPackage(number: string, workPackageRef: string) 
 export function getPlanningSnapshot(start: string, end: string, signal?: AbortSignal) {
   const params = new URLSearchParams({ start, end });
   return getJson<PlanningSnapshotReadModel>(`/api/v1/planning/snapshot?${params.toString()}`, signal);
+}
+
+export function getPlanningCapacityGrid(start: string, end: string, signal?: AbortSignal) {
+  const params = new URLSearchParams({ start, end });
+  return getJson<PlanningCapacityGridReadModel>(
+    `/api/v1/planning/capacity-grid?${params.toString()}`,
+    signal,
+  );
 }
 
 export function getPlanningActions(start: string, end: string, signal?: AbortSignal) {
