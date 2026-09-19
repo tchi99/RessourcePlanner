@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from functools import partial
+
 from datetime import date
 from decimal import Decimal
 import json
@@ -29,6 +31,10 @@ from app.server import create_api_app
 D1 = date(2026, 8, 24)
 D2 = date(2026, 8, 25)
 
+
+from tests.http_test_auth import TEST_ADMIN_AUTH_RESOLVER
+
+create_api_app = partial(create_api_app, auth_resolver=TEST_ADMIN_AUTH_RESOLVER)
 
 class ServerReadRouteTests(unittest.TestCase):
     def _database(self, directory: str) -> str:
