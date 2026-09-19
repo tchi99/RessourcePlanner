@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 from sqlalchemy import select
@@ -59,25 +59,49 @@ class SqlResourceAdminRepository(ResourceAdminRepositoryPort):
     def __init__(self, session: Session) -> None:
         self._session = session
 
-    def _competency_ids(self, resource_id: str) -> tuple[str, ...]:
-        return tuple(
-            self._session.scalars(
-                select(ResourceCompetency.competency_id).where(
-                    ResourceCompetency.resource_id == resource_id
-                )
-            ).all()
-        )
+    def _competency_ids_by_resource(
+        self,
+        resource_ids: Sequence[str],
+    ) -> dict[str, tuple[str, ...]]:
+        identifiers = tuple(str(value) for value in resource_ids if str(value))
+        if not identifiers:
+            return {}
+        grouped: dict[str, list[str]] = {identifier: [] for identifier in identifiers}
+        rows = self._session.execute(
+            select(
+                ResourceCompetency.resource_id,
+                ResourceCompetency.competency_id,
+            )
+            .where(ResourceCompetency.resource_id.in_(identifiers))
+            .order_by(
+                ResourceCompetency.resource_id,
+                ResourceCompetency.competency_id,
+            )
+        ).all()
+        for resource_id, competency_id in rows:
+            grouped.setdefault(resource_id, []).append(competency_id)
+        return {
+            resource_id: tuple(competency_ids)
+            for resource_id, competency_ids in grouped.items()
+        }
 
     def list_resources(self, *, active_only: bool = False) -> tuple[ResourceReadModel, ...]:
         statement = select(Resource)
         if active_only:
             statement = statement.where(Resource.active.is_(True))
         rows = self._session.scalars(statement.order_by(Resource.sort_order, Resource.name)).all()
-        return tuple(_resource_model(row, self._competency_ids(row.id)) for row in rows)
+        competency_ids = self._competency_ids_by_resource(tuple(row.id for row in rows))
+        return tuple(
+            _resource_model(row, competency_ids.get(row.id, ()))
+            for row in rows
+        )
 
     def get_resource(self, resource_id: str) -> ResourceReadModel | None:
         row = self._session.get(Resource, _text(resource_id))
-        return _resource_model(row, self._competency_ids(row.id)) if row is not None else None
+        if row is None:
+            return None
+        competency_ids = self._competency_ids_by_resource((row.id,))
+        return _resource_model(row, competency_ids.get(row.id, ()))
 
     def find_resource_by_name(self, name: str) -> ResourceReadModel | None:
         wanted = _text(name).casefold()
