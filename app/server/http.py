@@ -25,6 +25,7 @@ from ..application import (
 from ..application.communications import CommunicationService, CommunicationTransportPort
 from ..application.errors import ApplicationUnavailableError
 from ..application.security import AuthPrincipal
+from ..application.user_view_context import UserViewContextRepositoryPort
 from ..infrastructure.sql import (
     SqlSessionFactory,
     create_session_factory,
@@ -38,6 +39,7 @@ from .composition import (
     build_sql_idempotency_executor,
     build_sql_query_port,
     build_user_admin_service,
+    build_user_view_context_repository,
 )
 from .dev_user_switcher import DevUserSwitcherRuntime
 from .oidc import OidcRuntime, oidc_csrf_guard
@@ -67,6 +69,7 @@ QueryDependency = Callable[[], Iterator[PlannerQueryPort]]
 UserAdminDependency = Callable[..., Any]
 CommunicationDependency = Callable[..., Any]
 CompetencyDependency = Callable[[], Iterator[CompetencyCatalogService]]
+UserViewContextDependency = Callable[[], Iterator[UserViewContextRepositoryPort]]
 
 
 def application_error_status(exc: ApplicationError) -> int:
@@ -151,6 +154,21 @@ def make_query_dependency(
         session: Session = Depends(request_session),
     ) -> Iterator[PlannerQueryPort]:
         yield build_sql_query_port(session)
+
+    return dependency
+
+
+def make_user_view_context_dependency(
+    factory: SqlSessionFactory,
+    *,
+    session_dependency: SessionDependency | None = None,
+) -> UserViewContextDependency:
+    request_session = session_dependency or make_session_dependency(factory)
+
+    def dependency(
+        session: Session = Depends(request_session),
+    ) -> Iterator[UserViewContextRepositoryPort]:
+        yield build_user_view_context_repository(session)
 
     return dependency
 
@@ -262,6 +280,10 @@ def create_api_app(
         factory,
         session_dependency=session_dependency,
     )
+    user_view_context_dependency = make_user_view_context_dependency(
+        factory,
+        session_dependency=session_dependency,
+    )
     user_admin_dependency = make_user_admin_dependency(
         factory,
         session_dependency=session_dependency,
@@ -298,6 +320,7 @@ def create_api_app(
     app.state.idempotency_dependency = idempotency_dependency
     app.state.query_dependency = query_dependency
     app.state.user_admin_dependency = user_admin_dependency
+    app.state.user_view_context_dependency = user_view_context_dependency
     app.state.communication_dependency = communication_dependency
     app.state.competency_dependency = competency_dependency
     app.state.runtime_dependencies = dict(runtime_dependencies or {})
@@ -390,7 +413,12 @@ def create_api_app(
     app.include_router(build_read_router(query_dependency))
     app.include_router(build_competency_router(competency_dependency))
     app.include_router(build_task_catalog_router(session_dependency))
-    app.include_router(build_me_router(query_dependency))
+    app.include_router(
+        build_me_router(
+            query_dependency,
+            user_view_context_dependency,
+        )
+    )
     app.include_router(build_communication_router(communication_dependency))
     app.include_router(
         build_integration_router(
