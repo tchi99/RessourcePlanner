@@ -13,6 +13,7 @@ from sqlalchemy import func, select
 
 from app.infrastructure.sql import (
     Base,
+    Competency,
     Project,
     Resource,
     ResourceAvailabilityRule,
@@ -43,6 +44,7 @@ class ServerCommandRouteTests(unittest.TestCase):
         with transactional_session(factory) as session:
             session.add(Project(id="P1", number="P-1", name="Projet API"))
             session.add(Resource(id="R1", name="Alice", active=True))
+            session.add(Competency(id="C1", name="PLC", active=True, sort_order=0))
             session.flush()
             session.add(
                 ResourceAvailabilityRule(
@@ -103,6 +105,168 @@ class ServerCommandRouteTests(unittest.TestCase):
                     self.assertIsNone(request.description)
             finally:
                 engine.dispose()
+
+    def test_multi_line_demand_write_resolves_default_hours_and_versions(self) -> None:
+        with TemporaryDirectory() as directory:
+            database_url, _ = self._database(directory)
+            app = create_api_app(
+                database_url,
+                actor_name="Jean",
+                auth_resolver=test_admin_auth_resolver("Jean"),
+            )
+            with TestClient(app, raise_server_exceptions=False) as client:
+                created = client.post(
+                    "/api/v1/demands",
+                    json={
+                        "project_number": "P-1",
+                        "description": "Demande à deux besoins",
+                        "lines": [
+                            {
+                                "required_resource_class": "Automatisation",
+                                "required_competency_ids": ["C1"],
+                                "desired_start": "2026-08-24",
+                                "desired_end": "2026-08-26",
+                                "desired_active_days": 3
+                            },
+                            {
+                                "required_resource_class": "Électricité",
+                                "desired_start": "2026-08-27",
+                                "desired_end": "2026-08-28",
+                                "desired_active_days": 2,
+                                "estimated_hours": 12
+                            }
+                        ]
+                    },
+                )
+                self.assertEqual(created.status_code, 201, created.text)
+                number = created.json()["demand_number"]
+
+                read = client.get(f"/api/v1/demands/{number}")
+                self.assertEqual(read.status_code, 200, read.text)
+                demand = read.json()
+                self.assertTrue(demand["line_mode"])
+                self.assertEqual(demand["version"], 1)
+                self.assertEqual(demand["resource_count"], 2)
+                self.assertEqual(demand["estimated_hours"], 36.0)
+                self.assertEqual(len(demand["lines"]), 2)
+                active = [line for line in demand["lines"] if line["active"]]
+                self.assertEqual(len(active), 2)
+                self.assertEqual(active[0]["estimated_hours"], 24.0)
+                self.assertEqual(active[0]["estimated_hours_source"], "DEFAULT_8H")
+                self.assertEqual(active[0]["default_hours_per_day"], 8.0)
+                self.assertEqual(active[0]["required_competency_ids"], ["C1"])
+                self.assertEqual(active[1]["estimated_hours"], 12.0)
+                self.assertEqual(active[1]["estimated_hours_source"], "EXPLICIT")
+
+                first_id = active[0]["line_id"]
+                removed_id = active[1]["line_id"]
+                patched = client.patch(
+                    f"/api/v1/demands/{number}",
+                    json={
+                        "expected_version": 1,
+                        "lines": [
+                            {
+                                "id": first_id,
+                                "required_resource_class": "Automatisation",
+                                "required_competency_ids": ["C1"],
+                                "desired_start": "2026-08-24",
+                                "desired_end": "2026-08-26",
+                                "desired_active_days": 3
+                            },
+                            {
+                                "required_resource_class": "Instrumentation",
+                                "desired_start": "2026-08-31",
+                                "desired_end": "2026-09-01",
+                                "estimated_hours": 8
+                            }
+                        ]
+                    },
+                )
+                self.assertEqual(patched.status_code, 200, patched.text)
+
+                updated = client.get(f"/api/v1/demands/{number}").json()
+                self.assertEqual(updated["version"], 2)
+                active = [line for line in updated["lines"] if line["active"]]
+                inactive = [line for line in updated["lines"] if not line["active"]]
+                self.assertEqual(len(active), 2)
+                self.assertEqual(len(inactive), 1)
+                self.assertEqual(active[0]["line_id"], first_id)
+                self.assertEqual(inactive[0]["line_id"], removed_id)
+                self.assertEqual(updated["estimated_hours"], 32.0)
+
+                stale = client.patch(
+                    f"/api/v1/demands/{number}",
+                    json={
+                        "expected_version": 1,
+                        "lines": [
+                            {
+                                "id": first_id,
+                                "desired_start": "2026-08-24",
+                                "desired_active_days": 1
+                            }
+                        ]
+                    },
+                )
+                self.assertEqual(stale.status_code, 409, stale.text)
+                self.assertEqual(
+                    stale.json()["error"]["code"],
+                    "demand_version_conflict",
+                )
+
+    def test_multi_line_payload_cannot_mix_legacy_need_fields(self) -> None:
+        with TemporaryDirectory() as directory:
+            database_url, _ = self._database(directory)
+            app = create_api_app(database_url)
+            with TestClient(app, raise_server_exceptions=False) as client:
+                response = client.post(
+                    "/api/v1/demands",
+                    json={
+                        "project_number": "P-1",
+                        "desired_start": "2026-08-24",
+                        "lines": [
+                            {
+                                "desired_start": "2026-08-24",
+                                "estimated_hours": 8
+                            }
+                        ]
+                    },
+                )
+            self.assertEqual(response.status_code, 422, response.text)
+            self.assertEqual(
+                response.json()["error"]["code"],
+                "request_validation_error",
+            )
+
+    def test_line_authored_demand_cannot_use_flat_approval_before_288e(self) -> None:
+        with TemporaryDirectory() as directory:
+            database_url, _ = self._database(directory)
+            app = create_api_app(database_url)
+            with TestClient(app, raise_server_exceptions=False) as client:
+                created = client.post(
+                    "/api/v1/demands",
+                    json={
+                        "project_number": "P-1",
+                        "submit": True,
+                        "lines": [
+                            {
+                                "desired_start": "2026-08-24",
+                                "desired_active_days": 1
+                            }
+                        ]
+                    },
+                )
+                self.assertEqual(created.status_code, 201, created.text)
+                number = created.json()["demand_number"]
+                approved = client.post(
+                    f"/api/v1/demands/{number}/approve",
+                    json={"comment": "test"},
+                )
+
+            self.assertEqual(approved.status_code, 409, approved.text)
+            self.assertEqual(
+                approved.json()["error"]["code"],
+                "demand_line_approval_unavailable",
+            )
 
     def test_unknown_project_returns_structured_not_found(self) -> None:
         with TemporaryDirectory() as directory:
