@@ -303,6 +303,7 @@ export default function DemandsPage() {
 
   function beginCreate() {
     const firstProject = projects[0]?.number ?? "";
+    setDetailLoading(false);
     setCreating(true);
     setSelectedNumber(null);
     setSelectedDemand(null);
