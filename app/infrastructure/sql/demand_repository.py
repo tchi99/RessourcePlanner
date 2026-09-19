@@ -6,15 +6,17 @@ from decimal import Decimal
 import re
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session, aliased
 
-from ...application.read_models import DemandReadModel
+from ...application.read_models import DemandLineReadModel, DemandReadModel
 from ...application.repository_ports import DemandRepositoryPort
-from .base import utc_now
+from .base import new_id, utc_now
 from .models import (
+    Competency,
     Project,
     RequestLine,
+    RequestLineCompetency,
     Resource,
     TaskCatalogEntry,
     WorkforceRequest,
@@ -60,6 +62,7 @@ class SqlDemandRepository(DemandRepositoryPort):
         work_package: WorkPackage | None,
         proposed_resource: Resource | None,
         competency_ids: tuple[str, ...] = (),
+        lines: tuple[DemandLineReadModel, ...] = (),
     ) -> DemandReadModel:
         return DemandReadModel(
             # During the first SQL cutover the existing NoDemande is preserved in
@@ -105,6 +108,8 @@ class SqlDemandRepository(DemandRepositoryPort):
                 if proposed_resource is not None
                 else None
             ),
+            version=max(int(request.aggregate_version or 1), 1),
+            lines=lines,
         )
 
     def _competency_ids_by_request(
@@ -132,6 +137,105 @@ class SqlDemandRepository(DemandRepositoryPort):
             request_id: tuple(competency_ids)
             for request_id, competency_ids in grouped.items()
         }
+
+    def _line_competency_ids(
+        self,
+        line_ids: Sequence[str],
+    ) -> dict[str, tuple[str, ...]]:
+        identifiers = tuple(str(value) for value in line_ids if str(value))
+        if not identifiers:
+            return {}
+        grouped: dict[str, list[str]] = {identifier: [] for identifier in identifiers}
+        rows = self._session.execute(
+            select(
+                RequestLineCompetency.request_line_id,
+                RequestLineCompetency.competency_id,
+            )
+            .where(RequestLineCompetency.request_line_id.in_(identifiers))
+            .order_by(
+                RequestLineCompetency.request_line_id,
+                RequestLineCompetency.competency_id,
+            )
+        ).all()
+        for line_id, competency_id in rows:
+            grouped.setdefault(line_id, []).append(competency_id)
+        return {line_id: tuple(values) for line_id, values in grouped.items()}
+
+    def _lines_by_request(
+        self,
+        request_ids: Sequence[str],
+    ) -> dict[str, tuple[DemandLineReadModel, ...]]:
+        identifiers = tuple(str(value) for value in request_ids if str(value))
+        if not identifiers:
+            return {}
+        proposed_resource = aliased(Resource)
+        rows = self._session.execute(
+            select(RequestLine, WorkPackage, proposed_resource)
+            .outerjoin(WorkPackage, RequestLine.work_package_id == WorkPackage.id)
+            .outerjoin(
+                proposed_resource,
+                RequestLine.proposed_resource_id == proposed_resource.id,
+            )
+            .where(RequestLine.workforce_request_id.in_(identifiers))
+            .order_by(
+                RequestLine.workforce_request_id,
+                RequestLine.position,
+                RequestLine.id,
+            )
+        ).all()
+        competency_ids = self._line_competency_ids(tuple(line.id for line, _wp, _r in rows))
+        grouped: dict[str, list[DemandLineReadModel]] = {identifier: [] for identifier in identifiers}
+        for line, work_package, resource in rows:
+            grouped.setdefault(line.workforce_request_id, []).append(
+                DemandLineReadModel(
+                    line_id=line.id,
+                    position=int(line.position or 0),
+                    kind=_text(line.kind) or "WORKFORCE",
+                    slot_count=max(int(line.slot_count or 1), 1),
+                    required_resource_class=_optional_text(line.required_resource_class),
+                    required_competencies=_optional_text(
+                        line.required_competencies_snapshot
+                    ),
+                    required_competency_ids=competency_ids.get(line.id, ()),
+                    desired_start=line.desired_start,
+                    desired_end=line.desired_end,
+                    desired_active_days=(
+                        int(line.desired_active_days)
+                        if line.desired_active_days is not None
+                        else None
+                    ),
+                    estimated_hours=(
+                        float(line.estimated_hours)
+                        if line.estimated_hours is not None
+                        else None
+                    ),
+                    estimated_hours_source=_optional_text(line.estimated_hours_source),
+                    default_hours_per_day=(
+                        float(line.default_hours_per_day)
+                        if line.default_hours_per_day is not None
+                        else None
+                    ),
+                    confirmation=_text(line.confirmation) or "Confirmée",
+                    work_package_ref=(
+                        _optional_text(work_package.legacy_effort_id) or work_package.id
+                        if work_package is not None
+                        else None
+                    ),
+                    work_package_name=(
+                        _optional_text(work_package.name)
+                        if work_package is not None
+                        else None
+                    ),
+                    task_code=_optional_text(line.erp_task_code),
+                    task_label=_optional_text(line.erp_task_label),
+                    proposed_resource=(
+                        _optional_text(resource.name) if resource is not None else None
+                    ),
+                    description=_optional_text(line.description),
+                    active=bool(line.active),
+                )
+            )
+        return {key: tuple(value) for key, value in grouped.items()}
 
     def _row_query(self):
         proposed_resource = aliased(Resource)
@@ -163,9 +267,11 @@ class SqlDemandRepository(DemandRepositoryPort):
                 WorkforceRequest.id,
             )
         ).all()
-        competency_ids = self._competency_ids_by_request(
-            tuple(request.id for request, _project, _work_package, _resource in rows)
+        request_ids = tuple(
+            request.id for request, _project, _work_package, _resource in rows
         )
+        competency_ids = self._competency_ids_by_request(request_ids)
+        lines_by_request = self._lines_by_request(request_ids)
         return tuple(
             self._read_model(
                 request,
@@ -173,6 +279,7 @@ class SqlDemandRepository(DemandRepositoryPort):
                 work_package,
                 proposed_resource,
                 competency_ids.get(request.id, ()),
+                lines_by_request.get(request.id, ()),
             )
             for request, project, work_package, proposed_resource in rows
         )
@@ -191,12 +298,14 @@ class SqlDemandRepository(DemandRepositoryPort):
             return None
         request, project, work_package, proposed_resource = row
         competency_ids = self._competency_ids_by_request((request.id,))
+        lines_by_request = self._lines_by_request((request.id,))
         return self._read_model(
             request,
             project,
             work_package,
             proposed_resource,
             competency_ids.get(request.id, ()),
+            lines_by_request.get(request.id, ()),
         )
 
     def _request(self, number: str) -> WorkforceRequest:
@@ -274,6 +383,191 @@ class SqlDemandRepository(DemandRepositoryPort):
             raise KeyError(f"Ressource {resource_name} introuvable")
         return resource
 
+    def _competencies(self, identifiers: Sequence[str]) -> tuple[Competency, ...]:
+        wanted = tuple(dict.fromkeys(_text(value) for value in identifiers if _text(value)))
+        if not wanted:
+            return ()
+        rows = self._session.scalars(
+            select(Competency).where(Competency.id.in_(wanted))
+        ).all()
+        by_id = {row.id: row for row in rows}
+        missing = [identifier for identifier in wanted if identifier not in by_id]
+        if missing:
+            raise KeyError(f"Compétence {missing[0]} introuvable")
+        inactive = [identifier for identifier in wanted if not by_id[identifier].active]
+        if inactive:
+            raise ValueError(f"Compétence {inactive[0]} inactive")
+        return tuple(by_id[identifier] for identifier in wanted)
+
+    def _replace_request_lines(
+        self,
+        request: WorkforceRequest,
+        project: Project,
+        values: Sequence[Mapping[str, Any]],
+    ) -> tuple[RequestLine, ...]:
+        existing = {
+            line.id: line
+            for line in self._session.scalars(
+                select(RequestLine).where(
+                    RequestLine.workforce_request_id == request.id
+                )
+            ).all()
+        }
+        seen: set[str] = set()
+        active_lines: list[RequestLine] = []
+
+        for index, raw in enumerate(values):
+            supplied_id = _optional_text(raw.get("id"))
+            line_id = supplied_id or new_id()
+            if line_id in seen:
+                raise ValueError(f"Identifiant de ligne dupliqué: {line_id}")
+            seen.add(line_id)
+
+            line = existing.get(line_id)
+            if line is None:
+                foreign = self._session.get(RequestLine, line_id)
+                if foreign is not None:
+                    raise ValueError(
+                        f"La ligne {line_id} appartient à une autre demande."
+                    )
+                line = RequestLine(
+                    id=line_id,
+                    workforce_request_id=request.id,
+                    position=index,
+                    kind="WORKFORCE",
+                )
+                self._session.add(line)
+            elif line.workforce_request_id != request.id:
+                raise ValueError(
+                    f"La ligne {line_id} appartient à une autre demande."
+                )
+
+            kind = _text(raw.get("kind")) or "WORKFORCE"
+            if kind != "WORKFORCE":
+                raise ValueError("Seules les lignes WORKFORCE sont supportées.")
+            work_package = self._work_package(
+                raw.get("work_package_ref"),
+                project_id=project.id,
+            )
+            task = self._task(raw.get("task_code"), project_number=project.number)
+            proposed = self._resource(raw.get("proposed_technician"))
+            competencies = self._competencies(
+                tuple(raw.get("required_competency_ids") or ())
+            )
+
+            line.position = int(raw.get("position") if raw.get("position") is not None else index)
+            line.kind = kind
+            line.slot_count = 1
+            line.required_resource_class = _optional_text(
+                raw.get("required_resource_class")
+            )
+            line.required_competencies_snapshot = _optional_text(
+                raw.get("required_competencies")
+            )
+            line.desired_start = raw.get("desired_start")
+            line.desired_end = raw.get("desired_end")
+            line.desired_active_days = _decimal(raw.get("desired_active_days"))
+            line.estimated_hours = _decimal(raw.get("estimated_hours"))
+            line.estimated_hours_source = _optional_text(
+                raw.get("estimated_hours_source")
+            )
+            line.default_hours_per_day = _decimal(raw.get("default_hours_per_day"))
+            line.confirmation = _text(raw.get("confirmation")) or "Confirmée"
+            line.work_package_id = work_package.id if work_package is not None else None
+            line.task_catalog_item_id = task.id if task is not None else None
+            line.erp_task_code = task.task_code if task is not None else None
+            line.erp_task_label = task.label if task is not None else None
+            line.proposed_resource_id = proposed.id if proposed is not None else None
+            line.description = _optional_text(raw.get("description"))
+            line.active = True
+
+            self._session.execute(
+                delete(RequestLineCompetency).where(
+                    RequestLineCompetency.request_line_id == line.id
+                )
+            )
+            self._session.add_all(
+                [
+                    RequestLineCompetency(
+                        request_line_id=line.id,
+                        competency_id=competency.id,
+                    )
+                    for competency in competencies
+                ]
+            )
+            active_lines.append(line)
+
+        for line_id, line in existing.items():
+            if line_id not in seen:
+                line.active = False
+
+        self._session.flush()
+        self._sync_flat_summary_from_lines(request, active_lines)
+        return tuple(active_lines)
+
+    @staticmethod
+    def _same_or_none(values: Sequence[object]) -> object | None:
+        unique = {value for value in values}
+        return next(iter(unique)) if len(unique) == 1 else None
+
+    def _sync_flat_summary_from_lines(
+        self,
+        request: WorkforceRequest,
+        lines: Sequence[RequestLine],
+    ) -> None:
+        if not lines:
+            return
+        starts = [line.desired_start for line in lines if line.desired_start is not None]
+        ends = [
+            line.desired_end or line.desired_start
+            for line in lines
+            if line.desired_start is not None
+        ]
+        request.desired_start = min(starts) if starts else None
+        request.desired_end = max(ends) if ends else None
+        request.resource_count = sum(max(int(line.slot_count or 1), 1) for line in lines)
+        request.estimated_hours = (
+            sum((line.estimated_hours or Decimal("0")) for line in lines)
+            if all(line.estimated_hours is not None for line in lines)
+            else None
+        )
+        request.estimated_days = (
+            sum((line.desired_active_days or Decimal("0")) for line in lines)
+            if all(line.desired_active_days is not None for line in lines)
+            else None
+        )
+        snapshots = tuple(
+            dict.fromkeys(
+                _text(line.required_competencies_snapshot)
+                for line in lines
+                if _text(line.required_competencies_snapshot)
+            )
+        )
+        request.required_competencies = "; ".join(snapshots) or None
+        confirmations = [line.confirmation for line in lines]
+        request.confirmation = (
+            str(self._same_or_none(confirmations) or "Tentative")
+        )
+        request.work_package_id = self._same_or_none(
+            [line.work_package_id for line in lines]
+        )
+        task_code = self._same_or_none([line.erp_task_code for line in lines])
+        request.erp_task_code = str(task_code) if task_code is not None else None
+        task_label = self._same_or_none([line.erp_task_label for line in lines])
+        request.erp_task_label = str(task_label) if task_label is not None else None
+        request.proposed_resource_id = (
+            lines[0].proposed_resource_id if len(lines) == 1 else None
+        )
+
+    def _has_multi_line_shape(self, request_id: str) -> bool:
+        rows = self._session.scalars(
+            select(RequestLine).where(
+                RequestLine.workforce_request_id == request_id,
+                RequestLine.active.is_(True),
+            )
+        ).all()
+        return len(rows) != 1 or (rows and rows[0].id != request_id)
+
     def _sync_legacy_request_line(self, request: WorkforceRequest) -> RequestLine:
         """Mirror the current flat request into its transitional single line.
 
@@ -308,6 +602,8 @@ class SqlDemandRepository(DemandRepositoryPort):
         line.desired_end = request.desired_end
         line.desired_active_days = request.estimated_days
         line.estimated_hours = request.estimated_hours
+        if line.estimated_hours_source is None and request.estimated_hours is not None:
+            line.estimated_hours_source = "LEGACY"
         line.confirmation = request.confirmation
         line.work_package_id = request.work_package_id
         line.task_catalog_item_id = task_id
@@ -373,7 +669,15 @@ class SqlDemandRepository(DemandRepositoryPort):
         )
         self._session.add(request)
         self._session.flush()
-        self._sync_legacy_request_line(request)
+        request_lines = values.get("RequestLines")
+        if request_lines is not None:
+            self._replace_request_lines(
+                request,
+                project,
+                tuple(request_lines),
+            )
+        else:
+            self._sync_legacy_request_line(request)
         self._session.flush()
         self._append_history(
             request,
@@ -392,6 +696,12 @@ class SqlDemandRepository(DemandRepositoryPort):
         comment: str = "",
     ) -> None:
         request = self._request(number)
+        request_lines = updates.get("RequestLines")
+        expected_version = updates.get("ExpectedVersion")
+        if expected_version is not None and int(expected_version) != int(request.aggregate_version or 1):
+            raise ValueError(
+                f"Version de demande obsolète: attendue {expected_version}, actuelle {request.aggregate_version or 1}."
+            )
 
         project_changed = "NumeroProjet" in updates
         if project_changed:
@@ -474,7 +784,14 @@ class SqlDemandRepository(DemandRepositoryPort):
 
         # NomProjet/Client/ChargeProjet intentionally remain project-owned. They are
         # projected from projects and will ultimately be mastered by Acumatica.
-        self._sync_legacy_request_line(request)
+        if request_lines is not None:
+            project = self._session.get(Project, request.project_id)
+            if project is None:
+                raise KeyError("Projet de la demande introuvable")
+            self._replace_request_lines(request, project, tuple(request_lines))
+        elif not self._has_multi_line_shape(request.id):
+            self._sync_legacy_request_line(request)
+        request.aggregate_version = int(request.aggregate_version or 1) + 1
         self._session.flush()
         self._append_history(
             request,
