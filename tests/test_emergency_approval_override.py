@@ -27,7 +27,7 @@ from app.server import create_api_app
 from app.server.security import required_permission
 
 
-from tests.http_test_auth import TEST_ADMIN_AUTH_RESOLVER
+from tests.http_test_auth import TEST_ADMIN_AUTH_RESOLVER, test_admin_auth_resolver
 
 create_api_app = partial(create_api_app, auth_resolver=TEST_ADMIN_AUTH_RESOLVER)
 
@@ -160,7 +160,7 @@ class EmergencyOverrideHttpTests(unittest.TestCase):
         with TemporaryDirectory() as directory:
             database_url = self._database(directory)
             today = date.today()
-            app = create_api_app(database_url, actor_name="coord-urgence")
+            app = create_api_app(\n                database_url,\n                actor_name="coord-urgence",\n                auth_resolver=test_admin_auth_resolver("coord-urgence"),\n            )
 
             with TestClient(app, raise_server_exceptions=False) as client:
                 created = client.post(
@@ -270,7 +270,7 @@ class EmergencyOverrideHttpTests(unittest.TestCase):
         with TemporaryDirectory() as directory:
             database_url = self._database(directory)
             today = date.today()
-            app = create_api_app(database_url, actor_name="coord-urgence")
+            app = create_api_app(\n                database_url,\n                actor_name="coord-urgence",\n                auth_resolver=test_admin_auth_resolver("coord-urgence"),\n            )
             with TestClient(app, raise_server_exceptions=False) as client:
                 blank = client.post(
                     "/api/v1/demands/UNKNOWN/emergency-plan",
