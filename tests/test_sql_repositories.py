@@ -13,6 +13,7 @@ from app.infrastructure.sql import (
     Base,
     ORIGIN_QUICK_SHIFT,
     Project,
+    RequestLine,
     Resource,
     ResourceRequirement,
     SqlDemandRepository,
@@ -109,6 +110,24 @@ class SqlRepositoryTests(unittest.TestCase):
             self.assertEqual(created.client, "Client 1")
             self.assertEqual(created.requester, "Jean")
 
+            request = session.scalar(
+                select(WorkforceRequest).where(
+                    WorkforceRequest.legacy_demand_number == number
+                )
+            )
+            assert request is not None
+            line = session.get(RequestLine, request.id)
+            self.assertIsNotNone(line)
+            assert line is not None
+            self.assertEqual(line.workforce_request_id, request.id)
+            self.assertEqual(line.position, 0)
+            self.assertEqual(line.kind, "WORKFORCE")
+            self.assertEqual(line.slot_count, 1)
+            self.assertEqual(line.desired_start, date(2026, 8, 26))
+            self.assertEqual(line.desired_end, date(2026, 8, 28))
+            self.assertEqual(line.proposed_resource_id, "R1")
+            self.assertEqual(line.description, "Installation")
+
             summary = service.approve(number, "OK")
             self.assertEqual(summary["allocated_hours"], 8.0)
             self.assertEqual(sync.calls, [number])
@@ -120,6 +139,8 @@ class SqlRepositoryTests(unittest.TestCase):
             assert updated is not None
             self.assertEqual(updated.status, "Soumise")
             self.assertEqual(updated.description, "Installation modifiée")
+            assert line is not None
+            self.assertEqual(line.description, "Installation modifiée")
 
             history_count = session.scalar(
                 select(func.count()).select_from(WorkforceRequestHistory)
@@ -179,6 +200,7 @@ class SqlRepositoryTests(unittest.TestCase):
             assert request is not None
             self.assertEqual(requirement.project_id, request.project_id)
             self.assertEqual(requirement.assigned_resource_id, "R1")
+            self.assertEqual(requirement.source_request_line_id, request.id)
 
             service.cancel(segment_id)
             self.assertEqual(segment_repository.list(include_cancelled=False), ())
@@ -208,6 +230,7 @@ class SqlRepositoryTests(unittest.TestCase):
             )
             assert requirement is not None
             self.assertIsNone(requirement.workforce_request_id)
+            self.assertIsNone(requirement.source_request_line_id)
             self.assertEqual(requirement.origin, ORIGIN_QUICK_SHIFT)
             self.assertEqual(
                 session.scalar(select(func.count()).select_from(WorkforceRequest)),
