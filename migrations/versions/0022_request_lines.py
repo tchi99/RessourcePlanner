@@ -338,6 +338,9 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    # Drop the new requirement child table before batch-recreating its parent on SQLite.
+    op.drop_table("resource_requirement_competencies")
+
     with op.batch_alter_table("workforce_request_period_selections") as batch_op:
         batch_op.drop_constraint(
             "fk_workforce_request_period_selections_request_line_id_request_lines",
@@ -362,7 +365,6 @@ def downgrade() -> None:
         batch_op.drop_index("ix_resource_requirements_source_request_line_id")
         batch_op.drop_column("source_request_line_id")
 
-    op.drop_table("resource_requirement_competencies")
     op.drop_table("request_line_competencies")
 
     for index_name in (
