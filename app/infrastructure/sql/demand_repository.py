@@ -9,6 +9,7 @@ from typing import Any
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session, aliased
 
+from ...application.errors import ApplicationConflictError
 from ...application.read_models import DemandLineReadModel, DemandReadModel
 from ...application.repository_ports import DemandRepositoryPort
 from .base import new_id, utc_now
@@ -501,6 +502,11 @@ class SqlDemandRepository(DemandRepositoryPort):
             if line_id not in seen:
                 line.active = False
 
+        self._session.execute(
+            delete(WorkforceRequestCompetency).where(
+                WorkforceRequestCompetency.workforce_request_id == request.id
+            )
+        )
         self._session.flush()
         self._sync_flat_summary_from_lines(request, active_lines)
         return tuple(active_lines)
@@ -699,11 +705,42 @@ class SqlDemandRepository(DemandRepositoryPort):
         request_lines = updates.get("RequestLines")
         expected_version = updates.get("ExpectedVersion")
         if expected_version is not None and int(expected_version) != int(request.aggregate_version or 1):
+            raise ApplicationConflictError(
+                "La demande a été modifiée depuis sa lecture.",
+                code="demand_version_conflict",
+                context={
+                    "demand_number": _text(request.legacy_demand_number) or request.id,
+                    "expected_version": int(expected_version),
+                    "current_version": int(request.aggregate_version or 1),
+                },
+            )
+
+        line_owned_flat_fields = {
+            "SourceEffortID",
+            "TaskCode",
+            "Confirmation",
+            "DateDebutSouhaitee",
+            "DateFinSouhaitee",
+            "NombreRessources",
+            "CompetencesRequises",
+            "TempsEstimeHeures",
+            "TempsEstimeJours",
+            "TechnicienPropose",
+        }
+        if (
+            request_lines is None
+            and self._has_multi_line_shape(request.id)
+            and line_owned_flat_fields.intersection(updates)
+        ):
             raise ValueError(
-                f"Version de demande obsolète: attendue {expected_version}, actuelle {request.aggregate_version or 1}."
+                "Les champs de besoin plats ne peuvent pas modifier une demande gérée par lignes."
             )
 
         project_changed = "NumeroProjet" in updates
+        if project_changed and request_lines is None and self._has_multi_line_shape(request.id):
+            raise ValueError(
+                "Le changement de projet d'une demande gérée par lignes doit fournir lines."
+            )
         if project_changed:
             request.project_id = self._project(updates.get("NumeroProjet")).id
 
