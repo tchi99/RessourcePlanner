@@ -86,6 +86,7 @@ class SqlSchemaTests(unittest.TestCase):
         self.assertTrue(requests.erp_task_label.nullable)
         self.assertFalse(requests.project_id.nullable)
         self.assertFalse(requests.aggregate_version.nullable)
+        self.assertFalse(requests.line_mode.nullable)
         self.assertFalse(periods.workforce_request_id.nullable)
         self.assertTrue(periods.request_line_id.nullable)
         self.assertTrue(selections.request_line_id.nullable)
