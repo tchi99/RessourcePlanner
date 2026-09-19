@@ -22,9 +22,15 @@ class ReactMediumTermContractTests(unittest.TestCase):
             encoding="utf-8"
         )
 
-        self.assertIn("getProjects(true, controller.signal)", source)
-        self.assertIn('getWorkPackages("", true, controller.signal)', source)
-        self.assertIn("getPlanningSnapshot(start, end, controller.signal)", source)
+        self.assertIn("getProjects(true, controller.signal, scope)", source)
+        self.assertIn('getWorkPackages("", true, controller.signal, scope)', source)
+        self.assertIn("getPlanningSnapshot(start, end, controller.signal, scope)", source)
+        self.assertIn("getMediumTermUnlinkedSegments(start, end, controller.signal, scope)", source)
+        self.assertIn("getResources(true, controller.signal)", source)
+        self.assertIn("useViewScope", source)
+        self.assertIn("ViewScopeSelector", source)
+        self.assertIn("if (scopeLoading) return", source)
+        self.assertIn("if (scopeError)", source)
         self.assertIn("snapshot.pending_loads", source)
         self.assertIn("snapshot.segments", source)
         self.assertIn("snapshot?.capacity_buckets ?? []", source)
@@ -84,6 +90,8 @@ class ReactMediumTermContractTests(unittest.TestCase):
         self.assertNotIn("firm_hours +", panel)
         self.assertNotIn("submitted_hours +", panel)
         self.assertIn("capacity_buckets: MediumTermCapacityBucketReadModel[]", api)
+        self.assertIn("Référence organisationnelle globale", panel)
+        self.assertIn("contextual={scope === \"mine\"}", (ROOT / "frontend" / "src" / "MediumTermPage.tsx").read_text(encoding="utf-8"))
 
     def test_editor_uses_backend_mutations_and_reuses_creation_idempotency_key(self) -> None:
         editor = (ROOT / "frontend" / "src" / "WorkPackageEditor.tsx").read_text(

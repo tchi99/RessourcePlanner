@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections import defaultdict
 from datetime import date, timedelta
 from typing import Any
+from collections.abc import Sequence
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -86,6 +87,8 @@ def build_medium_term_capacity_buckets(
     *,
     start: date,
     end: date,
+    preloaded_shifts: Sequence[Any] | None = None,
+    preloaded_pending_loads: Sequence[Any] | None = None,
 ) -> tuple[MediumTermCapacityBucketReadModel, ...]:
     """Build weekly capacity without leaking rules into React.
 
@@ -104,7 +107,11 @@ def build_medium_term_capacity_buckets(
     all_resources = queries.list_resources(active_only=True)
     resource_by_id = {resource.id: resource for resource in all_resources}
     resource_by_name = {resource.name: resource for resource in all_resources}
-    shifts = queries.list_shifts(start=start, end=end)
+    shifts = (
+        tuple(preloaded_shifts)
+        if preloaded_shifts is not None
+        else queries.list_shifts(start=start, end=end)
+    )
 
     result: list[MediumTermCapacityBucketReadModel] = []
     cursor = start
@@ -154,7 +161,12 @@ def build_medium_term_capacity_buckets(
         total_submitted = 0.0
         total_replacement = 0.0
         total_replacement_delta = 0.0
-        for pending in queries.list_pending_loads(start=cursor, end=week_end):
+        pending_rows = (
+            tuple(preloaded_pending_loads)
+            if preloaded_pending_loads is not None and cursor == start and week_end == end
+            else queries.list_pending_loads(start=cursor, end=week_end)
+        )
+        for pending in pending_rows:
             proposed = resource_by_name.get(pending.proposed_resource or "")
             resource_class = (
                 proposed.resource_class if proposed and proposed.resource_class else UNASSIGNED

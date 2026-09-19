@@ -26,6 +26,8 @@ import {
 import MediumTermCapacityPanel from "./MediumTermCapacityPanel";
 import MediumTermUnlinkedSegmentsPanel from "./MediumTermUnlinkedSegmentsPanel";
 import SegmentEditor from "./SegmentEditor";
+import { useViewScope } from "./ViewScopeContext";
+import ViewScopeSelector from "./ViewScopeSelector";
 import WorkPackageEditor from "./WorkPackageEditor";
 
 const HORIZONS = [4, 8, 12] as const;
@@ -233,9 +235,11 @@ function WorkPackageRow({
 }
 
 export default function MediumTermPage({ onOpenDemands }: { onOpenDemands: () => void }) {
+  const { scope, loading: scopeLoading, error: scopeError } = useViewScope();
   const [horizonStart, setHorizonStart] = useState(() => startOfWeek(new Date()));
   const [horizonWeeks, setHorizonWeeks] = useState<HorizonWeeks>(8);
   const [projects, setProjects] = useState<ProjectReadModel[]>([]);
+  const [catalogProjects, setCatalogProjects] = useState<ProjectReadModel[]>([]);
   const [workPackages, setWorkPackages] = useState<WorkPackageReadModel[]>([]);
   const [resources, setResources] = useState<ResourceReadModel[]>([]);
   const [unlinkedSegments, setUnlinkedSegments] = useState<MediumTermUnlinkedSegmentReadModel[]>([]);
@@ -257,18 +261,34 @@ export default function MediumTermPage({ onOpenDemands }: { onOpenDemands: () =>
   const end = toIsoDate(horizonEnd);
 
   useEffect(() => {
+    if (scopeLoading) return;
+    if (scopeError) {
+      setLoading(false);
+      setError(scopeError);
+      setProjects([]);
+      setWorkPackages([]);
+      setSnapshot(null);
+      setUnlinkedSegments([]);
+      return;
+    }
     const controller = new AbortController();
     setLoading(true);
     setError(null);
+    setProjects([]);
+    setWorkPackages([]);
+    setSnapshot(null);
+    setUnlinkedSegments([]);
     Promise.all([
-      getProjects(true, controller.signal),
-      getWorkPackages("", true, controller.signal),
+      getProjects(true, controller.signal, scope),
+      getProjects(true, controller.signal, "global"),
+      getWorkPackages("", true, controller.signal, scope),
       getResources(true, controller.signal),
-      getPlanningSnapshot(start, end, controller.signal),
-      getMediumTermUnlinkedSegments(start, end, controller.signal),
+      getPlanningSnapshot(start, end, controller.signal, scope),
+      getMediumTermUnlinkedSegments(start, end, controller.signal, scope),
     ])
-      .then(([projectRows, packageRows, resourceRows, planning, unlinkedRows]) => {
+      .then(([projectRows, projectCatalogRows, packageRows, resourceRows, planning, unlinkedRows]) => {
         setProjects(projectRows);
+        setCatalogProjects(projectCatalogRows);
         setWorkPackages(packageRows);
         setResources(resourceRows);
         setSnapshot(planning);
@@ -286,7 +306,7 @@ export default function MediumTermPage({ onOpenDemands }: { onOpenDemands: () =>
         if (!controller.signal.aborted) setLoading(false);
       });
     return () => controller.abort();
-  }, [start, end, refreshKey]);
+  }, [start, end, refreshKey, scope, scopeLoading, scopeError]);
 
   const weeks = useMemo(
     () => Array.from({ length: horizonWeeks }, (_, index) => addDays(horizonStart, index * 7)),
@@ -401,6 +421,7 @@ export default function MediumTermPage({ onOpenDemands }: { onOpenDemands: () =>
           </p>
         </div>
         <div className="page-actions">
+          <ViewScopeSelector />
           <button className="mt-create-package" type="button" onClick={() => setEditor(null)}>
             + WorkPackage
           </button>
@@ -434,6 +455,7 @@ export default function MediumTermPage({ onOpenDemands }: { onOpenDemands: () =>
       <MediumTermCapacityPanel
         buckets={snapshot?.capacity_buckets ?? []}
         loading={loading}
+        contextual={scope === "mine"}
       />
 
       <div className="filter-bar mt-filters">
@@ -544,7 +566,7 @@ export default function MediumTermPage({ onOpenDemands }: { onOpenDemands: () =>
 
       {editor !== undefined && (
         <WorkPackageEditor
-          projects={projects}
+          projects={catalogProjects}
           workPackage={editor}
           defaultProjectNumber={editor?.project_number || defaultProject}
           onClose={() => setEditor(undefined)}

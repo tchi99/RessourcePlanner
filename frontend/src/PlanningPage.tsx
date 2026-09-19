@@ -13,6 +13,7 @@ import {
   getPlanningActions,
   getPlanningCapacityGrid,
   getPlanningSnapshot,
+  getResources,
   moveAllocation,
 } from "./api";
 import {
@@ -26,6 +27,8 @@ import {
   weekDays,
 } from "./dates";
 import { useAuth } from "./AuthContext";
+import { useViewScope } from "./ViewScopeContext";
+import ViewScopeSelector from "./ViewScopeSelector";
 import {
   SegmentDragPayload,
   ShiftDragPayload,
@@ -405,11 +408,13 @@ function ResourceRow({
 
 export default function PlanningPage({ onOpenDemands }: { onOpenDemands?: () => void }) {
   const { can } = useAuth();
+  const { scope, loading: scopeLoading, error: scopeError } = useViewScope();
   const canManagePlanning = can("manage_planning");
   const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date()));
   const [snapshot, setSnapshot] = useState<PlanningSnapshotReadModel | null>(null);
   const [capacityGrid, setCapacityGrid] = useState<PlanningCapacityGridReadModel | null>(null);
   const [actions, setActions] = useState<PlanningActionReadModel[]>([]);
+  const [catalogResources, setCatalogResources] = useState<ResourceReadModel[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
@@ -436,18 +441,32 @@ export default function PlanningPage({ onOpenDemands }: { onOpenDemands?: () => 
   const quickShiftDefaultDay = today >= start && today <= end ? today : start;
 
   useEffect(() => {
+    if (scopeLoading) return;
+    if (scopeError) {
+      setLoading(false);
+      setError(scopeError);
+      setSnapshot(null);
+      setActions([]);
+      setCapacityGrid(null);
+      return;
+    }
     const controller = new AbortController();
     setLoading(true);
     setError(null);
+    setSnapshot(null);
+    setActions([]);
+    setCapacityGrid(null);
     Promise.all([
-      getPlanningSnapshot(start, end, controller.signal),
-      getPlanningActions(start, end, controller.signal),
-      getPlanningCapacityGrid(start, end, controller.signal),
+      getPlanningSnapshot(start, end, controller.signal, scope),
+      getPlanningActions(start, end, controller.signal, scope),
+      getPlanningCapacityGrid(start, end, controller.signal, scope),
+      getResources(true, controller.signal),
     ])
-      .then(([planning, planningActions, capacity]) => {
+      .then(([planning, planningActions, capacity, resourceRows]) => {
         setSnapshot(planning);
         setActions(planningActions);
         setCapacityGrid(capacity);
+        setCatalogResources(resourceRows);
       })
       .catch((reason: unknown) => {
         if (reason instanceof DOMException && reason.name === "AbortError") return;
@@ -461,7 +480,7 @@ export default function PlanningPage({ onOpenDemands }: { onOpenDemands?: () => 
         if (!controller.signal.aborted) setLoading(false);
       });
     return () => controller.abort();
-  }, [start, end, refreshKey]);
+  }, [start, end, refreshKey, scope, scopeLoading, scopeError]);
 
   const projectOptions = useMemo(() => {
     if (!snapshot) return [];
@@ -684,6 +703,7 @@ export default function PlanningPage({ onOpenDemands }: { onOpenDemands?: () => 
           <p>Planning Web V2 alimenté directement par FastAPI. Capacité, indisponibilités et heures non placées sont calculées côté backend.</p>
         </div>
         <div className="page-actions">
+          <ViewScopeSelector />
           <button className="manual-allocation-button" type="button" onClick={() => setManualAllocationOpen(true)}>
             + Quart manuel
           </button>
@@ -827,6 +847,11 @@ export default function PlanningPage({ onOpenDemands }: { onOpenDemands?: () => 
             <div>
               <strong>Ressources et quarts</strong>
               <span>{loading ? "Actualisation…" : `${visibleResourceCount} ressource(s)`}</span>
+              {scope === "mine" && (
+                <small className="planning-drag-help">
+                  La capacité tient compte de tous les engagements des ressources affichées, y compris ceux hors de votre périmètre.
+                </small>
+              )}
               {canManagePlanning && (
                 <small className="planning-drag-help">
                   Glisser un quart vers une cellule pour le déplacer; glisser un besoin « À attribuer » sur le nom d’une ressource pour l’affecter.
@@ -910,7 +935,7 @@ export default function PlanningPage({ onOpenDemands }: { onOpenDemands?: () => 
       {editingShift && snapshot && (
         <ShiftEditor
           shift={editingShift}
-          resources={snapshot.resources}
+          resources={catalogResources}
           onClose={() => setEditingShift(null)}
           onSaved={() => {
             setEditingShift(null);
@@ -924,7 +949,7 @@ export default function PlanningPage({ onOpenDemands }: { onOpenDemands?: () => 
           open
           segmentId={editingSegmentId}
           demand={null}
-          resources={snapshot.resources}
+          resources={catalogResources}
           onClose={() => setEditingSegmentId(null)}
           onSaved={() => {
             setEditingSegmentId(null);
@@ -937,7 +962,7 @@ export default function PlanningPage({ onOpenDemands }: { onOpenDemands?: () => 
         <ManualAllocationEditor
           open={manualAllocationOpen}
           segments={snapshot.segments}
-          resources={snapshot.resources}
+          resources={catalogResources}
           weekStart={start}
           weekEnd={end}
           onClose={() => setManualAllocationOpen(false)}
