@@ -211,7 +211,7 @@ def upgrade() -> None:
             unique=False,
         )
         batch_op.create_foreign_key(
-            "fk_workforce_request_period_selections_request_line_id_request_lines",
+            "fk_period_selection_request_line",
             "request_lines",
             ["request_line_id"],
             ["id"],
@@ -340,7 +340,7 @@ def downgrade() -> None:
 
     with op.batch_alter_table("workforce_request_period_selections") as batch_op:
         batch_op.drop_constraint(
-            "fk_workforce_request_period_selections_request_line_id_request_lines",
+            "fk_period_selection_request_line",
             type_="foreignkey",
         )
         batch_op.drop_index("ix_workforce_request_period_selections_request_line_id")
