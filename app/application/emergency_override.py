@@ -143,6 +143,12 @@ class EmergencyDemandService(DemandService):
             )
 
         existing = self._demand_or_not_found(number)
+        if existing.line_mode:
+            raise ApplicationOperationError(
+                "La planification urgente des demandes multi-lignes sera activée avec #288E.",
+                code="demand_line_emergency_unavailable",
+                context={"demand_number": number},
+            )
         periods = self._emergency_periods(number)
         eligible, eligibility_reason = emergency_override_eligibility(
             existing,
