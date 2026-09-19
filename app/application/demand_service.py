@@ -182,6 +182,12 @@ class DemandService:
         data = command.to_repository_values()
         expected_version = data.pop("ExpectedVersion", None)
         if "RequestLines" in data:
+            if str(existing.status or "").strip().casefold() == "en planification":
+                raise ApplicationConflictError(
+                    "La conversion ou modification multi-lignes d'une demande déjà approuvée sera activée avec #288E.",
+                    code="demand_line_reapproval_unavailable",
+                    context={"demand_number": number},
+                )
             if expected_version is None:
                 raise ApplicationValidationError(
                     "expected_version est requis pour modifier les lignes d'une demande.",
