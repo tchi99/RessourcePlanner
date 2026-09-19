@@ -408,7 +408,7 @@ function ResourceRow({
 
 export default function PlanningPage({ onOpenDemands }: { onOpenDemands?: () => void }) {
   const { can } = useAuth();
-  const { scope, loading: scopeLoading } = useViewScope();
+  const { scope, loading: scopeLoading, error: scopeError } = useViewScope();
   const canManagePlanning = can("manage_planning");
   const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date()));
   const [snapshot, setSnapshot] = useState<PlanningSnapshotReadModel | null>(null);
@@ -442,6 +442,14 @@ export default function PlanningPage({ onOpenDemands }: { onOpenDemands?: () => 
 
   useEffect(() => {
     if (scopeLoading) return;
+    if (scopeError) {
+      setLoading(false);
+      setError(scopeError);
+      setSnapshot(null);
+      setActions([]);
+      setCapacityGrid(null);
+      return;
+    }
     const controller = new AbortController();
     setLoading(true);
     setError(null);
@@ -474,7 +482,7 @@ export default function PlanningPage({ onOpenDemands }: { onOpenDemands?: () => 
         if (!controller.signal.aborted) setLoading(false);
       });
     return () => controller.abort();
-  }, [start, end, refreshKey, scope, scopeLoading]);
+  }, [start, end, refreshKey, scope, scopeLoading, scopeError]);
 
   const projectOptions = useMemo(() => {
     if (!snapshot) return [];
