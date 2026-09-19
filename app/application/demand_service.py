@@ -246,6 +246,12 @@ class DemandService:
     ) -> tuple[Sequence[DemandPeriodReadModel], bool]:
         number = self._required_identifier(command.number, entity="demand")
         existing = self._demand_or_not_found(number)
+        if existing.line_mode:
+            raise ApplicationOperationError(
+                "Les périodes d'une demande multi-lignes doivent être gérées par ligne avec #288D.",
+                code="demand_line_periods_unavailable",
+                context={"demand_number": number},
+            )
         periods = self._period_repository()
 
         try:
@@ -312,6 +318,12 @@ class DemandService:
         group = self._required_identifier(command.alternative_group, entity="alternative_group")
         period_id = self._required_identifier(command.period_id, entity="period")
         existing = self._demand_or_not_found(number)
+        if existing.line_mode:
+            raise ApplicationOperationError(
+                "Les alternatives d'une demande multi-lignes doivent être gérées par ligne avec #288D.",
+                code="demand_line_periods_unavailable",
+                context={"demand_number": number},
+            )
         periods = self._period_repository()
 
         selections = call_application_port(
