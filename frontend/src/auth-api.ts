@@ -26,6 +26,26 @@ export type DevUserSwitcherState = {
   users: DevUserIdentity[];
 };
 
+export type UserViewScope = "mine" | "global";
+
+export type UserViewContext = {
+  resource: {
+    id: string | null;
+    link_status: "UNLINKED" | "RESOURCE_NOT_FOUND" | "LINKED";
+    active: boolean | null;
+  };
+  relations: {
+    managed_project_count: number;
+    participating_project_count: number;
+    personal_project_count: number;
+  };
+  view_policy: {
+    available_scopes: UserViewScope[];
+    default_scope: UserViewScope;
+  };
+  diagnostics: string[];
+};
+
 const API_BASE = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/$/, "");
 
 async function apiError(response: Response): Promise<ApiError> {
@@ -55,6 +75,18 @@ export async function getCurrentPrincipal(signal?: AbortSignal): Promise<AuthPri
   });
   if (!response.ok) throw await apiError(response);
   return response.json() as Promise<AuthPrincipal>;
+}
+
+export async function getCurrentUserViewContext(
+  signal?: AbortSignal,
+): Promise<UserViewContext> {
+  const response = await fetch(`${API_BASE}/api/v1/me/context`, {
+    headers: { Accept: "application/json", ...csrfHeaders() },
+    credentials: "include",
+    signal,
+  });
+  if (!response.ok) throw await apiError(response);
+  return response.json() as Promise<UserViewContext>;
 }
 
 export async function logoutCurrentSession(): Promise<void> {
