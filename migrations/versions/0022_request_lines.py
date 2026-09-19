@@ -155,15 +155,12 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(
             ["resource_requirement_id"],
             ["resource_requirements.id"],
-            name=(
-                "fk_resource_requirement_competencies_resource_requirement_id_"
-                "resource_requirements"
-            ),
+            name="fk_req_req_comp_requirement",
         ),
         sa.ForeignKeyConstraint(
             ["competency_id"],
             ["competencies.id"],
-            name="fk_resource_requirement_competencies_competency_id_competencies",
+            name="fk_req_req_comp_competency",
         ),
         sa.PrimaryKeyConstraint(
             "resource_requirement_id",
