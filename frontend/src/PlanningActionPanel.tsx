@@ -14,6 +14,7 @@ type Props = {
   loading: boolean;
   onAssigned: () => void;
   onOpenDemands?: () => void;
+  onOpenSegment?: (segmentId: string) => void;
 };
 
 function hours(value: number | null | undefined) {
@@ -33,10 +34,12 @@ function ActionCard({
   action,
   onRecommend,
   onOpenDemands,
+  onOpenSegment,
 }: {
   action: PlanningActionReadModel;
   onRecommend: (action: PlanningActionReadModel) => void;
   onOpenDemands?: () => void;
+  onOpenSegment?: (segmentId: string) => void;
 }) {
   const assignment = action.kind === "ASSIGNMENT";
   const task = [action.task_code, action.task_label].filter(Boolean).join(" — ");
@@ -72,6 +75,11 @@ function ActionCard({
             Trouver une ressource
           </button>
         )}
+        {assignment && action.segment_id && onOpenSegment && (
+          <button type="button" onClick={() => onOpenSegment(action.segment_id!)}>
+            Modifier le segment
+          </button>
+        )}
         {action.demand_number && onOpenDemands && (
           <button type="button" onClick={onOpenDemands}>
             Voir la demande
@@ -87,6 +95,7 @@ export default function PlanningActionPanel({
   loading,
   onAssigned,
   onOpenDemands,
+  onOpenSegment,
 }: Props) {
   const { can } = useAuth();
   const canAssign = can("manage_planning");
@@ -186,6 +195,7 @@ export default function PlanningActionPanel({
                       action={action}
                       onRecommend={openRecommendations}
                       onOpenDemands={onOpenDemands}
+                      onOpenSegment={onOpenSegment}
                     />
                   ))
                   : <div className="planning-action-empty compact">Aucune demande à approuver.</div>}
@@ -205,6 +215,7 @@ export default function PlanningActionPanel({
                       action={action}
                       onRecommend={openRecommendations}
                       onOpenDemands={onOpenDemands}
+                      onOpenSegment={onOpenSegment}
                     />
                   ))
                   : <div className="planning-action-empty compact">Tous les besoins sont attribués.</div>}

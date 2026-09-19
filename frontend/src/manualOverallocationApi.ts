@@ -49,12 +49,18 @@ async function errorFromResponse(response: Response) {
   );
 }
 
-async function sendJson<T>(path: string, method: string, body: unknown): Promise<T> {
+async function sendJson<T>(
+  path: string,
+  method: string,
+  body: unknown,
+  headers: Record<string, string> = {},
+): Promise<T> {
   const response = await fetch(`${API_BASE}${path}`, {
     method,
     headers: {
       Accept: "application/json",
       "Content-Type": "application/json",
+      ...headers,
     },
     body: JSON.stringify(body),
   });
@@ -70,6 +76,41 @@ export function overallocationContext(reason: unknown): OverallocationContext | 
   if (typeof value.planned_hours !== "number") return null;
   if (typeof value.excess_hours !== "number") return null;
   return value as unknown as OverallocationContext;
+}
+
+export function createManualAllocationWithOverallocation(
+  segmentId: string,
+  payload: ManualAllocationUpdate,
+  idempotencyKey: string,
+  policy: OverallocationPolicy | null = null,
+) {
+  return sendJson<Record<string, unknown>>(
+    `/api/v1/segments/${encodeURIComponent(segmentId)}/allocations`,
+    "POST",
+    {
+      ...payload,
+      overallocation_policy: policy,
+    },
+    { "Idempotency-Key": idempotencyKey },
+  );
+}
+
+export async function releaseManualAllocation(allocationId: string) {
+  const response = await fetch(
+    `${API_BASE}/api/v1/allocations/${encodeURIComponent(allocationId)}/release`,
+    { method: "POST", headers: { Accept: "application/json" } },
+  );
+  if (!response.ok) throw await errorFromResponse(response);
+  return response.json() as Promise<Record<string, unknown>>;
+}
+
+export async function deleteManualAllocation(allocationId: string) {
+  const response = await fetch(
+    `${API_BASE}/api/v1/allocations/${encodeURIComponent(allocationId)}`,
+    { method: "DELETE", headers: { Accept: "application/json" } },
+  );
+  if (!response.ok) throw await errorFromResponse(response);
+  return response.json() as Promise<Record<string, unknown>>;
 }
 
 export function updateAllocationWithOverallocation(

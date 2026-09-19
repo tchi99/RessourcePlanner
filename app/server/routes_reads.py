@@ -15,6 +15,7 @@ from ..application import (
     MediumTermUnlinkedSegmentReadModel,
     PlannerQueryPort,
     PlanningActionReadModel,
+    PlanningCapacityGridReadModel,
     PlanningSnapshotReadModel,
     ProjectReadModel,
     ResourceAvailabilityRuleReadModel,
@@ -210,6 +211,15 @@ def build_read_router(query_dependency: QueryProvider) -> APIRouter:
     ) -> list[MediumTermUnlinkedSegmentReadModel]:
         _window(start, end)
         return list(queries.list_medium_term_unlinked_segments(start=start, end=end))
+
+    @router.get("/planning/capacity-grid")
+    def planning_capacity_grid(
+        start: date = Query(),
+        end: date = Query(),
+        queries: PlannerQueryPort = Depends(query_dependency),
+    ) -> PlanningCapacityGridReadModel:
+        _window(start, end)
+        return queries.planning_capacity_grid(start=start, end=end)
 
     @router.get("/planning/actions")
     def planning_actions(

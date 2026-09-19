@@ -10,6 +10,7 @@ from .query_models import (
     MediumTermUnlinkedSegmentReadModel,
     PendingDemandLoadReadModel,
     PlanningActionReadModel,
+    PlanningCapacityGridReadModel,
     PlanningHistoryReadModel,
     PlanningSnapshotReadModel,
     ProjectReadModel,
@@ -74,6 +75,13 @@ class PlannerQueryPort(Protocol):
         start: date,
         end: date,
     ) -> Sequence[MediumTermUnlinkedSegmentReadModel]: ...
+
+    def planning_capacity_grid(
+        self,
+        *,
+        start: date,
+        end: date,
+    ) -> PlanningCapacityGridReadModel: ...
 
     def list_planning_actions(
         self,

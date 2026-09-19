@@ -4,10 +4,14 @@ import {
   ApiError,
   PendingDemandLoadReadModel,
   PlanningActionReadModel,
+  PlanningCapacityGridReadModel,
+  PlanningResourceCapacityReadModel,
+  PlanningSegmentCapacityDiagnosticReadModel,
   PlanningSnapshotReadModel,
   ResourceReadModel,
   ShiftReadModel,
   getPlanningActions,
+  getPlanningCapacityGrid,
   getPlanningSnapshot,
 } from "./api";
 import {
@@ -20,8 +24,10 @@ import {
   toIsoDate,
   weekDays,
 } from "./dates";
+import ManualAllocationEditor from "./ManualAllocationEditor";
 import PlanningActionPanel from "./PlanningActionPanel";
 import QuickShiftEditor from "./QuickShiftEditor";
+import SegmentEditor from "./SegmentEditor";
 import ShiftEditor from "./ShiftEditor";
 
 type ConfirmationFilter = "all" | "confirmed" | "tentative";
@@ -104,11 +110,20 @@ function ProjectLabel({ number, name }: { number: string | null; name: string | 
   );
 }
 
-function ShiftCard({ shift, onEdit }: { shift: ShiftReadModel; onEdit: (shift: ShiftReadModel) => void }) {
+function ShiftCard({
+  shift,
+  diagnostic,
+  onEdit,
+}: {
+  shift: ShiftReadModel;
+  diagnostic: PlanningSegmentCapacityDiagnosticReadModel | null;
+  onEdit: (shift: ShiftReadModel) => void;
+}) {
   const confirmation = confirmationKind(shift.confirmation);
   const emergencyOverride = Boolean((shift as EmergencyShiftReadModel).emergency_override_active);
   const overallocationShift = shift as OverallocationShiftReadModel;
   const excess = Number(overallocationShift.segment_overallocated_hours ?? 0);
+  const unplaced = Number(diagnostic?.unplaced_hours ?? 0);
   const meta = [
     shift.allocation_type,
     shift.source !== "AUTO" ? shift.source : null,
@@ -116,18 +131,20 @@ function ShiftCard({ shift, onEdit }: { shift: ShiftReadModel; onEdit: (shift: S
     shift.outside_standard_hours ? "Hors horaire" : null,
     emergencyOverride ? "⚠ Dérogation urgente" : null,
     excess > 0 ? `⚠ Surallocation manuelle +${hours(excess)} h` : null,
+    unplaced > 0 ? `⚠ ${hours(unplaced)} h non placées` : null,
   ].filter(Boolean);
 
   return (
     <button
       type="button"
-      className={`shift-card shift-${confirmation} ${shift.outside_standard_hours ? "shift-outside" : ""} ${excess > 0 ? "shift-overallocated" : ""}`}
+      className={`shift-card shift-${confirmation} ${shift.outside_standard_hours ? "shift-outside" : ""} ${excess > 0 ? "shift-overallocated" : ""} ${unplaced > 0 ? "shift-unplaced" : ""}`}
       onClick={() => onEdit(shift)}
-      aria-label={`Modifier le quart ${shift.project_number || shift.project_name || shift.allocation_id}, ${hours(shift.hours)} heures${emergencyOverride ? ", dérogation urgente active" : ""}${excess > 0 ? `, surallocation manuelle de ${hours(excess)} heures` : ""}`}
+      aria-label={`Modifier le quart ${shift.project_number || shift.project_name || shift.allocation_id}, ${hours(shift.hours)} heures${emergencyOverride ? ", dérogation urgente active" : ""}${excess > 0 ? `, surallocation manuelle de ${hours(excess)} heures` : ""}${unplaced > 0 ? `, ${hours(unplaced)} heures non placées` : ""}`}
       title={[
         "Cliquer pour modifier",
         emergencyOverride ? "⚠ Dérogation d’approbation urgente — régularisation requise" : null,
         excess > 0 ? `⚠ Surallocation manuelle : ${hours(overallocationShift.segment_locked_hours)} h verrouillées pour ${hours(overallocationShift.segment_planned_hours)} h prévues` : null,
+        unplaced > 0 ? `⚠ Capacité standard insuffisante : ${hours(unplaced)} h du segment restent à placer` : null,
         shift.project_name,
         shift.demand_number ? `Demande ${shift.demand_number}` : null,
         shift.project_manager ? `Responsable: ${shift.project_manager}` : null,
@@ -190,33 +207,119 @@ function PendingLoadCard({ load }: { load: PendingDemandLoadReadModel }) {
   );
 }
 
+function PendingGhostCard({
+  load,
+  onOpenDemands,
+}: {
+  load: PendingDemandLoadReadModel;
+  onOpenDemands?: () => void;
+}) {
+  const tentative = confirmationKind(load.confirmation) === "tentative";
+  return (
+    <button
+      type="button"
+      className={`pending-ghost-card ${tentative ? "is-tentative" : ""}`}
+      onClick={onOpenDemands}
+      disabled={!onOpenDemands}
+      title={`Demande ${load.demand_number} · ressource proposée ${load.proposed_resource || "—"} · aucune charge ferme comptabilisée`}
+    >
+      <strong>{load.project_number || "Projet"}</strong>
+      <span>{load.project_name || load.demand_number}</span>
+      <small>{confirmationLabel(load.confirmation)} · en attente d’approbation · 0 h</small>
+    </button>
+  );
+}
+
 function ResourceRow({
   resource,
   days,
   shifts,
+  capacity,
+  pendingLoads,
+  diagnostics,
   onEditShift,
+  onOpenDemands,
 }: {
   resource: ResourceReadModel;
   days: Date[];
   shifts: ShiftReadModel[];
+  capacity: PlanningResourceCapacityReadModel | null;
+  pendingLoads: PendingDemandLoadReadModel[];
+  diagnostics: Map<string, PlanningSegmentCapacityDiagnosticReadModel>;
   onEditShift: (shift: ShiftReadModel) => void;
+  onOpenDemands?: () => void;
 }) {
   const total = shifts.reduce((sum, shift) => sum + Number(shift.hours || 0), 0);
+  const dayCapacity = new Map((capacity?.days ?? []).map((row) => [row.day, row]));
 
   return (
     <div className="resource-row">
-      <div className="resource-cell resource-identity">
+      <div className={`resource-cell resource-identity ${capacity?.overloaded ? "resource-overloaded" : ""}`}>
         <strong>{resource.name}</strong>
         <span>{resource.competencies || resource.resource_class || "Ressource"}</span>
-        <small>{hours(total)} h affichées</small>
+        {capacity ? (
+          <>
+            <small className={capacity.overloaded ? "capacity-danger" : "capacity-good"}>
+              {hours(capacity.prudent_free)} h libres / {hours(capacity.capacity_hours)} h
+            </small>
+            {capacity.tentative_hours > 0 && <small className="capacity-tentative">{hours(capacity.tentative_hours)} h tentatives</small>}
+            {capacity.outside_standard_hours > 0 && <small className="capacity-outside">{hours(capacity.outside_standard_hours)} h hors horaire</small>}
+          </>
+        ) : (
+          <small>{hours(total)} h affichées</small>
+        )}
       </div>
+
       {days.map((day) => {
+        const iso = toIsoDate(day);
         const dayShifts = shifts.filter((shift) => sameIsoDate(shift.work_date, day));
+        const cellCapacity = dayCapacity.get(iso) ?? null;
+        const ghosts = pendingLoads.filter((load) => (
+          load.proposed_resource === resource.name
+          && load.start_date <= iso
+          && load.end_date >= iso
+          && (cellCapacity?.available ?? true)
+        ));
+        const cellClass = [
+          "resource-cell",
+          "planning-day-cell",
+          isToday(day) ? "today-column" : "",
+          cellCapacity?.overloaded ? "capacity-overloaded-cell" : "",
+          cellCapacity && !cellCapacity.available ? "capacity-unavailable-cell" : "",
+        ].filter(Boolean).join(" ");
+
         return (
-          <div className={`resource-cell planning-day-cell ${isToday(day) ? "today-column" : ""}`} key={toIsoDate(day)}>
-            {dayShifts.length > 0
-              ? dayShifts.map((shift) => <ShiftCard shift={shift} onEdit={onEditShift} key={shift.allocation_id} />)
-              : <span className="empty-day">—</span>}
+          <div className={cellClass} key={iso}>
+            {cellCapacity && (
+              <div className={`day-capacity ${cellCapacity.overloaded ? "is-overloaded" : ""} ${!cellCapacity.available ? "is-unavailable" : ""}`}>
+                {cellCapacity.available ? (
+                  <>
+                    <strong>{hours(cellCapacity.confirmed_hours + cellCapacity.tentative_hours)}/{hours(cellCapacity.capacity_hours)} h</strong>
+                    {cellCapacity.tentative_hours > 0 && <span>{hours(cellCapacity.tentative_hours)} h tent.</span>}
+                    {cellCapacity.outside_standard_hours > 0 && <span>{hours(cellCapacity.outside_standard_hours)} h hors horaire</span>}
+                  </>
+                ) : (
+                  <span>{cellCapacity.reason || "Indisponible"}</span>
+                )}
+              </div>
+            )}
+
+            {dayShifts.map((shift) => (
+              <ShiftCard
+                shift={shift}
+                diagnostic={diagnostics.get(shift.segment_id) ?? null}
+                onEdit={onEditShift}
+                key={shift.allocation_id}
+              />
+            ))}
+            {ghosts.map((load) => (
+              <PendingGhostCard
+                load={load}
+                onOpenDemands={onOpenDemands}
+                key={`ghost-${load.demand_number}-${iso}`}
+              />
+            ))}
+            {dayShifts.length === 0 && ghosts.length === 0 && !cellCapacity && <span className="empty-day">—</span>}
           </div>
         );
       })}
@@ -227,14 +330,20 @@ function ResourceRow({
 export default function PlanningPage({ onOpenDemands }: { onOpenDemands?: () => void }) {
   const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date()));
   const [snapshot, setSnapshot] = useState<PlanningSnapshotReadModel | null>(null);
+  const [capacityGrid, setCapacityGrid] = useState<PlanningCapacityGridReadModel | null>(null);
   const [actions, setActions] = useState<PlanningActionReadModel[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [project, setProject] = useState("all");
   const [confirmation, setConfirmation] = useState<ConfirmationFilter>("all");
+  const [classFilter, setClassFilter] = useState("all");
+  const [resourceFilter, setResourceFilter] = useState("all");
+  const [onlyWithCapacity, setOnlyWithCapacity] = useState(false);
   const [editingShift, setEditingShift] = useState<ShiftReadModel | null>(null);
+  const [editingSegmentId, setEditingSegmentId] = useState<string | null>(null);
   const [quickShiftOpen, setQuickShiftOpen] = useState(false);
+  const [manualAllocationOpen, setManualAllocationOpen] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
 
   const days = useMemo(() => weekDays(weekStart), [weekStart]);
@@ -250,10 +359,12 @@ export default function PlanningPage({ onOpenDemands }: { onOpenDemands?: () => 
     Promise.all([
       getPlanningSnapshot(start, end, controller.signal),
       getPlanningActions(start, end, controller.signal),
+      getPlanningCapacityGrid(start, end, controller.signal),
     ])
-      .then(([planning, planningActions]) => {
+      .then(([planning, planningActions, capacity]) => {
         setSnapshot(planning);
         setActions(planningActions);
+        setCapacityGrid(capacity);
       })
       .catch((reason: unknown) => {
         if (reason instanceof DOMException && reason.name === "AbortError") return;
@@ -281,6 +392,27 @@ export default function PlanningPage({ onOpenDemands }: { onOpenDemands?: () => 
     return [...values.entries()].sort((left, right) => left[1].localeCompare(right[1], "fr-CA"));
   }, [snapshot, actions]);
 
+  const classOptions = useMemo(() => {
+    if (!snapshot) return [];
+    return [...new Set(snapshot.resources.map((resource) => resource.resource_class || "Non classé"))]
+      .sort((left, right) => left.localeCompare(right, "fr-CA"));
+  }, [snapshot]);
+
+  const resourceOptions = useMemo(() => {
+    if (!snapshot) return [];
+    return [...snapshot.resources]
+      .sort((left, right) => left.sort_order - right.sort_order || left.name.localeCompare(right.name, "fr-CA"));
+  }, [snapshot]);
+
+  const capacityByResource = useMemo(
+    () => new Map((capacityGrid?.resources ?? []).map((row) => [row.resource_id, row])),
+    [capacityGrid],
+  );
+  const diagnosticsBySegment = useMemo(
+    () => new Map((capacityGrid?.segment_diagnostics ?? []).map((row) => [row.segment_id, row])),
+    [capacityGrid],
+  );
+
   const query = normalize(search);
 
   const shiftsPassingGlobalFilters = useMemo(() => {
@@ -291,32 +423,6 @@ export default function PlanningPage({ onOpenDemands }: { onOpenDemands?: () => 
       return true;
     });
   }, [snapshot, project, confirmation]);
-
-  const visibleResourceGroups = useMemo(() => {
-    if (!snapshot) return [];
-    const groups = new Map<string, Array<{ resource: ResourceReadModel; shifts: ShiftReadModel[] }>>();
-    const restrictiveFilter = project !== "all" || confirmation !== "all" || Boolean(query);
-
-    [...snapshot.resources]
-      .sort((left, right) => left.sort_order - right.sort_order || left.name.localeCompare(right.name, "fr-CA"))
-      .forEach((resource) => {
-        const resourceMatches = !query || normalize(`${resource.name} ${resource.resource_class ?? ""} ${resource.competencies ?? ""}`).includes(query);
-        const shifts = shiftsPassingGlobalFilters.filter((shift) => {
-          if (shift.resource_id !== resource.id) return false;
-          if (!query || resourceMatches) return true;
-          return shiftText(shift).includes(query);
-        });
-        if (restrictiveFilter && !resourceMatches && shifts.length === 0) return;
-        if ((project !== "all" || confirmation !== "all") && shifts.length === 0) return;
-        const className = resource.resource_class || "Non classé";
-        const entries = groups.get(className) ?? [];
-        entries.push({ resource, shifts });
-        groups.set(className, entries);
-      });
-
-    return [...groups.entries()].sort((left, right) => left[0].localeCompare(right[0], "fr-CA"));
-  }, [snapshot, shiftsPassingGlobalFilters, project, confirmation, query]);
-
 
   const visibleActions = useMemo(() => actions.filter((action) => {
     if (project !== "all" && action.project_number !== project) return false;
@@ -335,11 +441,85 @@ export default function PlanningPage({ onOpenDemands }: { onOpenDemands?: () => 
     });
   }, [snapshot, project, confirmation, query]);
 
+  const visibleResourceGroups = useMemo(() => {
+    if (!snapshot) return [];
+    const groups = new Map<string, Array<{
+      resource: ResourceReadModel;
+      shifts: ShiftReadModel[];
+      capacity: PlanningResourceCapacityReadModel | null;
+      pendingLoads: PendingDemandLoadReadModel[];
+    }>>();
+
+    [...snapshot.resources]
+      .sort((left, right) => left.sort_order - right.sort_order || left.name.localeCompare(right.name, "fr-CA"))
+      .forEach((resource) => {
+        const capacity = capacityByResource.get(resource.id) ?? null;
+        if (classFilter !== "all" && (resource.resource_class || "Non classé") !== classFilter) return;
+        if (resourceFilter !== "all" && resource.id !== resourceFilter) return;
+        if (onlyWithCapacity && (!capacity || capacity.prudent_free <= 0.01)) return;
+
+        const resourceMatches = !query || normalize(`${resource.name} ${resource.resource_class ?? ""} ${resource.competencies ?? ""}`).includes(query);
+        const shifts = shiftsPassingGlobalFilters.filter((shift) => {
+          if (shift.resource_id !== resource.id) return false;
+          if (!query || resourceMatches) return true;
+          return shiftText(shift).includes(query);
+        });
+        const pendingLoads = visiblePendingLoads.filter((load) => load.proposed_resource === resource.name);
+        const restrictiveProjectConfirmation = project !== "all" || confirmation !== "all";
+        if (query && !resourceMatches && shifts.length === 0 && pendingLoads.length === 0) return;
+        if (restrictiveProjectConfirmation && shifts.length === 0 && pendingLoads.length === 0) return;
+
+        const className = resource.resource_class || "Non classé";
+        const entries = groups.get(className) ?? [];
+        entries.push({ resource, shifts, capacity, pendingLoads });
+        groups.set(className, entries);
+      });
+
+    return [...groups.entries()].sort((left, right) => left[0].localeCompare(right[0], "fr-CA"));
+  }, [
+    snapshot,
+    capacityByResource,
+    classFilter,
+    resourceFilter,
+    onlyWithCapacity,
+    shiftsPassingGlobalFilters,
+    visiblePendingLoads,
+    project,
+    confirmation,
+    query,
+  ]);
+
   const visibleShiftHours = shiftsPassingGlobalFilters
     .filter((shift) => !query || shiftText(shift).includes(query) || snapshot?.resources.some(
       (resource) => resource.id === shift.resource_id && normalize(`${resource.name} ${resource.resource_class ?? ""}`).includes(query),
     ))
     .reduce((sum, shift) => sum + Number(shift.hours || 0), 0);
+
+  const unplacedDiagnostics = useMemo(() => {
+    if (!snapshot || !capacityGrid) return [];
+    const segmentById = new Map(snapshot.segments.map((segment) => [segment.segment_id, segment]));
+    return capacityGrid.segment_diagnostics
+      .filter((diagnostic) => diagnostic.unplaced_hours > 0.01)
+      .filter((diagnostic) => {
+        const segment = segmentById.get(diagnostic.segment_id);
+        if (!segment) return false;
+        if (project !== "all" && segment.project_number !== project) return false;
+        if (resourceFilter !== "all" && diagnostic.resource_id !== resourceFilter) return false;
+        const resource = diagnostic.resource_id ? snapshot.resources.find((row) => row.id === diagnostic.resource_id) : null;
+        if (classFilter !== "all" && (resource?.resource_class || "Non classé") !== classFilter) return false;
+        if (query && !normalize([
+          diagnostic.segment_id,
+          segment.project_number,
+          segment.project_name,
+          segment.demand_number,
+          segment.description,
+          diagnostic.resource_name,
+        ].filter(Boolean).join(" ")).includes(query)) return false;
+        return true;
+      });
+  }, [snapshot, capacityGrid, project, resourceFilter, classFilter, query]);
+
+  const visibleResourceCount = visibleResourceGroups.reduce((sum, [, rows]) => sum + rows.length, 0);
 
   return (
     <section className="planning-page">
@@ -347,9 +527,12 @@ export default function PlanningPage({ onOpenDemands }: { onOpenDemands?: () => 
         <div>
           <span className="eyebrow">Planification opérationnelle</span>
           <h1>Semaine du {formatWeekRange(weekStart)}</h1>
-          <p>Planning Web V2 alimenté directement par FastAPI. Clique sur un quart pour le modifier ou ajoute un Quick Shift ad hoc.</p>
+          <p>Planning Web V2 alimenté directement par FastAPI. Capacité, indisponibilités et heures non placées sont calculées côté backend.</p>
         </div>
         <div className="page-actions">
+          <button className="manual-allocation-button" type="button" onClick={() => setManualAllocationOpen(true)}>
+            + Quart manuel
+          </button>
           <button className="quick-shift-button" type="button" onClick={() => setQuickShiftOpen(true)}>
             + Quick Shift
           </button>
@@ -365,6 +548,7 @@ export default function PlanningPage({ onOpenDemands }: { onOpenDemands?: () => 
         actions={visibleActions}
         loading={loading}
         onOpenDemands={onOpenDemands}
+        onOpenSegment={setEditingSegmentId}
         onAssigned={() => setRefreshKey((value) => value + 1)}
       />
 
@@ -380,9 +564,9 @@ export default function PlanningPage({ onOpenDemands }: { onOpenDemands?: () => 
           <small>Tentatif + demandes additives</small>
         </article>
         <article>
-          <span>Remplacements proposés</span>
-          <strong>{snapshot ? `${hours(snapshot.replacement_proposal_hours)} h` : "—"}</strong>
-          <small>Scénarios non additionnés au plan</small>
+          <span>Heures non placées</span>
+          <strong>{capacityGrid ? `${hours(unplacedDiagnostics.reduce((sum, row) => sum + row.unplaced_hours, 0))} h` : "—"}</strong>
+          <small>{capacityGrid ? `${unplacedDiagnostics.length} segment(s) à régulariser` : "Diagnostic backend"}</small>
         </article>
         <article>
           <span>Quarts affichés</span>
@@ -391,7 +575,7 @@ export default function PlanningPage({ onOpenDemands }: { onOpenDemands?: () => 
         </article>
       </div>
 
-      <div className="filter-bar">
+      <div className="filter-bar planning-filter-bar">
         <label className="search-field">
           <span>Recherche</span>
           <input
@@ -399,6 +583,20 @@ export default function PlanningPage({ onOpenDemands }: { onOpenDemands?: () => 
             onChange={(event) => setSearch(event.target.value)}
             placeholder="Ressource, projet, demande…"
           />
+        </label>
+        <label>
+          <span>Classe</span>
+          <select value={classFilter} onChange={(event) => setClassFilter(event.target.value)}>
+            <option value="all">Toutes les classes</option>
+            {classOptions.map((value) => <option value={value} key={value}>{value}</option>)}
+          </select>
+        </label>
+        <label>
+          <span>Ressource</span>
+          <select value={resourceFilter} onChange={(event) => setResourceFilter(event.target.value)}>
+            <option value="all">Toutes les ressources</option>
+            {resourceOptions.map((resource) => <option value={resource.id} key={resource.id}>{resource.name}</option>)}
+          </select>
         </label>
         <label>
           <span>Projet</span>
@@ -415,6 +613,10 @@ export default function PlanningPage({ onOpenDemands }: { onOpenDemands?: () => 
             <option value="tentative">Tentative</option>
           </select>
         </label>
+        <label className="capacity-filter">
+          <input type="checkbox" checked={onlyWithCapacity} onChange={(event) => setOnlyWithCapacity(event.target.checked)} />
+          <span>Seulement avec capacité</span>
+        </label>
       </div>
 
       {error && (
@@ -425,17 +627,49 @@ export default function PlanningPage({ onOpenDemands }: { onOpenDemands?: () => 
         </div>
       )}
 
+      {!loading && unplacedDiagnostics.length > 0 && snapshot && (
+        <section className="unplaced-panel" aria-label="Heures non placées">
+          <div className="unplaced-heading">
+            <div>
+              <span className="eyebrow">Capacité insuffisante</span>
+              <strong>Hors horaire requis / heures non placées</strong>
+            </div>
+            <span className="count-pill">{unplacedDiagnostics.length}</span>
+          </div>
+          <div className="unplaced-list">
+            {unplacedDiagnostics.map((diagnostic) => {
+              const segment = snapshot.segments.find((row) => row.segment_id === diagnostic.segment_id);
+              if (!segment) return null;
+              return (
+                <article key={diagnostic.segment_id}>
+                  <div>
+                    <strong>{segment.project_number || "Projet"} — {segment.description || diagnostic.segment_id}</strong>
+                    <span>
+                      {diagnostic.resource_name || "Ressource"} · {hours(diagnostic.allocated_hours)}/{hours(diagnostic.planned_hours)} h placées
+                    </span>
+                  </div>
+                  <strong className="unplaced-hours">{hours(diagnostic.unplaced_hours)} h non placées</strong>
+                  <button type="button" onClick={() => setEditingSegmentId(diagnostic.segment_id)}>Modifier le segment</button>
+                </article>
+              );
+            })}
+          </div>
+        </section>
+      )}
+
       <div className="planning-layout">
         <div className="planning-board-panel">
           <div className="planning-board-toolbar">
             <div>
               <strong>Ressources et quarts</strong>
-              <span>{loading ? "Actualisation…" : `${visibleResourceGroups.reduce((sum, [, rows]) => sum + rows.length, 0)} ressource(s)`}</span>
+              <span>{loading ? "Actualisation…" : `${visibleResourceCount} ressource(s)`}</span>
             </div>
             <div className="legend">
               <span><i className="legend-dot confirmed" />Confirmée</span>
               <span><i className="legend-dot tentative" />Tentative</span>
               <span><i className="legend-dot outside" />Hors horaire</span>
+              <span><i className="legend-dot ghost" />Attente d’approbation</span>
+              <span><i className="legend-dot unavailable" />Indisponible</span>
             </div>
           </div>
 
@@ -459,12 +693,16 @@ export default function PlanningPage({ onOpenDemands }: { onOpenDemands?: () => 
                     <strong>{className}</strong>
                     <span>{rows.length} ressource(s)</span>
                   </div>
-                  {rows.map(({ resource, shifts }) => (
+                  {rows.map(({ resource, shifts, capacity, pendingLoads }) => (
                     <ResourceRow
                       resource={resource}
                       days={days}
                       shifts={shifts}
+                      capacity={capacity}
+                      pendingLoads={pendingLoads}
+                      diagnostics={diagnosticsBySegment}
                       onEditShift={setEditingShift}
+                      onOpenDemands={onOpenDemands}
                       key={resource.id}
                     />
                   ))}
@@ -503,6 +741,35 @@ export default function PlanningPage({ onOpenDemands }: { onOpenDemands?: () => 
           onClose={() => setEditingShift(null)}
           onSaved={() => {
             setEditingShift(null);
+            setRefreshKey((value) => value + 1);
+          }}
+        />
+      )}
+
+      {editingSegmentId && snapshot && (
+        <SegmentEditor
+          open
+          segmentId={editingSegmentId}
+          demand={null}
+          resources={snapshot.resources}
+          onClose={() => setEditingSegmentId(null)}
+          onSaved={() => {
+            setEditingSegmentId(null);
+            setRefreshKey((value) => value + 1);
+          }}
+        />
+      )}
+
+      {snapshot && (
+        <ManualAllocationEditor
+          open={manualAllocationOpen}
+          segments={snapshot.segments}
+          resources={snapshot.resources}
+          weekStart={start}
+          weekEnd={end}
+          onClose={() => setManualAllocationOpen(false)}
+          onSaved={() => {
+            setManualAllocationOpen(false);
             setRefreshKey((value) => value + 1);
           }}
         />

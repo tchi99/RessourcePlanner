@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import date, datetime, time as dt_time, timedelta
 from typing import Any, Iterable
 
@@ -118,6 +119,63 @@ def has_standard_schedule_in_window(
         and _record_overlaps(row, window_start, window_end)
         for row in records
     )
+
+
+@dataclass(frozen=True, slots=True)
+class AvailabilityDayState:
+    available: bool
+    hours: float
+    reason: str | None = None
+
+
+def availability_state_for_day(
+    records: Iterable[dict[str, Any]],
+    resource_id: str,
+    day: date,
+) -> AvailabilityDayState:
+    """Explain a resource's standard capacity for one day from the canonical rules."""
+
+    rows = [row for row in records if is_active(row.get("Actif"))]
+    resource_id = str(resource_id or "").strip()
+    if not has_standard_schedule_in_window(rows, resource_id, day, day):
+        return AvailabilityDayState(False, 0.0, "Aucun horaire standard")
+
+    for row in rows:
+        if str(row.get("Type") or "").strip() != "Jour férié":
+            continue
+        target = str(row.get("Technicien") or "").strip()
+        if target and target != resource_id:
+            continue
+        if _record_applies(row, day):
+            return AvailabilityDayState(False, 0.0, "Jour férié")
+
+    for row in rows:
+        if str(row.get("Type") or "").strip() != "Vacances":
+            continue
+        if str(row.get("Technicien") or "").strip() == resource_id and _record_applies(row, day):
+            return AvailabilityDayState(False, 0.0, "Vacances")
+
+    standards = [
+        row
+        for row in rows
+        if str(row.get("Type") or "").strip() == "Horaire standard"
+        and str(row.get("Technicien") or "").strip() == resource_id
+        and _record_applies(row, day)
+        and _weekday_matches(row, day)
+    ]
+    if not standards:
+        return AvailabilityDayState(False, 0.0, "Hors horaire standard")
+
+    start = _time_hours(standards[0].get("HeureDebut"))
+    end = _time_hours(standards[0].get("HeureFin"))
+    if start is None or end is None:
+        return AvailabilityDayState(False, 0.0, "Horaire standard invalide")
+    if end < start:
+        end += 24.0
+    hours = max(end - start, 0.0)
+    if hours <= 0:
+        return AvailabilityDayState(False, 0.0, "Horaire standard invalide")
+    return AvailabilityDayState(True, hours, None)
 
 
 def availability_hours_for_day(
