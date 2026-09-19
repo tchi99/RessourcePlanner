@@ -244,7 +244,6 @@ def upgrade() -> None:
                 erp_task_label,
                 proposed_resource_id,
                 description,
-                active,
                 created_at,
                 updated_at
             )
@@ -267,7 +266,6 @@ def upgrade() -> None:
                 wr.erp_task_label,
                 wr.proposed_resource_id,
                 wr.description,
-                1,
                 wr.created_at,
                 wr.updated_at
             FROM workforce_requests wr
