@@ -410,7 +410,12 @@ def create_api_app(
             competency_dependency,
         )
     )
-    app.include_router(build_read_router(query_dependency))
+    app.include_router(
+        build_read_router(
+            query_dependency,
+            user_view_context_dependency,
+        )
+    )
     app.include_router(build_competency_router(competency_dependency))
     app.include_router(build_task_catalog_router(session_dependency))
     app.include_router(
