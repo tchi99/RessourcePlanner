@@ -11,6 +11,7 @@ from .demand import (
     DemandCancelCommand,
     DemandCorrectionCommand,
     DemandCreateCommand,
+    DemandLineInput,
     DemandSubmitCommand,
     DemandUpdateCommand,
 )
@@ -30,6 +31,7 @@ __all__ = [
     "DemandCancelCommand",
     "DemandCorrectionCommand",
     "DemandCreateCommand",
+    "DemandLineInput",
     "DemandPeriodInput",
     "DemandPeriodsReplaceCommand",
     "DemandSubmitCommand",
