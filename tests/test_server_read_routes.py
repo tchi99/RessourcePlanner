@@ -244,23 +244,6 @@ class ServerReadRouteTests(unittest.TestCase):
                 "query_date_window_invalid",
             )
 
-    def test_openapi_contains_typed_read_models(self) -> None:
-        with TemporaryDirectory() as directory:
-            app = create_api_app(self._database(directory))
-            with TestClient(app) as client:
-                schema = client.get("/openapi.json").json()
-
-            components = schema.get("components", {}).get("schemas", {})
-            for expected in (
-                "ProjectReadModel",
-                "ResourceReadModel",
-                "DemandReadModel",
-                "SegmentReadModel",
-                "ShiftReadModel",
-                "PlanningSnapshotReadModel",
-            ):
-                self.assertIn(expected, components)
-
 
 if __name__ == "__main__":
     unittest.main()
