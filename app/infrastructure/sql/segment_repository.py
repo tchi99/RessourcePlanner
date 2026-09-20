@@ -105,6 +105,7 @@ class SqlSegmentRepository(SegmentRepositoryPort):
             origin=_optional_text(requirement.origin),
             required_competency=_optional_text(requirement.required_competency),
             required_competency_id=_optional_text(requirement.required_competency_id),
+            required_resource_class=_optional_text(requirement.required_resource_class),
             planning_type=_optional_text(requirement.planning_type),
             priority=_optional_text(requirement.priority),
             outside_standard_hours=bool(requirement.outside_standard_hours_allowed),
@@ -357,6 +358,7 @@ class SqlSegmentRepository(SegmentRepositoryPort):
             source_effort_id=_optional_text(
                 values.get("SourceEffortID") or values.get("SourceEffortRow")
             ),
+            required_resource_class=_optional_text(values.get("ClasseRessourceRequise")),
             required_competency=_optional_text(values.get("CompetenceRequise")),
             planning_type=_text(values.get("TypePlanification")) or "Flexible",
             priority=_text(values.get("Priorite")) or "Normale",
@@ -429,6 +431,10 @@ class SqlSegmentRepository(SegmentRepositoryPort):
         if "SourceEffortID" in updates or "SourceEffortRow" in updates:
             requirement.source_effort_id = _optional_text(
                 updates.get("SourceEffortID") or updates.get("SourceEffortRow")
+            )
+        if "ClasseRessourceRequise" in updates:
+            requirement.required_resource_class = _optional_text(
+                updates.get("ClasseRessourceRequise")
             )
         if "CompetenceRequise" in updates:
             requirement.required_competency = _optional_text(
