@@ -14,6 +14,7 @@ from ..application import (
     ApplicationConflictError,
     ApplicationError,
     ApplicationFacade,
+    BusinessContactAdminService,
     CompetencyCatalogService,
     ApplicationNotFoundError,
     ApplicationOperationError,
@@ -33,6 +34,7 @@ from ..infrastructure.sql import (
     transactional_session,
 )
 from .composition import (
+    build_business_contact_admin_service,
     build_communication_service,
     build_competency_catalog_service,
     build_sql_facade,
@@ -50,6 +52,7 @@ from .performance import (
 )
 from .readiness import DatabaseReadinessError, check_database_readiness
 from .routes_auth import build_auth_router
+from .routes_business_contacts import build_business_contact_router
 from .routes_commands import build_command_router
 from .routes_competencies import build_competency_router
 from .routes_communications import build_communication_router
@@ -69,6 +72,7 @@ QueryDependency = Callable[[], Iterator[PlannerQueryPort]]
 UserAdminDependency = Callable[..., Any]
 CommunicationDependency = Callable[..., Any]
 CompetencyDependency = Callable[[], Iterator[CompetencyCatalogService]]
+BusinessContactDependency = Callable[[], Iterator[BusinessContactAdminService]]
 UserViewContextDependency = Callable[[], Iterator[UserViewContextRepositoryPort]]
 
 
@@ -203,6 +207,21 @@ def make_competency_dependency(
     return dependency
 
 
+def make_business_contact_dependency(
+    factory: SqlSessionFactory,
+    *,
+    session_dependency: SessionDependency | None = None,
+) -> BusinessContactDependency:
+    request_session = session_dependency or make_session_dependency(factory)
+
+    def dependency(
+        session: Session = Depends(request_session),
+    ) -> Iterator[BusinessContactAdminService]:
+        yield build_business_contact_admin_service(session)
+
+    return dependency
+
+
 def make_communication_dependency(
     factory: SqlSessionFactory,
     *,
@@ -297,6 +316,10 @@ def create_api_app(
         factory,
         session_dependency=session_dependency,
     )
+    business_contact_dependency = make_business_contact_dependency(
+        factory,
+        session_dependency=session_dependency,
+    )
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
@@ -323,6 +346,7 @@ def create_api_app(
     app.state.user_view_context_dependency = user_view_context_dependency
     app.state.communication_dependency = communication_dependency
     app.state.competency_dependency = competency_dependency
+    app.state.business_contact_dependency = business_contact_dependency
     app.state.runtime_dependencies = dict(runtime_dependencies or {})
     app.state.dev_user_switcher_enabled = dev_user_switcher_runtime is not None
 
@@ -417,6 +441,7 @@ def create_api_app(
         )
     )
     app.include_router(build_competency_router(competency_dependency))
+    app.include_router(build_business_contact_router(business_contact_dependency))
     app.include_router(build_task_catalog_router(session_dependency))
     app.include_router(
         build_me_router(
