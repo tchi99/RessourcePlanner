@@ -60,6 +60,8 @@ class ReactBusinessContactContractTests(unittest.TestCase):
         self.assertIn("Source :", source)
         self.assertIn("CONTACT_REFERENCE_INVALID", source)
         self.assertIn("PROJECT_MANAGER_CONTACT_UNMIGRATED", source)
+        self.assertIn("RESOURCE_COORDINATOR", source)
+        self.assertIn("TASK_COORDINATOR", source)
 
     def test_business_contact_styles_are_loaded(self) -> None:
         source = (FRONTEND / "main.tsx").read_text(encoding="utf-8")
