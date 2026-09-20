@@ -22,7 +22,7 @@ def _contact_id(external_id: str) -> str:
     return str(
         uuid5(
             NAMESPACE_URL,
-            f"resourceplanner:business-contact:project-manager:{external_id}",
+            f"resourceplanner:business-contact:employee:{external_id}",
         )
     )
 
@@ -66,8 +66,8 @@ def _backfill_project_manager_contacts() -> None:
 
     grouped: dict[str, list[dict[str, object]]] = {}
     for row in rows:
-        external_id = str(row["project_manager_external_id"] or "").strip()
-        if not external_id:
+        external_id = str(row["project_manager_external_id"] or "")
+        if not external_id.strip():
             continue
         grouped.setdefault(external_id, []).append(dict(row))
 
