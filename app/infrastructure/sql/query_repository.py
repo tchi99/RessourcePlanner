@@ -341,7 +341,14 @@ class SqlPlannerQueryRepository(PlannerQueryPort):
             if demand is None:
                 continue
 
-            periods = tuple(self._periods.list_for_demand(number))
+            # #288D stores detailed periods per RequestLine, but the shared
+            # pending-load projection stays flat until #288E can project each line
+            # independently. Never merge line-scoped alternative groups here.
+            periods = (
+                ()
+                if demand.line_mode
+                else tuple(self._periods.list_for_demand(number))
+            )
             if periods:
                 definitions = tuple(_period_definition(row) for row in periods)
                 selections = {
