@@ -85,6 +85,12 @@ class SqlSchemaTests(unittest.TestCase):
         self.assertFalse(requirements.project_id.nullable)
         self.assertTrue(requirements.workforce_request_id.nullable)
         self.assertTrue(requirements.source_request_line_id.nullable)
+        self.assertTrue(requirements.approved_task_catalog_item_id.nullable)
+        self.assertTrue(
+            requirements.approved_operational_responsible_override_contact_id.nullable
+        )
+        self.assertTrue(requirements.approved_request_version.nullable)
+        self.assertFalse(requirements.approved_contact_context_status.nullable)
         self.assertTrue(requirements.required_resource_class.nullable)
         self.assertTrue(projects.project_manager_contact_id.nullable)
         self.assertTrue(resources.coordinator_contact_id.nullable)

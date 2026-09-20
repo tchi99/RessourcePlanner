@@ -10,6 +10,7 @@ from sqlalchemy import select
 
 from app.infrastructure.sql import (
     Base,
+    BusinessContact,
     Competency,
     Project,
     Resource,
@@ -18,6 +19,7 @@ from app.infrastructure.sql import (
     ResourceRequirement,
     ResourceRequirementCompetency,
     Shift,
+    TaskCatalogEntry,
     WorkforceRequest,
     WorkforceRequestPeriod,
     WorkforceRequestPeriodRequirement,
@@ -58,8 +60,32 @@ class RequestLineMaterializationHttpTests(unittest.TestCase):
                         active=True,
                         resource_class="Programmation",
                     ),
+                    BusinessContact(
+                        id="BC-OVR-1",
+                        display_name="Responsable initial",
+                        phone="555-0101",
+                    ),
+                    BusinessContact(
+                        id="BC-OVR-2",
+                        display_name="Responsable révisé",
+                        phone="555-0102",
+                    ),
                     Competency(id="C1", name="Ignition", active=True),
                     Competency(id="C2", name="AVEVA", active=True),
+                    TaskCatalogEntry(
+                        id="T210",
+                        project_number="P-1",
+                        task_code="210",
+                        label="Tâche 210",
+                        active=True,
+                    ),
+                    TaskCatalogEntry(
+                        id="T220",
+                        project_number="P-1",
+                        task_code="220",
+                        label="Tâche 220",
+                        active=True,
+                    ),
                 ]
             )
             session.flush()
@@ -374,9 +400,22 @@ class RequestLineMaterializationHttpTests(unittest.TestCase):
                             "estimated_hours": 8,
                             "desired_active_days": 1,
                             "proposed_resource_id": "R1",
+                            "task_code": "210",
                         }
                     ],
                 )
+                engine = create_sql_engine(database_url)
+                factory = create_session_factory(engine)
+                with factory.begin() as session:
+                    request = session.scalar(
+                        select(WorkforceRequest).where(
+                            WorkforceRequest.legacy_demand_number == number
+                        )
+                    )
+                    assert request is not None
+                    request.operational_responsible_override_contact_id = "BC-OVR-1"
+                engine.dispose()
+
                 first_approval = client.post(
                     f"/api/v1/demands/{number}/approve",
                     json={"comment": "Version initiale"},
@@ -411,6 +450,16 @@ class RequestLineMaterializationHttpTests(unittest.TestCase):
                     )
                     assert initial_shift is not None
                     self.assertEqual(requirement.start_date, D1)
+                    self.assertEqual(requirement.approved_task_catalog_item_id, "T210")
+                    self.assertEqual(
+                        requirement.approved_operational_responsible_override_contact_id,
+                        "BC-OVR-1",
+                    )
+                    self.assertEqual(requirement.approved_request_version, 2)
+                    self.assertEqual(
+                        requirement.approved_contact_context_status,
+                        "CAPTURED",
+                    )
                     self.assertEqual(initial_shift.work_date, D1)
                 engine.dispose()
 
@@ -427,6 +476,7 @@ class RequestLineMaterializationHttpTests(unittest.TestCase):
                                 "estimated_hours": 8,
                                 "desired_active_days": 1,
                                 "proposed_resource_id": "R1",
+                                "task_code": "220",
                             }
                         ],
                     },
@@ -434,6 +484,18 @@ class RequestLineMaterializationHttpTests(unittest.TestCase):
                 self.assertEqual(changed.status_code, 200, changed.text)
                 self.assertTrue(changed.json()["reapproval_required"])
                 self.assertEqual(changed.json()["status"], "Soumise")
+
+                engine = create_sql_engine(database_url)
+                factory = create_session_factory(engine)
+                with factory.begin() as session:
+                    request = session.scalar(
+                        select(WorkforceRequest).where(
+                            WorkforceRequest.legacy_demand_number == number
+                        )
+                    )
+                    assert request is not None
+                    request.operational_responsible_override_contact_id = "BC-OVR-2"
+                engine.dispose()
 
                 engine = create_sql_engine(database_url)
                 factory = create_session_factory(engine)
@@ -447,6 +509,16 @@ class RequestLineMaterializationHttpTests(unittest.TestCase):
                     )
                     assert shift is not None
                     self.assertEqual(requirement.start_date, D1)
+                    self.assertEqual(requirement.approved_task_catalog_item_id, "T210")
+                    self.assertEqual(requirement.approved_request_version, 2)
+                    self.assertEqual(
+                        requirement.approved_operational_responsible_override_contact_id,
+                        "BC-OVR-1",
+                    )
+                    self.assertEqual(
+                        requirement.approved_contact_context_status,
+                        "CAPTURED",
+                    )
                     self.assertEqual(shift.work_date, D1)
                 engine.dispose()
 
@@ -470,6 +542,16 @@ class RequestLineMaterializationHttpTests(unittest.TestCase):
                     assert requirement is not None
                     self.assertEqual(requirement.start_date, D2)
                     self.assertEqual(requirement.source_request_line_id, line_id)
+                    self.assertEqual(requirement.approved_task_catalog_item_id, "T220")
+                    self.assertEqual(requirement.approved_request_version, 4)
+                    self.assertEqual(
+                        requirement.approved_operational_responsible_override_contact_id,
+                        "BC-OVR-2",
+                    )
+                    self.assertEqual(
+                        requirement.approved_contact_context_status,
+                        "CAPTURED",
+                    )
                     shift = session.scalar(
                         select(Shift).where(
                             Shift.resource_requirement_id == requirement_id
