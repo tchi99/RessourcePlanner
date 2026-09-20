@@ -157,6 +157,31 @@ export type AvailabilityRuleMutationResult = {
   action: string;
 };
 
+export type DemandLineReadModel = {
+  line_id: string;
+  position: number;
+  kind: "WORKFORCE";
+  slot_count: number;
+  required_resource_class: string | null;
+  required_competencies: string | null;
+  required_competency_ids: string[];
+  desired_start: string | null;
+  desired_end: string | null;
+  desired_active_days: number | null;
+  estimated_hours: number | null;
+  estimated_hours_source: "EXPLICIT" | "DEFAULT_8H" | "LEGACY" | null;
+  default_hours_per_day: number | null;
+  confirmation: "Tentative" | "Confirmée";
+  work_package_ref: string | null;
+  work_package_name: string | null;
+  task_code: string | null;
+  task_label: string | null;
+  proposed_resource_id: string | null;
+  proposed_resource: string | null;
+  description: string | null;
+  active: boolean;
+};
+
 export type DemandReadModel = {
   number: string;
   status: string;
@@ -183,6 +208,9 @@ export type DemandReadModel = {
   estimated_hours: number | null;
   estimated_days: number | null;
   proposed_resource: string | null;
+  version: number;
+  line_mode: boolean;
+  lines: DemandLineReadModel[];
 };
 
 export type SegmentReadModel = {
@@ -433,25 +461,44 @@ export type PlanningSnapshotReadModel = {
   replacement_proposal_hours: number;
 };
 
+export type DemandLineWrite = {
+  id?: string;
+  position?: number;
+  kind?: "WORKFORCE";
+  required_resource_class: string | null;
+  required_competency_ids: string[];
+  desired_start: string | null;
+  desired_end: string | null;
+  desired_active_days: number | null;
+  estimated_hours: number | null;
+  work_package_ref: string | null;
+  task_code: string | null;
+  proposed_resource_id: string | null;
+  confirmation: "Tentative" | "Confirmée";
+  description: string | null;
+};
+
 export type DemandWrite = {
   project_number: string;
   project_name?: string;
   client?: string;
   requester: string | null;
-  work_package_ref: string | null;
-  task_code: string | null;
   request_type?: string;
   priority: string;
-  confirmation: "Tentative" | "Confirmée";
-  desired_start: string;
-  desired_end: string | null;
   description: string;
-  resource_count: number;
-  required_competencies: string | null;
-  required_competency_ids: string[];
-  estimated_hours: number | null;
-  estimated_days: number | null;
-  proposed_technician: string | null;
+  work_package_ref?: string | null;
+  task_code?: string | null;
+  confirmation?: "Tentative" | "Confirmée";
+  desired_start?: string | null;
+  desired_end?: string | null;
+  resource_count?: number;
+  required_competencies?: string | null;
+  required_competency_ids?: string[];
+  estimated_hours?: number | null;
+  estimated_days?: number | null;
+  proposed_technician?: string | null;
+  lines?: DemandLineWrite[];
+  expected_version?: number;
 };
 
 export type DemandMutationResult = {
@@ -824,7 +871,7 @@ export function createDemand(payload: DemandWrite, idempotencyKey: string) {
 }
 
 export function updateDemand(number: string, payload: DemandWrite, comment: string) {
-  // request_type is not edited in tranche 3A. Do not write a fallback value back over
+  // request_type is not edited here. Do not write a fallback value back over
   // historical requests until the field has an explicit UI and canonical SQL read.
   const { request_type: _requestType, ...editablePayload } = payload;
   return sendJson<DemandMutationResult>(
