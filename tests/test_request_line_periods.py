@@ -183,7 +183,19 @@ class RequestLinePeriodApiTests(unittest.TestCase):
                     if row["demand_number"] == number
                 )
                 self.assertEqual(pending["projected_hours"], 16.0)
-                self.assertEqual(pending["periods"], [])
+                self.assertEqual(len(pending["periods"]), 4)
+                self.assertEqual(
+                    {row["request_line_id"] for row in pending["periods"]},
+                    {line_a, line_b},
+                )
+                self.assertEqual(
+                    {
+                        (row["request_line_id"], row["period_id"])
+                        for row in pending["periods"]
+                        if row["selected"]
+                    },
+                    {(line_a, "OPT-A"), (line_b, "OPT-B")},
+                )
 
     def test_cumulative_periods_are_kept_on_their_own_line(self) -> None:
         with TemporaryDirectory() as directory:

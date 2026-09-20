@@ -27,7 +27,7 @@ from .demand_period_models import (
     WorkforceRequestPeriodRequirement,
     WorkforceRequestPeriodSelection,
 )
-from .models import Project, Resource, ResourceRequirement, WorkforceRequest
+from .models import Project, RequestLine, Resource, ResourceRequirement, WorkforceRequest, WorkPackage
 from .planning_repository import SqlPlanningReadRepository
 from .web_query_repository import SqlPlannerQueryRepositoryWeb
 
@@ -203,6 +203,41 @@ class SqlPlannerQueryRepositoryWithPlanDelta(SqlPlannerQueryRepositoryWeb):
             for link, period in rows
         }
 
+    def _period_identity_by_requirement(
+        self,
+        request_id: str,
+    ) -> dict[str, tuple[str, str]]:
+        rows = self._delta_session.execute(
+            select(WorkforceRequestPeriodRequirement, WorkforceRequestPeriod)
+            .join(
+                WorkforceRequestPeriod,
+                WorkforceRequestPeriodRequirement.period_id == WorkforceRequestPeriod.id,
+            )
+            .where(WorkforceRequestPeriod.workforce_request_id == request_id)
+        ).all()
+        return {
+            link.resource_requirement_id: (
+                _text(period.request_line_id),
+                period.period_key,
+            )
+            for link, period in rows
+            if _text(period.request_line_id)
+        }
+
+    def _selected_period_ids_by_line(
+        self,
+        request_id: str,
+    ) -> dict[tuple[str, str], str]:
+        rows = self._delta_session.scalars(
+            select(WorkforceRequestPeriodSelection).where(
+                WorkforceRequestPeriodSelection.workforce_request_id == request_id
+            )
+        ).all()
+        return {
+            (row.request_line_id, row.alternative_group): row.period_id
+            for row in rows
+        }
+
     def _active_periods(self, request_id: str) -> list[WorkforceRequestPeriod]:
         return list(
             self._delta_session.scalars(
@@ -310,6 +345,11 @@ class SqlPlannerQueryRepositoryWithPlanDelta(SqlPlannerQueryRepositoryWeb):
                 if requirement is not None
                 else request.required_competencies
             ),
+            "ClasseRessourceRequise": (
+                requirement.required_resource_class
+                if requirement is not None
+                else None
+            ),
             "TypePlanification": requirement.planning_type if requirement is not None else "Flexible",
             "Priorite": requirement.priority if requirement is not None else request.priority,
             "HorsHoraireAutorise": (
@@ -323,12 +363,199 @@ class SqlPlannerQueryRepositoryWithPlanDelta(SqlPlannerQueryRepositoryWeb):
             ),
         }
 
+    def _proposed_line_segments(
+        self,
+        request: WorkforceRequest,
+        current: list[ResourceRequirement],
+    ) -> list[dict[str, object]] | None:
+        project = self._delta_session.get(Project, request.project_id)
+        if project is None:
+            return None
+
+        lines = list(
+            self._delta_session.scalars(
+                select(RequestLine)
+                .where(
+                    RequestLine.workforce_request_id == request.id,
+                    RequestLine.active.is_(True),
+                )
+                .order_by(RequestLine.position, RequestLine.id)
+            ).all()
+        )
+        if not lines:
+            return None
+
+        resources = {
+            row.id: row
+            for row in self._delta_session.scalars(select(Resource)).all()
+        }
+        active_periods = self._active_periods(request.id)
+        periods_by_line: dict[str, list[WorkforceRequestPeriod]] = defaultdict(list)
+        for period in active_periods:
+            if period.request_line_id:
+                periods_by_line[period.request_line_id].append(period)
+        selections = self._selected_period_ids_by_line(request.id)
+
+        period_identity = self._period_identity_by_requirement(request.id)
+        current_by_key: dict[tuple[str, ...], list[ResourceRequirement]] = defaultdict(list)
+        for requirement in current:
+            line_id = _text(requirement.source_request_line_id)
+            if not line_id:
+                continue
+            identity = period_identity.get(requirement.id)
+            key = (
+                ("PERIOD", identity[0], identity[1])
+                if identity is not None
+                else ("LINE", line_id)
+            )
+            current_by_key[key].append(requirement)
+        for rows in current_by_key.values():
+            rows.sort(
+                key=lambda row: (
+                    0 if row.assigned_resource_id else 1,
+                    row.created_at,
+                    row.id,
+                )
+            )
+
+        package_ids = {line.work_package_id for line in lines if line.work_package_id}
+        packages = (
+            self._delta_session.scalars(
+                select(WorkPackage).where(WorkPackage.id.in_(package_ids))
+            ).all()
+            if package_ids
+            else []
+        )
+        package_refs = {
+            package.id: _text(package.legacy_effort_id) or package.id
+            for package in packages
+        }
+
+        proposed: list[dict[str, object]] = []
+        for line in lines:
+            if _text(line.kind) != "WORKFORCE":
+                return None
+            source_effort_id = (
+                package_refs.get(line.work_package_id)
+                if line.work_package_id
+                else None
+            )
+            required_competency = _text(line.required_competencies_snapshot) or None
+            line_periods = periods_by_line.get(line.id, [])
+            if line_periods:
+                effective = [
+                    period
+                    for period in line_periods
+                    if period.kind == "CUMULATIVE"
+                    or (
+                        period.alternative_group is not None
+                        and selections.get(
+                            (line.id, _text(period.alternative_group))
+                        )
+                        == period.id
+                    )
+                ]
+                for period in effective:
+                    key = ("PERIOD", line.id, period.period_key)
+                    requirement = (
+                        current_by_key.get(key, [None])[0]
+                        if current_by_key.get(key)
+                        else None
+                    )
+                    resource_id = (
+                        requirement.assigned_resource_id
+                        if requirement is not None and requirement.assigned_resource_id
+                        else period.proposed_resource_id or line.proposed_resource_id
+                    )
+                    row = self._segment_row(
+                        requirement=requirement,
+                        request=request,
+                        project=project,
+                        resource=resources.get(resource_id),
+                        start_date=period.start_date,
+                        end_date=period.end_date,
+                        hours=float(period.hours),
+                        confirmation=normalize_confirmation(
+                            period.confirmation,
+                            default=CONFIRMATION_CONFIRMED,
+                        ),
+                        description=(
+                            period.note
+                            or line.description
+                            or request.description
+                            or "Période proposée"
+                        ),
+                        synthetic_id=f"PREVIEW-{line.id}-{period.period_key}",
+                    )
+                    proposed.append(
+                        {
+                            **row,
+                            "SourceEffortID": source_effort_id,
+                            "ClasseRessourceRequise": line.required_resource_class,
+                            "CompetenceRequise": required_competency,
+                            "JoursActifsCibles": period.desired_active_days,
+                        }
+                    )
+                continue
+
+            if line.desired_start is None or line.estimated_hours is None:
+                return None
+            if line.estimated_hours <= 0:
+                return None
+            key = ("LINE", line.id)
+            requirement = (
+                current_by_key.get(key, [None])[0]
+                if current_by_key.get(key)
+                else None
+            )
+            resource_id = (
+                requirement.assigned_resource_id
+                if requirement is not None and requirement.assigned_resource_id
+                else line.proposed_resource_id
+            )
+            row = self._segment_row(
+                requirement=requirement,
+                request=request,
+                project=project,
+                resource=resources.get(resource_id),
+                start_date=line.desired_start,
+                end_date=line.desired_end or line.desired_start,
+                hours=float(line.estimated_hours),
+                confirmation=normalize_confirmation(
+                    line.confirmation,
+                    default=CONFIRMATION_CONFIRMED,
+                ),
+                description=(
+                    line.description
+                    or request.description
+                    or "Besoin proposé"
+                ),
+                synthetic_id=f"PREVIEW-{line.id}",
+            )
+            proposed.append(
+                {
+                    **row,
+                    "SourceEffortID": source_effort_id,
+                    "ClasseRessourceRequise": line.required_resource_class,
+                    "CompetenceRequise": required_competency,
+                    "JoursActifsCibles": (
+                        int(line.desired_active_days)
+                        if line.desired_active_days is not None
+                        else None
+                    ),
+                }
+            )
+        return proposed
+
     def _proposed_segments(
         self,
         request: WorkforceRequest,
         current: list[ResourceRequirement],
         snapshot: PlanningSnapshot,
     ) -> list[dict[str, object]] | None:
+        if bool(request.line_mode):
+            return self._proposed_line_segments(request, current)
+
         project = self._delta_session.get(Project, request.project_id)
         if project is None:
             return None

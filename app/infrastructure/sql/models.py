@@ -439,6 +439,9 @@ class ResourceRequirement(TimestampMixin, Base):
     status: Mapped[str] = mapped_column(String(32), nullable=False, server_default=text("'À assigner'"), index=True)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     source_effort_id: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
+    required_resource_class: Mapped[str | None] = mapped_column(
+        String(64), nullable=True, index=True
+    )
     required_competency: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
     required_competency_id: Mapped[str | None] = mapped_column(
         String(ID_LENGTH), ForeignKey("competencies.id"), nullable=True, index=True

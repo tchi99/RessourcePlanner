@@ -76,6 +76,7 @@ class SqlPlanningReadRepository(PlanningReadRepositoryPort):
                 "DateCreation": requirement.created_at,
                 "DateModification": requirement.updated_at,
                 "CompetenceRequise": requirement.required_competency,
+                "ClasseRessourceRequise": requirement.required_resource_class,
                 "TypePlanification": requirement.planning_type,
                 "Priorite": requirement.priority,
                 "HorsHoraireAutorise": requirement.outside_standard_hours_allowed,

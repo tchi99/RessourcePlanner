@@ -152,6 +152,7 @@ class SqlMigrationTests(unittest.TestCase):
             self.assertIn("LINE_MODE", ddl, url)
             self.assertIn("ESTIMATED_HOURS_SOURCE", ddl, url)
             self.assertIn("DEFAULT_HOURS_PER_DAY", ddl, url)
+            self.assertIn("REQUIRED_RESOURCE_CLASS", ddl, url)
 
     def test_request_line_migration_backfills_without_rebuilding_plan(self) -> None:
         with TemporaryDirectory() as directory:

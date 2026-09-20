@@ -10,7 +10,7 @@ import unittest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
-from app.application import DemandPeriodReadModel, DemandReadModel, emergency_override_eligibility
+from app.application import DemandLineReadModel, DemandPeriodReadModel, DemandReadModel, emergency_override_eligibility
 from app.application.security import PERMISSION_APPROVE_DEMANDS
 from app.infrastructure.sql import (
     Base,
@@ -107,6 +107,64 @@ class EmergencyOverridePolicyTests(unittest.TestCase):
             DemandPeriodReadModel(
                 period_id="B",
                 demand_number="D-4",
+                sequence=2,
+                kind="ALTERNATIVE",
+                start_date=date(2026, 10, 1),
+                end_date=date(2026, 10, 1),
+                hours=8,
+                confirmation="Confirmée",
+                alternative_group="VISITE",
+                selected=False,
+            ),
+        )
+
+        self.assertEqual(
+            emergency_override_eligibility(demand, today=today, periods=periods),
+            (True, None),
+        )
+
+    def test_multiline_eligibility_uses_each_line_and_its_selected_periods(self) -> None:
+        today = date(2026, 9, 16)
+        demand = DemandReadModel(
+            number="D-LINES",
+            status="Soumise",
+            priority="Urgent",
+            line_mode=True,
+            lines=(
+                DemandLineReadModel(
+                    line_id="L1",
+                    position=0,
+                    kind="WORKFORCE",
+                    desired_start=date(2026, 10, 1),
+                    estimated_hours=8,
+                ),
+                DemandLineReadModel(
+                    line_id="L2",
+                    position=1,
+                    kind="WORKFORCE",
+                    desired_start=date(2026, 10, 2),
+                    estimated_hours=8,
+                ),
+            ),
+        )
+        periods = (
+            DemandPeriodReadModel(
+                period_id="A",
+                demand_number="D-LINES",
+                request_line_id="L1",
+                sequence=1,
+                kind="ALTERNATIVE",
+                start_date=today,
+                end_date=today,
+                hours=8,
+                confirmation="Confirmée",
+                alternative_group="VISITE",
+                selected=True,
+            ),
+            DemandPeriodReadModel(
+                period_id="B",
+                demand_number="D-LINES",
+                request_line_id="L1",
                 sequence=2,
                 kind="ALTERNATIVE",
                 start_date=date(2026, 10, 1),

@@ -186,6 +186,9 @@ class SqlPlannerQueryRepositoryWithEstimatedDays(
         current: list[ResourceRequirement],
         snapshot: PlanningSnapshot,
     ) -> list[dict[str, object]] | None:
+        if bool(request.line_mode):
+            return super()._proposed_segments(request, current, snapshot)
+
         project = self._estimated_days_session.get(Project, request.project_id)
         if project is None:
             return None

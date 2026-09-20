@@ -225,12 +225,6 @@ class DemandService:
         data = command.to_repository_values()
         expected_version = data.pop("ExpectedVersion", None)
         if "RequestLines" in data:
-            if str(existing.status or "").strip().casefold() == "en planification":
-                raise ApplicationConflictError(
-                    "La conversion ou modification multi-lignes d'une demande déjà approuvée sera activée avec #288E.",
-                    code="demand_line_reapproval_unavailable",
-                    context={"demand_number": number},
-                )
             if expected_version is None:
                 raise ApplicationValidationError(
                     "expected_version est requis pour modifier les lignes d'une demande.",
@@ -372,16 +366,7 @@ class DemandService:
         if old_signature == new_signature:
             return tuple(current), False
 
-        if request_line_id is not None and existing.status == "En planification":
-            raise ApplicationConflictError(
-                "La réapprobation d'une demande multi-lignes sera activée avec #288E.",
-                code="demand_line_reapproval_unavailable",
-                context={"demand_number": number, "request_line_id": request_line_id},
-            )
-
-        reapproval_required = (
-            request_line_id is None and existing.status == "En planification"
-        )
+        reapproval_required = existing.status == "En planification"
         status_update: dict[str, Any] = {}
         comment = (
             f"Périodes détaillées de la ligne {request_line_id} modifiées"
@@ -446,12 +431,6 @@ class DemandService:
             existing,
             command.request_line_id,
         )
-        if request_line_id is not None and existing.status == "En planification":
-            raise ApplicationConflictError(
-                "La sélection d'alternative sur un plan multi-lignes actif sera activée avec #288E.",
-                code="demand_line_reapproval_unavailable",
-                context={"demand_number": number, "request_line_id": request_line_id},
-            )
         periods = self._period_repository()
 
         selections = call_application_port(
@@ -493,7 +472,7 @@ class DemandService:
                     "period_id": period_id,
                 },
             )
-            if request_line_id is not None or existing.status != "En planification":
+            if existing.status != "En planification":
                 return None
             call_application_port(
                 lambda: self._approved_sync.sync_approved(number),
@@ -597,12 +576,6 @@ class DemandService:
             code_prefix="demand_lookup",
             context={"demand_number": number},
         )
-        if existing is not None and existing.line_mode:
-            raise ApplicationConflictError(
-                "L'approbation des demandes multi-lignes sera activée avec la matérialisation #288E.",
-                code="demand_line_approval_unavailable",
-                context={"demand_number": number},
-            )
         comment = str(command.comment or "")
         with self._context("approve demand"):
             call_application_port(
@@ -658,7 +631,14 @@ class DemandService:
 
     def cancel_command(self, command: DemandCancelCommand) -> None:
         number = self._required_identifier(command.number, entity="demand")
+        cancel_materialized = getattr(self._approved_sync, "cancel_materialized", None)
         with self._context("cancel demand"):
+            if callable(cancel_materialized):
+                call_application_port(
+                    lambda: cancel_materialized(number),
+                    code_prefix="demand_cancel_materialized",
+                    context={"demand_number": number},
+                )
             call_application_port(
                 lambda: self._demands.update(
                     number,
@@ -669,6 +649,12 @@ class DemandService:
                 code_prefix="demand_cancel",
                 context={"demand_number": number},
             )
+            if callable(cancel_materialized):
+                call_application_port(
+                    self._planning.rebuild,
+                    code_prefix="demand_cancel_rebuild",
+                    context={"demand_number": number},
+                )
 
     def create(self, data: Mapping[str, Any], *, submit: bool = False) -> str:
         """Compatibility adapter for current NiceGUI callers."""

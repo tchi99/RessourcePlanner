@@ -184,6 +184,7 @@ class SegmentReadModel:
     origin: str | None = None
     required_competency: str | None = None
     required_competency_id: str | None = None
+    required_resource_class: str | None = None
     planning_type: str | None = None
     priority: str | None = None
     outside_standard_hours: bool = False
@@ -230,6 +231,8 @@ class SegmentReadModel:
             description=_optional_text(row.get("Description")),
             origin=_optional_text(row.get("OrigineSegment")),
             required_competency=_optional_text(row.get("CompetenceRequise")),
+            required_competency_id=_optional_text(row.get("CompetenceRequiseID")),
+            required_resource_class=_optional_text(row.get("ClasseRessourceRequise")),
             planning_type=_optional_text(row.get("TypePlanification")),
             priority=_optional_text(row.get("Priorite")),
             outside_standard_hours=bool(row.get("HorsHoraireAutorise") or False),
