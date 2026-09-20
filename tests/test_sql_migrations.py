@@ -16,6 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 MIGRATIONS = ROOT / "migrations"
 INITIAL_REVISION = MIGRATIONS / "versions" / "0001_initial_planning_schema.py"
 EXPECTED_TABLES = {
+    "business_contacts",
     "command_idempotency_receipts",
     "projects",
     "request_lines",
@@ -153,6 +154,110 @@ class SqlMigrationTests(unittest.TestCase):
             self.assertIn("ESTIMATED_HOURS_SOURCE", ddl, url)
             self.assertIn("DEFAULT_HOURS_PER_DAY", ddl, url)
             self.assertIn("REQUIRED_RESOURCE_CLASS", ddl, url)
+            self.assertIn("CREATE TABLE BUSINESS_CONTACTS", ddl, url)
+            self.assertIn("PROJECT_MANAGER_CONTACT_ID", ddl, url)
+            self.assertIn("OPERATIONAL_RESPONSIBLE_CONTACT_ID", ddl, url)
+            self.assertIn("COORDINATOR_CONTACT_ID", ddl, url)
+            self.assertIn("OPERATIONAL_RESPONSIBLE_OVERRIDE_CONTACT_ID", ddl, url)
+
+    def test_business_contact_migration_backfills_only_stable_project_manager_identity(self) -> None:
+        with TemporaryDirectory() as directory:
+            database_path = Path(directory) / "business-contact-backfill.db"
+            config = alembic_config(database_path)
+            command.upgrade(config, "0025_requirement_resource_class")
+            engine = create_engine(f"sqlite:///{database_path.as_posix()}")
+
+            with engine.begin() as connection:
+                connection.exec_driver_sql(
+                    """
+                    INSERT INTO projects (
+                        id, number, name, project_manager_external_id,
+                        project_manager_name
+                    ) VALUES (
+                        'P1', 'P-1', 'Projet 1', 'EMP-PM', 'Chargé Stable'
+                    )
+                    """
+                )
+                connection.exec_driver_sql(
+                    """
+                    INSERT INTO projects (
+                        id, number, name, project_manager_external_id,
+                        project_manager_name
+                    ) VALUES (
+                        'P2', 'P-2', 'Projet 2', 'EMP-PM', 'Chargé Stable'
+                    )
+                    """
+                )
+                connection.exec_driver_sql(
+                    """
+                    INSERT INTO projects (
+                        id, number, name, project_manager_external_id,
+                        project_manager_name
+                    ) VALUES (
+                        'P3', 'P-3', 'Projet 3', NULL, 'Nom seulement'
+                    )
+                    """
+                )
+            engine.dispose()
+
+            command.upgrade(config, "head")
+            engine = create_engine(f"sqlite:///{database_path.as_posix()}")
+            with engine.connect() as connection:
+                contacts = connection.exec_driver_sql(
+                    """
+                    SELECT display_name, source, external_system,
+                           external_entity, external_id
+                    FROM business_contacts
+                    ORDER BY external_id
+                    """
+                ).fetchall()
+                self.assertEqual(
+                    contacts,
+                    [
+                        (
+                            "Chargé Stable",
+                            "MIGRATION",
+                            "RESOURCEPLANNER",
+                            "EMPLOYEE",
+                            "EMP-PM",
+                        )
+                    ],
+                )
+                project_links = connection.exec_driver_sql(
+                    """
+                    SELECT id, project_manager_contact_id
+                    FROM projects
+                    ORDER BY id
+                    """
+                ).fetchall()
+                self.assertIsNotNone(project_links[0][1])
+                self.assertEqual(project_links[0][1], project_links[1][1])
+                self.assertIsNone(project_links[2][1])
+
+                self.assertEqual(
+                    connection.exec_driver_sql(
+                        "SELECT project_manager_name FROM projects WHERE id = 'P3'"
+                    ).scalar_one(),
+                    "Nom seulement",
+                )
+            engine.dispose()
+
+            command.downgrade(config, "0025_requirement_resource_class")
+            engine = create_engine(f"sqlite:///{database_path.as_posix()}")
+            inspector = inspect(engine)
+            self.assertNotIn("business_contacts", inspector.get_table_names())
+            columns = {
+                column["name"] for column in inspector.get_columns("projects")
+            }
+            self.assertNotIn("project_manager_contact_id", columns)
+            with engine.connect() as connection:
+                self.assertEqual(
+                    connection.exec_driver_sql(
+                        "SELECT project_manager_name FROM projects WHERE id = 'P3'"
+                    ).scalar_one(),
+                    "Nom seulement",
+                )
+            engine.dispose()
 
     def test_request_line_migration_backfills_without_rebuilding_plan(self) -> None:
         with TemporaryDirectory() as directory:

@@ -20,6 +20,7 @@ DAY = date(2026, 8, 26)
 
 EXPECTED_TABLES = {
     "app_users",
+    "business_contacts",
     "auth_login_transactions",
     "auth_sessions",
     "command_idempotency_receipts",
@@ -55,6 +56,9 @@ class SqlSchemaTests(unittest.TestCase):
 
         requirements = Base.metadata.tables["resource_requirements"].c
         requests = Base.metadata.tables["workforce_requests"].c
+        projects = Base.metadata.tables["projects"].c
+        resources = Base.metadata.tables["resources"].c
+        business_contacts = Base.metadata.tables["business_contacts"].c
         periods = Base.metadata.tables["workforce_request_periods"].c
         period_requirements = Base.metadata.tables["workforce_request_period_requirements"].c
         availability = Base.metadata.tables["resource_availability_rules"].c
@@ -82,6 +86,17 @@ class SqlSchemaTests(unittest.TestCase):
         self.assertTrue(requirements.workforce_request_id.nullable)
         self.assertTrue(requirements.source_request_line_id.nullable)
         self.assertTrue(requirements.required_resource_class.nullable)
+        self.assertTrue(projects.project_manager_contact_id.nullable)
+        self.assertTrue(resources.coordinator_contact_id.nullable)
+        self.assertFalse(business_contacts.display_name.nullable)
+        self.assertTrue(business_contacts.email.nullable)
+        self.assertTrue(business_contacts.phone.nullable)
+        self.assertFalse(business_contacts.active.nullable)
+        self.assertFalse(business_contacts.source.nullable)
+        self.assertTrue(business_contacts.external_system.nullable)
+        self.assertTrue(business_contacts.external_entity.nullable)
+        self.assertTrue(business_contacts.external_id.nullable)
+        self.assertFalse(business_contacts.version.nullable)
         self.assertTrue(requests.work_package_id.nullable)
         self.assertTrue(requests.erp_task_code.nullable)
         self.assertTrue(requests.erp_task_label.nullable)
@@ -141,6 +156,9 @@ class SqlSchemaTests(unittest.TestCase):
         self.assertFalse(task_catalog.label.nullable)
         self.assertFalse(task_catalog.status.nullable)
         self.assertFalse(task_catalog.active.nullable)
+        self.assertTrue(task_catalog.operational_responsible_contact_id.nullable)
+        self.assertTrue(task_catalog.coordinator_contact_id.nullable)
+        self.assertTrue(requests.operational_responsible_override_contact_id.nullable)
         self.assertFalse(competencies.name.nullable)
         self.assertFalse(competencies.active.nullable)
         self.assertFalse(competencies.sort_order.nullable)
@@ -165,6 +183,54 @@ class SqlSchemaTests(unittest.TestCase):
         self.assertFalse(requirement_competencies.resource_requirement_id.nullable)
         self.assertFalse(requirement_competencies.competency_id.nullable)
         self.assertTrue(requirements.required_competency_id.nullable)
+
+    def test_business_contact_external_identity_is_complete_and_unique(self) -> None:
+        engine = create_engine("sqlite+pysqlite:///:memory:")
+        Base.metadata.create_all(engine)
+        contacts = Base.metadata.tables["business_contacts"]
+
+        with engine.begin() as connection:
+            connection.execute(
+                contacts.insert().values(
+                    id="C1",
+                    display_name="Jean",
+                    source="LOCAL",
+                    external_system="RESOURCEPLANNER",
+                    external_entity="EMPLOYEE",
+                    external_id="EMP-1",
+                )
+            )
+            connection.execute(
+                contacts.insert().values(
+                    id="C2",
+                    display_name="Contact local sans identité externe",
+                    source="LOCAL",
+                )
+            )
+
+        with self.assertRaises(IntegrityError):
+            with engine.begin() as connection:
+                connection.execute(
+                    contacts.insert().values(
+                        id="C3",
+                        display_name="Identité incomplète",
+                        source="LOCAL",
+                        external_id="EMP-2",
+                    )
+                )
+
+        with self.assertRaises(IntegrityError):
+            with engine.begin() as connection:
+                connection.execute(
+                    contacts.insert().values(
+                        id="C4",
+                        display_name="Doublon",
+                        source="LOCAL",
+                        external_system="RESOURCEPLANNER",
+                        external_entity="EMPLOYEE",
+                        external_id="EMP-1",
+                    )
+                )
 
     def test_metadata_creates_all_tables_on_sqlite_memory(self) -> None:
         engine = create_engine("sqlite+pysqlite:///:memory:")
