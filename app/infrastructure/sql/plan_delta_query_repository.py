@@ -490,6 +490,7 @@ class SqlPlannerQueryRepositoryWithPlanDelta(SqlPlannerQueryRepositoryWeb):
                         {
                             **row,
                             "SourceEffortID": source_effort_id,
+                            "ClasseRessourceRequise": line.required_resource_class,
                             "CompetenceRequise": required_competency,
                             "JoursActifsCibles": period.desired_active_days,
                         }
