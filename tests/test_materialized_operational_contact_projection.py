@@ -233,6 +233,10 @@ class MaterializedOperationalContactProjectionTests(unittest.TestCase):
                     approved.operational_responsible.contact_id,
                     "C-TASK-APPROVED",
                 )
+                self.assertEqual(
+                    approved.operational_responsible.email,
+                    "configured-marc",
+                )
                 self.assertEqual(approved.task_id, "T-APPROVED")
                 self.assertEqual(approved.approved_request_version, 3)
                 self.assertEqual(approved.resource_id, "R-REQ")
