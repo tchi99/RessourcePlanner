@@ -263,6 +263,10 @@ class SqlOperationalContactRepositoryTests(unittest.TestCase):
                     line_mode=True,
                 )
             )
+            # These ORM models intentionally expose no relationships. Flush the
+            # FK parents before inserting the child, matching the production
+            # demand repository's persistence order.
+            session.flush()
             session.add(
                 RequestLine(
                     id="L1",
