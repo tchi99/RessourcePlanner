@@ -89,9 +89,13 @@ class SqlSchemaTests(unittest.TestCase):
         self.assertFalse(requests.line_mode.nullable)
         self.assertFalse(periods.workforce_request_id.nullable)
         self.assertTrue(periods.request_line_id.nullable)
-        self.assertTrue(selections.request_line_id.nullable)
+        self.assertFalse(selections.request_line_id.nullable)
         self.assertFalse(periods.start_date.nullable)
         self.assertFalse(periods.end_date.nullable)
+        self.assertEqual(
+            [column.name for column in Base.metadata.tables["workforce_request_period_selections"].primary_key.columns],
+            ["request_line_id", "alternative_group"],
+        )
         self.assertFalse(period_requirements.resource_requirement_id.nullable)
         self.assertFalse(period_requirements.period_id.nullable)
         self.assertTrue(availability.resource_id.nullable)

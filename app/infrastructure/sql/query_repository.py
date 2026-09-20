@@ -294,8 +294,18 @@ class SqlPlannerQueryRepository(PlannerQueryPort):
     def get_demand(self, number: str) -> DemandReadModel | None:
         return self._demands.get(number)
 
-    def list_demand_periods(self, number: str) -> tuple[DemandPeriodReadModel, ...]:
-        return tuple(self._periods.list_for_demand(number))
+    def list_demand_periods(
+        self,
+        number: str,
+        *,
+        request_line_id: str | None = None,
+    ) -> tuple[DemandPeriodReadModel, ...]:
+        return tuple(
+            self._periods.list_for_demand(
+                number,
+                request_line_id=request_line_id,
+            )
+        )
 
     def list_pending_loads(
         self,
@@ -331,7 +341,14 @@ class SqlPlannerQueryRepository(PlannerQueryPort):
             if demand is None:
                 continue
 
-            periods = tuple(self._periods.list_for_demand(number))
+            # #288D stores detailed periods per RequestLine, but the shared
+            # pending-load projection stays flat until #288E can project each line
+            # independently. Never merge line-scoped alternative groups here.
+            periods = (
+                ()
+                if demand.line_mode
+                else tuple(self._periods.list_for_demand(number))
+            )
             if periods:
                 definitions = tuple(_period_definition(row) for row in periods)
                 selections = {

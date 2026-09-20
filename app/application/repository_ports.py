@@ -50,12 +50,15 @@ class DemandPeriodRepositoryPort(Protocol):
         demand_number: str,
         *,
         include_inactive: bool = False,
+        request_line_id: str | None = None,
     ) -> Sequence[DemandPeriodReadModel]: ...
 
     def replace_for_demand(
         self,
         demand_number: str,
         periods: Sequence[DemandPeriodDefinition],
+        *,
+        request_line_id: str | None = None,
     ) -> Sequence[DemandPeriodReadModel]: ...
 
     def select_alternative(
@@ -63,9 +66,16 @@ class DemandPeriodRepositoryPort(Protocol):
         demand_number: str,
         alternative_group: str,
         period_id: str,
+        *,
+        request_line_id: str | None = None,
     ) -> None: ...
 
-    def selections_for_demand(self, demand_number: str) -> Mapping[str, str]: ...
+    def selections_for_demand(
+        self,
+        demand_number: str,
+        *,
+        request_line_id: str | None = None,
+    ) -> Mapping[str, str]: ...
 
 
 class SegmentRepositoryPort(Protocol):

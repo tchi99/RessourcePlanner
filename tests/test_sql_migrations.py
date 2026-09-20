@@ -102,6 +102,32 @@ class SqlMigrationTests(unittest.TestCase):
             finally:
                 engine.dispose()
 
+    def test_period_selection_primary_key_is_line_scoped(self) -> None:
+        with TemporaryDirectory() as directory:
+            database_path = Path(directory) / "line-period-selection-pk.db"
+            config = alembic_config(database_path)
+            command.upgrade(config, "head")
+
+            engine = create_engine(f"sqlite:///{database_path.as_posix()}")
+            inspector = inspect(engine)
+            try:
+                primary_key = inspector.get_pk_constraint(
+                    "workforce_request_period_selections"
+                )
+                self.assertEqual(
+                    primary_key["constrained_columns"],
+                    ["request_line_id", "alternative_group"],
+                )
+                columns = {
+                    column["name"]: bool(column["nullable"])
+                    for column in inspector.get_columns(
+                        "workforce_request_period_selections"
+                    )
+                }
+                self.assertFalse(columns["request_line_id"])
+            finally:
+                engine.dispose()
+
     def test_initial_migration_compiles_offline_for_postgresql_and_mssql(self) -> None:
         for url in ("postgresql://", "mssql+pyodbc://"):
             output = StringIO()

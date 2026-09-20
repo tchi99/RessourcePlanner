@@ -42,6 +42,60 @@ class SqlDemandPeriodRepository(DemandPeriodRepositoryPort):
             raise KeyError(f"Demande {wanted} introuvable")
         return request
 
+    def _line(self, request: WorkforceRequest, line_id: str) -> RequestLine:
+        wanted = _text(line_id)
+        line = self._session.get(RequestLine, wanted)
+        if line is None or line.workforce_request_id != request.id:
+            raise KeyError(f"Ligne {wanted} introuvable pour la demande")
+        return line
+
+    def _scope_line_id(
+        self,
+        request: WorkforceRequest,
+        request_line_id: str | None,
+    ) -> str:
+        if request_line_id is not None:
+            return self._line(request, request_line_id).id
+
+        # Migrated legacy data already owns the deterministic shadow line created
+        # by 288B. A few supported test/import paths build ORM rows directly with
+        # Base.metadata.create_all(), so reproduce the same invariant lazily when
+        # that shadow line is absent instead of rejecting an otherwise valid
+        # historical one-line demand.
+        existing = self._session.get(RequestLine, request.id)
+        if existing is not None:
+            if existing.workforce_request_id != request.id:
+                raise KeyError(f"Ligne {request.id} introuvable pour la demande")
+            return existing.id
+        if bool(request.line_mode):
+            raise KeyError(f"Ligne {request.id} introuvable pour la demande")
+
+        shadow = RequestLine(
+            id=request.id,
+            workforce_request_id=request.id,
+            position=0,
+            kind="WORKFORCE",
+            slot_count=max(int(request.resource_count or 1), 1),
+            required_competencies_snapshot=request.required_competencies,
+            desired_start=request.desired_start,
+            desired_end=request.desired_end,
+            desired_active_days=request.estimated_days,
+            estimated_hours=request.estimated_hours,
+            estimated_hours_source=(
+                "LEGACY" if request.estimated_hours is not None else None
+            ),
+            confirmation=request.confirmation,
+            work_package_id=request.work_package_id,
+            erp_task_code=request.erp_task_code,
+            erp_task_label=request.erp_task_label,
+            proposed_resource_id=request.proposed_resource_id,
+            description=request.description,
+            active=True,
+        )
+        self._session.add(shadow)
+        self._session.flush()
+        return shadow.id
+
     def _resource(self, name: str | None) -> Resource | None:
         wanted = _text(name)
         if not wanted:
@@ -51,24 +105,45 @@ class SqlDemandPeriodRepository(DemandPeriodRepositoryPort):
             raise KeyError(f"Ressource {wanted} introuvable")
         return resource
 
-    def _selection_row_ids(self, request_id: str) -> dict[str, str]:
-        rows = self._session.scalars(
-            select(WorkforceRequestPeriodSelection).where(
-                WorkforceRequestPeriodSelection.workforce_request_id == request_id
+    def _selection_row_ids(
+        self,
+        request_id: str,
+        *,
+        request_line_id: str | None = None,
+    ) -> dict[tuple[str, str], str]:
+        statement = select(WorkforceRequestPeriodSelection).where(
+            WorkforceRequestPeriodSelection.workforce_request_id == request_id
+        )
+        if request_line_id is not None:
+            statement = statement.where(
+                WorkforceRequestPeriodSelection.request_line_id == request_line_id
             )
-        ).all()
-        return {row.alternative_group: row.period_id for row in rows}
+        rows = self._session.scalars(statement).all()
+        return {
+            (row.request_line_id, row.alternative_group): row.period_id
+            for row in rows
+        }
 
     def list_for_demand(
         self,
         demand_number: str,
         *,
         include_inactive: bool = False,
+        request_line_id: str | None = None,
     ) -> Sequence[DemandPeriodReadModel]:
         request = self._request(demand_number)
+        scoped_line_id = (
+            self._line(request, request_line_id).id
+            if request_line_id is not None
+            else None
+        )
         statement = select(WorkforceRequestPeriod).where(
             WorkforceRequestPeriod.workforce_request_id == request.id
         )
+        if scoped_line_id is not None:
+            statement = statement.where(
+                WorkforceRequestPeriod.request_line_id == scoped_line_id
+            )
         if not include_inactive:
             statement = statement.where(WorkforceRequestPeriod.active.is_(True))
         periods = self._session.scalars(
@@ -78,7 +153,10 @@ class SqlDemandPeriodRepository(DemandPeriodRepositoryPort):
                 WorkforceRequestPeriod.id,
             )
         ).all()
-        selections = self._selection_row_ids(request.id)
+        selections = self._selection_row_ids(
+            request.id,
+            request_line_id=scoped_line_id,
+        )
         resource_ids = {row.proposed_resource_id for row in periods if row.proposed_resource_id}
         resources = (
             self._session.scalars(select(Resource).where(Resource.id.in_(resource_ids))).all()
@@ -91,6 +169,7 @@ class SqlDemandPeriodRepository(DemandPeriodRepositoryPort):
             DemandPeriodReadModel(
                 period_id=row.period_key,
                 demand_number=business_number,
+                request_line_id=row.request_line_id,
                 sequence=row.sequence,
                 kind=row.kind,
                 alternative_group=row.alternative_group,
@@ -104,7 +183,11 @@ class SqlDemandPeriodRepository(DemandPeriodRepositoryPort):
                 note=row.note,
                 selected=(
                     bool(row.alternative_group)
-                    and selections.get(_text(row.alternative_group)) == row.id
+                    and bool(row.request_line_id)
+                    and selections.get(
+                        (row.request_line_id, _text(row.alternative_group))
+                    )
+                    == row.id
                 ),
             )
             for row in periods
@@ -114,13 +197,17 @@ class SqlDemandPeriodRepository(DemandPeriodRepositoryPort):
         self,
         demand_number: str,
         periods: Sequence[DemandPeriodDefinition],
+        *,
+        request_line_id: str | None = None,
     ) -> Sequence[DemandPeriodReadModel]:
         validate_period_definitions(periods)
         request = self._request(demand_number)
+        scoped_line_id = self._scope_line_id(request, request_line_id)
 
         current = self._session.scalars(
             select(WorkforceRequestPeriod).where(
                 WorkforceRequestPeriod.workforce_request_id == request.id,
+                WorkforceRequestPeriod.request_line_id == scoped_line_id,
                 WorkforceRequestPeriod.active.is_(True),
             )
         ).all()
@@ -129,7 +216,8 @@ class SqlDemandPeriodRepository(DemandPeriodRepositoryPort):
 
         old_selections = self._session.scalars(
             select(WorkforceRequestPeriodSelection).where(
-                WorkforceRequestPeriodSelection.workforce_request_id == request.id
+                WorkforceRequestPeriodSelection.workforce_request_id == request.id,
+                WorkforceRequestPeriodSelection.request_line_id == scoped_line_id,
             )
         ).all()
         for selection in old_selections:
@@ -142,11 +230,7 @@ class SqlDemandPeriodRepository(DemandPeriodRepositoryPort):
                 WorkforceRequestPeriod(
                     period_key=_text(period.period_id),
                     workforce_request_id=request.id,
-                    request_line_id=(
-                        request.id
-                        if self._session.get(RequestLine, request.id) is not None
-                        else None
-                    ),
+                    request_line_id=scoped_line_id,
                     sequence=sequence,
                     kind=_text(period.kind).upper(),
                     alternative_group=_text(period.alternative_group) or None,
@@ -167,26 +251,33 @@ class SqlDemandPeriodRepository(DemandPeriodRepositoryPort):
                 )
             )
         self._session.flush()
-        return self.list_for_demand(demand_number)
+        return self.list_for_demand(
+            demand_number,
+            request_line_id=scoped_line_id,
+        )
 
     def select_alternative(
         self,
         demand_number: str,
         alternative_group: str,
         period_id: str,
+        *,
+        request_line_id: str | None = None,
     ) -> None:
         request = self._request(demand_number)
+        scoped_line_id = self._scope_line_id(request, request_line_id)
         group = _text(alternative_group)
         wanted = _text(period_id)
         period = self._session.scalar(
             select(WorkforceRequestPeriod).where(
                 WorkforceRequestPeriod.period_key == wanted,
                 WorkforceRequestPeriod.workforce_request_id == request.id,
+                WorkforceRequestPeriod.request_line_id == scoped_line_id,
                 WorkforceRequestPeriod.active.is_(True),
             )
         )
         if period is None:
-            raise KeyError(f"Période {wanted} introuvable pour la demande")
+            raise KeyError(f"Période {wanted} introuvable pour la ligne")
         if period.kind != "ALTERNATIVE" or _text(period.alternative_group) != group:
             raise ValueError(
                 f"La période {wanted} n'appartient pas au groupe alternatif {group}."
@@ -194,7 +285,7 @@ class SqlDemandPeriodRepository(DemandPeriodRepositoryPort):
 
         selection = self._session.scalar(
             select(WorkforceRequestPeriodSelection).where(
-                WorkforceRequestPeriodSelection.workforce_request_id == request.id,
+                WorkforceRequestPeriodSelection.request_line_id == scoped_line_id,
                 WorkforceRequestPeriodSelection.alternative_group == group,
             )
         )
@@ -210,11 +301,7 @@ class SqlDemandPeriodRepository(DemandPeriodRepositoryPort):
         if selection is None:
             selection = WorkforceRequestPeriodSelection(
                 workforce_request_id=request.id,
-                request_line_id=(
-                    request.id
-                    if self._session.get(RequestLine, request.id) is not None
-                    else None
-                ),
+                request_line_id=scoped_line_id,
                 alternative_group=group,
                 period_id=period.id,
                 selected_at=selected_at,
@@ -222,11 +309,6 @@ class SqlDemandPeriodRepository(DemandPeriodRepositoryPort):
             )
             self._session.add(selection)
         else:
-            selection.request_line_id = (
-                request.id
-                if self._session.get(RequestLine, request.id) is not None
-                else selection.request_line_id
-            )
             selection.period_id = period.id
             selection.selected_at = selected_at
             selection.selected_by_name = self._actor_name or None
@@ -238,7 +320,8 @@ class SqlDemandPeriodRepository(DemandPeriodRepositoryPort):
                 action="Sélection alternative",
                 status=request.status,
                 comment=(
-                    f"Groupe {group}: {previous_key or 'aucune'} -> {period.period_key}"
+                    f"Ligne {scoped_line_id} · groupe {group}: "
+                    f"{previous_key or 'aucune'} -> {period.period_key}"
                 ),
                 actor_name=self._actor_name or None,
                 occurred_at=selected_at,
@@ -246,9 +329,19 @@ class SqlDemandPeriodRepository(DemandPeriodRepositoryPort):
         )
         self._session.flush()
 
-    def selections_for_demand(self, demand_number: str) -> Mapping[str, str]:
+    def selections_for_demand(
+        self,
+        demand_number: str,
+        *,
+        request_line_id: str | None = None,
+    ) -> Mapping[str, str]:
         request = self._request(demand_number)
-        rows = self._session.execute(
+        scoped_line_id = (
+            self._scope_line_id(request, request_line_id)
+            if request_line_id is not None
+            else None
+        )
+        statement = (
             select(WorkforceRequestPeriodSelection, WorkforceRequestPeriod)
             .join(
                 WorkforceRequestPeriod,
@@ -257,7 +350,12 @@ class SqlDemandPeriodRepository(DemandPeriodRepositoryPort):
             .where(
                 WorkforceRequestPeriodSelection.workforce_request_id == request.id
             )
-        ).all()
+        )
+        if scoped_line_id is not None:
+            statement = statement.where(
+                WorkforceRequestPeriodSelection.request_line_id == scoped_line_id
+            )
+        rows = self._session.execute(statement).all()
         return {
             selection.alternative_group: period.period_key
             for selection, period in rows

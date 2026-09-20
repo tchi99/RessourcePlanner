@@ -68,7 +68,12 @@ class PlannerQueryPort(Protocol):
 
     def list_demand_history(self, number: str) -> Sequence[DemandHistoryReadModel]: ...
 
-    def list_demand_periods(self, number: str) -> Sequence[DemandPeriodReadModel]: ...
+    def list_demand_periods(
+        self,
+        number: str,
+        *,
+        request_line_id: str | None = None,
+    ) -> Sequence[DemandPeriodReadModel]: ...
 
     def demand_plan_delta(self, number: str) -> DemandPlanDeltaReadModel | None: ...
 

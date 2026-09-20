@@ -105,15 +105,17 @@ class WorkforceRequestPeriodSelection(Base):
     workforce_request_id: Mapped[str] = mapped_column(
         String(ID_LENGTH),
         ForeignKey("workforce_requests.id"),
-        primary_key=True,
+        nullable=False,
+        index=True,
     )
-    request_line_id: Mapped[str | None] = mapped_column(
+    request_line_id: Mapped[str] = mapped_column(
         String(ID_LENGTH),
         ForeignKey(
             "request_lines.id",
             name="fk_period_selection_request_line",
         ),
-        nullable=True,
+        primary_key=True,
+        nullable=False,
         index=True,
     )
     alternative_group: Mapped[str] = mapped_column(String(64), primary_key=True)
