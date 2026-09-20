@@ -6,7 +6,7 @@ from decimal import Decimal
 import re
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from ...application.read_models import SegmentReadModel
@@ -253,6 +253,50 @@ class SqlSegmentRepository(SegmentRepositoryPort):
             )
         return project, request
 
+    def _replace_requirement_competencies(
+        self,
+        requirement: ResourceRequirement,
+        competency_ids: Sequence[str],
+    ) -> None:
+        self._session.execute(
+            delete(ResourceRequirementCompetency).where(
+                ResourceRequirementCompetency.resource_requirement_id == requirement.id
+            )
+        )
+        for competency_id in dict.fromkeys(
+            _text(value) for value in competency_ids if _text(value)
+        ):
+            self._session.add(
+                ResourceRequirementCompetency(
+                    resource_requirement_id=requirement.id,
+                    competency_id=competency_id,
+                )
+            )
+
+    def _request_line(
+        self,
+        request: WorkforceRequest | None,
+        line_id: object,
+    ) -> RequestLine | None:
+        wanted = _optional_text(line_id)
+        if wanted is None:
+            return None
+        if request is None:
+            raise ValueError("Une provenance RequestLine exige une demande.")
+        line = self._session.get(RequestLine, wanted)
+        if line is None or line.workforce_request_id != request.id:
+            raise KeyError(f"Ligne {wanted} introuvable pour la demande.")
+        return line
+
+    def _line_competency_ids(self, line: RequestLine) -> tuple[str, ...]:
+        return tuple(
+            self._session.scalars(
+                select(RequestLineCompetency.competency_id).where(
+                    RequestLineCompetency.request_line_id == line.id
+                )
+            ).all()
+        )
+
     def _attach_legacy_request_line(
         self,
         requirement: ResourceRequirement,
@@ -262,24 +306,18 @@ class SqlSegmentRepository(SegmentRepositoryPort):
 
         if request is None:
             requirement.source_request_line_id = None
+            self._replace_requirement_competencies(requirement, ())
             return
         line = self._session.get(RequestLine, request.id)
         if line is None:
             requirement.source_request_line_id = None
+            self._replace_requirement_competencies(requirement, ())
             return
         requirement.source_request_line_id = line.id
-        competency_ids = self._session.scalars(
-            select(RequestLineCompetency.competency_id).where(
-                RequestLineCompetency.request_line_id == line.id
-            )
-        ).all()
-        for competency_id in competency_ids:
-            self._session.add(
-                ResourceRequirementCompetency(
-                    resource_requirement_id=requirement.id,
-                    competency_id=competency_id,
-                )
-            )
+        self._replace_requirement_competencies(
+            requirement,
+            self._line_competency_ids(line),
+        )
 
     def create(self, values: Mapping[str, Any]) -> str:
         project, request = self._resolve_project_and_request(
@@ -330,7 +368,20 @@ class SqlSegmentRepository(SegmentRepositoryPort):
         )
         self._session.add(requirement)
         self._session.flush()
-        self._attach_legacy_request_line(requirement, request)
+
+        source_line = self._request_line(request, values.get("SourceRequestLineID"))
+        if source_line is not None:
+            requirement.source_request_line_id = source_line.id
+            supplied_competencies = values.get("RequiredCompetencyIDs")
+            competency_ids = (
+                tuple(supplied_competencies)
+                if supplied_competencies is not None
+                else self._line_competency_ids(source_line)
+            )
+            self._replace_requirement_competencies(requirement, competency_ids)
+        else:
+            self._attach_legacy_request_line(requirement, request)
+
         self._session.flush()
         return identifier
 
