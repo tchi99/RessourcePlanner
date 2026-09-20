@@ -89,6 +89,14 @@ from .identity_resource_link import (
     IdentityResourceLinkRepositoryPort,
     IdentityResourceLinkService,
 )
+from .operational_contacts import (
+    MaterializedContactContext,
+    MaterializedContactResolution,
+    OperationalContactRepositoryPort,
+    OperationalContactService,
+    RequestLineContactContext,
+    RequestLineContactResolution,
+)
 from .plan_delta import DemandPlanDeltaItemReadModel, DemandPlanDeltaReadModel
 from .planning_service import PlanningService
 from .project_sync import (
@@ -235,8 +243,12 @@ __all__ = [
     "ManualAllocationMoveCommand",
     "ManualAllocationReleaseCommand",
     "ManualAllocationUpdateCommand",
+    "MaterializedContactContext",
+    "MaterializedContactResolution",
     "MediumTermUnlinkedSegmentReadModel",
     "PendingDemandLoadReadModel",
+    "OperationalContactRepositoryPort",
+    "OperationalContactService",
     "PlanningActionReadModel",
     "PlanningCapacityGridReadModel",
     "PlanningDayCapacityReadModel",
@@ -256,6 +268,8 @@ __all__ = [
     "ProjectSyncService",
     "QuickShiftCreateCommand",
     "QuickShiftCreatedResult",
+    "RequestLineContactContext",
+    "RequestLineContactResolution",
     "ResourceAdminRepositoryPort",
     "ResourceAdminService",
     "ResourceAvailabilityRuleReadModel",

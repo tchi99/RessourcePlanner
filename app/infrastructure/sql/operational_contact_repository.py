@@ -4,12 +4,16 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ...application.operational_contacts import (
+    MaterializedContactContext,
     OperationalContactRepositoryPort,
     RequestLineContactContext,
 )
 from ...domain.operational_contacts import (
     BusinessContactSnapshot,
     ContactCandidate,
+    DIAGNOSTIC_APPROVED_CONTACT_CONTEXT_LEGACY_UNKNOWN,
+    DIAGNOSTIC_APPROVED_TASK_PROJECT_MISMATCH,
+    DIAGNOSTIC_APPROVED_TASK_REFERENCE_INVALID,
     DIAGNOSTIC_PROJECT_MANAGER_CONTACT_UNMIGRATED,
     DIAGNOSTIC_RESOURCE_INACTIVE,
     DIAGNOSTIC_RESOURCE_REFERENCE_INVALID,
@@ -18,6 +22,7 @@ from ...domain.operational_contacts import (
     DIAGNOSTIC_TASK_REFERENCE_INVALID,
     DIAGNOSTIC_TASK_REFERENCE_LEGACY_CODE,
     DIAGNOSTIC_TASK_REFERENCE_UNRESOLVED,
+    DIAGNOSTIC_SHIFT_RESOURCE_DIFFERS_FROM_REQUIREMENT,
     SOURCE_PROJECT_MANAGER,
     SOURCE_REQUEST_OVERRIDE,
     SOURCE_RESOURCE_COORDINATOR,
@@ -25,7 +30,15 @@ from ...domain.operational_contacts import (
     SOURCE_TASK_RESPONSIBLE,
 )
 from .business_contact_models import BusinessContact
-from .models import Project, RequestLine, Resource, TaskCatalogEntry, WorkforceRequest
+from .models import (
+    Project,
+    RequestLine,
+    Resource,
+    ResourceRequirement,
+    Shift,
+    TaskCatalogEntry,
+    WorkforceRequest,
+)
 
 
 def _unique(values: list[str]) -> tuple[str, ...]:
@@ -131,6 +144,231 @@ class SqlOperationalContactRepository(OperationalContactRepositoryPort):
         if not bool(resource.active):
             diagnostics.append(DIAGNOSTIC_RESOURCE_INACTIVE)
         return resource
+
+    def _approved_task_for_requirement(
+        self,
+        *,
+        requirement: ResourceRequirement,
+        project: Project,
+        diagnostics: list[str],
+    ) -> tuple[TaskCatalogEntry | None, bool, tuple[str, ...]]:
+        if requirement.approved_contact_context_status == "LEGACY_UNKNOWN":
+            context_diagnostics = (
+                DIAGNOSTIC_APPROVED_CONTACT_CONTEXT_LEGACY_UNKNOWN,
+            )
+            diagnostics.extend(context_diagnostics)
+            return None, False, context_diagnostics
+
+        if not requirement.approved_task_catalog_item_id:
+            return None, True, ()
+
+        task = self._session.get(
+            TaskCatalogEntry,
+            requirement.approved_task_catalog_item_id,
+        )
+        if task is None:
+            context_diagnostics = (DIAGNOSTIC_APPROVED_TASK_REFERENCE_INVALID,)
+            diagnostics.extend(context_diagnostics)
+            return None, False, context_diagnostics
+        if task.project_number != project.number:
+            context_diagnostics = (DIAGNOSTIC_APPROVED_TASK_PROJECT_MISMATCH,)
+            diagnostics.extend(context_diagnostics)
+            return None, False, context_diagnostics
+
+        if not bool(task.active):
+            diagnostics.append(DIAGNOSTIC_TASK_INACTIVE)
+        return task, True, ()
+
+    def _materialized_resource(
+        self,
+        *,
+        resource_id: str | None,
+        diagnostics: list[str],
+    ) -> tuple[Resource | None, bool, tuple[str, ...]]:
+        if not resource_id:
+            return None, True, ()
+
+        resource = self._session.get(Resource, resource_id)
+        if resource is None:
+            context_diagnostics = (DIAGNOSTIC_RESOURCE_REFERENCE_INVALID,)
+            diagnostics.extend(context_diagnostics)
+            return None, False, context_diagnostics
+        if not bool(resource.active):
+            diagnostics.append(DIAGNOSTIC_RESOURCE_INACTIVE)
+        return resource, True, ()
+
+    def _materialized_context(
+        self,
+        *,
+        requirement: ResourceRequirement,
+        shift: Shift | None = None,
+    ) -> MaterializedContactContext | None:
+        project = self._session.get(Project, requirement.project_id)
+        if project is None:
+            return None
+
+        request = (
+            self._session.get(WorkforceRequest, requirement.workforce_request_id)
+            if requirement.workforce_request_id
+            else None
+        )
+        diagnostics: list[str] = []
+        task, task_context_known, task_context_diagnostics = (
+            self._approved_task_for_requirement(
+                requirement=requirement,
+                project=project,
+                diagnostics=diagnostics,
+            )
+        )
+
+        resource_id = (
+            shift.resource_id
+            if shift is not None
+            else requirement.assigned_resource_id
+        )
+        if (
+            shift is not None
+            and requirement.assigned_resource_id
+            and shift.resource_id != requirement.assigned_resource_id
+        ):
+            diagnostics.append(
+                DIAGNOSTIC_SHIFT_RESOURCE_DIFFERS_FROM_REQUIREMENT
+            )
+        resource, resource_context_known, resource_context_diagnostics = (
+            self._materialized_resource(
+                resource_id=resource_id,
+                diagnostics=diagnostics,
+            )
+        )
+
+        if (
+            project.project_manager_contact_id is None
+            and (project.project_manager_external_id or project.project_manager_name)
+        ):
+            diagnostics.append(DIAGNOSTIC_PROJECT_MANAGER_CONTACT_UNMIGRATED)
+
+        contact_ids = (
+            requirement.approved_operational_responsible_override_contact_id,
+            task.operational_responsible_contact_id if task is not None else None,
+            project.project_manager_contact_id,
+            resource.coordinator_contact_id if resource is not None else None,
+            task.coordinator_contact_id if task is not None else None,
+        )
+        contacts = self._contacts(contact_ids)
+        task_label = f"Tâche {task.task_code}" if task is not None else None
+        demand_number = (
+            request.legacy_demand_number
+            if request is not None
+            else None
+        )
+
+        return MaterializedContactContext(
+            requirement_id=requirement.id,
+            shift_id=shift.id if shift is not None else None,
+            request_line_id=requirement.source_request_line_id,
+            demand_number=demand_number,
+            project_id=project.id,
+            project_number=project.number,
+            approved_request_version=requirement.approved_request_version,
+            approved_contact_context_status=(
+                requirement.approved_contact_context_status
+            ),
+            task_id=task.id if task is not None else None,
+            task_code=task.task_code if task is not None else None,
+            task_label=task.label if task is not None else None,
+            resource_id=resource.id if resource is not None else resource_id,
+            resource_name=resource.name if resource is not None else None,
+            request_override=self._candidate(
+                source_type=SOURCE_REQUEST_OVERRIDE,
+                source_entity_id=(
+                    request.id if request is not None else requirement.workforce_request_id
+                ),
+                source_label=(
+                    f"Demande approuvée {demand_number}"
+                    if demand_number
+                    else "Demande approuvée"
+                ),
+                contact_id=(
+                    requirement.approved_operational_responsible_override_contact_id
+                ),
+                contacts=contacts,
+            ),
+            task_responsible=self._candidate(
+                source_type=SOURCE_TASK_RESPONSIBLE,
+                source_entity_id=task.id if task is not None else None,
+                source_label=task_label,
+                contact_id=(
+                    task.operational_responsible_contact_id
+                    if task is not None
+                    else None
+                ),
+                contacts=contacts,
+            ),
+            project_manager=self._candidate(
+                source_type=SOURCE_PROJECT_MANAGER,
+                source_entity_id=project.id,
+                source_label=f"Chargé de projet · {project.number}",
+                contact_id=project.project_manager_contact_id,
+                contacts=contacts,
+            ),
+            resource_coordinator=self._candidate(
+                source_type=SOURCE_RESOURCE_COORDINATOR,
+                source_entity_id=resource.id if resource is not None else resource_id,
+                source_label=(
+                    f"Ressource {resource.name}"
+                    if resource is not None
+                    else None
+                ),
+                contact_id=(
+                    resource.coordinator_contact_id
+                    if resource is not None
+                    else None
+                ),
+                contacts=contacts,
+            ),
+            task_coordinator=self._candidate(
+                source_type=SOURCE_TASK_COORDINATOR,
+                source_entity_id=task.id if task is not None else None,
+                source_label=task_label,
+                contact_id=task.coordinator_contact_id if task is not None else None,
+                contacts=contacts,
+            ),
+            task_context_known=task_context_known,
+            task_context_diagnostics=task_context_diagnostics,
+            resource_context_known=resource_context_known,
+            resource_context_diagnostics=resource_context_diagnostics,
+            diagnostics=_unique(diagnostics),
+        )
+
+    def get_resource_requirement_contact_context(
+        self,
+        requirement_id: str,
+    ) -> MaterializedContactContext | None:
+        requirement = self._session.get(
+            ResourceRequirement,
+            str(requirement_id or "").strip(),
+        )
+        if requirement is None:
+            return None
+        return self._materialized_context(requirement=requirement)
+
+    def get_shift_contact_context(
+        self,
+        shift_id: str,
+    ) -> MaterializedContactContext | None:
+        shift = self._session.get(Shift, str(shift_id or "").strip())
+        if shift is None:
+            return None
+        requirement = self._session.get(
+            ResourceRequirement,
+            shift.resource_requirement_id,
+        )
+        if requirement is None:
+            return None
+        return self._materialized_context(
+            requirement=requirement,
+            shift=shift,
+        )
 
     def get_request_line_contact_context(
         self,

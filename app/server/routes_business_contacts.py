@@ -7,7 +7,10 @@ from fastapi import APIRouter, Depends, Request, status
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from ..application.operational_contacts import OperationalContactService
+from ..application.operational_contacts import (
+    MaterializedContactResolution,
+    OperationalContactService,
+)
 from ..application.business_contact_admin import (
     BusinessContactAdminService,
     BusinessContactRecord,
@@ -124,6 +127,43 @@ def _override_payload(row: DemandOverrideMutationResult) -> dict[str, object]:
     }
 
 
+def _materialized_resolution_payload(
+    row: MaterializedContactResolution,
+) -> dict[str, object]:
+    def contact_payload(contact: Any) -> dict[str, object]:
+        return {
+            "status": contact.status,
+            "contact_id": contact.contact_id,
+            "display_name": contact.display_name,
+            "email": contact.email,
+            "phone": contact.phone,
+            "source_type": contact.source_type,
+            "source_entity_id": contact.source_entity_id,
+            "source_label": contact.source_label,
+            "diagnostics": list(contact.diagnostics),
+        }
+
+    return {
+        "subject_type": row.subject_type,
+        "subject_id": row.subject_id,
+        "requirement_id": row.requirement_id,
+        "shift_id": row.shift_id,
+        "request_line_id": row.request_line_id,
+        "demand_number": row.demand_number,
+        "project_number": row.project_number,
+        "approved_request_version": row.approved_request_version,
+        "approved_contact_context_status": row.approved_contact_context_status,
+        "task_id": row.task_id,
+        "task_code": row.task_code,
+        "task_label": row.task_label,
+        "resource_id": row.resource_id,
+        "resource_name": row.resource_name,
+        "operational_responsible": contact_payload(row.operational_responsible),
+        "coordinator": contact_payload(row.coordinator),
+        "diagnostics": list(row.diagnostics),
+    }
+
+
 def build_business_contact_router(
     dependency: BusinessContactProvider,
     session_dependency: SessionProvider,
@@ -171,6 +211,26 @@ def build_business_contact_router(
             },
             "diagnostics": list(row.diagnostics),
         }
+
+    @router.get("/resource-requirements/{requirement_id}/contact-resolution")
+    def resource_requirement_contact_resolution(
+        requirement_id: str,
+        session: Session = Depends(session_dependency),
+    ) -> dict[str, object]:
+        row = OperationalContactService(
+            SqlOperationalContactRepository(session)
+        ).resolve_resource_requirement(requirement_id)
+        return _materialized_resolution_payload(row)
+
+    @router.get("/shifts/{shift_id}/contact-resolution")
+    def shift_contact_resolution(
+        shift_id: str,
+        session: Session = Depends(session_dependency),
+    ) -> dict[str, object]:
+        row = OperationalContactService(
+            SqlOperationalContactRepository(session)
+        ).resolve_shift(shift_id)
+        return _materialized_resolution_payload(row)
 
     @router.get("/business-contacts")
     def list_contacts(
