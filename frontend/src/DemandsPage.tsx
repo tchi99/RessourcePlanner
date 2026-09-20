@@ -20,6 +20,14 @@ import {
   updateDemand,
 } from "./api";
 import CompetencyPicker from "./CompetencyPicker";
+import DemandLinesEditor, {
+  DemandLineDefaults,
+  DemandLineDraft,
+  demandLineDraftFromReadModel,
+  demandLineWrite,
+  lineValidationMessage,
+  newDemandLine,
+} from "./DemandLinesEditor";
 import { useViewScope } from "./ViewScopeContext";
 import ViewScopeSelector from "./ViewScopeSelector";
 
@@ -93,6 +101,23 @@ function emptyForm(projectNumber = ""): FormState {
   };
 }
 
+function lineDefaultsFromForm(form: FormState, resources: ResourceReadModel[]): DemandLineDefaults {
+  const proposed = resources.find((row) => row.name === form.proposed_technician) ?? null;
+  return {
+    required_resource_class: proposed?.resource_class ?? "",
+    required_competency_ids: [...form.required_competency_ids],
+    desired_start: form.desired_start,
+    desired_end: form.desired_end,
+    desired_active_days: form.estimated_days,
+    estimated_hours: form.estimated_hours,
+    work_package_ref: form.work_package_ref,
+    task_code: form.task_code,
+    proposed_resource_id: proposed?.id ?? "",
+    confirmation: form.confirmation,
+    description: "",
+  };
+}
+
 function formFromDemand(demand: DemandReadModel): FormState {
   return {
     project_number: demand.project_number ?? "",
@@ -117,6 +142,15 @@ function normalize(value: string | null | undefined) {
 }
 
 function demandSearchText(demand: DemandReadModel) {
+  const lineText = (demand.lines ?? []).flatMap((line) => [
+    line.required_resource_class,
+    line.required_competencies,
+    line.work_package_name,
+    line.task_code,
+    line.task_label,
+    line.proposed_resource,
+    line.description,
+  ]);
   return normalize([
     demand.number,
     demand.status,
@@ -129,6 +163,7 @@ function demandSearchText(demand: DemandReadModel) {
     demand.work_package_name,
     demand.required_competencies,
     demand.proposed_resource,
+    ...lineText,
   ].filter(Boolean).join(" "));
 }
 
@@ -146,7 +181,7 @@ function DemandCard({ demand, selected, onClick }: { demand: DemandReadModel; se
       </div>
       <div className="demand-card-meta">
         <span>{demand.desired_start || "Date à définir"}{demand.desired_end && demand.desired_end !== demand.desired_start ? ` → ${demand.desired_end}` : ""}</span>
-        <span>{demand.resource_count || 1} ressource(s)</span>
+        <span>{demand.line_mode ? `${(demand.lines ?? []).filter((line) => line.active).length} ligne(s)` : `${demand.resource_count || 1} ressource(s)`}</span>
         <span className={tentative ? "confirmation-tentative-text" : "confirmation-confirmed-text"}>{tentative ? "Tentative" : "Confirmée"}</span>
       </div>
     </button>
@@ -165,6 +200,9 @@ export default function DemandsPage() {
   const [selectedDemand, setSelectedDemand] = useState<DemandReadModel | null>(null);
   const [creating, setCreating] = useState(false);
   const [form, setForm] = useState<FormState>(() => emptyForm());
+  const [lineMode, setLineMode] = useState(false);
+  const [lines, setLines] = useState<DemandLineDraft[]>([]);
+  const [generationCount, setGenerationCount] = useState("2");
   const [loading, setLoading] = useState(true);
   const [detailLoading, setDetailLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -216,6 +254,10 @@ export default function DemandsPage() {
       .then((demand) => {
         setSelectedDemand(demand);
         setForm(formFromDemand(demand));
+        setLineMode(Boolean(demand.line_mode));
+        const activeLines = (demand.lines ?? []).filter((line) => line.active);
+        setLines(activeLines.map(demandLineDraftFromReadModel));
+        setGenerationCount(String(Math.max(activeLines.length, 1)));
       })
       .catch((reason: unknown) => {
         if (reason instanceof DOMException && reason.name === "AbortError") return;
@@ -299,6 +341,10 @@ export default function DemandsPage() {
     setSelectedNumber(detail.number);
     setSelectedDemand(detail);
     setForm(formFromDemand(detail));
+    setLineMode(Boolean(detail.line_mode));
+    const activeLines = (detail.lines ?? []).filter((line) => line.active);
+    setLines(activeLines.map(demandLineDraftFromReadModel));
+    setGenerationCount(String(Math.max(activeLines.length, 1)));
   }
 
   function beginCreate() {
@@ -308,6 +354,9 @@ export default function DemandsPage() {
     setSelectedNumber(null);
     setSelectedDemand(null);
     setForm(emptyForm(firstProject));
+    setLineMode(false);
+    setLines([]);
+    setGenerationCount("2");
     setNotice(null);
     setError(null);
     createRetry.current = null;
@@ -317,6 +366,8 @@ export default function DemandsPage() {
     if (saving) return;
     setCreating(false);
     setSelectedNumber(number);
+    setLineMode(false);
+    setLines([]);
     setNotice(null);
     setError(null);
     createRetry.current = null;
@@ -326,72 +377,116 @@ export default function DemandsPage() {
     setForm((current) => ({ ...current, [field]: value }));
   }
 
+  function activateLineMode() {
+    const requested = Number(form.resource_count);
+    const count = Number.isInteger(requested) && requested > 0 ? requested : 1;
+    const defaults = lineDefaultsFromForm(form, resources);
+    setLineMode(true);
+    setGenerationCount(String(count));
+    setLines(Array.from({ length: count }, () => newDemandLine(defaults)));
+    setError(null);
+    setNotice("Mode lignes activé. Chaque ligne est maintenant un besoin planifiable indépendant.");
+  }
+
+  function revertUnsavedLineMode() {
+    setLineMode(false);
+    setLines([]);
+    setNotice("Retour au besoin simple. Aucune ligne n’a encore été enregistrée.");
+    setError(null);
+  }
+
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (saving) return;
     setError(null);
     setNotice(null);
 
-    const resourceCount = Number(form.resource_count);
-    const estimatedHours = optionalNumber(form.estimated_hours);
-    const estimatedDays = optionalNumber(form.estimated_days);
     if (!selectedProject) {
       setError("Sélectionne un projet actif.");
       return;
     }
-    if (!form.desired_start) {
-      setError("La date de début souhaitée est requise.");
-      return;
-    }
-    if (form.desired_end && form.desired_end < form.desired_start) {
-      setError("La date de fin ne peut pas précéder la date de début.");
-      return;
-    }
-    if (!Number.isInteger(resourceCount) || resourceCount < 1) {
-      setError("Le nombre de ressources doit être un entier supérieur ou égal à 1.");
-      return;
-    }
-    if (Number.isNaN(estimatedHours) || Number.isNaN(estimatedDays)) {
-      setError("Les estimations doivent être numériques.");
-      return;
-    }
-    if (estimatedHours != null && estimatedHours <= 0) {
-      setError("Les heures estimées totales doivent être supérieures à zéro lorsqu'elles sont renseignées.");
-      return;
-    }
-    if (estimatedDays != null) {
-      if (!Number.isInteger(estimatedDays) || estimatedDays < 1) {
-        setError("Les jours actifs souhaités doivent être un entier supérieur ou égal à 1.");
-        return;
-      }
-      const end = form.desired_end || form.desired_start;
-      const windowDays = inclusiveCalendarDays(form.desired_start, end);
-      if (estimatedDays > windowDays) {
-        setError(`La cible de ${estimatedDays} jours actifs dépasse les ${windowDays} dates de la fenêtre demandée.`);
-        return;
-      }
-    }
 
-    const payload: DemandWrite = {
-      project_number: selectedProject.number,
-      project_name: selectedProject.name,
-      client: selectedProject.client ?? "",
-      requester: form.requester.trim() || null,
-      work_package_ref: form.work_package_ref || null,
-      task_code: form.task_code || null,
-      request_type: selectedDemand?.request_type || "Projet",
-      priority: form.priority,
-      confirmation: form.confirmation,
-      desired_start: form.desired_start,
-      desired_end: form.desired_end || null,
-      description: form.description.trim(),
-      resource_count: resourceCount,
-      required_competencies: null,
-      required_competency_ids: form.required_competency_ids,
-      estimated_hours: estimatedHours,
-      estimated_days: estimatedDays,
-      proposed_technician: form.proposed_technician || null,
-    };
+    let payload: DemandWrite;
+    if (lineMode) {
+      if (lines.length === 0) {
+        setError("Ajoute au moins une ligne de main-d’œuvre.");
+        return;
+      }
+      const invalid = lines
+        .map((line, index) => lineValidationMessage(line, index))
+        .find((message): message is string => Boolean(message));
+      if (invalid) {
+        setError(invalid);
+        return;
+      }
+      payload = {
+        project_number: selectedProject.number,
+        project_name: selectedProject.name,
+        client: selectedProject.client ?? "",
+        requester: form.requester.trim() || null,
+        request_type: selectedDemand?.request_type || "Projet",
+        priority: form.priority,
+        description: form.description.trim(),
+        lines: lines.map(demandLineWrite),
+        ...(selectedDemand ? { expected_version: selectedDemand.version } : {}),
+      };
+    } else {
+      const resourceCount = Number(form.resource_count);
+      const estimatedHours = optionalNumber(form.estimated_hours);
+      const estimatedDays = optionalNumber(form.estimated_days);
+      if (!form.desired_start) {
+        setError("La date de début souhaitée est requise.");
+        return;
+      }
+      if (form.desired_end && form.desired_end < form.desired_start) {
+        setError("La date de fin ne peut pas précéder la date de début.");
+        return;
+      }
+      if (!Number.isInteger(resourceCount) || resourceCount < 1) {
+        setError("Le nombre de ressources doit être un entier supérieur ou égal à 1.");
+        return;
+      }
+      if (Number.isNaN(estimatedHours) || Number.isNaN(estimatedDays)) {
+        setError("Les estimations doivent être numériques.");
+        return;
+      }
+      if (estimatedHours != null && estimatedHours <= 0) {
+        setError("Les heures estimées totales doivent être supérieures à zéro lorsqu'elles sont renseignées.");
+        return;
+      }
+      if (estimatedDays != null) {
+        if (!Number.isInteger(estimatedDays) || estimatedDays < 1) {
+          setError("Les jours actifs souhaités doivent être un entier supérieur ou égal à 1.");
+          return;
+        }
+        const end = form.desired_end || form.desired_start;
+        const windowDays = inclusiveCalendarDays(form.desired_start, end);
+        if (estimatedDays > windowDays) {
+          setError(`La cible de ${estimatedDays} jours actifs dépasse les ${windowDays} dates de la fenêtre demandée.`);
+          return;
+        }
+      }
+      payload = {
+        project_number: selectedProject.number,
+        project_name: selectedProject.name,
+        client: selectedProject.client ?? "",
+        requester: form.requester.trim() || null,
+        work_package_ref: form.work_package_ref || null,
+        task_code: form.task_code || null,
+        request_type: selectedDemand?.request_type || "Projet",
+        priority: form.priority,
+        confirmation: form.confirmation,
+        desired_start: form.desired_start,
+        desired_end: form.desired_end || null,
+        description: form.description.trim(),
+        resource_count: resourceCount,
+        required_competencies: null,
+        required_competency_ids: form.required_competency_ids,
+        estimated_hours: estimatedHours,
+        estimated_days: estimatedDays,
+        proposed_technician: form.proposed_technician || null,
+      };
+    }
 
     setSaving(true);
     try {
@@ -504,9 +599,15 @@ export default function DemandsPage() {
                   )}
                 </div>
                 {!creating && selectedDemand && (
-                  <div className={`demand-confirmation-pill ${selectedDemand.confirmation === "Tentative" ? "tentative" : "confirmed"}`}>
-                    {selectedDemand.confirmation || "Confirmée"}
-                  </div>
+                  selectedDemand.line_mode ? (
+                    <div className="demand-confirmation-pill confirmed">
+                      {(selectedDemand.lines ?? []).filter((line) => line.active).length} ligne(s)
+                    </div>
+                  ) : (
+                    <div className={`demand-confirmation-pill ${selectedDemand.confirmation === "Tentative" ? "tentative" : "confirmed"}`}>
+                      {selectedDemand.confirmation || "Confirmée"}
+                    </div>
+                  )
                 )}
               </div>
 
@@ -530,13 +631,21 @@ export default function DemandsPage() {
                   <select
                     value={form.project_number}
                     onChange={(event) => {
+                      const projectNumber = event.target.value;
                       setTaskSearch("");
                       setForm((current) => ({
                         ...current,
-                        project_number: event.target.value,
+                        project_number: projectNumber,
                         work_package_ref: "",
                         task_code: "",
                       }));
+                      if (lineMode) {
+                        setLines((current) => current.map((line) => ({
+                          ...line,
+                          work_package_ref: "",
+                          task_code: "",
+                        })));
+                      }
                     }}
                     disabled={saving}
                     required
@@ -544,44 +653,6 @@ export default function DemandsPage() {
                     <option value="">Sélectionner un projet…</option>
                     {projects.map((project) => <option value={project.number} key={project.id}>{project.number} — {project.name}</option>)}
                   </select>
-                </label>
-
-                <label>
-                  <span>Recherche catalogue ERP</span>
-                  <input
-                    value={taskSearch}
-                    onChange={(event) => setTaskSearch(event.target.value)}
-                    disabled={saving || !form.project_number}
-                    placeholder="Code ou description…"
-                  />
-                </label>
-
-                <label>
-                  <span>Tâche ERP</span>
-                  <select
-                    value={form.task_code}
-                    onChange={(event) => setField("task_code", event.target.value)}
-                    disabled={saving || !form.project_number}
-                  >
-                    <option value="">Aucune tâche sélectionnée</option>
-                    {form.task_code && !selectedTask && (
-                      <option value={form.task_code}>
-                        {form.task_code} — {selectedDemand?.task_label || "tâche historique/non cataloguée"}
-                      </option>
-                    )}
-                    {visibleTasks.map((task) => (
-                      <option value={task.code} key={`${task.project_number}:${task.code}`}>
-                        {task.code} — {task.label}{task.active ? "" : " · inactive"}
-                      </option>
-                    ))}
-                  </select>
-                  {selectedTask && (
-                    <small>
-                      {selectedTask.status}
-                      {selectedTask.time_entry_enabled == null ? "" : ` · Temps: ${selectedTask.time_entry_enabled ? "oui" : "non"}`}
-                      {selectedTask.expenses_enabled == null ? "" : ` · Dépenses: ${selectedTask.expenses_enabled ? "oui" : "non"}`}
-                    </small>
-                  )}
                 </label>
 
                 <label>
@@ -600,86 +671,167 @@ export default function DemandsPage() {
                 </label>
 
                 <label className="span-2">
-                  <span>Plage moyen terme / WorkPackage</span>
-                  <select value={form.work_package_ref} onChange={(event) => setField("work_package_ref", event.target.value)} disabled={saving || !form.project_number}>
-                    <option value="">Aucune plage liée</option>
-                    {workPackages.map((item) => (
-                      <option value={item.reference} key={item.id}>
-                        {item.code ? `${item.code} — ` : ""}{item.name}{item.start_date ? ` · ${item.start_date}${item.end_date && item.end_date !== item.start_date ? ` → ${item.end_date}` : ""}` : ""}{item.status ? ` · ${item.status}` : ""}
-                      </option>
-                    ))}
-                  </select>
-                  {selectedWorkPackage && <small>{selectedWorkPackage.planned_hours == null ? "" : `${selectedWorkPackage.planned_hours} h prévues · `}{selectedWorkPackage.description || "Plage moyen terme sélectionnée"}</small>}
-                </label>
-
-                <label>
-                  <span>Confirmation</span>
-                  <select value={form.confirmation} onChange={(event) => setField("confirmation", event.target.value as FormState["confirmation"])} disabled={saving}>
-                    <option value="Confirmée">Confirmée</option>
-                    <option value="Tentative">Tentative</option>
-                  </select>
-                </label>
-
-                <label>
-                  <span>Ressource proposée</span>
-                  <select value={form.proposed_technician} onChange={(event) => setField("proposed_technician", event.target.value)} disabled={saving}>
-                    <option value="">Aucune ressource proposée</option>
-                    {missingProposedResource && <option value={missingProposedResource}>{missingProposedResource} — inactive/non listée</option>}
-                    {resources.map((resource) => <option value={resource.name} key={resource.id}>{resource.name}{resource.resource_class ? ` — ${resource.resource_class}` : ""}</option>)}
-                  </select>
-                </label>
-
-                <label>
-                  <span>Début souhaité</span>
-                  <input type="date" value={form.desired_start} onChange={(event) => setField("desired_start", event.target.value)} disabled={saving} required />
-                </label>
-
-                <label>
-                  <span>Fin souhaitée</span>
-                  <input type="date" min={form.desired_start || undefined} value={form.desired_end} onChange={(event) => setField("desired_end", event.target.value)} disabled={saving} />
-                </label>
-
-                <label>
-                  <span>Nombre de ressources simultanées</span>
-                  <input type="number" min="1" step="1" value={form.resource_count} onChange={(event) => setField("resource_count", event.target.value)} disabled={saving} required />
-                  <small>Décrit le parallélisme; ne multiplie jamais les heures estimées.</small>
-                </label>
-
-                <CompetencyPicker
-                  competencies={competencies}
-                  selectedIds={form.required_competency_ids}
-                  onChange={(ids) => setField("required_competency_ids", ids)}
-                  disabled={saving}
-                  label="Compétences requises"
-                  placeholder="Rechercher une compétence requise…"
-                />
-                {form.required_competency_ids.length === 0 && selectedDemand?.required_competencies && (
-                  <small className="legacy-competency-note">
-                    Valeur historique à convertir au catalogue : {selectedDemand.required_competencies}
-                  </small>
-                )}
-
-                <label>
-                  <span>Heures estimées totales</span>
-                  <input type="number" min="0.25" step="0.25" value={form.estimated_hours} onChange={(event) => setField("estimated_hours", event.target.value)} disabled={saving} placeholder="Optionnel au brouillon" />
-                  <small>Volume total de main-d’œuvre pour la demande, toutes ressources confondues.</small>
-                </label>
-
-                <label>
-                  <span>Jours actifs souhaités</span>
-                  <input type="number" min="1" step="1" value={form.estimated_days} onChange={(event) => setField("estimated_days", event.target.value)} disabled={saving} placeholder="Optionnel" />
-                  <small>Cible de répartition dans la fenêtre. Les jours ne créent pas d'heures; les heures doivent être complétées avant l'approbation.</small>
-                </label>
-
-                <label className="span-2">
-                  <span>Description</span>
-                  <textarea rows={5} value={form.description} onChange={(event) => setField("description", event.target.value)} disabled={saving} placeholder="Travaux demandés, contexte et contraintes…" />
+                  <span>Description / contexte de la demande</span>
+                  <textarea rows={4} value={form.description} onChange={(event) => setField("description", event.target.value)} disabled={saving} placeholder="Contexte commun, travaux demandés et contraintes…" />
                 </label>
               </div>
 
+              <div className={`demand-line-mode-card ${lineMode ? "active" : ""}`}>
+                <div>
+                  <strong>{lineMode ? "Besoins par ligne activés" : "Besoin simple ou lignes multiples?"}</strong>
+                  <span>
+                    {lineMode
+                      ? "Chaque ligne possède maintenant ses propres dates, effort, classe, compétences, tâche et WorkPackage."
+                      : "Le mode simple reste disponible pour les demandes historiques. Active les lignes pour représenter plusieurs ressources qui peuvent diverger."}
+                  </span>
+                </div>
+                {!lineMode ? (
+                  <button type="button" className="secondary-button" onClick={activateLineMode} disabled={saving}>
+                    Passer aux lignes multiples
+                  </button>
+                ) : (creating || !selectedDemand?.line_mode) ? (
+                  <button type="button" className="text-button" onClick={revertUnsavedLineMode} disabled={saving}>
+                    Revenir au besoin simple
+                  </button>
+                ) : (
+                  <span className="request-line-mode-lock">Mode lignes enregistré</span>
+                )}
+              </div>
+
+              {lineMode ? (
+                <DemandLinesEditor
+                  lines={lines}
+                  onChange={setLines}
+                  defaults={lineDefaultsFromForm(form, resources)}
+                  generationCount={generationCount}
+                  onGenerationCountChange={setGenerationCount}
+                  competencies={competencies}
+                  resources={resources}
+                  workPackages={workPackages}
+                  tasks={tasks}
+                  disabled={saving}
+                />
+              ) : (
+                <div className="demand-form-grid demand-flat-need-grid">
+                  <label>
+                    <span>Recherche catalogue ERP</span>
+                    <input
+                      value={taskSearch}
+                      onChange={(event) => setTaskSearch(event.target.value)}
+                      disabled={saving || !form.project_number}
+                      placeholder="Code ou description…"
+                    />
+                  </label>
+
+                  <label>
+                    <span>Tâche ERP</span>
+                    <select
+                      value={form.task_code}
+                      onChange={(event) => setField("task_code", event.target.value)}
+                      disabled={saving || !form.project_number}
+                    >
+                      <option value="">Aucune tâche sélectionnée</option>
+                      {form.task_code && !selectedTask && (
+                        <option value={form.task_code}>
+                          {form.task_code} — {selectedDemand?.task_label || "tâche historique/non cataloguée"}
+                        </option>
+                      )}
+                      {visibleTasks.map((task) => (
+                        <option value={task.code} key={`${task.project_number}:${task.code}`}>
+                          {task.code} — {task.label}{task.active ? "" : " · inactive"}
+                        </option>
+                      ))}
+                    </select>
+                    {selectedTask && (
+                      <small>
+                        {selectedTask.status}
+                        {selectedTask.time_entry_enabled == null ? "" : ` · Temps: ${selectedTask.time_entry_enabled ? "oui" : "non"}`}
+                        {selectedTask.expenses_enabled == null ? "" : ` · Dépenses: ${selectedTask.expenses_enabled ? "oui" : "non"}`}
+                      </small>
+                    )}
+                  </label>
+
+                  <label className="span-2">
+                    <span>Plage moyen terme / WorkPackage</span>
+                    <select value={form.work_package_ref} onChange={(event) => setField("work_package_ref", event.target.value)} disabled={saving || !form.project_number}>
+                      <option value="">Aucune plage liée</option>
+                      {workPackages.map((item) => (
+                        <option value={item.reference} key={item.id}>
+                          {item.code ? `${item.code} — ` : ""}{item.name}{item.start_date ? ` · ${item.start_date}${item.end_date && item.end_date !== item.start_date ? ` → ${item.end_date}` : ""}` : ""}{item.status ? ` · ${item.status}` : ""}
+                        </option>
+                      ))}
+                    </select>
+                    {selectedWorkPackage && <small>{selectedWorkPackage.planned_hours == null ? "" : `${selectedWorkPackage.planned_hours} h prévues · `}{selectedWorkPackage.description || "Plage moyen terme sélectionnée"}</small>}
+                  </label>
+
+                  <label>
+                    <span>Confirmation</span>
+                    <select value={form.confirmation} onChange={(event) => setField("confirmation", event.target.value as FormState["confirmation"])} disabled={saving}>
+                      <option value="Confirmée">Confirmée</option>
+                      <option value="Tentative">Tentative</option>
+                    </select>
+                  </label>
+
+                  <label>
+                    <span>Ressource proposée</span>
+                    <select value={form.proposed_technician} onChange={(event) => setField("proposed_technician", event.target.value)} disabled={saving}>
+                      <option value="">Aucune ressource proposée</option>
+                      {missingProposedResource && <option value={missingProposedResource}>{missingProposedResource} — inactive/non listée</option>}
+                      {resources.map((resource) => <option value={resource.name} key={resource.id}>{resource.name}{resource.resource_class ? ` — ${resource.resource_class}` : ""}</option>)}
+                    </select>
+                  </label>
+
+                  <label>
+                    <span>Début souhaité</span>
+                    <input type="date" value={form.desired_start} onChange={(event) => setField("desired_start", event.target.value)} disabled={saving} required />
+                  </label>
+
+                  <label>
+                    <span>Fin souhaitée</span>
+                    <input type="date" min={form.desired_start || undefined} value={form.desired_end} onChange={(event) => setField("desired_end", event.target.value)} disabled={saving} />
+                  </label>
+
+                  <label>
+                    <span>Nombre de ressources simultanées</span>
+                    <input type="number" min="1" step="1" value={form.resource_count} onChange={(event) => setField("resource_count", event.target.value)} disabled={saving} required />
+                    <small>Décrit le parallélisme; ne multiplie jamais les heures estimées. Cette valeur sert aussi de quantité initiale lorsque tu passes aux lignes multiples.</small>
+                  </label>
+
+                  <CompetencyPicker
+                    competencies={competencies}
+                    selectedIds={form.required_competency_ids}
+                    onChange={(ids) => setField("required_competency_ids", ids)}
+                    disabled={saving}
+                    label="Compétences requises"
+                    placeholder="Rechercher une compétence requise…"
+                  />
+                  {form.required_competency_ids.length === 0 && selectedDemand?.required_competencies && (
+                    <small className="legacy-competency-note">
+                      Valeur historique à convertir au catalogue : {selectedDemand.required_competencies}
+                    </small>
+                  )}
+
+                  <label>
+                    <span>Heures estimées totales</span>
+                    <input type="number" min="0.25" step="0.25" value={form.estimated_hours} onChange={(event) => setField("estimated_hours", event.target.value)} disabled={saving} placeholder="Optionnel au brouillon" />
+                    <small>Volume total de main-d’œuvre pour la demande, toutes ressources confondues.</small>
+                  </label>
+
+                  <label>
+                    <span>Jours actifs souhaités</span>
+                    <input type="number" min="1" step="1" value={form.estimated_days} onChange={(event) => setField("estimated_days", event.target.value)} disabled={saving} placeholder="Optionnel" />
+                    <small>Cible de répartition dans la fenêtre. Les jours ne créent pas d'heures; les heures doivent être complétées avant l'approbation.</small>
+                  </label>
+                </div>
+              )}
+
               <div className="demand-editor-note">
                 <strong>Approbation ≠ confirmation.</strong>
-                <span>Une demande peut être approuvée tout en demeurant Tentative. Les heures représentent toujours le volume total; les jours actifs guident seulement sa répartition selon la capacité disponible.</span>
+                <span>
+                  {lineMode
+                    ? "Chaque ligne conserve sa propre confirmation et son propre effort. Si les heures d’une ligne sont vides, le backend applique et persiste la politique de 8 h par jour actif."
+                    : "Une demande peut être approuvée tout en demeurant Tentative. Les heures représentent toujours le volume total; les jours actifs guident seulement sa répartition selon la capacité disponible."}
+                </span>
               </div>
 
               <div className="demand-editor-actions">
