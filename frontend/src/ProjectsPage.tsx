@@ -161,7 +161,10 @@ export default function ProjectsPage() {
     setContactPending(true);
     setError(null);
     try {
-      const link = await setTaskBusinessContacts(task.id, { [field]: contactId });
+      const payload = field === "operational_responsible_contact_id"
+        ? { operational_responsible_contact_id: contactId }
+        : { coordinator_contact_id: contactId };
+      const link = await setTaskBusinessContacts(task.id, payload);
       setProjectTasks((current) => current.map((row) => (
         row.id === task.id
           ? {
