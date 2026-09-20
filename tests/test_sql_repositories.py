@@ -95,6 +95,7 @@ class SqlRepositoryTests(unittest.TestCase):
                     "DateFinSouhaitee": date(2026, 8, 28),
                     "Description": "Installation",
                     "NombreRessources": 1,
+                    "TempsEstimeHeures": 8,
                     "TechnicienPropose": "Alice",
                 },
                 submit=True,
