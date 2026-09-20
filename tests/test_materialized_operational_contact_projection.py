@@ -52,37 +52,37 @@ class MaterializedOperationalContactProjectionTests(unittest.TestCase):
                     BusinessContact(
                         id="C-PM",
                         display_name="Jean PM",
-                        email="jean@example.test",
+                        email="configured-jean",
                         phone="555-0100",
                     ),
                     BusinessContact(
                         id="C-TASK-APPROVED",
                         display_name="Marc approuvé",
-                        email="marc@example.test",
+                        email="configured-marc",
                         phone="555-0200",
                     ),
                     BusinessContact(
                         id="C-TASK-CURRENT",
                         display_name="Nouveau responsable",
-                        email="new@example.test",
+                        email="configured-new",
                         phone="555-0300",
                     ),
                     BusinessContact(
                         id="C-CURRENT-OVERRIDE",
                         display_name="Override courant",
-                        email="override@example.test",
+                        email="configured-override",
                         phone="555-0400",
                     ),
                     BusinessContact(
                         id="C-RREQ",
                         display_name="Coord besoin",
-                        email="req@example.test",
+                        email="configured-req",
                         phone="555-0500",
                     ),
                     BusinessContact(
                         id="C-RSHIFT",
                         display_name="Coord quart",
-                        email="shift@example.test",
+                        email="configured-shift",
                         phone="555-0600",
                     ),
                     Project(
