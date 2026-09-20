@@ -19,6 +19,7 @@ class ReactBusinessContactContractTests(unittest.TestCase):
         self.assertIn("setDemandOperationalResponsible", source)
         self.assertIn("getRequestLineContactResolution", source)
         self.assertIn("/api/v1/request-lines/", source)
+        self.assertIn("RequestLineContactResolutionReadModel", source)
 
     def test_resources_page_keeps_business_contacts_distinct_from_auth_users(self) -> None:
         source = (FRONTEND / "ResourcesPage.tsx").read_text(encoding="utf-8")
