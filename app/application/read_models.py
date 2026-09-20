@@ -152,13 +152,13 @@ class DemandPeriodReadModel:
 
     period_id: str
     demand_number: str
-    request_line_id: str | None = None
     sequence: int
     kind: str
     start_date: date
     end_date: date
     hours: float
     confirmation: str
+    request_line_id: str | None = None
     alternative_group: str | None = None
     proposed_resource: str | None = None
     resource_count: int = 1
