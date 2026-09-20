@@ -41,6 +41,9 @@ class Project(TimestampMixin, Base):
     client: Mapped[str | None] = mapped_column(String(255), nullable=True)
     project_manager_external_id: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
     project_manager_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    project_manager_contact_id: Mapped[str | None] = mapped_column(
+        String(ID_LENGTH), ForeignKey("business_contacts.id"), nullable=True, index=True
+    )
     status: Mapped[str] = mapped_column(String(32), nullable=False, server_default=text("'active'"), index=True)
 
 
@@ -71,6 +74,12 @@ class TaskCatalogEntry(TimestampMixin, Base):
     erp_created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     branch: Mapped[str | None] = mapped_column(String(64), nullable=True)
     approver_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    operational_responsible_contact_id: Mapped[str | None] = mapped_column(
+        String(ID_LENGTH), ForeignKey("business_contacts.id"), nullable=True, index=True
+    )
+    coordinator_contact_id: Mapped[str | None] = mapped_column(
+        String(ID_LENGTH), ForeignKey("business_contacts.id"), nullable=True, index=True
+    )
     cv_enabled: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     time_entry_enabled: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     expenses_enabled: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
@@ -97,6 +106,9 @@ class Resource(TimestampMixin, Base):
     external_id: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     email: Mapped[str | None] = mapped_column(String(320), nullable=True)
+    coordinator_contact_id: Mapped[str | None] = mapped_column(
+        String(ID_LENGTH), ForeignKey("business_contacts.id"), nullable=True, index=True
+    )
     resource_class: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
     competencies: Mapped[str | None] = mapped_column(Text, nullable=True)
     note: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -179,6 +191,9 @@ class WorkforceRequest(TimestampMixin, Base):
     erp_task_label: Mapped[str | None] = mapped_column(String(255), nullable=True)
     requester_external_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
     requester_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    operational_responsible_override_contact_id: Mapped[str | None] = mapped_column(
+        String(ID_LENGTH), ForeignKey("business_contacts.id"), nullable=True, index=True
+    )
     request_type: Mapped[str] = mapped_column(String(64), nullable=False, server_default=text("'Projet'"))
     priority: Mapped[str] = mapped_column(String(32), nullable=False, server_default=text("'Normale'"), index=True)
     confirmation: Mapped[str] = mapped_column(String(32), nullable=False, server_default=text("'Confirmée'"), index=True)
