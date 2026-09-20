@@ -137,12 +137,12 @@ jobs:
       - name: Install frontend dependencies
         working-directory: frontend
         run: npm install --no-audit --no-fund
+      - name: Emit generated npm lockfile for CI bootstrap
+        working-directory: frontend
+        run: gzip -c package-lock.json | base64 -w0 | sed 's/^/PACKAGE_LOCK_GZIP_B64=/'
       - name: Build React V2 frontend
         working-directory: frontend
         run: npm run build
-      - name: Install Playwright Chromium
-        working-directory: frontend
-        run: npx playwright install --with-deps chromium
       - name: Run React V2 browser acceptance
         working-directory: frontend
         run: npm run test:e2e
