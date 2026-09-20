@@ -546,6 +546,134 @@ test("V2 local acceptance path runs through React, Chromium, FastAPI and SQLite"
 });
 
 
+test("multi-line demand editor generates independent RequestLines and materializes them", async ({ browser }) => {
+  const { d1, d2 } = acceptanceDates();
+  const projectManager = await openAs(browser, "PROJECT_MANAGER");
+  await navigateMain(projectManager.page, "Demandes");
+  await projectManager.page.getByRole("button", { name: /Nouvelle demande/ }).click();
+  const editor = projectManager.page.locator(".demand-editor-form");
+  await expect(editor.getByRole("heading", { name: "Nouvelle demande" })).toBeVisible();
+
+  await labelled(editor, "Projet", "select").selectOption("P-251");
+  await labelled(editor, "Début souhaité", "input").fill(d1);
+  await labelled(editor, "Fin souhaitée", "input").fill(d2);
+  await labelled(editor, "Nombre de ressources simultanées", "input").fill("2");
+  await labelled(editor, "Jours actifs souhaités", "input").fill("1");
+  await labelled(editor, "Description / contexte de la demande", "textarea").fill(
+    "Demande multi-lignes React #288",
+  );
+
+  await editor.getByRole("button", { name: "Passer aux lignes multiples" }).click();
+  const cards = editor.locator(".request-line-card");
+  await expect(cards).toHaveCount(2);
+  await expect(editor.locator(".request-lines-summary")).toContainText("16");
+  await expect(editor.locator(".request-lines-summary")).toContainText("heure(s) projetées");
+
+  const generationCount = editor.getByLabel("Quantité de lignes à générer");
+  await generationCount.fill("3");
+  await editor.getByRole("button", { name: "Générer les lignes" }).click();
+  await expect(cards).toHaveCount(3);
+  await cards.nth(2).getByRole("button", { name: "Retirer" }).click();
+  await expect(cards).toHaveCount(2);
+
+  await cards.nth(0).getByRole("button", { name: "Dupliquer" }).click();
+  await expect(cards).toHaveCount(3);
+  await cards.nth(1).getByRole("button", { name: "Retirer" }).click();
+  await expect(cards).toHaveCount(2);
+
+  const line1 = cards.nth(0);
+  const line2 = cards.nth(1);
+  await labelled(line1, "Classe de ressource", "select").selectOption("Programmation");
+  await line1.getByLabel("Compétences requises — ligne 1").selectOption(["C-SCADA"]);
+  await labelled(line1, "Ressource proposée", "select").selectOption("R-ALICE");
+  await labelled(line1, "Description spécifique", "textarea").fill("SCADA en début de fenêtre");
+
+  await labelled(line2, "Classe de ressource", "select").selectOption("Programmation");
+  await line2.getByLabel("Compétences requises — ligne 2").selectOption(["C-PLC"]);
+  await labelled(line2, "Début", "input").fill(d2);
+  await labelled(line2, "Fin", "input").fill(d2);
+  await labelled(line2, "Ressource proposée", "select").selectOption("R-BOB");
+  await labelled(line2, "Confirmation", "select").selectOption("Tentative");
+  await labelled(line2, "Description spécifique", "textarea").fill("PLC en deuxième journée");
+
+  await editor.getByRole("button", { name: "Créer le brouillon" }).click();
+  const notice = projectManager.page.locator(".demand-notice");
+  await expect(notice).toContainText("créée en brouillon");
+  const number = demandNumberFrom(await notice.textContent());
+
+  const detailResponse = await projectManager.page.request.get(
+    `/api/v1/demands/${encodeURIComponent(number)}`,
+  );
+  expect(detailResponse.ok()).toBeTruthy();
+  const detail = await detailResponse.json() as {
+    line_mode: boolean;
+    lines: Array<{
+      line_id: string;
+      active: boolean;
+      required_resource_class: string | null;
+      required_competency_ids: string[];
+      estimated_hours: number | null;
+      estimated_hours_source: string | null;
+      proposed_resource_id: string | null;
+      confirmation: string;
+    }>;
+  };
+  const activeLines = detail.lines.filter((line) => line.active);
+  expect(detail.line_mode).toBeTruthy();
+  expect(activeLines).toHaveLength(2);
+  expect(activeLines.map((line) => line.required_resource_class)).toEqual([
+    "Programmation",
+    "Programmation",
+  ]);
+  expect(activeLines.map((line) => line.required_competency_ids)).toEqual([
+    ["C-SCADA"],
+    ["C-PLC"],
+  ]);
+  expect(activeLines.map((line) => line.estimated_hours)).toEqual([8, 8]);
+  expect(activeLines.map((line) => line.estimated_hours_source)).toEqual([
+    "DEFAULT_8H",
+    "DEFAULT_8H",
+  ]);
+  expect(activeLines.map((line) => line.proposed_resource_id)).toEqual([
+    "R-ALICE",
+    "R-BOB",
+  ]);
+  expect(activeLines.map((line) => line.confirmation)).toEqual([
+    "Confirmée",
+    "Tentative",
+  ]);
+
+  await expect(editor.locator(".request-line-card")).toHaveCount(2);
+  await expect(labelled(editor.locator(".request-line-card").nth(0), "Heures", "input")).toHaveValue("");
+
+  await workflowSelect(projectManager.page, number);
+  await projectManager.page.getByRole("button", { name: "Soumettre", exact: true }).click();
+  await expect(projectManager.page.locator(".demand-notice")).toContainText("soumise pour approbation");
+  await closeContext(projectManager.context);
+
+  const coordinator = await openAs(browser, "COORDINATOR");
+  await navigateMain(coordinator.page, "Demandes");
+  await workflowSelect(coordinator.page, number);
+  await coordinator.page.getByLabel(/Commentaire d’approbation/).fill("Approbation multi-lignes #288");
+  await coordinator.page.getByRole("button", { name: "Approuver", exact: true }).click();
+  await expect(coordinator.page.locator(".demand-notice")).toContainText("Demande approuvée");
+
+  const segmentsResponse = await coordinator.page.request.get("/api/v1/segments?include_cancelled=false");
+  expect(segmentsResponse.ok()).toBeTruthy();
+  const segments = await segmentsResponse.json() as Array<{
+    demand_number: string | null;
+    resource_name: string | null;
+    planned_hours: number;
+  }>;
+  const materialized = segments.filter((row) => row.demand_number === number);
+  expect(materialized).toHaveLength(2);
+  expect(materialized.map((row) => row.planned_hours).sort((a, b) => a - b)).toEqual([8, 8]);
+  expect(new Set(materialized.map((row) => row.resource_name))).toEqual(new Set(["Alice", "Bob"]));
+
+  await closeContext(coordinator.context);
+});
+
+
 test("development identity selector switches real local users and technician schedules", async ({ browser }) => {
   const context = await browser.newContext({
     baseURL: BASE_URL,
