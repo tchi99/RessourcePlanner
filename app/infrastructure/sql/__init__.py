@@ -10,6 +10,7 @@ from .active_days_query_repository import (
 )
 from .auth_session_repository import LoginTransactionRecord, SqlAuthSessionRepository
 from .base import Base, NAMING_CONVENTION, new_id
+from .business_contact_models import BusinessContact
 from .command_adapters import (
     SqlAllocationCommandAdapter,
     SqlApprovedDemandSyncAdapter,
@@ -92,6 +93,7 @@ __all__ = [
     "AuthLoginTransaction",
     "AuthSession",
     "Base",
+    "BusinessContact",
     "CommandIdempotencyReceipt",
     "Competency",
     "CommunicationBatchRow",
