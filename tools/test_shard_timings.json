@@ -1,0 +1,872 @@
+{
+  "source_run": 637,
+  "source_commit": "5e68639229fdca5b1f159779d26b89d28e7d7e76",
+  "total_seconds": 91.126132,
+  "total_tests": 1011,
+  "modules": {
+    "test_acumatica_identity_schema": {
+      "seconds": 0.062796,
+      "tests": 3
+    },
+    "test_acumatica_project_source": {
+      "seconds": 0.0104,
+      "tests": 8
+    },
+    "test_allocation_rules": {
+      "seconds": 0.000989,
+      "tests": 17
+    },
+    "test_allocation_service": {
+      "seconds": 0.000454,
+      "tests": 5
+    },
+    "test_application_command_dtos": {
+      "seconds": 0.017547,
+      "tests": 10
+    },
+    "test_application_facade": {
+      "seconds": 0.00457,
+      "tests": 4
+    },
+    "test_application_facade_http_seam": {
+      "seconds": 0.002597,
+      "tests": 3
+    },
+    "test_application_http_seam": {
+      "seconds": 0.002082,
+      "tests": 3
+    },
+    "test_availability_rules": {
+      "seconds": 0.000457,
+      "tests": 12
+    },
+    "test_business_contact_admin_api": {
+      "seconds": 1.020077,
+      "tests": 2
+    },
+    "test_calendar_rules": {
+      "seconds": 0.000396,
+      "tests": 8
+    },
+    "test_capacity_projection": {
+      "seconds": 0.000361,
+      "tests": 6
+    },
+    "test_command_idempotency": {
+      "seconds": 0.000316,
+      "tests": 4
+    },
+    "test_command_port_architecture": {
+      "seconds": 0.015171,
+      "tests": 7
+    },
+    "test_communication_audit": {
+      "seconds": 0.000365,
+      "tests": 6
+    },
+    "test_communication_contact_policy": {
+      "seconds": 0.00015,
+      "tests": 3
+    },
+    "test_communication_obsolescence": {
+      "seconds": 0.000248,
+      "tests": 5
+    },
+    "test_communication_planning": {
+      "seconds": 0.001978,
+      "tests": 13
+    },
+    "test_communication_review": {
+      "seconds": 0.000309,
+      "tests": 4
+    },
+    "test_communication_schema_migrations": {
+      "seconds": 0.00075,
+      "tests": 8
+    },
+    "test_communication_source": {
+      "seconds": 0.007552,
+      "tests": 6
+    },
+    "test_communication_transport": {
+      "seconds": 0.000344,
+      "tests": 6
+    },
+    "test_competency_catalog_api": {
+      "seconds": 1.062362,
+      "tests": 2
+    },
+    "test_confirmation_inheritance": {
+      "seconds": 3.289382,
+      "tests": 6
+    },
+    "test_contact_directory": {
+      "seconds": 0.00041,
+      "tests": 5
+    },
+    "test_contextual_planning_scope": {
+      "seconds": 2.743928,
+      "tests": 4
+    },
+    "test_contextual_read_scope": {
+      "seconds": 2.998949,
+      "tests": 6
+    },
+    "test_cutover_architecture": {
+      "seconds": 0.002003,
+      "tests": 3
+    },
+    "test_cutover_cli": {
+      "seconds": 1.375908,
+      "tests": 5
+    },
+    "test_cutover_inventory": {
+      "seconds": 1.342086,
+      "tests": 6
+    },
+    "test_cutover_policy": {
+      "seconds": 0.008846,
+      "tests": 4
+    },
+    "test_cutover_preflight": {
+      "seconds": 0.000791,
+      "tests": 4
+    },
+    "test_demand_creation_service": {
+      "seconds": 0.000837,
+      "tests": 6
+    },
+    "test_demand_editor_ui": {
+      "seconds": 0.001144,
+      "tests": 4
+    },
+    "test_demand_history": {
+      "seconds": 0.067917,
+      "tests": 2
+    },
+    "test_demand_history_frontend_contract": {
+      "seconds": 0.000391,
+      "tests": 3
+    },
+    "test_demand_periods": {
+      "seconds": 0.000769,
+      "tests": 6
+    },
+    "test_demand_service": {
+      "seconds": 0.001867,
+      "tests": 14
+    },
+    "test_demand_work_package_link": {
+      "seconds": 0.19777,
+      "tests": 6
+    },
+    "test_demo_seed": {
+      "seconds": 0.134536,
+      "tests": 2
+    },
+    "test_dev_user_switcher": {
+      "seconds": 4.015033,
+      "tests": 7
+    },
+    "test_docker_deployment_contract": {
+      "seconds": 0.000742,
+      "tests": 5
+    },
+    "test_effort_identity_migrations": {
+      "seconds": 0.007687,
+      "tests": 9
+    },
+    "test_emergency_approval_override": {
+      "seconds": 1.160247,
+      "tests": 7
+    },
+    "test_emergency_override_frontend_contract": {
+      "seconds": 0.000645,
+      "tests": 4
+    },
+    "test_emergency_override_period_overlap": {
+      "seconds": 0.000104,
+      "tests": 1
+    },
+    "test_emergency_priority_alias": {
+      "seconds": 0.000109,
+      "tests": 1
+    },
+    "test_employee_sync": {
+      "seconds": 0.140236,
+      "tests": 5
+    },
+    "test_erp_excel_project_source": {
+      "seconds": 0.030317,
+      "tests": 4
+    },
+    "test_erp_project_importer": {
+      "seconds": 0.168364,
+      "tests": 1
+    },
+    "test_erp_task_catalog_file_source": {
+      "seconds": 0.027053,
+      "tests": 4
+    },
+    "test_estimated_active_days": {
+      "seconds": 0.169716,
+      "tests": 9
+    },
+    "test_excel_command_adapters": {
+      "seconds": 0.000736,
+      "tests": 4
+    },
+    "test_excel_cutover_extraction": {
+      "seconds": 0.011351,
+      "tests": 4
+    },
+    "test_explicit_page_boundaries": {
+      "seconds": 0.010346,
+      "tests": 4
+    },
+    "test_frontend_communications_contract": {
+      "seconds": 0.000528,
+      "tests": 4
+    },
+    "test_frontend_manual_overallocation_contract": {
+      "seconds": 0.000577,
+      "tests": 4
+    },
+    "test_frontend_planning_history_contract": {
+      "seconds": 0.000539,
+      "tests": 4
+    },
+    "test_identity_provisioning": {
+      "seconds": 0.098727,
+      "tests": 4
+    },
+    "test_identity_repository": {
+      "seconds": 0.121445,
+      "tests": 4
+    },
+    "test_identity_resource_link": {
+      "seconds": 0.116152,
+      "tests": 4
+    },
+    "test_load_profile_plan_delta": {
+      "seconds": 0.052017,
+      "tests": 1
+    },
+    "test_load_profiles": {
+      "seconds": 0.121279,
+      "tests": 9
+    },
+    "test_location_projection": {
+      "seconds": 0.000372,
+      "tests": 8
+    },
+    "test_locked_allocation_persistence": {
+      "seconds": 0.000615,
+      "tests": 4
+    },
+    "test_m365_graph_transport": {
+      "seconds": 0.003635,
+      "tests": 5
+    },
+    "test_m365_runtime": {
+      "seconds": 0.000401,
+      "tests": 3
+    },
+    "test_manual_overallocation_policy": {
+      "seconds": 2.023217,
+      "tests": 4
+    },
+    "test_materialized_operational_contact_projection": {
+      "seconds": 1.192299,
+      "tests": 4
+    },
+    "test_medium_term_capacity": {
+      "seconds": 0.000743,
+      "tests": 7
+    },
+    "test_medium_term_capacity_architecture": {
+      "seconds": 0.000593,
+      "tests": 2
+    },
+    "test_medium_term_capacity_read_model": {
+      "seconds": 0.122668,
+      "tests": 2
+    },
+    "test_medium_term_unlinked_segments_api": {
+      "seconds": 1.132209,
+      "tests": 2
+    },
+    "test_nicegui_global_mutations": {
+      "seconds": 0.013411,
+      "tests": 5
+    },
+    "test_oidc_client": {
+      "seconds": 0.171243,
+      "tests": 4
+    },
+    "test_operational_contact_resolution": {
+      "seconds": 0.259095,
+      "tests": 8
+    },
+    "test_operational_planning_cell_action": {
+      "seconds": 0.000119,
+      "tests": 2
+    },
+    "test_operational_planning_cell_context": {
+      "seconds": 0.000749,
+      "tests": 5
+    },
+    "test_operational_planning_drag_drop": {
+      "seconds": 0.00034,
+      "tests": 3
+    },
+    "test_operational_planning_drop_handler": {
+      "seconds": 0.000654,
+      "tests": 5
+    },
+    "test_operational_planning_filters_groups": {
+      "seconds": 0.000812,
+      "tests": 7
+    },
+    "test_operational_planning_grid": {
+      "seconds": 0.000495,
+      "tests": 2
+    },
+    "test_operational_planning_orchestrator": {
+      "seconds": 0.000939,
+      "tests": 4
+    },
+    "test_operational_planning_page": {
+      "seconds": 0.001279,
+      "tests": 11
+    },
+    "test_operational_planning_queue_api": {
+      "seconds": 0.947506,
+      "tests": 2
+    },
+    "test_operational_planning_resource_row": {
+      "seconds": 0.000441,
+      "tests": 3
+    },
+    "test_operational_planning_runtime": {
+      "seconds": 0.260744,
+      "tests": 4
+    },
+    "test_operational_planning_runtime_syntax": {
+      "seconds": 0.005165,
+      "tests": 1
+    },
+    "test_operational_planning_sorting": {
+      "seconds": 0.000642,
+      "tests": 6
+    },
+    "test_operational_planning_sorting_syntax": {
+      "seconds": 0.007695,
+      "tests": 1
+    },
+    "test_operational_planning_work_sections": {
+      "seconds": 0.00062,
+      "tests": 4
+    },
+    "test_operational_renderer_architecture": {
+      "seconds": 0.000448,
+      "tests": 3
+    },
+    "test_outlook_drafts": {
+      "seconds": 0.006033,
+      "tests": 10
+    },
+    "test_ownership_http_contract": {
+      "seconds": 0.000235,
+      "tests": 2
+    },
+    "test_ownership_projections": {
+      "seconds": 1.106319,
+      "tests": 5
+    },
+    "test_pending_demand_loads": {
+      "seconds": 0.20878,
+      "tests": 4
+    },
+    "test_performance_diagnostics": {
+      "seconds": 0.004037,
+      "tests": 4
+    },
+    "test_plan_comparison": {
+      "seconds": 0.000755,
+      "tests": 8
+    },
+    "test_plan_delta_preview": {
+      "seconds": 0.528129,
+      "tests": 5
+    },
+    "test_plan_diagnostics": {
+      "seconds": 0.00042,
+      "tests": 5
+    },
+    "test_planning_audit": {
+      "seconds": 0.126148,
+      "tests": 3
+    },
+    "test_planning_capacity_grid_api": {
+      "seconds": 0.912557,
+      "tests": 2
+    },
+    "test_planning_drag_drop_api": {
+      "seconds": 1.454762,
+      "tests": 3
+    },
+    "test_planning_engine": {
+      "seconds": 0.001588,
+      "tests": 13
+    },
+    "test_planning_engine_benchmark": {
+      "seconds": 0.036233,
+      "tests": 2
+    },
+    "test_planning_history_http": {
+      "seconds": 0.294609,
+      "tests": 2
+    },
+    "test_planning_projection": {
+      "seconds": 0.001364,
+      "tests": 5
+    },
+    "test_planning_read_repository": {
+      "seconds": 0.001656,
+      "tests": 7
+    },
+    "test_planning_service": {
+      "seconds": 0.001546,
+      "tests": 6
+    },
+    "test_planning_snapshot": {
+      "seconds": 0.000152,
+      "tests": 2
+    },
+    "test_project_active_read_model": {
+      "seconds": 0.429307,
+      "tests": 1
+    },
+    "test_project_sync": {
+      "seconds": 0.16833,
+      "tests": 5
+    },
+    "test_project_sync_manual_export": {
+      "seconds": 0.056288,
+      "tests": 2
+    },
+    "test_pure_validation": {
+      "seconds": 0.002013,
+      "tests": 4
+    },
+    "test_quick_shift_author_http": {
+      "seconds": 0.840192,
+      "tests": 1
+    },
+    "test_quick_shift_author_projection": {
+      "seconds": 0.112276,
+      "tests": 2
+    },
+    "test_quick_shift_confirmation_ui": {
+      "seconds": 0.000491,
+      "tests": 3
+    },
+    "test_quick_shift_service": {
+      "seconds": 0.000473,
+      "tests": 5
+    },
+    "test_react_auth_context_contract": {
+      "seconds": 0.001082,
+      "tests": 5
+    },
+    "test_react_business_contacts_contract": {
+      "seconds": 0.00109,
+      "tests": 6
+    },
+    "test_react_competency_catalog_contract": {
+      "seconds": 0.0009,
+      "tests": 3
+    },
+    "test_react_contextual_planning_contract": {
+      "seconds": 0.000927,
+      "tests": 5
+    },
+    "test_react_demand_periods_contract": {
+      "seconds": 0.000794,
+      "tests": 4
+    },
+    "test_react_demand_workflow_contract": {
+      "seconds": 0.000573,
+      "tests": 4
+    },
+    "test_react_demands_contract": {
+      "seconds": 0.000793,
+      "tests": 4
+    },
+    "test_react_estimated_active_days_contract": {
+      "seconds": 0.000559,
+      "tests": 3
+    },
+    "test_react_load_profiles_contract": {
+      "seconds": 0.000413,
+      "tests": 3
+    },
+    "test_react_medium_term_contract": {
+      "seconds": 0.00097,
+      "tests": 6
+    },
+    "test_react_medium_term_unlinked_segments_contract": {
+      "seconds": 0.000481,
+      "tests": 3
+    },
+    "test_react_operational_planning_queue_contract": {
+      "seconds": 0.00061,
+      "tests": 3
+    },
+    "test_react_plan_delta_contract": {
+      "seconds": 0.000467,
+      "tests": 3
+    },
+    "test_react_planning_drag_drop_contract": {
+      "seconds": 0.001058,
+      "tests": 5
+    },
+    "test_react_planning_nicegui_parity_contract": {
+      "seconds": 0.00147,
+      "tests": 6
+    },
+    "test_react_projects_contract": {
+      "seconds": 0.000774,
+      "tests": 4
+    },
+    "test_react_quick_shift_contract": {
+      "seconds": 0.000522,
+      "tests": 3
+    },
+    "test_react_request_lines_contract": {
+      "seconds": 0.000715,
+      "tests": 4
+    },
+    "test_react_resource_admin_contract": {
+      "seconds": 0.000812,
+      "tests": 4
+    },
+    "test_react_segments_contract": {
+      "seconds": 0.001023,
+      "tests": 5
+    },
+    "test_react_user_admin_contract": {
+      "seconds": 0.000451,
+      "tests": 3
+    },
+    "test_relative_import_integrity": {
+      "seconds": 0.578385,
+      "tests": 1
+    },
+    "test_repository_ports": {
+      "seconds": 0.018897,
+      "tests": 9
+    },
+    "test_request_line_materialization": {
+      "seconds": 3.079949,
+      "tests": 4
+    },
+    "test_request_line_periods": {
+      "seconds": 2.439503,
+      "tests": 4
+    },
+    "test_resource_management_extraction": {
+      "seconds": 0.002782,
+      "tests": 2
+    },
+    "test_resource_profile_migrations": {
+      "seconds": 0.001186,
+      "tests": 7
+    },
+    "test_runtime_composition": {
+      "seconds": 0.002072,
+      "tests": 9
+    },
+    "test_runtime_readiness": {
+      "seconds": 2.458815,
+      "tests": 5
+    },
+    "test_schema_migrations": {
+      "seconds": 0.001791,
+      "tests": 8
+    },
+    "test_security_hardening": {
+      "seconds": 1.710782,
+      "tests": 3
+    },
+    "test_security_policy": {
+      "seconds": 0.000302,
+      "tests": 4
+    },
+    "test_segment_editor_ui": {
+      "seconds": 0.000707,
+      "tests": 5
+    },
+    "test_segment_service": {
+      "seconds": 0.001058,
+      "tests": 7
+    },
+    "test_segments_architecture": {
+      "seconds": 0.000875,
+      "tests": 5
+    },
+    "test_server_acumatica_routes": {
+      "seconds": 2.453098,
+      "tests": 5
+    },
+    "test_server_acumatica_runtime": {
+      "seconds": 0.001205,
+      "tests": 5
+    },
+    "test_server_architecture": {
+      "seconds": 0.047509,
+      "tests": 4
+    },
+    "test_server_auth": {
+      "seconds": 2.101606,
+      "tests": 6
+    },
+    "test_server_auto_provisioning_config": {
+      "seconds": 0.000235,
+      "tests": 2
+    },
+    "test_server_command_routes": {
+      "seconds": 4.019209,
+      "tests": 9
+    },
+    "test_server_communications": {
+      "seconds": 1.784929,
+      "tests": 2
+    },
+    "test_server_demand_history": {
+      "seconds": 1.035067,
+      "tests": 2
+    },
+    "test_server_demand_period_routes": {
+      "seconds": 2.542292,
+      "tests": 3
+    },
+    "test_server_dependency_profiles": {
+      "seconds": 0.000651,
+      "tests": 5
+    },
+    "test_server_embedding": {
+      "seconds": 0.421412,
+      "tests": 9
+    },
+    "test_server_foundation": {
+      "seconds": 1.586945,
+      "tests": 6
+    },
+    "test_server_idempotency": {
+      "seconds": 1.830315,
+      "tests": 4
+    },
+    "test_server_launcher_contract": {
+      "seconds": 0.000326,
+      "tests": 3
+    },
+    "test_server_oidc": {
+      "seconds": 2.015551,
+      "tests": 6
+    },
+    "test_server_openapi_contract": {
+      "seconds": 0.000745,
+      "tests": 6
+    },
+    "test_server_performance": {
+      "seconds": 0.203195,
+      "tests": 3
+    },
+    "test_server_read_routes": {
+      "seconds": 2.409258,
+      "tests": 4
+    },
+    "test_server_readiness_tool": {
+      "seconds": 0.833281,
+      "tests": 4
+    },
+    "test_server_resource_admin_routes": {
+      "seconds": 0.585541,
+      "tests": 1
+    },
+    "test_server_runtime": {
+      "seconds": 0.002486,
+      "tests": 16
+    },
+    "test_server_technician_schedule": {
+      "seconds": 1.36872,
+      "tests": 3
+    },
+    "test_server_user_admin_routes": {
+      "seconds": 1.517325,
+      "tests": 4
+    },
+    "test_server_work_package_commands": {
+      "seconds": 2.470479,
+      "tests": 5
+    },
+    "test_server_work_package_routes": {
+      "seconds": 0.865065,
+      "tests": 2
+    },
+    "test_shadow_equivalence": {
+      "seconds": 0.000724,
+      "tests": 4
+    },
+    "test_shift_confirmation_ui": {
+      "seconds": 0.000501,
+      "tests": 5
+    },
+    "test_sql_command_adapters": {
+      "seconds": 0.414883,
+      "tests": 8
+    },
+    "test_sql_communication_transport": {
+      "seconds": 0.164567,
+      "tests": 3
+    },
+    "test_sql_communications": {
+      "seconds": 0.174728,
+      "tests": 4
+    },
+    "test_sql_cutover_importer": {
+      "seconds": 0.219878,
+      "tests": 6
+    },
+    "test_sql_cutover_importer_guards": {
+      "seconds": 0.071357,
+      "tests": 2
+    },
+    "test_sql_demand_period_repository": {
+      "seconds": 0.213349,
+      "tests": 4
+    },
+    "test_sql_migrations": {
+      "seconds": 5.712271,
+      "tests": 8
+    },
+    "test_sql_period_approval_sync": {
+      "seconds": 0.210287,
+      "tests": 4
+    },
+    "test_sql_planning_repository": {
+      "seconds": 0.113068,
+      "tests": 3
+    },
+    "test_sql_query_repository": {
+      "seconds": 0.307134,
+      "tests": 5
+    },
+    "test_sql_repositories": {
+      "seconds": 0.591424,
+      "tests": 6
+    },
+    "test_sql_schema": {
+      "seconds": 0.22854,
+      "tests": 8
+    },
+    "test_sqlserver_readiness": {
+      "seconds": 0.328806,
+      "tests": 5
+    },
+    "test_task_catalog_api": {
+      "seconds": 0.479712,
+      "tests": 1
+    },
+    "test_task_catalog_sync": {
+      "seconds": 0.106691,
+      "tests": 3
+    },
+    "test_technician_schedule": {
+      "seconds": 0.000562,
+      "tests": 5
+    },
+    "test_technician_schedule_frontend_contract": {
+      "seconds": 0.000478,
+      "tests": 3
+    },
+    "test_thunderbird_bridge": {
+      "seconds": 0.00646,
+      "tests": 5
+    },
+    "test_thunderbird_extension_diagnostics": {
+      "seconds": 0.003112,
+      "tests": 2
+    },
+    "test_thunderbird_native_diagnostics": {
+      "seconds": 0.003454,
+      "tests": 5
+    },
+    "test_thunderbird_registry_install": {
+      "seconds": 0.019154,
+      "tests": 4
+    },
+    "test_thunderbird_setup_fix": {
+      "seconds": 0.002105,
+      "tests": 6
+    },
+    "test_thunderbird_shared_state": {
+      "seconds": 0.003754,
+      "tests": 2
+    },
+    "test_thunderbird_source_host": {
+      "seconds": 0.001336,
+      "tests": 2
+    },
+    "test_ui_context": {
+      "seconds": 0.000211,
+      "tests": 4
+    },
+    "test_ui_mutation_guard": {
+      "seconds": 0.001225,
+      "tests": 10
+    },
+    "test_user_view_context": {
+      "seconds": 0.896371,
+      "tests": 5
+    },
+    "test_v1_web_parity_contract": {
+      "seconds": 0.000853,
+      "tests": 4
+    },
+    "test_v171_adapter_extraction": {
+      "seconds": 0.656825,
+      "tests": 6
+    },
+    "test_v2_local_acceptance": {
+      "seconds": 4.371323,
+      "tests": 1
+    },
+    "test_v2_performance_baseline": {
+      "seconds": 0.001372,
+      "tests": 7
+    },
+    "test_web_installation_contract": {
+      "seconds": 0.000564,
+      "tests": 3
+    },
+    "test_web_launcher_contract": {
+      "seconds": 0.000593,
+      "tests": 4
+    },
+    "test_web_runtime": {
+      "seconds": 0.959266,
+      "tests": 4
+    },
+    "test_web_shift_edit": {
+      "seconds": 1.29343,
+      "tests": 2
+    },
+    "test_workload_projection": {
+      "seconds": 0.078134,
+      "tests": 4
+    }
+  }
+}
