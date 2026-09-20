@@ -87,12 +87,19 @@ class SqlProjectSyncRepository(ProjectSyncRepositoryPort):
             "number": number,
             "name": name,
             "client": _optional_text(project.client),
-            "project_manager_external_id": _optional_text(
-                project.project_manager_external_id
-            ),
-            "project_manager_name": _optional_text(project.project_manager_name),
             "status": _text(project.status) or "active",
         }
+        incoming_manager_external_id = _optional_text(
+            project.project_manager_external_id
+        )
+        incoming_manager_name = _optional_text(project.project_manager_name)
+        # Current export/source contracts cannot distinguish omitted from explicit
+        # clear. Fail safe: an omitted manager field must not erase an existing
+        # stable mapping. A future Acumatica contract may add explicit clear semantics.
+        if incoming_manager_external_id is not None:
+            values["project_manager_external_id"] = incoming_manager_external_id
+        if incoming_manager_name is not None:
+            values["project_manager_name"] = incoming_manager_name
         if external_id:
             # Manual XLSX exports do not expose the Acumatica REST row id. In that
             # case preserve any existing binding; a later live ERP sync can attach it.
