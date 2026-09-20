@@ -49,10 +49,44 @@ def _effective_periods(
     )
 
 
+def _line_emergency_windows(
+    demand: DemandReadModel,
+    periods: Sequence[DemandPeriodReadModel],
+) -> tuple[tuple[date, date], ...] | None:
+    periods_by_line: dict[str, list[DemandPeriodReadModel]] = {}
+    for period in periods:
+        if period.request_line_id:
+            periods_by_line.setdefault(period.request_line_id, []).append(period)
+
+    windows: list[tuple[date, date]] = []
+    for line in demand.lines:
+        if not line.active:
+            continue
+        line_periods = periods_by_line.get(line.line_id, [])
+        if line_periods:
+            effective = _effective_periods(line_periods)
+            if not effective:
+                return None
+            windows.extend((row.start_date, row.end_date) for row in effective)
+            continue
+        if line.desired_start is None:
+            return None
+        windows.append((line.desired_start, line.desired_end or line.desired_start))
+    return tuple(windows) if windows else None
+
+
 def emergency_window(
     demand: DemandReadModel,
     periods: Sequence[DemandPeriodReadModel] = (),
 ) -> tuple[date, date] | None:
+    if demand.line_mode:
+        windows = _line_emergency_windows(demand, periods)
+        if not windows:
+            return None
+        return (
+            min(start for start, _end in windows),
+            max(end for _start, end in windows),
+        )
     if periods:
         effective = _effective_periods(periods)
         if not effective:
@@ -80,6 +114,17 @@ def emergency_override_eligibility(
         return False, "NOT_URGENT"
 
     week_start, week_end = current_week_window(today)
+    if demand.line_mode:
+        windows = _line_emergency_windows(demand, periods)
+        if not windows:
+            return False, "WINDOW_INCOMPLETE"
+        if not any(
+            line_end >= week_start and line_start <= week_end
+            for line_start, line_end in windows
+        ):
+            return False, "OUTSIDE_CURRENT_WEEK"
+        return True, None
+
     if periods:
         effective = _effective_periods(periods)
         if not effective:
@@ -143,12 +188,6 @@ class EmergencyDemandService(DemandService):
             )
 
         existing = self._demand_or_not_found(number)
-        if existing.line_mode:
-            raise ApplicationConflictError(
-                "La planification urgente des demandes multi-lignes sera activée avec #288E.",
-                code="demand_line_emergency_unavailable",
-                context={"demand_number": number},
-            )
         periods = self._emergency_periods(number)
         eligible, eligibility_reason = emergency_override_eligibility(
             existing,
