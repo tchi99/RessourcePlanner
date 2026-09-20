@@ -15,6 +15,7 @@ from app.application.communications import (
 )
 from app.infrastructure.sql import (
     Base,
+    CommunicationContact,
     Project,
     Resource,
     ResourceRequirement,
@@ -83,6 +84,32 @@ class SqlCommunicationWorkflowTests(unittest.TestCase):
 
     def _service(self, session) -> CommunicationService:
         return CommunicationService(SqlCommunicationRepository(session))
+
+    def test_sync_recovers_when_another_session_wins_contact_insert_race(self) -> None:
+        recipient_id = "resource:R1"
+        with transactional_session(self.factory) as winner:
+            winner.add(
+                CommunicationContact(
+                    recipient_id=recipient_id,
+                    audience="technician",
+                    display_name="Technicien concurrent",
+                    email="winner" + chr(64) + "example.test",
+                    active=True,
+                )
+            )
+
+        with transactional_session(self.factory) as session:
+            repository = SqlCommunicationRepository(session)
+            row = repository._insert_synchronized_contact(
+                recipient_id=recipient_id,
+                audience="technician",
+                display_name="Technicien test",
+                email="tech" + chr(64) + "example.test",
+                active=True,
+            )
+
+            self.assertEqual(row.recipient_id, recipient_id)
+            self.assertEqual(row.email, "winner" + chr(64) + "example.test")
 
     def test_prepare_approve_communicate_then_build_delta(self) -> None:
         with transactional_session(self.factory) as session:
