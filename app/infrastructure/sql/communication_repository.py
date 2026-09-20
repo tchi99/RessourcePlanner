@@ -5,6 +5,7 @@ from decimal import Decimal
 from typing import Sequence
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from ...application.communications import (
@@ -63,6 +64,37 @@ class SqlCommunicationRepository(CommunicationRepositoryPort):
             active=bool(row.active),
         )
 
+    def _insert_synchronized_contact(
+        self,
+        *,
+        recipient_id: str,
+        audience: str,
+        display_name: str,
+        email: str | None,
+        active: bool,
+    ) -> CommunicationContact:
+        candidate = CommunicationContact(
+            recipient_id=recipient_id,
+            audience=audience,
+            display_name=display_name,
+            email=email,
+            active=active,
+        )
+        try:
+            with self._session.begin_nested():
+                self._session.add(candidate)
+                self._session.flush([candidate])
+            return candidate
+        except IntegrityError:
+            row = self._session.scalar(
+                select(CommunicationContact).where(
+                    CommunicationContact.recipient_id == recipient_id
+                )
+            )
+            if row is None:
+                raise
+            return row
+
     def synchronize_known_contacts(self) -> None:
         existing = {
             row.recipient_id: row
@@ -73,14 +105,13 @@ class SqlCommunicationRepository(CommunicationRepositoryPort):
             recipient_id = _technician_id(resource.id)
             row = existing.get(recipient_id)
             if row is None:
-                row = CommunicationContact(
+                row = self._insert_synchronized_contact(
                     recipient_id=recipient_id,
                     audience="technician",
                     display_name=resource.name,
                     email=_optional_text(resource.email),
                     active=bool(resource.active),
                 )
-                self._session.add(row)
                 existing[recipient_id] = row
             else:
                 row.display_name = resource.name
@@ -95,15 +126,14 @@ class SqlCommunicationRepository(CommunicationRepositoryPort):
             recipient_id = _manager_id(external_id)
             row = existing.get(recipient_id)
             if row is None:
-                self._session.add(
-                    CommunicationContact(
-                        recipient_id=recipient_id,
-                        audience="project_manager",
-                        display_name=display_name,
-                        email=None,
-                        active=True,
-                    )
+                row = self._insert_synchronized_contact(
+                    recipient_id=recipient_id,
+                    audience="project_manager",
+                    display_name=display_name,
+                    email=None,
+                    active=True,
                 )
+                existing[recipient_id] = row
             else:
                 row.display_name = display_name
         self._session.flush()
