@@ -206,6 +206,10 @@ class RequestLineMaterializationHttpTests(unittest.TestCase):
                         ["EFF-1", "EFF-2"],
                     )
                     self.assertEqual(
+                        [row.required_resource_class for row in rows],
+                        ["Programmation", "Programmation"],
+                    )
+                    self.assertEqual(
                         [row.assigned_resource_id for row in rows],
                         ["R1", "R2"],
                     )
