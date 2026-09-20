@@ -171,7 +171,7 @@ class ApplicationFacadeTests(unittest.TestCase):
         facade, demands, *_ = facade_fixture()
 
         created = facade.create_demand(
-            DemandCreateCommand(project_number="P-1", desired_start=DAY, submit=True)
+            DemandCreateCommand(project_number="P-1", desired_start=DAY, estimated_hours=8, submit=True)
         )
         updated = facade.update_demand(
             DemandUpdateCommand(number="DMO-42", description="Nouvelle portée")
