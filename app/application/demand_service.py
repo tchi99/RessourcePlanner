@@ -419,14 +419,29 @@ class DemandService:
                         context={"line_id": line.line_id},
                     )
         submit_updates: dict[str, Any] = {"Statut": "Soumise"}
+        has_period_effort = False
         if (
             existing is not None
             and not existing.line_mode
             and existing.estimated_hours is None
             and existing.estimated_days is None
+            and self._periods is not None
+        ):
+            period_rows = call_application_port(
+                lambda: self._periods.list_for_demand(number),
+                code_prefix="demand_submit_periods",
+                context={"demand_number": number},
+            )
+            has_period_effort = bool(period_rows)
+        if (
+            existing is not None
+            and not existing.line_mode
+            and existing.estimated_hours is None
+            and existing.estimated_days is None
+            and not has_period_effort
         ):
             raise ApplicationValidationError(
-                "Une demande soumise doit préciser des heures ou un nombre de jours.",
+                "Une demande soumise doit préciser des heures, un nombre de jours ou des périodes détaillées.",
                 code="demand_effort_required",
                 context={"demand_number": number},
             )
