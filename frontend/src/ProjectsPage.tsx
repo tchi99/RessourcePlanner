@@ -6,11 +6,20 @@ import ViewScopeSelector from "./ViewScopeSelector";
 import {
   AcumaticaIntegrationStatus,
   ApiError,
+  BusinessContactReadModel,
+  ContactLinkReadModel,
   ProjectReadModel,
+  TaskCatalogItemReadModel,
   getAcumaticaIntegrationStatus,
+  getBusinessContacts,
+  getProjectBusinessContacts,
   getProjects,
+  getTaskCatalog,
+  setProjectManagerContact,
+  setTaskBusinessContacts,
   syncAcumaticaProjects,
 } from "./api";
+import { ContactSelect } from "./BusinessContactUi";
 
 function normalize(value: string | null | undefined) {
   return (value ?? "").trim().toLocaleLowerCase("fr-CA");
@@ -31,7 +40,13 @@ export default function ProjectsPage() {
   const { can } = useAuth();
   const { scope, loading: scopeLoading } = useViewScope();
   const canSyncProjects = can("sync_projects");
+  const canManageContacts = can("manage_resources");
   const [projects, setProjects] = useState<ProjectReadModel[]>([]);
+  const [contacts, setContacts] = useState<BusinessContactReadModel[]>([]);
+  const [selectedProjectNumber, setSelectedProjectNumber] = useState<string | null>(null);
+  const [projectContactLink, setProjectContactLink] = useState<ContactLinkReadModel | null>(null);
+  const [projectTasks, setProjectTasks] = useState<TaskCatalogItemReadModel[]>([]);
+  const [contactPending, setContactPending] = useState(false);
   const [integration, setIntegration] = useState<AcumaticaIntegrationStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -52,10 +67,12 @@ export default function ProjectsPage() {
     Promise.all([
       getProjects(false, controller.signal, scope),
       getAcumaticaIntegrationStatus(controller.signal),
+      getBusinessContacts(false, controller.signal),
     ])
-      .then(([projectRows, status]) => {
+      .then(([projectRows, status, contactRows]) => {
         setProjects(projectRows);
         setIntegration(status);
+        setContacts(contactRows);
       })
       .catch((reason: unknown) => {
         if (reason instanceof DOMException && reason.name === "AbortError") return;
@@ -66,6 +83,28 @@ export default function ProjectsPage() {
       });
     return () => controller.abort();
   }, [refreshKey, scope, scopeLoading]);
+
+  useEffect(() => {
+    if (!selectedProjectNumber) {
+      setProjectContactLink(null);
+      setProjectTasks([]);
+      return;
+    }
+    const controller = new AbortController();
+    Promise.all([
+      getProjectBusinessContacts(selectedProjectNumber, controller.signal),
+      getTaskCatalog(selectedProjectNumber, "", false, controller.signal),
+    ])
+      .then(([link, taskRows]) => {
+        setProjectContactLink(link);
+        setProjectTasks(taskRows);
+      })
+      .catch((reason: unknown) => {
+        if (reason instanceof DOMException && reason.name === "AbortError") return;
+        setError(apiErrorMessage(reason, "Impossible de charger les contacts métier du projet."));
+      });
+    return () => controller.abort();
+  }, [selectedProjectNumber, refreshKey]);
 
   const managers = useMemo(() => {
     const values = new Set(
@@ -98,6 +137,46 @@ export default function ProjectsPage() {
   const activeCount = projects.filter((project) => project.active).length;
   const inactiveCount = projects.length - activeCount;
   const erpCount = projects.filter((project) => Boolean(project.erp_external_id)).length;
+
+  async function changeProjectManager(contactId: string | null) {
+    if (!selectedProjectNumber || contactPending) return;
+    setContactPending(true);
+    setError(null);
+    try {
+      const link = await setProjectManagerContact(selectedProjectNumber, contactId);
+      setProjectContactLink(link);
+    } catch (reason) {
+      setError(apiErrorMessage(reason, "Impossible d'enregistrer le chargé de projet métier."));
+    } finally {
+      setContactPending(false);
+    }
+  }
+
+  async function changeTaskContact(
+    task: TaskCatalogItemReadModel,
+    field: "operational_responsible_contact_id" | "coordinator_contact_id",
+    contactId: string | null,
+  ) {
+    if (!task.id || contactPending) return;
+    setContactPending(true);
+    setError(null);
+    try {
+      const link = await setTaskBusinessContacts(task.id, { [field]: contactId });
+      setProjectTasks((current) => current.map((row) => (
+        row.id === task.id
+          ? {
+              ...row,
+              operational_responsible_contact_id: link.operational_responsible_contact_id,
+              coordinator_contact_id: link.coordinator_contact_id,
+            }
+          : row
+      )));
+    } catch (reason) {
+      setError(apiErrorMessage(reason, "Impossible d'enregistrer les contacts de la tâche."));
+    } finally {
+      setContactPending(false);
+    }
+  }
 
   async function synchronize() {
     if (!integration?.configured || syncing || !canSyncProjects) return;
@@ -237,6 +316,7 @@ export default function ProjectsPage() {
                   <th>Chargé de projet</th>
                   <th>Statut</th>
                   <th>Source</th>
+                  {canManageContacts && <th>Contacts</th>}
                 </tr>
               </thead>
               <tbody>
@@ -258,6 +338,17 @@ export default function ProjectsPage() {
                         {sourceLabel(project)}
                       </span>
                     </td>
+                    {canManageContacts && (
+                      <td>
+                        <button
+                          className="quiet-button"
+                          type="button"
+                          onClick={() => setSelectedProjectNumber(project.number)}
+                        >
+                          Configurer
+                        </button>
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>
@@ -265,6 +356,73 @@ export default function ProjectsPage() {
           </div>
         )}
       </div>
+      {canManageContacts && selectedProjectNumber && (
+        <section className="admin-card project-contact-admin">
+          <div className="panel-heading">
+            <div>
+              <span className="eyebrow">Contacts métier</span>
+              <h2>{selectedProjectNumber}</h2>
+              <p>Le chargé de projet est le dernier fallback du responsable opérationnel. Les tâches peuvent définir leur propre responsable et coordonnateur.</p>
+            </div>
+            <button className="quiet-button" type="button" onClick={() => setSelectedProjectNumber(null)}>Fermer</button>
+          </div>
+
+          <label>
+            Chargé de projet
+            <ContactSelect
+              contacts={contacts}
+              value={projectContactLink?.project_manager_contact_id ?? null}
+              onChange={(value) => void changeProjectManager(value)}
+              disabled={contactPending}
+              inheritLabel="Aucun contact métier lié"
+            />
+          </label>
+
+          <div className="project-task-contact-list">
+            <div className="projects-table-header">
+              <strong>Tâches ERP</strong>
+              <span>Responsable opérationnel et coordonnateur sont deux fonctions distinctes.</span>
+            </div>
+            {projectTasks.length === 0 ? (
+              <p className="projects-empty">Aucune tâche ERP pour ce projet.</p>
+            ) : (
+              <div className="projects-table-scroll">
+                <table className="projects-table">
+                  <thead>
+                    <tr><th>Tâche</th><th>Responsable opérationnel</th><th>Coordonnateur</th></tr>
+                  </thead>
+                  <tbody>
+                    {projectTasks.map((task) => (
+                      <tr key={task.id ?? `${task.project_number}:${task.code}`}>
+                        <td><strong>{task.code}</strong><span>{task.label}</span></td>
+                        <td>
+                          <ContactSelect
+                            contacts={contacts}
+                            value={task.operational_responsible_contact_id}
+                            onChange={(value) => void changeTaskContact(task, "operational_responsible_contact_id", value)}
+                            disabled={contactPending || !task.id}
+                            inheritLabel="Hériter du chargé de projet"
+                          />
+                        </td>
+                        <td>
+                          <ContactSelect
+                            contacts={contacts}
+                            value={task.coordinator_contact_id}
+                            onChange={(value) => void changeTaskContact(task, "coordinator_contact_id", value)}
+                            disabled={contactPending || !task.id}
+                            inheritLabel="Aucun coordonnateur de tâche"
+                          />
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </section>
+      )}
+
     </section>
   );
 }
