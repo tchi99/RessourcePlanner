@@ -794,7 +794,7 @@ export default function DemandsPage() {
                   <label>
                     <span>Nombre de ressources simultanées</span>
                     <input type="number" min="1" step="1" value={form.resource_count} onChange={(event) => setField("resource_count", event.target.value)} disabled={saving} required />
-                    <small>Cette valeur sert aussi de quantité initiale lorsque tu passes aux lignes multiples.</small>
+                    <small>Décrit le parallélisme; ne multiplie jamais les heures estimées. Cette valeur sert aussi de quantité initiale lorsque tu passes aux lignes multiples.</small>
                   </label>
 
                   <CompetencyPicker
@@ -820,7 +820,7 @@ export default function DemandsPage() {
                   <label>
                     <span>Jours actifs souhaités</span>
                     <input type="number" min="1" step="1" value={form.estimated_days} onChange={(event) => setField("estimated_days", event.target.value)} disabled={saving} placeholder="Optionnel" />
-                    <small>Cible de répartition dans la fenêtre.</small>
+                    <small>Cible de répartition dans la fenêtre. Les jours ne créent pas d'heures; les heures doivent être complétées avant l'approbation.</small>
                   </label>
                 </div>
               )}
