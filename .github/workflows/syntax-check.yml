@@ -134,12 +134,14 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "22"
+      - name: Cache npm download store
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-npm-${{ hashFiles('frontend/package.json') }}
       - name: Install frontend dependencies
         working-directory: frontend
-        run: npm install --no-audit --no-fund
-      - name: Emit generated npm lockfile for CI bootstrap
-        working-directory: frontend
-        run: gzip -c package-lock.json | base64 -w0 | sed 's/^/PACKAGE_LOCK_GZIP_B64=/'
+        run: npm install --prefer-offline --no-audit --no-fund
       - name: Build React V2 frontend
         working-directory: frontend
         run: npm run build
