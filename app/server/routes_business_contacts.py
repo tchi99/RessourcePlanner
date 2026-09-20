@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+from collections.abc import Iterator
 from typing import Any, Callable
 
 from fastapi import APIRouter, Depends, Request, status
+from sqlalchemy.orm import Session
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from ..application.operational_contacts import OperationalContactService
 from ..application.business_contact_admin import (
     BusinessContactAdminService,
     BusinessContactRecord,
@@ -12,9 +15,11 @@ from ..application.business_contact_admin import (
     DemandOverrideMutationResult,
 )
 from ..application.security import AuthPrincipal
+from ..infrastructure.sql.operational_contact_repository import SqlOperationalContactRepository
 
 
 BusinessContactProvider = Callable[..., Any]
+SessionProvider = Callable[[], Iterator[Session]]
 
 
 class StrictRequest(BaseModel):
@@ -121,8 +126,51 @@ def _override_payload(row: DemandOverrideMutationResult) -> dict[str, object]:
 
 def build_business_contact_router(
     dependency: BusinessContactProvider,
+    session_dependency: SessionProvider,
 ) -> APIRouter:
     router = APIRouter(prefix="/api/v1", tags=["business-contacts"])
+
+    @router.get("/request-lines/{line_id}/contact-resolution")
+    def request_line_contact_resolution(
+        line_id: str,
+        session: Session = Depends(session_dependency),
+    ) -> dict[str, object]:
+        row = OperationalContactService(
+            SqlOperationalContactRepository(session)
+        ).resolve_request_line(line_id)
+        return {
+            "line_id": row.line_id,
+            "demand_number": row.demand_number,
+            "project_number": row.project_number,
+            "task_id": row.task_id,
+            "task_code": row.task_code,
+            "task_label": row.task_label,
+            "proposed_resource_id": row.proposed_resource_id,
+            "proposed_resource_name": row.proposed_resource_name,
+            "operational_responsible": {
+                "status": row.operational_responsible.status,
+                "contact_id": row.operational_responsible.contact_id,
+                "display_name": row.operational_responsible.display_name,
+                "email": row.operational_responsible.email,
+                "phone": row.operational_responsible.phone,
+                "source_type": row.operational_responsible.source_type,
+                "source_entity_id": row.operational_responsible.source_entity_id,
+                "source_label": row.operational_responsible.source_label,
+                "diagnostics": list(row.operational_responsible.diagnostics),
+            },
+            "coordinator": {
+                "status": row.coordinator.status,
+                "contact_id": row.coordinator.contact_id,
+                "display_name": row.coordinator.display_name,
+                "email": row.coordinator.email,
+                "phone": row.coordinator.phone,
+                "source_type": row.coordinator.source_type,
+                "source_entity_id": row.coordinator.source_entity_id,
+                "source_label": row.coordinator.source_label,
+                "diagnostics": list(row.coordinator.diagnostics),
+            },
+            "diagnostics": list(row.diagnostics),
+        }
 
     @router.get("/business-contacts")
     def list_contacts(

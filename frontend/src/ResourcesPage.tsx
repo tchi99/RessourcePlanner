@@ -3,7 +3,9 @@ import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import {
   ApiError,
   AvailabilityRuleWrite,
+  BusinessContactReadModel,
   CompetencyReadModel,
+  ContactLinkReadModel,
   AvailabilityType,
   ResourceAvailabilityRuleReadModel,
   ResourceReadModel,
@@ -13,13 +15,18 @@ import {
   deactivateAvailabilityRule,
   deactivateResource,
   getAvailabilityRules,
+  getBusinessContacts,
   getCompetencies,
+  getResourceBusinessContacts,
   getResources,
+  setResourceCoordinatorContact,
   updateAvailabilityRule,
   updateResource,
 } from "./api";
 import CompetencyCatalogPanel from "./CompetencyCatalogPanel";
 import CompetencyPicker from "./CompetencyPicker";
+import BusinessContactsPanel from "./BusinessContactsPanel";
+import { ContactSelect } from "./BusinessContactUi";
 
 const WEEKDAYS = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"] as const;
 const DEFAULT_WEEKDAYS = "Lun,Mar,Mer,Jeu,Ven";
@@ -220,6 +227,8 @@ function RuleEditor({ resourceId, rule, forcedType, onSaved, onCancel }: RuleEdi
 export default function ResourcesPage() {
   const [resources, setResources] = useState<ResourceReadModel[]>([]);
   const [competencies, setCompetencies] = useState<CompetencyReadModel[]>([]);
+  const [contacts, setContacts] = useState<BusinessContactReadModel[]>([]);
+  const [resourceContactLink, setResourceContactLink] = useState<ContactLinkReadModel | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [rules, setRules] = useState<ResourceAvailabilityRuleReadModel[]>([]);
   const [holidays, setHolidays] = useState<ResourceAvailabilityRuleReadModel[]>([]);
@@ -234,6 +243,7 @@ export default function ResourcesPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [pendingProfile, setPendingProfile] = useState(false);
+  const [pendingCoordinator, setPendingCoordinator] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const profileIdempotency = useRef(mutationKey("resource"));
 
@@ -250,10 +260,12 @@ export default function ResourcesPage() {
       getResources(false, controller.signal),
       getAvailabilityRules(null, true, false, controller.signal),
       getCompetencies("", false, controller.signal),
+      getBusinessContacts(false, controller.signal),
     ])
-      .then(([resourceRows, availabilityRows, competencyRows]) => {
+      .then(([resourceRows, availabilityRows, competencyRows, contactRows]) => {
         setResources(resourceRows);
         setCompetencies(competencyRows);
+        setContacts(contactRows);
         setHolidays(
           availabilityRows.filter(
             (rule) => rule.resource_id === null && rule.availability_type === "Jour férié",
@@ -279,14 +291,21 @@ export default function ResourcesPage() {
   useEffect(() => {
     if (!selectedId) {
       setRules([]);
+      setResourceContactLink(null);
       return;
     }
     const controller = new AbortController();
-    getAvailabilityRules(selectedId, false, false, controller.signal)
-      .then(setRules)
+    Promise.all([
+      getAvailabilityRules(selectedId, false, false, controller.signal),
+      getResourceBusinessContacts(selectedId, controller.signal),
+    ])
+      .then(([ruleRows, contactLink]) => {
+        setRules(ruleRows);
+        setResourceContactLink(contactLink);
+      })
       .catch((reason: unknown) => {
         if (reason instanceof DOMException && reason.name === "AbortError") return;
-        setError(apiMessage(reason, "Impossible de charger les disponibilités."));
+        setError(apiMessage(reason, "Impossible de charger les disponibilités ou le coordonnateur."));
       });
     return () => controller.abort();
   }, [selectedId, refreshKey]);
@@ -376,6 +395,20 @@ export default function ResourcesPage() {
       setError(apiMessage(reason, "Impossible de désactiver la ressource."));
     } finally {
       setPendingProfile(false);
+    }
+  }
+
+  async function changeCoordinator(contactId: string | null) {
+    if (!selectedId || pendingCoordinator) return;
+    setPendingCoordinator(true);
+    setError(null);
+    try {
+      const link = await setResourceCoordinatorContact(selectedId, contactId);
+      setResourceContactLink(link);
+    } catch (reason) {
+      setError(apiMessage(reason, "Impossible d'enregistrer le coordonnateur."));
+    } finally {
+      setPendingCoordinator(false);
     }
   }
 
@@ -503,6 +536,28 @@ export default function ResourcesPage() {
               {!creatingResource && selected && (
                 <div className="admin-card">
                   <div className="panel-heading">
+                    <div>
+                      <span className="eyebrow">Coordination métier</span>
+                      <h2>Coordonnateur de la ressource</h2>
+                      <p>Prioritaire sur le coordonnateur de la tâche pour les lignes qui proposent ou utilisent cette ressource.</p>
+                    </div>
+                  </div>
+                  <label>
+                    Coordonnateur
+                    <ContactSelect
+                      contacts={contacts}
+                      value={resourceContactLink?.coordinator_contact_id ?? null}
+                      onChange={(value) => void changeCoordinator(value)}
+                      disabled={pendingCoordinator}
+                      inheritLabel="Aucun coordonnateur de ressource · utiliser la tâche"
+                    />
+                  </label>
+                </div>
+              )}
+
+              {!creatingResource && selected && (
+                <div className="admin-card">
+                  <div className="panel-heading">
                     <div><span className="eyebrow">Capacité</span><h2>Horaire & absences</h2></div>
                     <button className="secondary-button" type="button" onClick={() => { setEditingRule(null); setRuleEditorOpen(true); }}>+ Ajouter</button>
                   </div>
@@ -547,6 +602,11 @@ export default function ResourcesPage() {
           )}
         </div>
       </div>
+
+      <BusinessContactsPanel
+        contacts={contacts}
+        onChanged={() => setRefreshKey((value) => value + 1)}
+      />
 
       <CompetencyCatalogPanel
         competencies={competencies}
