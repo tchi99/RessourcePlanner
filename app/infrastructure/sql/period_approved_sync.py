@@ -51,6 +51,7 @@ class _LineRequirementSpec:
     proposed_resource_id: str | None
     description: str
     source_effort_id: str | None
+    required_resource_class: str | None
     required_competency: str | None
     competency_ids: tuple[str, ...]
 
@@ -412,11 +413,8 @@ class SqlPeriodAwareApprovedDemandSyncAdapter(ApprovedDemandSyncPort):
                     f"La ligne {line.id} de type {line.kind} ne peut pas être matérialisée."
                 )
             line_periods = periods_by_line.get(line.id, [])
-            required_text = (
-                _text(line.required_competencies_snapshot)
-                or _text(line.required_resource_class)
-                or None
-            )
+            required_text = _text(line.required_competencies_snapshot) or None
+            required_resource_class = _text(line.required_resource_class) or None
             if line_periods:
                 groups = {
                     _text(period.alternative_group)
@@ -462,6 +460,7 @@ class SqlPeriodAwareApprovedDemandSyncAdapter(ApprovedDemandSyncPort):
                                 or "Période approuvée"
                             ),
                             source_effort_id=work_package_refs.get(line.id),
+                            required_resource_class=required_resource_class,
                             required_competency=required_text,
                             competency_ids=competency_ids.get(line.id, ()),
                         )
@@ -500,6 +499,7 @@ class SqlPeriodAwareApprovedDemandSyncAdapter(ApprovedDemandSyncPort):
                         or "Besoin approuvé"
                     ),
                     source_effort_id=work_package_refs.get(line.id),
+                    required_resource_class=required_resource_class,
                     required_competency=required_text,
                     competency_ids=competency_ids.get(line.id, ()),
                 )
@@ -663,6 +663,7 @@ class SqlPeriodAwareApprovedDemandSyncAdapter(ApprovedDemandSyncPort):
                     "Statut": "Planifié" if proposed is not None else "À assigner",
                     "Description": spec.description,
                     "SourceEffortID": spec.source_effort_id,
+                    "ClasseRessourceRequise": spec.required_resource_class,
                     "CompetenceRequise": spec.required_competency,
                     "RequiredCompetencyIDs": spec.competency_ids,
                     "SourceRequestLineID": spec.line.id,
@@ -704,6 +705,7 @@ class SqlPeriodAwareApprovedDemandSyncAdapter(ApprovedDemandSyncPort):
         requirement.desired_active_days = spec.desired_active_days
         requirement.description = spec.description
         requirement.source_effort_id = spec.source_effort_id
+        requirement.required_resource_class = spec.required_resource_class
         requirement.required_competency = spec.required_competency
         requirement.required_competency_id = (
             spec.competency_ids[0] if len(spec.competency_ids) == 1 else None
