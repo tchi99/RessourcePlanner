@@ -56,8 +56,45 @@ class SqlDemandPeriodRepository(DemandPeriodRepositoryPort):
     ) -> str:
         if request_line_id is not None:
             return self._line(request, request_line_id).id
-        # Legacy one-line requests use the deterministic shadow line created by 288B.
-        return self._line(request, request.id).id
+
+        # Migrated legacy data already owns the deterministic shadow line created
+        # by 288B. A few supported test/import paths build ORM rows directly with
+        # Base.metadata.create_all(), so reproduce the same invariant lazily when
+        # that shadow line is absent instead of rejecting an otherwise valid
+        # historical one-line demand.
+        existing = self._session.get(RequestLine, request.id)
+        if existing is not None:
+            if existing.workforce_request_id != request.id:
+                raise KeyError(f"Ligne {request.id} introuvable pour la demande")
+            return existing.id
+        if bool(request.line_mode):
+            raise KeyError(f"Ligne {request.id} introuvable pour la demande")
+
+        shadow = RequestLine(
+            id=request.id,
+            workforce_request_id=request.id,
+            position=0,
+            kind="WORKFORCE",
+            slot_count=max(int(request.resource_count or 1), 1),
+            required_competencies_snapshot=request.required_competencies,
+            desired_start=request.desired_start,
+            desired_end=request.desired_end,
+            desired_active_days=request.estimated_days,
+            estimated_hours=request.estimated_hours,
+            estimated_hours_source=(
+                "LEGACY" if request.estimated_hours is not None else None
+            ),
+            confirmation=request.confirmation,
+            work_package_id=request.work_package_id,
+            erp_task_code=request.erp_task_code,
+            erp_task_label=request.erp_task_label,
+            proposed_resource_id=request.proposed_resource_id,
+            description=request.description,
+            active=True,
+        )
+        self._session.add(shadow)
+        self._session.flush()
+        return shadow.id
 
     def _resource(self, name: str | None) -> Resource | None:
         wanted = _text(name)
