@@ -13,6 +13,7 @@ from app.infrastructure.sql import (
     Base,
     BusinessContact,
     Project,
+    RequestLine,
     Resource,
     ResourceRequirement,
     TaskCatalogEntry,
@@ -74,6 +75,18 @@ class BusinessContactAdminApiTests(unittest.TestCase):
                 )
             )
             session.flush()
+            session.add(
+                RequestLine(
+                    id="L1",
+                    workforce_request_id="D1",
+                    position=0,
+                    task_catalog_item_id="T1",
+                    erp_task_code="210",
+                    erp_task_label="Automatisation",
+                    proposed_resource_id="R1",
+                    active=True,
+                )
+            )
             session.add(
                 ResourceRequirement(
                     id="REQ1",
@@ -180,6 +193,33 @@ class BusinessContactAdminApiTests(unittest.TestCase):
                     contact_id,
                 )
 
+                resource = client.patch(
+                    "/api/v1/resources/R1/coordinator-contact",
+                    json={"contact_id": contact_id},
+                )
+                self.assertEqual(resource.status_code, 200, resource.text)
+
+                resolution = client.get(
+                    "/api/v1/request-lines/L1/contact-resolution"
+                )
+                self.assertEqual(resolution.status_code, 200, resolution.text)
+                self.assertEqual(
+                    resolution.json()["operational_responsible"]["contact_id"],
+                    contact_id,
+                )
+                self.assertEqual(
+                    resolution.json()["operational_responsible"]["source_type"],
+                    "TASK_RESPONSIBLE",
+                )
+                self.assertEqual(
+                    resolution.json()["coordinator"]["contact_id"],
+                    contact_id,
+                )
+                self.assertEqual(
+                    resolution.json()["coordinator"]["source_type"],
+                    "RESOURCE_COORDINATOR",
+                )
+
                 cleared_task_responsible = client.patch(
                     "/api/v1/task-catalog/T1/business-contacts",
                     json={"operational_responsible_contact_id": None},
@@ -195,13 +235,12 @@ class BusinessContactAdminApiTests(unittest.TestCase):
                     contact_id,
                 )
 
-                resource = client.patch(
-                    "/api/v1/resources/R1/coordinator-contact",
-                    json={"contact_id": contact_id},
+                resource_link = client.get(
+                    "/api/v1/resources/R1/business-contacts"
                 )
-                self.assertEqual(resource.status_code, 200, resource.text)
+                self.assertEqual(resource_link.status_code, 200, resource_link.text)
                 self.assertEqual(
-                    resource.json()["coordinator_contact_id"],
+                    resource_link.json()["coordinator_contact_id"],
                     contact_id,
                 )
 
