@@ -28,7 +28,68 @@ export type ProjectSyncResult = {
   unchanged: number;
 };
 
+export type BusinessContactReadModel = {
+  id: string;
+  display_name: string;
+  email: string | null;
+  phone: string | null;
+  active: boolean;
+  source: string;
+  external_system: string | null;
+  external_entity: string | null;
+  external_id: string | null;
+  version: number;
+};
+
+export type ContactLinkReadModel = {
+  entity_type: "PROJECT" | "TASK" | "RESOURCE" | "DEMAND";
+  entity_id: string;
+  entity_label: string;
+  project_manager_contact_id: string | null;
+  operational_responsible_contact_id: string | null;
+  coordinator_contact_id: string | null;
+  operational_responsible_override_contact_id: string | null;
+  aggregate_version: number | null;
+  status: string | null;
+};
+
+export type ContactResolutionReadModel = {
+  status: "RESOLVED" | "UNRESOLVED" | "INVALID_REFERENCE" | "INACTIVE";
+  contact_id: string | null;
+  display_name: string | null;
+  email: string | null;
+  phone: string | null;
+  source_type: string;
+  source_entity_id: string | null;
+  source_label: string | null;
+  diagnostics: string[];
+};
+
+export type RequestLineContactResolutionReadModel = {
+  line_id: string;
+  demand_number: string | null;
+  project_number: string;
+  task_id: string | null;
+  task_code: string | null;
+  task_label: string | null;
+  proposed_resource_id: string | null;
+  proposed_resource_name: string | null;
+  operational_responsible: ContactResolutionReadModel;
+  coordinator: ContactResolutionReadModel;
+  diagnostics: string[];
+};
+
+export type DemandOverrideMutationResult = {
+  demand_number: string;
+  contact_id: string | null;
+  version: number;
+  status: string;
+  reapproval_required: boolean;
+  changed: boolean;
+};
+
 export type TaskCatalogItemReadModel = {
+  id: string | null;
   project_number: string;
   code: string;
   label: string;
@@ -43,6 +104,8 @@ export type TaskCatalogItemReadModel = {
   cv_enabled: boolean | null;
   time_entry_enabled: boolean | null;
   expenses_enabled: boolean | null;
+  operational_responsible_contact_id: string | null;
+  coordinator_contact_id: string | null;
 };
 
 export type CompetencyReadModel = {
@@ -696,6 +759,108 @@ export function getAcumaticaIntegrationStatus(signal?: AbortSignal) {
 
 export function syncAcumaticaProjects() {
   return postJson<ProjectSyncResult>("/api/v1/integrations/acumatica/projects/sync");
+}
+
+export function getBusinessContacts(activeOnly = false, signal?: AbortSignal) {
+  const params = new URLSearchParams({ active_only: String(activeOnly) });
+  return getJson<BusinessContactReadModel[]>(
+    `/api/v1/business-contacts?${params.toString()}`,
+    signal,
+  );
+}
+
+export function createBusinessContact(payload: {
+  display_name: string;
+  email?: string | null;
+  phone?: string | null;
+  active?: boolean;
+  source?: string;
+  external_system?: string | null;
+  external_entity?: string | null;
+  external_id?: string | null;
+}) {
+  return sendJson<BusinessContactReadModel>("/api/v1/business-contacts", "POST", payload);
+}
+
+export function updateBusinessContact(
+  contactId: string,
+  payload: Partial<Omit<BusinessContactReadModel, "id" | "version">> & { expected_version?: number },
+) {
+  return sendJson<BusinessContactReadModel>(
+    `/api/v1/business-contacts/${encodeURIComponent(contactId)}`,
+    "PATCH",
+    payload,
+  );
+}
+
+export function getProjectBusinessContacts(projectNumber: string, signal?: AbortSignal) {
+  return getJson<ContactLinkReadModel>(
+    `/api/v1/projects/${encodeURIComponent(projectNumber)}/business-contacts`,
+    signal,
+  );
+}
+
+export function setProjectManagerContact(projectNumber: string, contactId: string | null) {
+  return sendJson<ContactLinkReadModel>(
+    `/api/v1/projects/${encodeURIComponent(projectNumber)}/project-manager-contact`,
+    "PATCH",
+    { contact_id: contactId },
+  );
+}
+
+export function setTaskBusinessContacts(
+  taskId: string,
+  payload: {
+    operational_responsible_contact_id?: string | null;
+    coordinator_contact_id?: string | null;
+  },
+) {
+  return sendJson<ContactLinkReadModel>(
+    `/api/v1/task-catalog/${encodeURIComponent(taskId)}/business-contacts`,
+    "PATCH",
+    payload,
+  );
+}
+
+export function getResourceBusinessContacts(resourceId: string, signal?: AbortSignal) {
+  return getJson<ContactLinkReadModel>(
+    `/api/v1/resources/${encodeURIComponent(resourceId)}/business-contacts`,
+    signal,
+  );
+}
+
+export function setResourceCoordinatorContact(resourceId: string, contactId: string | null) {
+  return sendJson<ContactLinkReadModel>(
+    `/api/v1/resources/${encodeURIComponent(resourceId)}/coordinator-contact`,
+    "PATCH",
+    { contact_id: contactId },
+  );
+}
+
+export function getDemandBusinessContacts(demandNumber: string, signal?: AbortSignal) {
+  return getJson<ContactLinkReadModel>(
+    `/api/v1/demands/${encodeURIComponent(demandNumber)}/business-contacts`,
+    signal,
+  );
+}
+
+export function setDemandOperationalResponsible(
+  demandNumber: string,
+  contactId: string | null,
+  expectedVersion: number,
+) {
+  return sendJson<DemandOverrideMutationResult>(
+    `/api/v1/demands/${encodeURIComponent(demandNumber)}/operational-responsible`,
+    "PATCH",
+    { contact_id: contactId, expected_version: expectedVersion },
+  );
+}
+
+export function getRequestLineContactResolution(lineId: string, signal?: AbortSignal) {
+  return getJson<RequestLineContactResolutionReadModel>(
+    `/api/v1/request-lines/${encodeURIComponent(lineId)}/contact-resolution`,
+    signal,
+  );
 }
 
 export function getTaskCatalog(
