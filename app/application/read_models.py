@@ -148,10 +148,11 @@ class DemandReadModel:
 
 @dataclass(frozen=True, slots=True)
 class DemandPeriodReadModel:
-    """One versioned requested period/option under a workforce request."""
+    """One versioned requested period/option under a workforce request line."""
 
     period_id: str
     demand_number: str
+    request_line_id: str | None = None
     sequence: int
     kind: str
     start_date: date
