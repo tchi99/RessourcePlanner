@@ -68,7 +68,7 @@ def _create_legacy_table(name: str) -> None:
         sa.ForeignKeyConstraint(
             ["request_line_id"],
             ["request_lines.id"],
-            name="fk_period_sel_line",
+            name="fk_period_selection_request_line",
         ),
         sa.ForeignKeyConstraint(
             ["period_id"],
