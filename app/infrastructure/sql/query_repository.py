@@ -396,7 +396,10 @@ class SqlPlannerQueryRepository(PlannerQueryPort):
                     continue
                 proposal_start = min(row[0] for row in windows)
                 proposal_end = max(row[1] for row in windows)
-                if proposal_end < start or proposal_start > end:
+                if not any(
+                    line_end >= start and line_start <= end
+                    for line_start, line_end in windows
+                ):
                     continue
                 projected_hours = round(projected_total, 2)
                 window_hours = round(window_total, 2)
