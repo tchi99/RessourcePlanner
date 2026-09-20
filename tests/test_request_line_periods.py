@@ -170,6 +170,21 @@ class RequestLinePeriodApiTests(unittest.TestCase):
                     ["OPT-B"],
                 )
 
+                submitted = client.post(f"/api/v1/demands/{number}/submit")
+                self.assertEqual(submitted.status_code, 200, submitted.text)
+                snapshot = client.get(
+                    "/api/v1/planning/snapshot",
+                    params={"start": D1.isoformat(), "end": D2.isoformat()},
+                )
+                self.assertEqual(snapshot.status_code, 200, snapshot.text)
+                pending = next(
+                    row
+                    for row in snapshot.json()["pending_loads"]
+                    if row["demand_number"] == number
+                )
+                self.assertEqual(pending["projected_hours"], 16.0)
+                self.assertEqual(pending["periods"], [])
+
     def test_cumulative_periods_are_kept_on_their_own_line(self) -> None:
         with TemporaryDirectory() as directory:
             app = create_api_app(self._database(directory), actor_name="coord")
