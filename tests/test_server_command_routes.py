@@ -295,7 +295,7 @@ class ServerCommandRouteTests(unittest.TestCase):
                 "request_validation_error",
             )
 
-    def test_line_authored_demand_cannot_use_flat_approval_before_288e(self) -> None:
+    def test_line_authored_demand_can_be_approved_with_288e(self) -> None:
         with TemporaryDirectory() as directory:
             database_url, _ = self._database(directory)
             app = create_api_app(database_url)
@@ -320,11 +320,8 @@ class ServerCommandRouteTests(unittest.TestCase):
                     json={"comment": "test"},
                 )
 
-            self.assertEqual(approved.status_code, 409, approved.text)
-            self.assertEqual(
-                approved.json()["error"]["code"],
-                "demand_line_approval_unavailable",
-            )
+            self.assertEqual(approved.status_code, 200, approved.text)
+            self.assertEqual(approved.json()["status"], "En planification")
 
     def test_unknown_project_returns_structured_not_found(self) -> None:
         with TemporaryDirectory() as directory:
