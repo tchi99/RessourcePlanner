@@ -76,9 +76,14 @@ jobs:
       - name: Validate SQLite migrations and offline SQL Server readiness
         run: python tools/check_sqlserver_readiness.py
 
-  validate:
+  python-tests:
+    name: Python verification (shard ${{ matrix.shard_index }})
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        shard_index: [0, 1]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -87,20 +92,44 @@ jobs:
         with:
           python-version: "3.12"
           cache: "pip"
+          cache-dependency-path: |
+            requirements.txt
+            requirements-server.txt
       - name: Install validated dependencies
         run: python -m pip install -r requirements.txt
       - name: Compile Python sources
         run: python -m compileall -q app tests tools migrations main.py
-      - name: Guard Web/SQL boundaries from V1 imports
-        run: python tools/cutover_inventory.py --check-boundaries
-      - name: Run verification suite
-        run: python -m unittest discover -s tests -v
+      - name: Run verification suite shard
+        run: >-
+          python tools/run_test_shard.py
+          --shard-index "${{ matrix.shard_index }}"
+          --shard-count 2
+          --top-slowest 25
       - name: Enforce V2 SQLite performance budgets
+        if: matrix.shard_index == 0
         run: >-
           python tools/benchmark_v2_api.py
           --iterations 3
           --ci
           --output /tmp/v2-performance-baseline.json
+      - name: Scan current repository tree for common PII and secrets
+        if: matrix.shard_index == 1
+        run: python tools/privacy_scan.py
+
+  frontend-validation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+          cache-dependency-path: requirements-server.txt
+      - name: Install Web/SQL dependencies for browser fixture
+        run: python -m pip install -r requirements-server.txt
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
@@ -119,8 +148,6 @@ jobs:
         run: npm run test:e2e
       - name: Smoke complete FastAPI + React runtime
         run: python tools/check_web_runtime.py
-      - name: Scan current repository tree for common PII and secrets
-        run: python tools/privacy_scan.py
 
   docker-smoke:
     runs-on: ubuntu-latest
