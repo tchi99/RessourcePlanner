@@ -142,6 +142,15 @@ function normalize(value: string | null | undefined) {
 }
 
 function demandSearchText(demand: DemandReadModel) {
+  const lineText = (demand.lines ?? []).flatMap((line) => [
+    line.required_resource_class,
+    line.required_competencies,
+    line.work_package_name,
+    line.task_code,
+    line.task_label,
+    line.proposed_resource,
+    line.description,
+  ]);
   return normalize([
     demand.number,
     demand.status,
@@ -154,6 +163,7 @@ function demandSearchText(demand: DemandReadModel) {
     demand.work_package_name,
     demand.required_competencies,
     demand.proposed_resource,
+    ...lineText,
   ].filter(Boolean).join(" "));
 }
 
@@ -589,9 +599,15 @@ export default function DemandsPage() {
                   )}
                 </div>
                 {!creating && selectedDemand && (
-                  <div className={`demand-confirmation-pill ${selectedDemand.confirmation === "Tentative" ? "tentative" : "confirmed"}`}>
-                    {selectedDemand.confirmation || "Confirmée"}
-                  </div>
+                  selectedDemand.line_mode ? (
+                    <div className="demand-confirmation-pill confirmed">
+                      {(selectedDemand.lines ?? []).filter((line) => line.active).length} ligne(s)
+                    </div>
+                  ) : (
+                    <div className={`demand-confirmation-pill ${selectedDemand.confirmation === "Tentative" ? "tentative" : "confirmed"}`}>
+                      {selectedDemand.confirmation || "Confirmée"}
+                    </div>
+                  )
                 )}
               </div>
 
