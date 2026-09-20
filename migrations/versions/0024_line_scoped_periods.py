@@ -31,22 +31,22 @@ def _create_line_scoped_table(name: str) -> None:
         sa.ForeignKeyConstraint(
             ["workforce_request_id"],
             ["workforce_requests.id"],
-            name="fk_period_sel_request",
+            name="fk_period_sel_request_288d",
         ),
         sa.ForeignKeyConstraint(
             ["request_line_id"],
             ["request_lines.id"],
-            name="fk_period_sel_line",
+            name="fk_period_sel_line_288d",
         ),
         sa.ForeignKeyConstraint(
             ["period_id"],
             ["workforce_request_periods.id"],
-            name="fk_period_sel_period",
+            name="fk_period_sel_period_288d",
         ),
         sa.PrimaryKeyConstraint(
             "request_line_id",
             "alternative_group",
-            name="pk_workforce_request_period_selections",
+            name="pk_period_sel_line_group_288d",
         ),
     )
 
