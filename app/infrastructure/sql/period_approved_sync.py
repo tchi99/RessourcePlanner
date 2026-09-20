@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import dataclass
 from decimal import Decimal
+import json
 
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
@@ -27,6 +28,7 @@ from .models import (
     ResourceRequirement,
     ResourceRequirementCompetency,
     Shift,
+    TaskCatalogEntry,
     WorkforceRequest,
     WorkforceRequestHistory,
     WorkPackage,
@@ -79,6 +81,64 @@ class SqlPeriodAwareApprovedDemandSyncAdapter(ApprovedDemandSyncPort):
     @staticmethod
     def _emergency_materialization(request: WorkforceRequest) -> bool:
         return bool(request.emergency_override_active) and request.status == "Soumise"
+
+    def _approved_task_id(
+        self,
+        request: WorkforceRequest,
+        line: RequestLine | None,
+    ) -> str | None:
+        if line is not None and line.task_catalog_item_id:
+            return line.task_catalog_item_id
+        code = _text(line.erp_task_code if line is not None else request.erp_task_code)
+        if not code:
+            return None
+        project = self._session.get(Project, request.project_id)
+        if project is None:
+            return None
+        return self._session.scalar(
+            select(TaskCatalogEntry.id).where(
+                TaskCatalogEntry.project_number == project.number,
+                TaskCatalogEntry.task_code == code,
+            )
+        )
+
+    def _capture_approved_contact_context(
+        self,
+        request: WorkforceRequest,
+        requirement: ResourceRequirement,
+        line: RequestLine | None,
+    ) -> None:
+        requirement.approved_task_catalog_item_id = self._approved_task_id(
+            request,
+            line,
+        )
+        requirement.approved_operational_responsible_override_contact_id = (
+            request.operational_responsible_override_contact_id
+        )
+        requirement.approved_request_version = int(request.aggregate_version or 1)
+        requirement.approved_contact_context_status = "CAPTURED"
+
+    @staticmethod
+    def _approved_context_details(
+        request: WorkforceRequest,
+        requirements: list[ResourceRequirement],
+    ) -> str:
+        payload = {
+            "approved_request_version": int(request.aggregate_version or 1),
+            "context_status": "CAPTURED",
+            "requirements": [
+                {
+                    "requirement_id": row.id,
+                    "source_request_line_id": row.source_request_line_id,
+                    "approved_task_catalog_item_id": row.approved_task_catalog_item_id,
+                    "approved_operational_responsible_override_contact_id": (
+                        row.approved_operational_responsible_override_contact_id
+                    ),
+                }
+                for row in requirements
+            ],
+        }
+        return json.dumps(payload, sort_keys=True, separators=(",", ":"))
 
     def _active_periods(self, request_id: str) -> list[WorkforceRequestPeriod]:
         return list(
@@ -290,6 +350,12 @@ class SqlPeriodAwareApprovedDemandSyncAdapter(ApprovedDemandSyncPort):
                 requirement.required_competency = request.required_competencies
                 requirement.priority = request.priority or "Normale"
                 requirement.origin = ORIGIN_REQUEST
+                legacy_line = self._session.get(RequestLine, request.id)
+                self._capture_approved_contact_context(
+                    request,
+                    requirement,
+                    legacy_line,
+                )
                 if not requirement.confirmation_overridden:
                     requirement.confirmation = inherited_confirmation
 
@@ -324,6 +390,15 @@ class SqlPeriodAwareApprovedDemandSyncAdapter(ApprovedDemandSyncPort):
                     request.emergency_override_by_name
                     if emergency
                     else request.approved_by_name
+                ),
+                details=self._approved_context_details(
+                    request,
+                    [
+                        requirement
+                        for rows in by_period.values()
+                        for requirement in rows
+                        if requirement.status != "Annulé"
+                    ],
                 ),
                 occurred_at=utc_now(),
             )
@@ -712,6 +787,11 @@ class SqlPeriodAwareApprovedDemandSyncAdapter(ApprovedDemandSyncPort):
         )
         requirement.priority = request.priority or "Normale"
         requirement.origin = ORIGIN_REQUEST
+        self._capture_approved_contact_context(
+            request,
+            requirement,
+            spec.line,
+        )
         if not requirement.confirmation_overridden:
             requirement.confirmation = spec.confirmation
         self._replace_requirement_competencies(requirement, spec.competency_ids)
@@ -802,6 +882,7 @@ class SqlPeriodAwareApprovedDemandSyncAdapter(ApprovedDemandSyncPort):
                     if emergency
                     else request.approved_by_name
                 ),
+                details=self._approved_context_details(request, materialized),
                 occurred_at=utc_now(),
             )
         )
@@ -834,5 +915,27 @@ class SqlPeriodAwareApprovedDemandSyncAdapter(ApprovedDemandSyncPort):
             return
         if not periods:
             self._legacy.sync_approved(demand_number)
+            legacy_line = self._session.get(RequestLine, request.id)
+            materialized = self._active_requirements(request.id)
+            for requirement in materialized:
+                self._capture_approved_contact_context(
+                    request,
+                    requirement,
+                    legacy_line,
+                )
+            self._session.add(
+                WorkforceRequestHistory(
+                    workforce_request_id=request.id,
+                    action="Capture contexte approuvé",
+                    status=request.status,
+                    comment=(
+                        f"Contexte approuvé capturé sur {len(materialized)} besoin(s) legacy."
+                    ),
+                    details=self._approved_context_details(request, materialized),
+                    actor_name=request.approved_by_name,
+                    occurred_at=utc_now(),
+                )
+            )
+            self._session.flush()
             return
         self._sync_legacy_periods(request, periods)
