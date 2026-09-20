@@ -172,7 +172,7 @@ class DemandServiceTests(unittest.TestCase):
             )
         )
 
-    def test_approved_demand_line_conversion_waits_for_288e_snapshots(self) -> None:
+    def test_approved_demand_line_edit_requests_reapproval_without_touching_plan(self) -> None:
         service, _demands, events = self._service(
             record=DemandReadModel(
                 number="DMO-APPROVED",
@@ -180,28 +180,31 @@ class DemandServiceTests(unittest.TestCase):
                 desired_start=date(2026, 8, 25),
                 desired_end=date(2026, 8, 29),
                 version=1,
+                line_mode=True,
             )
         )
 
-        with self.assertRaises(ApplicationConflictError) as raised:
-            service.modify_command(
-                DemandUpdateCommand(
-                    number="DMO-APPROVED",
-                    expected_version=1,
-                    lines=(
-                        DemandLineInput(
-                            desired_start=date(2026, 8, 25),
-                            desired_active_days=1,
-                        ),
+        required = service.modify_command(
+            DemandUpdateCommand(
+                number="DMO-APPROVED",
+                expected_version=1,
+                lines=(
+                    DemandLineInput(
+                        line_id="LINE-1",
+                        desired_start=date(2026, 8, 25),
+                        desired_active_days=1,
+                        estimated_hours=8,
                     ),
-                )
+                ),
             )
-
-        self.assertEqual(
-            raised.exception.code,
-            "demand_line_reapproval_unavailable",
         )
-        self.assertEqual(events, [])
+
+        self.assertTrue(required)
+        self.assertEqual(events[0][0], "update")
+        self.assertEqual(events[0][2]["Statut"], "Soumise")
+        self.assertEqual(events[0][2]["ExpectedVersion"], 1)
+        self.assertEqual(events[0][2]["RequestLines"][0]["id"], "LINE-1")
+        self.assertFalse(any(event[0] in {"sync", "rebuild"} for event in events))
 
     def test_period_change_detection_includes_desired_active_days(self) -> None:
         definition = DemandPeriodDefinition(
