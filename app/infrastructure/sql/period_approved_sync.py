@@ -805,6 +805,25 @@ class SqlPeriodAwareApprovedDemandSyncAdapter(ApprovedDemandSyncPort):
         )
         self._session.flush()
 
+    def cancel_materialized(self, demand_number: str) -> None:
+        request = self._request(demand_number)
+        current = self._active_requirements(request.id)
+        locked = self._locked_shifts({row.id for row in current})
+        protected = [
+            row
+            for row in current
+            if row.status != "Terminé" and locked.get(row.id)
+        ]
+        if protected:
+            raise ValueError(
+                "La demande contient des quarts verrouillés. Libère ou supprime ces "
+                "décisions manuelles avant d'annuler la demande."
+            )
+        for requirement in current:
+            if requirement.status != "Terminé":
+                requirement.status = "Annulé"
+        self._session.flush()
+
     def sync_approved(self, demand_number: str) -> None:
         request = self._request(demand_number)
         periods = self._active_periods(request.id)
