@@ -6,6 +6,13 @@ historical implementation modules.
 """
 
 from .allocation_service import AllocationService
+from .business_contact_admin import (
+    BusinessContactAdminRepositoryPort,
+    BusinessContactAdminService,
+    BusinessContactRecord,
+    ContactLinkRecord,
+    DemandOverrideMutationResult,
+)
 from .commands import (
     DemandAlternativeSelectCommand,
     DemandApproveCommand,
@@ -172,6 +179,9 @@ __all__ = [
     "ApplicationResult",
     "ApplicationValidationError",
     "ApprovedDemandSyncPort",
+    "BusinessContactAdminRepositoryPort",
+    "BusinessContactAdminService",
+    "BusinessContactRecord",
     "AutoProvisioningPolicy",
     "AvailabilityRuleCreateCommand",
     "AvailabilityRuleMutationResult",
@@ -183,6 +193,7 @@ __all__ = [
     "CompetencyReadModel",
     "CompetencyUpdateCommand",
     "CommandIdempotencyPort",
+    "ContactLinkRecord",
     "DemandAlternativeSelectCommand",
     "DemandAlternativeSelectionResult",
     "DemandApproveCommand",
@@ -194,6 +205,7 @@ __all__ = [
     "DemandHistoryReadModel",
     "DemandLineReadModel",
     "DemandMutationResult",
+    "DemandOverrideMutationResult",
     "DemandPeriodInput",
     "DemandPeriodReadModel",
     "DemandPeriodRepositoryPort",
