@@ -345,6 +345,11 @@ class SqlPlannerQueryRepositoryWithPlanDelta(SqlPlannerQueryRepositoryWeb):
                 if requirement is not None
                 else request.required_competencies
             ),
+            "ClasseRessourceRequise": (
+                requirement.required_resource_class
+                if requirement is not None
+                else None
+            ),
             "TypePlanification": requirement.planning_type if requirement is not None else "Flexible",
             "Priorite": requirement.priority if requirement is not None else request.priority,
             "HorsHoraireAutorise": (
@@ -435,11 +440,7 @@ class SqlPlannerQueryRepositoryWithPlanDelta(SqlPlannerQueryRepositoryWeb):
                 if line.work_package_id
                 else None
             )
-            required_competency = (
-                _text(line.required_competencies_snapshot)
-                or _text(line.required_resource_class)
-                or None
-            )
+            required_competency = _text(line.required_competencies_snapshot) or None
             line_periods = periods_by_line.get(line.id, [])
             if line_periods:
                 effective = [
@@ -535,6 +536,7 @@ class SqlPlannerQueryRepositoryWithPlanDelta(SqlPlannerQueryRepositoryWeb):
                 {
                     **row,
                     "SourceEffortID": source_effort_id,
+                    "ClasseRessourceRequise": line.required_resource_class,
                     "CompetenceRequise": required_competency,
                     "JoursActifsCibles": (
                         int(line.desired_active_days)
