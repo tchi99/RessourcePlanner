@@ -393,12 +393,7 @@ class SqlPeriodAwareApprovedDemandSyncAdapter(ApprovedDemandSyncPort):
                 ),
                 details=self._approved_context_details(
                     request,
-                    [
-                        requirement
-                        for rows in by_period.values()
-                        for requirement in rows
-                        if requirement.status != "Annulé"
-                    ],
+                    self._active_requirements(request.id),
                 ),
                 occurred_at=utc_now(),
             )
