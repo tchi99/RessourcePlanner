@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from dataclasses import dataclass
 from decimal import Decimal
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from ...application.command_ports import ApprovedDemandSyncPort
@@ -20,10 +21,15 @@ from .estimated_days_sync import SqlEstimatedDaysApprovedDemandSyncAdapter
 from .models import (
     ORIGIN_REQUEST,
     Project,
+    RequestLine,
+    RequestLineCompetency,
     Resource,
     ResourceRequirement,
+    ResourceRequirementCompetency,
+    Shift,
     WorkforceRequest,
     WorkforceRequestHistory,
+    WorkPackage,
 )
 from .segment_repository import SqlSegmentRepository
 
@@ -32,8 +38,25 @@ def _text(value: object) -> str:
     return str(value or "").strip()
 
 
+@dataclass(frozen=True, slots=True)
+class _LineRequirementSpec:
+    key: tuple[str, ...]
+    line: RequestLine
+    period: WorkforceRequestPeriod | None
+    start_date: object
+    end_date: object
+    planned_hours: Decimal
+    desired_active_days: int | None
+    confirmation: str
+    proposed_resource_id: str | None
+    description: str
+    source_effort_id: str | None
+    required_competency: str | None
+    competency_ids: tuple[str, ...]
+
+
 class SqlPeriodAwareApprovedDemandSyncAdapter(ApprovedDemandSyncPort):
-    """Materialize an approved or explicitly emergency request period definition."""
+    """Materialize approved demand envelopes, including RequestLine-owned needs."""
 
     def __init__(self, session: Session) -> None:
         self._session = session
@@ -65,6 +88,7 @@ class SqlPeriodAwareApprovedDemandSyncAdapter(ApprovedDemandSyncPort):
                     WorkforceRequestPeriod.active.is_(True),
                 )
                 .order_by(
+                    WorkforceRequestPeriod.request_line_id,
                     WorkforceRequestPeriod.sequence,
                     WorkforceRequestPeriod.created_at,
                     WorkforceRequestPeriod.id,
@@ -79,6 +103,20 @@ class SqlPeriodAwareApprovedDemandSyncAdapter(ApprovedDemandSyncPort):
             )
         ).all()
         return {row.alternative_group: row.period_id for row in rows}
+
+    def _selected_period_ids_by_line(
+        self,
+        request_id: str,
+    ) -> dict[tuple[str, str], str]:
+        rows = self._session.scalars(
+            select(WorkforceRequestPeriodSelection).where(
+                WorkforceRequestPeriodSelection.workforce_request_id == request_id
+            )
+        ).all()
+        return {
+            (row.request_line_id, row.alternative_group): row.period_id
+            for row in rows
+        }
 
     def _active_requirements(self, request_id: str) -> list[ResourceRequirement]:
         return list(
@@ -150,13 +188,11 @@ class SqlPeriodAwareApprovedDemandSyncAdapter(ApprovedDemandSyncPort):
         self._session.flush()
         return requirement
 
-    def sync_approved(self, demand_number: str) -> None:
-        request = self._request(demand_number)
-        periods = self._active_periods(request.id)
-        if not periods:
-            self._legacy.sync_approved(demand_number)
-            return
-
+    def _sync_legacy_periods(
+        self,
+        request: WorkforceRequest,
+        periods: list[WorkforceRequestPeriod],
+    ) -> None:
         project = self._session.get(Project, request.project_id)
         if project is None:
             raise KeyError(f"Projet {request.project_id} introuvable")
@@ -292,3 +328,490 @@ class SqlPeriodAwareApprovedDemandSyncAdapter(ApprovedDemandSyncPort):
             )
         )
         self._session.flush()
+
+    def _active_lines(self, request_id: str) -> list[RequestLine]:
+        return list(
+            self._session.scalars(
+                select(RequestLine)
+                .where(
+                    RequestLine.workforce_request_id == request_id,
+                    RequestLine.active.is_(True),
+                )
+                .order_by(RequestLine.position, RequestLine.id)
+            ).all()
+        )
+
+    def _line_competencies(
+        self,
+        line_ids: tuple[str, ...],
+    ) -> dict[str, tuple[str, ...]]:
+        if not line_ids:
+            return {}
+        rows = self._session.execute(
+            select(
+                RequestLineCompetency.request_line_id,
+                RequestLineCompetency.competency_id,
+            )
+            .where(RequestLineCompetency.request_line_id.in_(line_ids))
+            .order_by(
+                RequestLineCompetency.request_line_id,
+                RequestLineCompetency.competency_id,
+            )
+        ).all()
+        grouped: dict[str, list[str]] = defaultdict(list)
+        for line_id, competency_id in rows:
+            grouped[line_id].append(competency_id)
+        return {
+            line_id: tuple(dict.fromkeys(values))
+            for line_id, values in grouped.items()
+        }
+
+    def _line_work_package_refs(
+        self,
+        lines: list[RequestLine],
+    ) -> dict[str, str | None]:
+        ids = {
+            line.work_package_id
+            for line in lines
+            if line.work_package_id
+        }
+        packages = (
+            self._session.scalars(select(WorkPackage).where(WorkPackage.id.in_(ids))).all()
+            if ids
+            else []
+        )
+        refs = {
+            package.id: _text(package.legacy_effort_id) or package.id
+            for package in packages
+        }
+        return {
+            line.id: refs.get(line.work_package_id) if line.work_package_id else None
+            for line in lines
+        }
+
+    def _line_specs(
+        self,
+        request: WorkforceRequest,
+        lines: list[RequestLine],
+        periods: list[WorkforceRequestPeriod],
+    ) -> tuple[list[_LineRequirementSpec], int]:
+        periods_by_line: dict[str, list[WorkforceRequestPeriod]] = defaultdict(list)
+        for period in periods:
+            if period.request_line_id:
+                periods_by_line[period.request_line_id].append(period)
+
+        selected = self._selected_period_ids_by_line(request.id)
+        competency_ids = self._line_competencies(tuple(line.id for line in lines))
+        work_package_refs = self._line_work_package_refs(lines)
+        specs: list[_LineRequirementSpec] = []
+        unresolved = 0
+
+        for line in lines:
+            if _text(line.kind) != "WORKFORCE":
+                raise ValueError(
+                    f"La ligne {line.id} de type {line.kind} ne peut pas être matérialisée."
+                )
+            line_periods = periods_by_line.get(line.id, [])
+            required_text = (
+                _text(line.required_competencies_snapshot)
+                or _text(line.required_resource_class)
+                or None
+            )
+            if line_periods:
+                groups = {
+                    _text(period.alternative_group)
+                    for period in line_periods
+                    if period.alternative_group
+                }
+                unresolved += sum(
+                    1
+                    for group in groups
+                    if (line.id, group) not in selected
+                )
+                effective = [
+                    period
+                    for period in line_periods
+                    if period.kind == PERIOD_KIND_CUMULATIVE
+                    or (
+                        period.alternative_group is not None
+                        and selected.get((line.id, period.alternative_group)) == period.id
+                    )
+                ]
+                for period in effective:
+                    proposed_resource_id = (
+                        period.proposed_resource_id or line.proposed_resource_id
+                    )
+                    specs.append(
+                        _LineRequirementSpec(
+                            key=("PERIOD", line.id, period.period_key),
+                            line=line,
+                            period=period,
+                            start_date=period.start_date,
+                            end_date=period.end_date,
+                            planned_hours=Decimal(str(period.hours)).quantize(Decimal("0.01")),
+                            desired_active_days=period.desired_active_days,
+                            confirmation=normalize_confirmation(
+                                period.confirmation,
+                                default=CONFIRMATION_CONFIRMED,
+                            ),
+                            proposed_resource_id=proposed_resource_id,
+                            description=(
+                                _text(period.note)
+                                or _text(line.description)
+                                or _text(request.description)
+                                or "Période approuvée"
+                            ),
+                            source_effort_id=work_package_refs.get(line.id),
+                            required_competency=required_text,
+                            competency_ids=competency_ids.get(line.id, ()),
+                        )
+                    )
+                continue
+
+            if line.desired_start is None:
+                raise ValueError(
+                    f"La date de début de la ligne {line.id} est requise pour la matérialisation."
+                )
+            if line.estimated_hours is None or line.estimated_hours <= 0:
+                raise ValueError(
+                    f"Les heures de la ligne {line.id} sont requises pour la matérialisation."
+                )
+            specs.append(
+                _LineRequirementSpec(
+                    key=("LINE", line.id),
+                    line=line,
+                    period=None,
+                    start_date=line.desired_start,
+                    end_date=line.desired_end or line.desired_start,
+                    planned_hours=Decimal(str(line.estimated_hours)).quantize(Decimal("0.01")),
+                    desired_active_days=(
+                        int(line.desired_active_days)
+                        if line.desired_active_days is not None
+                        else None
+                    ),
+                    confirmation=normalize_confirmation(
+                        line.confirmation,
+                        default=CONFIRMATION_CONFIRMED,
+                    ),
+                    proposed_resource_id=line.proposed_resource_id,
+                    description=(
+                        _text(line.description)
+                        or _text(request.description)
+                        or "Besoin approuvé"
+                    ),
+                    source_effort_id=work_package_refs.get(line.id),
+                    required_competency=required_text,
+                    competency_ids=competency_ids.get(line.id, ()),
+                )
+            )
+
+        keys = [spec.key for spec in specs]
+        if len(keys) != len(set(keys)):
+            raise ValueError(
+                "Deux besoins effectifs d'une même demande partagent la même identité de ligne/période."
+            )
+        return specs, unresolved
+
+    def _current_requirement_keys(
+        self,
+        current: list[ResourceRequirement],
+    ) -> dict[tuple[str, ...], list[ResourceRequirement]]:
+        requirement_ids = {row.id for row in current}
+        links = self._requirement_links(requirement_ids)
+        period_ids = set(links.values())
+        periods = (
+            self._session.scalars(
+                select(WorkforceRequestPeriod).where(
+                    WorkforceRequestPeriod.id.in_(period_ids)
+                )
+            ).all()
+            if period_ids
+            else []
+        )
+        period_by_id = {row.id: row for row in periods}
+        grouped: dict[tuple[str, ...], list[ResourceRequirement]] = defaultdict(list)
+        for requirement in current:
+            line_id = _text(requirement.source_request_line_id)
+            if not line_id:
+                grouped[("ORPHAN", requirement.id)].append(requirement)
+                continue
+            period = period_by_id.get(links.get(requirement.id, ""))
+            if period is not None:
+                grouped[("PERIOD", line_id, period.period_key)].append(requirement)
+            else:
+                grouped[("LINE", line_id)].append(requirement)
+        for rows in grouped.values():
+            rows.sort(
+                key=lambda row: (
+                    0 if row.assigned_resource_id else 1,
+                    row.created_at,
+                    row.id,
+                )
+            )
+        return grouped
+
+    def _locked_shifts(
+        self,
+        requirement_ids: set[str],
+    ) -> dict[str, list[Shift]]:
+        if not requirement_ids:
+            return {}
+        rows = self._session.scalars(
+            select(Shift)
+            .where(
+                Shift.resource_requirement_id.in_(requirement_ids),
+                Shift.locked.is_(True),
+            )
+            .order_by(Shift.work_date, Shift.id)
+        ).all()
+        grouped: dict[str, list[Shift]] = defaultdict(list)
+        for shift in rows:
+            grouped[shift.resource_requirement_id].append(shift)
+        return grouped
+
+    @staticmethod
+    def _validate_locked_requirement(
+        requirement: ResourceRequirement,
+        spec: _LineRequirementSpec | None,
+        locked: list[Shift],
+    ) -> None:
+        if not locked:
+            return
+        if spec is None:
+            raise ValueError(
+                "La réapprobation supprimerait un besoin contenant des quarts verrouillés. "
+                "Libère ou déplace ces quarts manuels avant d'approuver."
+            )
+        for shift in locked:
+            if shift.work_date < spec.start_date or shift.work_date > spec.end_date:
+                raise ValueError(
+                    "La nouvelle fenêtre d'une ligne exclut un quart verrouillé existant. "
+                    "Libère ou déplace ce quart avant d'approuver."
+                )
+        locked_hours = sum((shift.hours for shift in locked), Decimal("0"))
+        if locked_hours > spec.planned_hours + Decimal("0.001"):
+            raise ValueError(
+                "Les heures verrouillées dépassent les heures prévues par la nouvelle ligne. "
+                "Réduis ou libère les quarts manuels avant d'approuver."
+            )
+
+    def _replace_requirement_competencies(
+        self,
+        requirement: ResourceRequirement,
+        competency_ids: tuple[str, ...],
+    ) -> None:
+        self._session.execute(
+            delete(ResourceRequirementCompetency).where(
+                ResourceRequirementCompetency.resource_requirement_id == requirement.id
+            )
+        )
+        for competency_id in competency_ids:
+            self._session.add(
+                ResourceRequirementCompetency(
+                    resource_requirement_id=requirement.id,
+                    competency_id=competency_id,
+                )
+            )
+
+    def _update_period_link(
+        self,
+        requirement: ResourceRequirement,
+        period: WorkforceRequestPeriod | None,
+    ) -> None:
+        link = self._session.get(WorkforceRequestPeriodRequirement, requirement.id)
+        if period is None:
+            if link is not None:
+                self._session.delete(link)
+            return
+        if link is None:
+            self._session.add(
+                WorkforceRequestPeriodRequirement(
+                    resource_requirement_id=requirement.id,
+                    period_id=period.id,
+                )
+            )
+        else:
+            link.period_id = period.id
+
+    def _apply_line_spec(
+        self,
+        request: WorkforceRequest,
+        project: Project,
+        requirement: ResourceRequirement | None,
+        spec: _LineRequirementSpec,
+    ) -> ResourceRequirement:
+        proposed = (
+            self._session.get(Resource, spec.proposed_resource_id)
+            if spec.proposed_resource_id
+            else None
+        )
+        if spec.proposed_resource_id and proposed is None:
+            raise KeyError(
+                f"Ressource proposée {spec.proposed_resource_id} introuvable pour la ligne {spec.line.id}."
+            )
+
+        if requirement is None:
+            identifier = self._segments.create(
+                {
+                    "NoDemande": _text(request.legacy_demand_number) or request.id,
+                    "NumeroProjet": project.number,
+                    "Technicien": proposed.name if proposed is not None else None,
+                    "DateDebut": spec.start_date,
+                    "DateFin": spec.end_date,
+                    "HeuresPrevues": spec.planned_hours,
+                    "JoursActifsCibles": spec.desired_active_days,
+                    "Statut": "Planifié" if proposed is not None else "À assigner",
+                    "Description": spec.description,
+                    "SourceEffortID": spec.source_effort_id,
+                    "CompetenceRequise": spec.required_competency,
+                    "RequiredCompetencyIDs": spec.competency_ids,
+                    "SourceRequestLineID": spec.line.id,
+                    "TypePlanification": "Flexible",
+                    "Priorite": request.priority or "Normale",
+                    "HorsHoraireAutorise": False,
+                    "OrigineSegment": ORIGIN_REQUEST,
+                    "Confirmation": spec.confirmation,
+                    "ConfirmationOverride": False,
+                }
+            )
+            requirement = self._session.scalar(
+                select(ResourceRequirement).where(
+                    ResourceRequirement.legacy_segment_id == identifier
+                )
+            )
+            if requirement is None:
+                raise RuntimeError(
+                    f"Le besoin créé pour la ligne {spec.line.id} est introuvable."
+                )
+        elif (
+            proposed is not None
+            and requirement.assigned_resource_id is None
+        ):
+            requirement.assigned_resource_id = proposed.id
+
+        if requirement.assigned_resource_id:
+            if requirement.status != "Terminé":
+                requirement.status = "Planifié"
+        elif requirement.status not in {"Terminé", "Annulé"}:
+            requirement.status = "À assigner"
+
+        requirement.project_id = request.project_id
+        requirement.workforce_request_id = request.id
+        requirement.source_request_line_id = spec.line.id
+        requirement.start_date = spec.start_date
+        requirement.end_date = spec.end_date
+        requirement.planned_hours = spec.planned_hours
+        requirement.desired_active_days = spec.desired_active_days
+        requirement.description = spec.description
+        requirement.source_effort_id = spec.source_effort_id
+        requirement.required_competency = spec.required_competency
+        requirement.required_competency_id = (
+            spec.competency_ids[0] if len(spec.competency_ids) == 1 else None
+        )
+        requirement.priority = request.priority or "Normale"
+        requirement.origin = ORIGIN_REQUEST
+        if not requirement.confirmation_overridden:
+            requirement.confirmation = spec.confirmation
+        self._replace_requirement_competencies(requirement, spec.competency_ids)
+        self._update_period_link(requirement, spec.period)
+        return requirement
+
+    def _sync_request_lines(
+        self,
+        request: WorkforceRequest,
+        periods: list[WorkforceRequestPeriod],
+    ) -> None:
+        project = self._session.get(Project, request.project_id)
+        if project is None:
+            raise KeyError(f"Projet {request.project_id} introuvable")
+        lines = self._active_lines(request.id)
+        if not lines:
+            raise ValueError("Une demande multi-lignes doit conserver au moins une ligne active.")
+
+        specs, unresolved = self._line_specs(request, lines, periods)
+        current = self._active_requirements(request.id)
+        current_by_key = self._current_requirement_keys(current)
+        locked_by_requirement = self._locked_shifts({row.id for row in current})
+
+        keep: dict[tuple[str, ...], ResourceRequirement | None] = {}
+        desired_by_key = {spec.key: spec for spec in specs}
+        obsolete: list[ResourceRequirement] = []
+
+        for key, rows in current_by_key.items():
+            spec = desired_by_key.get(key)
+            if spec is None:
+                obsolete.extend(rows)
+                continue
+            keep[key] = rows[0]
+            obsolete.extend(rows[1:])
+
+        for requirement in obsolete:
+            self._validate_locked_requirement(
+                requirement,
+                None,
+                locked_by_requirement.get(requirement.id, []),
+            )
+        for spec in specs:
+            requirement = keep.get(spec.key)
+            if requirement is not None:
+                self._validate_locked_requirement(
+                    requirement,
+                    spec,
+                    locked_by_requirement.get(requirement.id, []),
+                )
+
+        for requirement in obsolete:
+            requirement.status = "Annulé"
+
+        materialized: list[ResourceRequirement] = []
+        for spec in specs:
+            materialized.append(
+                self._apply_line_spec(
+                    request,
+                    project,
+                    keep.get(spec.key),
+                    spec,
+                )
+            )
+
+        emergency = self._emergency_materialization(request)
+        self._session.add(
+            WorkforceRequestHistory(
+                workforce_request_id=request.id,
+                action=(
+                    "Synchronisation lignes urgente"
+                    if emergency
+                    else "Synchronisation lignes"
+                ),
+                status=request.status,
+                comment=(
+                    f"{len(materialized)} besoin(s) matérialisé(s) depuis "
+                    f"{len(lines)} ligne(s)"
+                    + (
+                        " par dérogation urgente"
+                        if emergency
+                        else ""
+                    )
+                    + f"; {len(obsolete)} besoin(s) remplacé(s)/annulé(s); "
+                    f"{unresolved} groupe(s) alternatif(s) non résolu(s)."
+                ),
+                actor_name=(
+                    request.emergency_override_by_name
+                    if emergency
+                    else request.approved_by_name
+                ),
+                occurred_at=utc_now(),
+            )
+        )
+        self._session.flush()
+
+    def sync_approved(self, demand_number: str) -> None:
+        request = self._request(demand_number)
+        periods = self._active_periods(request.id)
+        if bool(request.line_mode):
+            self._sync_request_lines(request, periods)
+            return
+        if not periods:
+            self._legacy.sync_approved(demand_number)
+            return
+        self._sync_legacy_periods(request, periods)
