@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from datetime import date, datetime
 from decimal import Decimal
+import json
 import re
 from typing import Any
 
@@ -742,6 +743,7 @@ class SqlDemandRepository(DemandRepositoryPort):
             request,
             action="Création",
             comment="Demande créée et soumise" if submit else "Demande créée",
+            changed_fields=("create",),
         )
         self._session.flush()
         return number
@@ -755,6 +757,7 @@ class SqlDemandRepository(DemandRepositoryPort):
         comment: str = "",
     ) -> None:
         request = self._request(number)
+        previous_status = request.status
         request_lines = updates.get("RequestLines")
         expected_version = updates.get("ExpectedVersion")
         if expected_version is not None and int(expected_version) != int(request.aggregate_version or 1):
@@ -891,6 +894,14 @@ class SqlDemandRepository(DemandRepositoryPort):
             request,
             action=_text(action) or "Modification",
             comment=_text(comment),
+            previous_status=previous_status,
+            changed_fields=tuple(
+                sorted(
+                    str(field)
+                    for field in updates
+                    if str(field) != "ExpectedVersion"
+                )
+            ),
         )
         self._session.flush()
 
@@ -900,13 +911,26 @@ class SqlDemandRepository(DemandRepositoryPort):
         *,
         action: str,
         comment: str,
+        previous_status: str | None = None,
+        changed_fields: tuple[str, ...] = (),
     ) -> None:
+        details = json.dumps(
+            {
+                "aggregate_version": int(request.aggregate_version or 1),
+                "line_mode": bool(request.line_mode),
+                "changed_fields": list(dict.fromkeys(changed_fields)),
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        )
         self._session.add(
             WorkforceRequestHistory(
                 workforce_request_id=request.id,
                 action=action,
+                previous_status=previous_status,
                 status=request.status,
                 comment=comment or None,
+                details=details,
                 actor_name=self._actor_name or None,
                 occurred_at=utc_now(),
             )
