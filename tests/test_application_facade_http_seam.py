@@ -76,6 +76,7 @@ class ApplicationFacadeHttpSeamTests(unittest.TestCase):
             {
                 "NumeroProjet": "P-API",
                 "DateDebutSouhaitee": date(2026, 8, 26),
+                "TempsEstimeHeures": 8,
             },
         )
 

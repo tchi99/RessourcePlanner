@@ -48,6 +48,32 @@ def _optional_number(value: Any) -> float | None:
 
 
 @dataclass(frozen=True, slots=True)
+class DemandLineReadModel:
+    line_id: str
+    position: int
+    kind: str
+    slot_count: int = 1
+    required_resource_class: str | None = None
+    required_competencies: str | None = None
+    required_competency_ids: tuple[str, ...] = ()
+    desired_start: date | None = None
+    desired_end: date | None = None
+    desired_active_days: int | None = None
+    estimated_hours: float | None = None
+    estimated_hours_source: str | None = None
+    default_hours_per_day: float | None = None
+    confirmation: str = "Confirmée"
+    work_package_ref: str | None = None
+    work_package_name: str | None = None
+    task_code: str | None = None
+    task_label: str | None = None
+    proposed_resource_id: str | None = None
+    proposed_resource: str | None = None
+    description: str | None = None
+    active: bool = True
+
+
+@dataclass(frozen=True, slots=True)
 class DemandReadModel:
     """Storage-independent demand projection consumed by application/UI code."""
 
@@ -76,6 +102,9 @@ class DemandReadModel:
     estimated_hours: float | None = None
     estimated_days: float | None = None
     proposed_resource: str | None = None
+    version: int = 1
+    line_mode: bool = False
+    lines: tuple[DemandLineReadModel, ...] = ()
     emergency_override_active: bool = False
     emergency_override_reason: str | None = None
     emergency_override_by: str | None = None
@@ -110,6 +139,7 @@ class DemandReadModel:
             estimated_hours=_optional_number(row.get("TempsEstimeHeures")),
             estimated_days=_optional_number(row.get("TempsEstimeJours")),
             proposed_resource=_optional_text(row.get("TechnicienPropose")),
+            version=max(int(_number(row.get("Version")) or 1), 1),
             emergency_override_active=bool(row.get("DerogationUrgenceActive") or False),
             emergency_override_reason=_optional_text(row.get("DerogationUrgenceRaison")),
             emergency_override_by=_optional_text(row.get("DerogationUrgencePar")),

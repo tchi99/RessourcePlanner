@@ -60,6 +60,7 @@ class DemandCreationServiceTests(unittest.TestCase):
                 project_number="P-100",
                 desired_start=date(2026, 8, 24),
                 description="Travaux chantier",
+                estimated_hours=8,
                 submit=True,
             )
         )
@@ -152,6 +153,7 @@ class DemandCreationServiceTests(unittest.TestCase):
                 "NumeroProjet": "P-500",
                 "DateDebutSouhaitee": "2026-08-24",
                 "Confirmation": "Tentative",
+                "TempsEstimeHeures": 8,
             },
             submit=True,
         )

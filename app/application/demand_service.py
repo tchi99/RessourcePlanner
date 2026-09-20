@@ -6,6 +6,7 @@ from datetime import date, datetime
 from typing import Any, ContextManager
 
 from ..domain.demand_periods import DemandPeriodDefinition, validate_period_definitions
+from ..domain.request_lines import default_legacy_hours
 from .command_ports import ApprovedDemandSyncPort, PlanningCommandPort
 from .commands import (
     DemandAlternativeSelectCommand,
@@ -18,6 +19,7 @@ from .commands import (
     DemandUpdateCommand,
 )
 from .errors import (
+    ApplicationConflictError,
     ApplicationNotFoundError,
     ApplicationOperationError,
     ApplicationValidationError,
@@ -48,6 +50,7 @@ BUSINESS_DEMAND_FIELDS = frozenset(
         "TempsEstimeHeures",
         "TempsEstimeJours",
         "TechnicienPropose",
+        "RequestLines",
     }
 )
 
@@ -177,18 +180,64 @@ class DemandService:
         existing = self._demand_or_not_found(number)
 
         data = command.to_repository_values()
+        expected_version = data.pop("ExpectedVersion", None)
+        if "RequestLines" in data:
+            if str(existing.status or "").strip().casefold() == "en planification":
+                raise ApplicationConflictError(
+                    "La conversion ou modification multi-lignes d'une demande déjà approuvée sera activée avec #288E.",
+                    code="demand_line_reapproval_unavailable",
+                    context={"demand_number": number},
+                )
+            if expected_version is None:
+                raise ApplicationValidationError(
+                    "expected_version est requis pour modifier les lignes d'une demande.",
+                    code="demand_version_required",
+                    context={"demand_number": number},
+                )
+            if int(expected_version) != int(existing.version):
+                raise ApplicationConflictError(
+                    "La demande a été modifiée depuis sa lecture.",
+                    code="demand_version_conflict",
+                    context={
+                        "demand_number": number,
+                        "expected_version": int(expected_version),
+                        "current_version": int(existing.version),
+                    },
+                )
+            data["ExpectedVersion"] = int(expected_version)
+        if "RequestLines" not in data and not existing.line_mode:
+            final_count = int(data.get("NombreRessources", existing.resource_count) or 1)
+            final_hours = data.get("TempsEstimeHeures", existing.estimated_hours)
+            if final_hours is not None:
+                numeric_hours = float(final_hours)
+                if numeric_hours <= 0:
+                    raise ApplicationValidationError(
+                        "Les heures doivent être supérieures à zéro lorsqu'elles sont renseignées.",
+                        code="demand_estimated_hours_invalid",
+                        context={"estimated_hours": numeric_hours},
+                    )
+                if numeric_hours < final_count * 0.01:
+                    raise ApplicationValidationError(
+                        "Les heures totales sont insuffisantes pour produire un besoin positif par ressource.",
+                        code="demand_hours_split_invalid",
+                        context={
+                            "estimated_hours": numeric_hours,
+                            "resource_count": final_count,
+                        },
+                    )
         if "NumeroProjet" in data and not str(data["NumeroProjet"] or "").strip():
             raise ApplicationValidationError(
                 "Le projet est requis.",
                 code="demand_project_required",
                 context={"field": "project_number"},
             )
-        start = data.get("DateDebutSouhaitee", existing.desired_start)
-        end = data.get("DateFinSouhaitee", existing.desired_end)
-        self._validate_window(
-            start if isinstance(start, date) else None,
-            end if isinstance(end, date) else None,
-        )
+        if "RequestLines" not in data and not existing.line_mode:
+            start = data.get("DateDebutSouhaitee", existing.desired_start)
+            end = data.get("DateFinSouhaitee", existing.desired_end)
+            self._validate_window(
+                start if isinstance(start, date) else None,
+                end if isinstance(end, date) else None,
+            )
 
         reapproval_required = (
             existing.status == "En planification"
@@ -225,6 +274,12 @@ class DemandService:
     ) -> tuple[Sequence[DemandPeriodReadModel], bool]:
         number = self._required_identifier(command.number, entity="demand")
         existing = self._demand_or_not_found(number)
+        if existing.line_mode:
+            raise ApplicationConflictError(
+                "Les périodes d'une demande multi-lignes doivent être gérées par ligne avec #288D.",
+                code="demand_line_periods_unavailable",
+                context={"demand_number": number},
+            )
         periods = self._period_repository()
 
         try:
@@ -291,6 +346,12 @@ class DemandService:
         group = self._required_identifier(command.alternative_group, entity="alternative_group")
         period_id = self._required_identifier(command.period_id, entity="period")
         existing = self._demand_or_not_found(number)
+        if existing.line_mode:
+            raise ApplicationConflictError(
+                "Les alternatives d'une demande multi-lignes doivent être gérées par ligne avec #288D.",
+                code="demand_line_periods_unavailable",
+                context={"demand_number": number},
+            )
         periods = self._period_repository()
 
         selections = call_application_port(
@@ -327,11 +388,80 @@ class DemandService:
 
     def submit_command(self, command: DemandSubmitCommand) -> None:
         number = self._required_identifier(command.number, entity="demand")
+        existing = call_application_port(
+            lambda: self._demands.get(number),
+            code_prefix="demand_lookup",
+            context={"demand_number": number},
+        )
+        active_lines = (
+            tuple(line for line in existing.lines if line.active)
+            if existing is not None and existing.line_mode
+            else ()
+        )
+        if active_lines:
+            for line in active_lines:
+                if line.kind != "WORKFORCE":
+                    raise ApplicationValidationError(
+                        "Seules les lignes WORKFORCE peuvent être soumises dans cette tranche.",
+                        code="demand_line_kind_unsupported",
+                        context={"line_id": line.line_id, "kind": line.kind},
+                    )
+                if line.desired_start is None:
+                    raise ApplicationValidationError(
+                        "Chaque ligne doit avoir une date de début avant soumission.",
+                        code="demand_line_start_required",
+                        context={"line_id": line.line_id},
+                    )
+                if line.estimated_hours is None or line.estimated_hours <= 0:
+                    raise ApplicationValidationError(
+                        "Chaque ligne doit avoir un effort résolu avant soumission.",
+                        code="demand_line_effort_required",
+                        context={"line_id": line.line_id},
+                    )
+        submit_updates: dict[str, Any] = {"Statut": "Soumise"}
+        has_period_effort = False
+        if (
+            existing is not None
+            and not existing.line_mode
+            and existing.estimated_hours is None
+            and existing.estimated_days is None
+            and self._periods is not None
+        ):
+            period_rows = call_application_port(
+                lambda: self._periods.list_for_demand(number),
+                code_prefix="demand_submit_periods",
+                context={"demand_number": number},
+            )
+            has_period_effort = bool(period_rows)
+        if (
+            existing is not None
+            and not existing.line_mode
+            and existing.estimated_hours is None
+            and existing.estimated_days is None
+            and not has_period_effort
+        ):
+            raise ApplicationValidationError(
+                "Une demande soumise doit préciser des heures, un nombre de jours ou des périodes détaillées.",
+                code="demand_effort_required",
+                context={"demand_number": number},
+            )
+        if (
+            existing is not None
+            and not existing.line_mode
+            and existing.estimated_hours is None
+            and existing.estimated_days is not None
+        ):
+            submit_updates["TempsEstimeHeures"] = default_legacy_hours(
+                estimated_hours=None,
+                estimated_days=existing.estimated_days,
+                resource_count=existing.resource_count,
+            )
+            submit_updates["RequestLineHoursSource"] = "DEFAULT_8H"
         with self._context("submit demand"):
             call_application_port(
                 lambda: self._demands.update(
                     number,
-                    {"Statut": "Soumise"},
+                    submit_updates,
                     action="Soumission",
                     comment="Demande soumise pour approbation",
                 ),
@@ -341,6 +471,17 @@ class DemandService:
 
     def approve_command(self, command: DemandApproveCommand) -> dict[str, Any]:
         number = self._required_identifier(command.number, entity="demand")
+        existing = call_application_port(
+            lambda: self._demands.get(number),
+            code_prefix="demand_lookup",
+            context={"demand_number": number},
+        )
+        if existing is not None and existing.line_mode:
+            raise ApplicationConflictError(
+                "L'approbation des demandes multi-lignes sera activée avec la matérialisation #288E.",
+                code="demand_line_approval_unavailable",
+                context={"demand_number": number},
+            )
         comment = str(command.comment or "")
         with self._context("approve demand"):
             call_application_port(

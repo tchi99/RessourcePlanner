@@ -12,6 +12,7 @@ from .commands import (
     DemandCancelCommand,
     DemandCorrectionCommand,
     DemandCreateCommand,
+    DemandLineInput,
     DemandPeriodInput,
     DemandPeriodsReplaceCommand,
     DemandSubmitCommand,
@@ -108,7 +109,12 @@ from .query_models import (
     WorkPackageReadModel,
 )
 from .query_ports import PlannerQueryPort
-from .read_models import DemandPeriodReadModel, DemandReadModel, SegmentReadModel
+from .read_models import (
+    DemandLineReadModel,
+    DemandPeriodReadModel,
+    DemandReadModel,
+    SegmentReadModel,
+)
 from .repository_ports import (
     DemandPeriodRepositoryPort,
     DemandRepositoryPort,
@@ -183,8 +189,10 @@ __all__ = [
     "DemandCancelCommand",
     "DemandCorrectionCommand",
     "DemandCreateCommand",
+    "DemandLineInput",
     "DemandEmergencyOverrideCommand",
     "DemandHistoryReadModel",
+    "DemandLineReadModel",
     "DemandMutationResult",
     "DemandPeriodInput",
     "DemandPeriodReadModel",

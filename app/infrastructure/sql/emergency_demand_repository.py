@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import replace
 from datetime import datetime
 
-from ...application.read_models import DemandReadModel
+from ...application.read_models import DemandLineReadModel, DemandReadModel
 from .demand_repository import SqlDemandRepository, _optional_text
 from .models import (
     Project,
@@ -22,6 +22,7 @@ class SqlEmergencyDemandRepository(SqlDemandRepository):
         work_package: WorkPackage | None,
         proposed_resource: Resource | None,
         competency_ids: tuple[str, ...] = (),
+        lines: tuple[DemandLineReadModel, ...] = (),
     ) -> DemandReadModel:
         base = super()._read_model(
             request,
@@ -29,6 +30,7 @@ class SqlEmergencyDemandRepository(SqlDemandRepository):
             work_package,
             proposed_resource,
             competency_ids,
+            lines,
         )
         return replace(
             base,
