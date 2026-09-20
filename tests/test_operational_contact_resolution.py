@@ -43,7 +43,7 @@ def contact(
     name: str,
     *,
     active: bool = True,
-    email: str | None = "contact@example.com",
+    email: str | None = "configured-email",
     phone: str | None = "555-0100",
 ) -> BusinessContactSnapshot:
     return BusinessContactSnapshot(
@@ -197,31 +197,31 @@ class SqlOperationalContactRepositoryTests(unittest.TestCase):
                     BusinessContact(
                         id="C-PM",
                         display_name="Jean PM",
-                        email="jean@example.com",
+                        email="configured-jean",
                         phone="555-1000",
                     ),
                     BusinessContact(
                         id="C-TASK",
                         display_name="Marc tâche",
-                        email="marc@example.com",
+                        email="configured-marc",
                         phone="555-2000",
                     ),
                     BusinessContact(
                         id="C-TCOORD",
                         display_name="Paul coord tâche",
-                        email="paul@example.com",
+                        email="configured-paul",
                         phone="555-3000",
                     ),
                     BusinessContact(
                         id="C-RCOORD",
                         display_name="Julie coord ressource",
-                        email="julie@example.com",
+                        email="configured-julie",
                         phone="555-4000",
                     ),
                     BusinessContact(
                         id="C-OVERRIDE",
                         display_name="Sophie override",
-                        email="sophie@example.com",
+                        email="configured-sophie",
                         phone="555-5000",
                     ),
                 ]
