@@ -441,7 +441,12 @@ def create_api_app(
         )
     )
     app.include_router(build_competency_router(competency_dependency))
-    app.include_router(build_business_contact_router(business_contact_dependency))
+    app.include_router(
+        build_business_contact_router(
+            business_contact_dependency,
+            session_dependency,
+        )
+    )
     app.include_router(build_task_catalog_router(session_dependency))
     app.include_router(
         build_me_router(
