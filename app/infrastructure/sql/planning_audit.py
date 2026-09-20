@@ -113,6 +113,8 @@ class SqlPlanningAuditJournal:
                 else None
             ),
             "project_number": project.number,
+            "source_request_line_id": requirement.source_request_line_id,
+            "source_effort_id": requirement.source_effort_id,
             "technician": resource.name if resource is not None else None,
             "start_date": requirement.start_date,
             "end_date": requirement.end_date,
