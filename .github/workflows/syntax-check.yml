@@ -134,15 +134,17 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "22"
+      - name: Cache npm download store
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-npm-${{ hashFiles('frontend/package.json') }}
       - name: Install frontend dependencies
         working-directory: frontend
-        run: npm install --no-audit --no-fund
+        run: npm install --prefer-offline --no-audit --no-fund
       - name: Build React V2 frontend
         working-directory: frontend
         run: npm run build
-      - name: Install Playwright Chromium
-        working-directory: frontend
-        run: npx playwright install --with-deps chromium
       - name: Run React V2 browser acceptance
         working-directory: frontend
         run: npm run test:e2e
