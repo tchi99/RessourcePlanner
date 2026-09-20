@@ -65,6 +65,7 @@ from .identity_constraints import (
     WORKFORCE_REQUEST_NUMBER_INDEX,
 )
 from .resource_identity_constraints import RESOURCE_EXTERNAL_ID_INDEX
+from .operational_contact_repository import SqlOperationalContactRepository
 from .period_approved_sync import SqlPeriodAwareApprovedDemandSyncAdapter
 from .planning_audit import PlanningChangeHistory
 from .planning_repository import SqlPlanningReadRepository
@@ -132,6 +133,7 @@ __all__ = [
     "SqlEmergencyDemandRepository",
     "SqlEmployeeSyncRepository",
     "SqlIdentityResourceLinkRepository",
+    "SqlOperationalContactRepository",
     "SqlOverallocationAllocationCommandAdapter",
     "SqlPeriodAwareApprovedDemandSyncAdapter",
     "SqlPlannerQueryRepository",
