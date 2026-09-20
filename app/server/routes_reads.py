@@ -6,6 +6,7 @@ from typing import Any, Callable, Literal
 from fastapi import APIRouter, Depends, Query, Request
 
 from ..application import (
+    ApplicationConflictError,
     ApplicationNotFoundError,
     ApplicationValidationError,
     DemandHistoryReadModel,
@@ -203,13 +204,52 @@ def build_read_router(
         number: str,
         queries: PlannerQueryPort = Depends(query_dependency),
     ) -> list[DemandPeriodReadModel]:
-        if queries.get_demand(number) is None:
+        demand = queries.get_demand(number)
+        if demand is None:
             raise ApplicationNotFoundError(
                 f"Demande {number} introuvable",
                 code="demand_not_found",
                 context={"demand_number": number},
             )
+        if demand.line_mode:
+            raise ApplicationConflictError(
+                "Les périodes d'une demande multi-lignes doivent être lues par ligne.",
+                code="demand_line_period_scope_required",
+                context={"demand_number": number},
+            )
         return list(queries.list_demand_periods(number))
+
+    @router.get("/demands/{number}/lines/{line_id}/periods")
+    def list_demand_line_periods(
+        number: str,
+        line_id: str,
+        queries: PlannerQueryPort = Depends(query_dependency),
+    ) -> list[DemandPeriodReadModel]:
+        demand = queries.get_demand(number)
+        if demand is None:
+            raise ApplicationNotFoundError(
+                f"Demande {number} introuvable",
+                code="demand_not_found",
+                context={"demand_number": number},
+            )
+        if not demand.line_mode:
+            raise ApplicationConflictError(
+                "Les demandes historiques à une ligne utilisent l'endpoint de périodes de la demande.",
+                code="demand_legacy_period_scope_invalid",
+                context={"demand_number": number},
+            )
+        if not any(row.active and row.line_id == line_id for row in demand.lines):
+            raise ApplicationNotFoundError(
+                f"Ligne {line_id} introuvable pour la demande {number}",
+                code="demand_line_not_found",
+                context={"demand_number": number, "request_line_id": line_id},
+            )
+        return list(
+            queries.list_demand_periods(
+                number,
+                request_line_id=line_id,
+            )
+        )
 
     @router.get("/demands/{number}/plan-delta")
     def demand_plan_delta(
