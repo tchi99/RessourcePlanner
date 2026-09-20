@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+import json
 from datetime import date
 from pathlib import Path
 import unittest
@@ -147,6 +148,23 @@ class SqlRepositoryTests(unittest.TestCase):
                 select(func.count()).select_from(WorkforceRequestHistory)
             )
             self.assertGreaterEqual(int(history_count or 0), 3)
+            latest_history = session.scalars(
+                select(WorkforceRequestHistory)
+                .where(WorkforceRequestHistory.workforce_request_id == request.id)
+                .order_by(
+                    WorkforceRequestHistory.occurred_at.desc(),
+                    WorkforceRequestHistory.id.desc(),
+                )
+            ).first()
+            assert latest_history is not None
+            self.assertEqual(latest_history.action, "Modification")
+            self.assertEqual(latest_history.previous_status, "En planification")
+            self.assertEqual(latest_history.status, "Soumise")
+            audit = json.loads(latest_history.details or "{}")
+            self.assertEqual(audit["aggregate_version"], 3)
+            self.assertFalse(audit["line_mode"])
+            self.assertIn("Description", audit["changed_fields"])
+            self.assertIn("Statut", audit["changed_fields"])
 
         with self.factory() as session:
             persisted = SqlDemandRepository(session).get(f"DMO-{year}-0001")
