@@ -441,6 +441,16 @@ class ResourceRequirement(TimestampMixin, Base):
     source_request_line_id: Mapped[str | None] = mapped_column(
         String(ID_LENGTH), ForeignKey("request_lines.id"), nullable=True, index=True
     )
+    approved_task_catalog_item_id: Mapped[str | None] = mapped_column(
+        String(ID_LENGTH), ForeignKey("task_catalog_items.id"), nullable=True, index=True
+    )
+    approved_operational_responsible_override_contact_id: Mapped[str | None] = mapped_column(
+        String(ID_LENGTH), ForeignKey("business_contacts.id"), nullable=True, index=True
+    )
+    approved_request_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    approved_contact_context_status: Mapped[str] = mapped_column(
+        String(32), nullable=False, server_default=text("'LEGACY_UNKNOWN'"), index=True
+    )
     assigned_resource_id: Mapped[str | None] = mapped_column(
         String(ID_LENGTH), ForeignKey("resources.id"), nullable=True, index=True
     )
