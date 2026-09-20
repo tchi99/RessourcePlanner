@@ -425,6 +425,10 @@ class ResourceRequirement(TimestampMixin, Base):
             "workforce_request_id IS NOT NULL OR origin IN ('QUICK_SHIFT', 'AD_HOC')",
             name="resource_requirement_request_or_adhoc",
         ),
+        CheckConstraint(
+            "approved_contact_context_status IN ('CAPTURED', 'LEGACY_UNKNOWN', 'NOT_APPLICABLE')",
+            name="resource_requirement_approved_contact_context_status",
+        ),
         Index("ix_resource_requirements_project_window", "project_id", "start_date", "end_date"),
         Index("ix_resource_requirements_resource_window", "assigned_resource_id", "start_date", "end_date"),
         Index("ix_resource_requirements_request_status", "workforce_request_id", "status"),
