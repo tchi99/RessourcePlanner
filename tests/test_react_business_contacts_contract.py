@@ -55,6 +55,12 @@ class ReactBusinessContactContractTests(unittest.TestCase):
             source,
         )
 
+    def test_resolution_component_surfaces_backend_source(self) -> None:
+        source = (FRONTEND / "BusinessContactUi.tsx").read_text(encoding="utf-8")
+        self.assertIn("Source :", source)
+        self.assertIn("CONTACT_REFERENCE_INVALID", source)
+        self.assertIn("PROJECT_MANAGER_CONTACT_UNMIGRATED", source)
+
     def test_business_contact_styles_are_loaded(self) -> None:
         source = (FRONTEND / "main.tsx").read_text(encoding="utf-8")
         self.assertIn('import "./business-contacts.css";', source)
