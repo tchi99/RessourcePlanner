@@ -112,6 +112,49 @@ class DemandService:
         return self._periods
 
     @staticmethod
+    def _period_line_scope(existing: Any, request_line_id: str | None) -> str | None:
+        if bool(existing.line_mode):
+            wanted = str(request_line_id or "").strip()
+            if not wanted:
+                raise ApplicationConflictError(
+                    "Les périodes d'une demande multi-lignes doivent cibler une ligne.",
+                    code="demand_line_period_scope_required",
+                    context={"demand_number": existing.number},
+                )
+            line = next(
+                (
+                    row
+                    for row in existing.lines
+                    if row.active and str(row.line_id) == wanted
+                ),
+                None,
+            )
+            if line is None:
+                raise ApplicationNotFoundError(
+                    f"Ligne {wanted} introuvable pour la demande {existing.number}.",
+                    code="demand_line_not_found",
+                    context={
+                        "demand_number": existing.number,
+                        "request_line_id": wanted,
+                    },
+                )
+            if line.kind != "WORKFORCE":
+                raise ApplicationValidationError(
+                    "Seules les lignes WORKFORCE supportent les périodes dans #288D.",
+                    code="demand_line_kind_unsupported",
+                    context={"line_id": line.line_id, "kind": line.kind},
+                )
+            return wanted
+
+        if request_line_id is not None:
+            raise ApplicationConflictError(
+                "Les demandes historiques à une ligne utilisent les endpoints de périodes de la demande.",
+                code="demand_legacy_period_scope_invalid",
+                context={"demand_number": existing.number},
+            )
+        return None
+
+    @staticmethod
     def _period_signature_from_definition(period: DemandPeriodDefinition) -> tuple[Any, ...]:
         return (
             period.period_id,
@@ -274,12 +317,10 @@ class DemandService:
     ) -> tuple[Sequence[DemandPeriodReadModel], bool]:
         number = self._required_identifier(command.number, entity="demand")
         existing = self._demand_or_not_found(number)
-        if existing.line_mode:
-            raise ApplicationConflictError(
-                "Les périodes d'une demande multi-lignes doivent être gérées par ligne avec #288D.",
-                code="demand_line_periods_unavailable",
-                context={"demand_number": number},
-            )
+        request_line_id = self._period_line_scope(
+            existing,
+            command.request_line_id,
+        )
         periods = self._period_repository()
 
         try:
@@ -289,13 +330,34 @@ class DemandService:
             raise ApplicationValidationError(
                 str(exc),
                 code="demand_periods_invalid",
-                context={"demand_number": number},
+                context={
+                    "demand_number": number,
+                    "request_line_id": request_line_id,
+                },
             ) from exc
 
+        if request_line_id is not None and any(
+            int(row.resource_count) != 1 for row in definitions
+        ):
+            raise ApplicationValidationError(
+                "Une période rattachée à une RequestLine représente exactement un slot.",
+                code="demand_line_period_resource_count_invalid",
+                context={
+                    "demand_number": number,
+                    "request_line_id": request_line_id,
+                },
+            )
+
         current = call_application_port(
-            lambda: periods.list_for_demand(number),
+            lambda: periods.list_for_demand(
+                number,
+                request_line_id=request_line_id,
+            ),
             code_prefix="demand_periods_lookup",
-            context={"demand_number": number},
+            context={
+                "demand_number": number,
+                "request_line_id": request_line_id,
+            },
         )
         old_signature = tuple(
             self._period_signature_from_read_model(row) for row in current
@@ -306,9 +368,22 @@ class DemandService:
         if old_signature == new_signature:
             return tuple(current), False
 
-        reapproval_required = existing.status == "En planification"
+        if request_line_id is not None and existing.status == "En planification":
+            raise ApplicationConflictError(
+                "La réapprobation d'une demande multi-lignes sera activée avec #288E.",
+                code="demand_line_reapproval_unavailable",
+                context={"demand_number": number, "request_line_id": request_line_id},
+            )
+
+        reapproval_required = (
+            request_line_id is None and existing.status == "En planification"
+        )
         status_update: dict[str, Any] = {}
-        comment = "Périodes détaillées de la demande modifiées"
+        comment = (
+            f"Périodes détaillées de la ligne {request_line_id} modifiées"
+            if request_line_id is not None
+            else "Périodes détaillées de la demande modifiées"
+        )
         if reapproval_required:
             status_update = {
                 "Statut": "Soumise",
@@ -322,9 +397,16 @@ class DemandService:
 
         with self._context("replace demand periods"):
             updated = call_application_port(
-                lambda: periods.replace_for_demand(number, definitions),
+                lambda: periods.replace_for_demand(
+                    number,
+                    definitions,
+                    request_line_id=request_line_id,
+                ),
                 code_prefix="demand_periods_replace",
-                context={"demand_number": number},
+                context={
+                    "demand_number": number,
+                    "request_line_id": request_line_id,
+                },
             )
             call_application_port(
                 lambda: self._demands.update(
@@ -334,7 +416,10 @@ class DemandService:
                     comment=comment,
                 ),
                 code_prefix="demand_periods_audit",
-                context={"demand_number": number},
+                context={
+                    "demand_number": number,
+                    "request_line_id": request_line_id,
+                },
             )
         return tuple(updated), reapproval_required
 
@@ -343,36 +428,56 @@ class DemandService:
         command: DemandAlternativeSelectCommand,
     ) -> Mapping[str, Any] | None:
         number = self._required_identifier(command.number, entity="demand")
-        group = self._required_identifier(command.alternative_group, entity="alternative_group")
+        group = self._required_identifier(
+            command.alternative_group,
+            entity="alternative_group",
+        )
         period_id = self._required_identifier(command.period_id, entity="period")
         existing = self._demand_or_not_found(number)
-        if existing.line_mode:
+        request_line_id = self._period_line_scope(
+            existing,
+            command.request_line_id,
+        )
+        if request_line_id is not None and existing.status == "En planification":
             raise ApplicationConflictError(
-                "Les alternatives d'une demande multi-lignes doivent être gérées par ligne avec #288D.",
-                code="demand_line_periods_unavailable",
-                context={"demand_number": number},
+                "La sélection d'alternative sur un plan multi-lignes actif sera activée avec #288E.",
+                code="demand_line_reapproval_unavailable",
+                context={"demand_number": number, "request_line_id": request_line_id},
             )
         periods = self._period_repository()
 
         selections = call_application_port(
-            lambda: periods.selections_for_demand(number),
+            lambda: periods.selections_for_demand(
+                number,
+                request_line_id=request_line_id,
+            ),
             code_prefix="demand_period_selection_lookup",
-            context={"demand_number": number, "alternative_group": group},
+            context={
+                "demand_number": number,
+                "request_line_id": request_line_id,
+                "alternative_group": group,
+            },
         )
         if str(selections.get(group) or "").strip() == period_id:
             return None
 
         with self._context("select demand alternative"):
             call_application_port(
-                lambda: periods.select_alternative(number, group, period_id),
+                lambda: periods.select_alternative(
+                    number,
+                    group,
+                    period_id,
+                    request_line_id=request_line_id,
+                ),
                 code_prefix="demand_period_select",
                 context={
                     "demand_number": number,
+                    "request_line_id": request_line_id,
                     "alternative_group": group,
                     "period_id": period_id,
                 },
             )
-            if existing.status != "En planification":
+            if request_line_id is not None or existing.status != "En planification":
                 return None
             call_application_port(
                 lambda: self._approved_sync.sync_approved(number),
