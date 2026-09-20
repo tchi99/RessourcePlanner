@@ -294,8 +294,18 @@ class SqlPlannerQueryRepository(PlannerQueryPort):
     def get_demand(self, number: str) -> DemandReadModel | None:
         return self._demands.get(number)
 
-    def list_demand_periods(self, number: str) -> tuple[DemandPeriodReadModel, ...]:
-        return tuple(self._periods.list_for_demand(number))
+    def list_demand_periods(
+        self,
+        number: str,
+        *,
+        request_line_id: str | None = None,
+    ) -> tuple[DemandPeriodReadModel, ...]:
+        return tuple(
+            self._periods.list_for_demand(
+                number,
+                request_line_id=request_line_id,
+            )
+        )
 
     def list_pending_loads(
         self,
