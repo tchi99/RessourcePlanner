@@ -333,6 +333,10 @@ class MaterializedOperationalContactProjectionTests(unittest.TestCase):
                 "RESOURCE_REQUIREMENT",
             )
             self.assertEqual(
+                requirement_payload["subject_id"],
+                "REQ-CAPTURED",
+            )
+            self.assertEqual(
                 requirement_payload["approved_contact_context_status"],
                 "CAPTURED",
             )
@@ -342,6 +346,8 @@ class MaterializedOperationalContactProjectionTests(unittest.TestCase):
                 "C-TASK-APPROVED",
             )
             self.assertEqual(shift_payload["subject_type"], "SHIFT")
+            self.assertEqual(shift_payload["subject_id"], "SHIFT-1")
+            self.assertEqual(shift_payload["requirement_id"], "REQ-CAPTURED")
             self.assertEqual(shift_payload["resource_id"], "R-SHIFT")
             self.assertEqual(
                 shift_payload["coordinator"]["contact_id"],
