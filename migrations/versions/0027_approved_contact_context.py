@@ -80,6 +80,17 @@ def upgrade() -> None:
             unique=False,
         )
 
+    resource_requirements = sa.table(
+        "resource_requirements",
+        sa.column("workforce_request_id", sa.String(length=36)),
+        sa.column("approved_contact_context_status", sa.String(length=32)),
+    )
+    op.execute(
+        resource_requirements.update()
+        .where(resource_requirements.c.workforce_request_id.is_(None))
+        .values(approved_contact_context_status="NOT_APPLICABLE")
+    )
+
 
 def downgrade() -> None:
     with op.batch_alter_table("resource_requirements") as batch_op:
