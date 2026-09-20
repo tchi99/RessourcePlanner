@@ -457,10 +457,6 @@ class RequestLineMaterializationHttpTests(unittest.TestCase):
                     )
                     self.assertEqual(requirement.approved_request_version, 2)
                     self.assertEqual(
-                        requirement.approved_operational_responsible_override_contact_id,
-                        "BC-OVR-1",
-                    )
-                    self.assertEqual(
                         requirement.approved_contact_context_status,
                         "CAPTURED",
                     )
@@ -515,6 +511,10 @@ class RequestLineMaterializationHttpTests(unittest.TestCase):
                     self.assertEqual(requirement.start_date, D1)
                     self.assertEqual(requirement.approved_task_catalog_item_id, "T210")
                     self.assertEqual(requirement.approved_request_version, 2)
+                    self.assertEqual(
+                        requirement.approved_operational_responsible_override_contact_id,
+                        "BC-OVR-1",
+                    )
                     self.assertEqual(
                         requirement.approved_contact_context_status,
                         "CAPTURED",
