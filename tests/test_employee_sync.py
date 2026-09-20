@@ -8,6 +8,7 @@ from app.application.employee_sync import EmployeeSyncService, ExternalEmployeeR
 from app.application.errors import ApplicationConflictError
 from app.infrastructure.sql import (
     Base,
+    BusinessContact,
     Resource,
     SqlEmployeeSyncRepository,
     create_session_factory,
@@ -78,6 +79,45 @@ class EmployeeSyncTests(unittest.TestCase):
             self.assertEqual(row.competencies, "PLC;SCADA")
             self.assertEqual(row.note, "Attribut local")
             self.assertEqual(row.sort_order, 7)
+
+    def test_sync_preserves_local_resource_coordinator(self) -> None:
+        with transactional_session(self.factory) as session:
+            session.add(
+                BusinessContact(
+                    id="BC-COORD",
+                    display_name="Coordonnateur local",
+                    phone="555-0400",
+                )
+            )
+            session.flush()
+            session.add(
+                Resource(
+                    id="R-LOCAL",
+                    external_id="EMP-COORD",
+                    name="Ressource existante",
+                    coordinator_contact_id="BC-COORD",
+                    active=True,
+                )
+            )
+
+        self._sync(
+            StubEmployeeSource(
+                [
+                    ExternalEmployeeRecord(
+                        "EMP-COORD",
+                        "Ressource renommée",
+                        None,
+                        True,
+                    )
+                ]
+            )
+        )
+
+        with self.factory() as session:
+            row = session.get(Resource, "R-LOCAL")
+            assert row is not None
+            self.assertEqual(row.name, "Ressource renommée")
+            self.assertEqual(row.coordinator_contact_id, "BC-COORD")
 
     def test_missing_employee_is_preserved_and_not_implicitly_inactivated(self) -> None:
         source = StubEmployeeSource(

@@ -31,6 +31,9 @@ class TaskCatalogItem:
     cv_enabled: bool | None = None
     time_entry_enabled: bool | None = None
     expenses_enabled: bool | None = None
+    id: str | None = None
+    operational_responsible_contact_id: str | None = None
+    coordinator_contact_id: str | None = None
 
     @property
     def external_key(self) -> tuple[str, str]:

@@ -45,6 +45,9 @@ class SqlTaskCatalogRepository(TaskCatalogRepositoryPort):
             cv_enabled=row.cv_enabled,
             time_entry_enabled=row.time_entry_enabled,
             expenses_enabled=row.expenses_enabled,
+            id=row.id,
+            operational_responsible_contact_id=row.operational_responsible_contact_id,
+            coordinator_contact_id=row.coordinator_contact_id,
         )
 
     def upsert(self, item: TaskCatalogItem) -> str:

@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from ..application import (
     AllocationService,
     ApplicationFacade,
+    BusinessContactAdminService,
     CompetencyCatalogService,
     EmergencyApplicationFacade,
     EmergencyDemandService,
@@ -23,6 +24,7 @@ from ..infrastructure.sql import (
     LoadProfileAuditedSegmentRepository,
     OverallocationAuditedAllocationCommandAdapter,
     OverallocationAuditedSegmentRepository,
+    SqlBusinessContactAdminRepository,
     SqlCommandIdempotencyAdapter,
     SqlCompetencyCatalogRepository,
     SqlDemandPeriodRepository,
@@ -147,3 +149,11 @@ def build_communication_service(
     """Compose controlled communication preparation and explicit external draft creation."""
 
     return CommunicationService(SqlCommunicationRepository(session), transport=transport)
+
+
+def build_business_contact_admin_service(
+    session: Session,
+) -> BusinessContactAdminService:
+    """Compose business-contact administration inside the request transaction."""
+
+    return BusinessContactAdminService(SqlBusinessContactAdminRepository(session))
