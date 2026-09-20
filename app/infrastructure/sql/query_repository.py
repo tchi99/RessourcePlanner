@@ -341,15 +341,66 @@ class SqlPlannerQueryRepository(PlannerQueryPort):
             if demand is None:
                 continue
 
-            # #288D stores detailed periods per RequestLine, but the shared
-            # pending-load projection stays flat until #288E can project each line
-            # independently. Never merge line-scoped alternative groups here.
-            periods = (
-                ()
-                if demand.line_mode
-                else tuple(self._periods.list_for_demand(number))
-            )
-            if periods:
+            periods = tuple(self._periods.list_for_demand(number))
+            if demand.line_mode:
+                periods_by_line: dict[str, list[DemandPeriodReadModel]] = {}
+                for period in periods:
+                    if period.request_line_id:
+                        periods_by_line.setdefault(period.request_line_id, []).append(period)
+
+                windows: list[tuple[date, date]] = []
+                projected_total = 0.0
+                window_total = 0.0
+                for line in demand.lines:
+                    if not line.active:
+                        continue
+                    line_periods = periods_by_line.get(line.line_id, [])
+                    if line_periods:
+                        definitions = tuple(
+                            _period_definition(row) for row in line_periods
+                        )
+                        selections = {
+                            _text(row.alternative_group): row.period_id
+                            for row in line_periods
+                            if row.selected and _text(row.alternative_group)
+                        }
+                        line_start = min(row.start_date for row in line_periods)
+                        line_end = max(row.end_date for row in line_periods)
+                        projected_total += projected_hours_without_double_counting(
+                            definitions,
+                            selections,
+                        )
+                        window_total += projected_period_hours_in_window_without_double_counting(
+                            definitions,
+                            start,
+                            end,
+                            selections,
+                        )
+                    else:
+                        line_start = line.desired_start
+                        if line_start is None:
+                            continue
+                        line_end = line.desired_end or line_start
+                        if line.estimated_hours is not None:
+                            projected_total += float(line.estimated_hours)
+                            window_total += projected_hours_in_window(
+                                line.estimated_hours,
+                                line_start,
+                                line_end,
+                                start,
+                                end,
+                            )
+                    windows.append((line_start, line_end))
+
+                if not windows:
+                    continue
+                proposal_start = min(row[0] for row in windows)
+                proposal_end = max(row[1] for row in windows)
+                if proposal_end < start or proposal_start > end:
+                    continue
+                projected_hours = round(projected_total, 2)
+                window_hours = round(window_total, 2)
+            elif periods:
                 definitions = tuple(_period_definition(row) for row in periods)
                 selections = {
                     _text(row.alternative_group): row.period_id
@@ -497,7 +548,16 @@ class SqlPlannerQueryRepository(PlannerQueryPort):
             origin = _text(requirement.origin) or "REQUEST"
             current_ref = _optional_text(requirement.source_effort_id)
 
-            if request is not None and request.work_package_id:
+            if request is not None and bool(request.line_mode):
+                linked_package = package_by_reference.get(current_ref or "")
+                if linked_package is not None and linked_package.project_id == project.id:
+                    continue
+                classification = (
+                    "BROKEN_REFERENCE" if current_ref else "REQUEST_UNLINKED"
+                )
+                anomaly = True
+                link_target = "DEMAND"
+            elif request is not None and request.work_package_id:
                 package = package_by_id.get(request.work_package_id)
                 if package is not None:
                     continue
