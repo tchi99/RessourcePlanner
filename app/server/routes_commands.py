@@ -335,6 +335,45 @@ def build_command_router(
             )
         )
 
+    @router.put("/demands/{number}/lines/{line_id}/periods")
+    def replace_demand_line_periods(
+        number: str,
+        line_id: str,
+        body: DemandPeriodsReplaceRequest,
+        facade: ApplicationFacade = Depends(facade_dependency),
+    ) -> dict[str, Any]:
+        command = DemandPeriodsReplaceCommand(
+            number=number,
+            request_line_id=line_id,
+            periods=tuple(
+                DemandPeriodInput(**period.model_dump())
+                for period in body.periods
+            ),
+        )
+        return _payload(facade.replace_demand_periods(command))
+
+    @router.put(
+        "/demands/{number}/lines/{line_id}/alternative-groups/"
+        "{alternative_group}/selection"
+    )
+    def select_demand_line_alternative(
+        number: str,
+        line_id: str,
+        alternative_group: str,
+        body: DemandAlternativeSelectionRequest,
+        facade: ApplicationFacade = Depends(facade_dependency),
+    ) -> dict[str, Any]:
+        return _payload(
+            facade.select_demand_alternative(
+                DemandAlternativeSelectCommand(
+                    number=number,
+                    request_line_id=line_id,
+                    alternative_group=alternative_group,
+                    period_id=body.period_id,
+                )
+            )
+        )
+
     @router.post("/demands/{number}/submit")
     def submit_demand(
         number: str,
