@@ -343,6 +343,14 @@ class SqlPlannerQueryRepository(PlannerQueryPort):
 
             periods = tuple(self._periods.list_for_demand(number))
             if demand.line_mode:
+                active_line_ids = {
+                    line.line_id for line in demand.lines if line.active
+                }
+                periods = tuple(
+                    period
+                    for period in periods
+                    if period.request_line_id in active_line_ids
+                )
                 periods_by_line: dict[str, list[DemandPeriodReadModel]] = {}
                 for period in periods:
                     if period.request_line_id:
