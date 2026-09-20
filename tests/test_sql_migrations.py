@@ -159,6 +159,99 @@ class SqlMigrationTests(unittest.TestCase):
             self.assertIn("OPERATIONAL_RESPONSIBLE_CONTACT_ID", ddl, url)
             self.assertIn("COORDINATOR_CONTACT_ID", ddl, url)
             self.assertIn("OPERATIONAL_RESPONSIBLE_OVERRIDE_CONTACT_ID", ddl, url)
+            self.assertIn("APPROVED_TASK_CATALOG_ITEM_ID", ddl, url)
+            self.assertIn(
+                "APPROVED_OPERATIONAL_RESPONSIBLE_OVERRIDE_CONTACT_ID",
+                ddl,
+                url,
+            )
+            self.assertIn("APPROVED_REQUEST_VERSION", ddl, url)
+            self.assertIn("APPROVED_CONTACT_CONTEXT_STATUS", ddl, url)
+
+    def test_approved_contact_context_migration_preserves_history_as_unknown(self) -> None:
+        with TemporaryDirectory() as directory:
+            database_path = Path(directory) / "approved-contact-context.db"
+            config = alembic_config(database_path)
+            command.upgrade(config, "0026_business_contacts")
+            engine = create_engine(f"sqlite:///{database_path.as_posix()}")
+
+            with engine.begin() as connection:
+                connection.exec_driver_sql(
+                    "INSERT INTO projects (id, number, name) "
+                    "VALUES ('P1', 'P-1', 'Projet historique')"
+                )
+                connection.exec_driver_sql(
+                    "INSERT INTO workforce_requests (id, project_id) "
+                    "VALUES ('D1', 'P1')"
+                )
+                connection.exec_driver_sql(
+                    """
+                    INSERT INTO resource_requirements (
+                        id, project_id, workforce_request_id,
+                        start_date, end_date, planned_hours, origin
+                    ) VALUES (
+                        'REQ-HIST', 'P1', 'D1',
+                        '2026-09-21', '2026-09-21', 8, 'REQUEST'
+                    )
+                    """
+                )
+                connection.exec_driver_sql(
+                    """
+                    INSERT INTO resource_requirements (
+                        id, project_id, workforce_request_id,
+                        start_date, end_date, planned_hours, origin
+                    ) VALUES (
+                        'REQ-ADHOC', 'P1', NULL,
+                        '2026-09-21', '2026-09-21', 4, 'AD_HOC'
+                    )
+                    """
+                )
+            engine.dispose()
+
+            command.upgrade(config, "head")
+            engine = create_engine(f"sqlite:///{database_path.as_posix()}")
+            with engine.connect() as connection:
+                rows = connection.exec_driver_sql(
+                    """
+                    SELECT id, approved_task_catalog_item_id,
+                           approved_operational_responsible_override_contact_id,
+                           approved_request_version,
+                           approved_contact_context_status
+                    FROM resource_requirements
+                    ORDER BY id
+                    """
+                ).fetchall()
+                self.assertEqual(
+                    rows,
+                    [
+                        ("REQ-ADHOC", None, None, None, "NOT_APPLICABLE"),
+                        ("REQ-HIST", None, None, None, "LEGACY_UNKNOWN"),
+                    ],
+                )
+            engine.dispose()
+
+            command.downgrade(config, "0026_business_contacts")
+            engine = create_engine(f"sqlite:///{database_path.as_posix()}")
+            inspector = inspect(engine)
+            columns = {
+                column["name"]
+                for column in inspector.get_columns("resource_requirements")
+            }
+            self.assertNotIn("approved_task_catalog_item_id", columns)
+            self.assertNotIn(
+                "approved_operational_responsible_override_contact_id",
+                columns,
+            )
+            self.assertNotIn("approved_request_version", columns)
+            self.assertNotIn("approved_contact_context_status", columns)
+            with engine.connect() as connection:
+                self.assertEqual(
+                    connection.exec_driver_sql(
+                        "SELECT COUNT(*) FROM resource_requirements"
+                    ).scalar_one(),
+                    2,
+                )
+            engine.dispose()
 
     def test_business_contact_migration_backfills_only_stable_project_manager_identity(self) -> None:
         with TemporaryDirectory() as directory:
