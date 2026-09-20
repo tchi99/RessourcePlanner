@@ -80,8 +80,9 @@ def _partition_by_module(
         module, module_cases = item
         return weights.get(module, len(module_cases) * fallback_seconds_per_test)
 
-    buckets: list[list[unittest.case.TestCase]] = [[] for _ in range(shard_count)]
     bucket_weights = [0.0] * shard_count
+    bucket_test_counts = [0] * shard_count
+    module_targets: dict[str, int] = {}
 
     for module, module_cases in sorted(
         modules.items(),
@@ -90,10 +91,22 @@ def _partition_by_module(
         weight = estimated_weight((module, module_cases))
         target = min(
             range(shard_count),
-            key=lambda index: (bucket_weights[index], len(buckets[index]), index),
+            key=lambda index: (
+                bucket_weights[index],
+                bucket_test_counts[index],
+                index,
+            ),
         )
-        buckets[target].extend(module_cases)
+        module_targets[module] = target
         bucket_weights[target] += weight
+        bucket_test_counts[target] += len(module_cases)
+
+    # Weighting decides only which shard owns a module. Keep unittest's canonical
+    # discovery order inside each shard so optimization does not introduce a new
+    # execution order or expose unrelated global-state coupling.
+    buckets: list[list[unittest.case.TestCase]] = [[] for _ in range(shard_count)]
+    for case in cases:
+        buckets[module_targets[case.__class__.__module__]].append(case)
 
     return buckets, bucket_weights
 
