@@ -90,6 +90,31 @@ class SecurityPolicyTests(unittest.TestCase):
             PERMISSION_MANAGE_RESOURCES,
         )
         self.assertEqual(
+            required_permission("POST", "/api/v1/business-contacts"),
+            PERMISSION_MANAGE_RESOURCES,
+        )
+        self.assertEqual(
+            required_permission(
+                "PATCH",
+                "/api/v1/task-catalog/T1/business-contacts",
+            ),
+            PERMISSION_MANAGE_RESOURCES,
+        )
+        self.assertEqual(
+            required_permission(
+                "PATCH",
+                "/api/v1/projects/P-1/project-manager-contact",
+            ),
+            PERMISSION_MANAGE_RESOURCES,
+        )
+        self.assertEqual(
+            required_permission(
+                "PATCH",
+                "/api/v1/demands/DMO-1/operational-responsible",
+            ),
+            PERMISSION_MANAGE_DEMANDS,
+        )
+        self.assertEqual(
             required_permission("POST", "/api/v1/future-command"),
             "__unassigned_mutation__",
         )
