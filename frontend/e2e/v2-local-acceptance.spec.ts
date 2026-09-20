@@ -584,12 +584,12 @@ test("multi-line demand editor generates independent RequestLines and materializ
   const line1 = cards.nth(0);
   const line2 = cards.nth(1);
   await labelled(line1, "Classe de ressource", "select").selectOption("Programmation");
-  await line1.getByLabel("Compétences requises — ligne 1").selectOption(["C-SCADA"]);
+  await line1.locator('select[aria-label="Compétences requises — ligne 1"]').selectOption(["C-SCADA"]);
   await labelled(line1, "Ressource proposée", "select").selectOption("R-ALICE");
   await labelled(line1, "Description spécifique", "textarea").fill("SCADA en début de fenêtre");
 
   await labelled(line2, "Classe de ressource", "select").selectOption("Programmation");
-  await line2.getByLabel("Compétences requises — ligne 2").selectOption(["C-PLC"]);
+  await line2.locator('select[aria-label="Compétences requises — ligne 2"]').selectOption(["C-PLC"]);
   await labelled(line2, "Début", "input").fill(d2);
   await labelled(line2, "Fin", "input").fill(d2);
   await labelled(line2, "Ressource proposée", "select").selectOption("R-BOB");
