@@ -171,7 +171,7 @@ function DemandCard({ demand, selected, onClick }: { demand: DemandReadModel; se
       </div>
       <div className="demand-card-meta">
         <span>{demand.desired_start || "Date à définir"}{demand.desired_end && demand.desired_end !== demand.desired_start ? ` → ${demand.desired_end}` : ""}</span>
-        <span>{demand.resource_count || 1} ressource(s)</span>
+        <span>{demand.line_mode ? `${(demand.lines ?? []).filter((line) => line.active).length} ligne(s)` : `${demand.resource_count || 1} ressource(s)`}</span>
         <span className={tentative ? "confirmation-tentative-text" : "confirmation-confirmed-text"}>{tentative ? "Tentative" : "Confirmée"}</span>
       </div>
     </button>
@@ -615,13 +615,21 @@ export default function DemandsPage() {
                   <select
                     value={form.project_number}
                     onChange={(event) => {
+                      const projectNumber = event.target.value;
                       setTaskSearch("");
                       setForm((current) => ({
                         ...current,
-                        project_number: event.target.value,
+                        project_number: projectNumber,
                         work_package_ref: "",
                         task_code: "",
                       }));
+                      if (lineMode) {
+                        setLines((current) => current.map((line) => ({
+                          ...line,
+                          work_package_ref: "",
+                          task_code: "",
+                        })));
+                      }
                     }}
                     disabled={saving}
                     required
@@ -629,44 +637,6 @@ export default function DemandsPage() {
                     <option value="">Sélectionner un projet…</option>
                     {projects.map((project) => <option value={project.number} key={project.id}>{project.number} — {project.name}</option>)}
                   </select>
-                </label>
-
-                <label>
-                  <span>Recherche catalogue ERP</span>
-                  <input
-                    value={taskSearch}
-                    onChange={(event) => setTaskSearch(event.target.value)}
-                    disabled={saving || !form.project_number}
-                    placeholder="Code ou description…"
-                  />
-                </label>
-
-                <label>
-                  <span>Tâche ERP</span>
-                  <select
-                    value={form.task_code}
-                    onChange={(event) => setField("task_code", event.target.value)}
-                    disabled={saving || !form.project_number}
-                  >
-                    <option value="">Aucune tâche sélectionnée</option>
-                    {form.task_code && !selectedTask && (
-                      <option value={form.task_code}>
-                        {form.task_code} — {selectedDemand?.task_label || "tâche historique/non cataloguée"}
-                      </option>
-                    )}
-                    {visibleTasks.map((task) => (
-                      <option value={task.code} key={`${task.project_number}:${task.code}`}>
-                        {task.code} — {task.label}{task.active ? "" : " · inactive"}
-                      </option>
-                    ))}
-                  </select>
-                  {selectedTask && (
-                    <small>
-                      {selectedTask.status}
-                      {selectedTask.time_entry_enabled == null ? "" : ` · Temps: ${selectedTask.time_entry_enabled ? "oui" : "non"}`}
-                      {selectedTask.expenses_enabled == null ? "" : ` · Dépenses: ${selectedTask.expenses_enabled ? "oui" : "non"}`}
-                    </small>
-                  )}
                 </label>
 
                 <label>
@@ -685,86 +655,167 @@ export default function DemandsPage() {
                 </label>
 
                 <label className="span-2">
-                  <span>Plage moyen terme / WorkPackage</span>
-                  <select value={form.work_package_ref} onChange={(event) => setField("work_package_ref", event.target.value)} disabled={saving || !form.project_number}>
-                    <option value="">Aucune plage liée</option>
-                    {workPackages.map((item) => (
-                      <option value={item.reference} key={item.id}>
-                        {item.code ? `${item.code} — ` : ""}{item.name}{item.start_date ? ` · ${item.start_date}${item.end_date && item.end_date !== item.start_date ? ` → ${item.end_date}` : ""}` : ""}{item.status ? ` · ${item.status}` : ""}
-                      </option>
-                    ))}
-                  </select>
-                  {selectedWorkPackage && <small>{selectedWorkPackage.planned_hours == null ? "" : `${selectedWorkPackage.planned_hours} h prévues · `}{selectedWorkPackage.description || "Plage moyen terme sélectionnée"}</small>}
-                </label>
-
-                <label>
-                  <span>Confirmation</span>
-                  <select value={form.confirmation} onChange={(event) => setField("confirmation", event.target.value as FormState["confirmation"])} disabled={saving}>
-                    <option value="Confirmée">Confirmée</option>
-                    <option value="Tentative">Tentative</option>
-                  </select>
-                </label>
-
-                <label>
-                  <span>Ressource proposée</span>
-                  <select value={form.proposed_technician} onChange={(event) => setField("proposed_technician", event.target.value)} disabled={saving}>
-                    <option value="">Aucune ressource proposée</option>
-                    {missingProposedResource && <option value={missingProposedResource}>{missingProposedResource} — inactive/non listée</option>}
-                    {resources.map((resource) => <option value={resource.name} key={resource.id}>{resource.name}{resource.resource_class ? ` — ${resource.resource_class}` : ""}</option>)}
-                  </select>
-                </label>
-
-                <label>
-                  <span>Début souhaité</span>
-                  <input type="date" value={form.desired_start} onChange={(event) => setField("desired_start", event.target.value)} disabled={saving} required />
-                </label>
-
-                <label>
-                  <span>Fin souhaitée</span>
-                  <input type="date" min={form.desired_start || undefined} value={form.desired_end} onChange={(event) => setField("desired_end", event.target.value)} disabled={saving} />
-                </label>
-
-                <label>
-                  <span>Nombre de ressources simultanées</span>
-                  <input type="number" min="1" step="1" value={form.resource_count} onChange={(event) => setField("resource_count", event.target.value)} disabled={saving} required />
-                  <small>Décrit le parallélisme; ne multiplie jamais les heures estimées.</small>
-                </label>
-
-                <CompetencyPicker
-                  competencies={competencies}
-                  selectedIds={form.required_competency_ids}
-                  onChange={(ids) => setField("required_competency_ids", ids)}
-                  disabled={saving}
-                  label="Compétences requises"
-                  placeholder="Rechercher une compétence requise…"
-                />
-                {form.required_competency_ids.length === 0 && selectedDemand?.required_competencies && (
-                  <small className="legacy-competency-note">
-                    Valeur historique à convertir au catalogue : {selectedDemand.required_competencies}
-                  </small>
-                )}
-
-                <label>
-                  <span>Heures estimées totales</span>
-                  <input type="number" min="0.25" step="0.25" value={form.estimated_hours} onChange={(event) => setField("estimated_hours", event.target.value)} disabled={saving} placeholder="Optionnel au brouillon" />
-                  <small>Volume total de main-d’œuvre pour la demande, toutes ressources confondues.</small>
-                </label>
-
-                <label>
-                  <span>Jours actifs souhaités</span>
-                  <input type="number" min="1" step="1" value={form.estimated_days} onChange={(event) => setField("estimated_days", event.target.value)} disabled={saving} placeholder="Optionnel" />
-                  <small>Cible de répartition dans la fenêtre. Les jours ne créent pas d'heures; les heures doivent être complétées avant l'approbation.</small>
-                </label>
-
-                <label className="span-2">
-                  <span>Description</span>
-                  <textarea rows={5} value={form.description} onChange={(event) => setField("description", event.target.value)} disabled={saving} placeholder="Travaux demandés, contexte et contraintes…" />
+                  <span>Description / contexte de la demande</span>
+                  <textarea rows={4} value={form.description} onChange={(event) => setField("description", event.target.value)} disabled={saving} placeholder="Contexte commun, travaux demandés et contraintes…" />
                 </label>
               </div>
 
+              <div className={`demand-line-mode-card ${lineMode ? "active" : ""}`}>
+                <div>
+                  <strong>{lineMode ? "Besoins par ligne activés" : "Besoin simple ou lignes multiples?"}</strong>
+                  <span>
+                    {lineMode
+                      ? "Chaque ligne possède maintenant ses propres dates, effort, classe, compétences, tâche et WorkPackage."
+                      : "Le mode simple reste disponible pour les demandes historiques. Active les lignes pour représenter plusieurs ressources qui peuvent diverger."}
+                  </span>
+                </div>
+                {!lineMode ? (
+                  <button type="button" className="secondary-button" onClick={activateLineMode} disabled={saving}>
+                    Passer aux lignes multiples
+                  </button>
+                ) : (creating || !selectedDemand?.line_mode) ? (
+                  <button type="button" className="text-button" onClick={revertUnsavedLineMode} disabled={saving}>
+                    Revenir au besoin simple
+                  </button>
+                ) : (
+                  <span className="request-line-mode-lock">Mode lignes enregistré</span>
+                )}
+              </div>
+
+              {lineMode ? (
+                <DemandLinesEditor
+                  lines={lines}
+                  onChange={setLines}
+                  defaults={lineDefaultsFromForm(form, resources)}
+                  generationCount={generationCount}
+                  onGenerationCountChange={setGenerationCount}
+                  competencies={competencies}
+                  resources={resources}
+                  workPackages={workPackages}
+                  tasks={tasks}
+                  disabled={saving}
+                />
+              ) : (
+                <div className="demand-form-grid demand-flat-need-grid">
+                  <label>
+                    <span>Recherche catalogue ERP</span>
+                    <input
+                      value={taskSearch}
+                      onChange={(event) => setTaskSearch(event.target.value)}
+                      disabled={saving || !form.project_number}
+                      placeholder="Code ou description…"
+                    />
+                  </label>
+
+                  <label>
+                    <span>Tâche ERP</span>
+                    <select
+                      value={form.task_code}
+                      onChange={(event) => setField("task_code", event.target.value)}
+                      disabled={saving || !form.project_number}
+                    >
+                      <option value="">Aucune tâche sélectionnée</option>
+                      {form.task_code && !selectedTask && (
+                        <option value={form.task_code}>
+                          {form.task_code} — {selectedDemand?.task_label || "tâche historique/non cataloguée"}
+                        </option>
+                      )}
+                      {visibleTasks.map((task) => (
+                        <option value={task.code} key={`${task.project_number}:${task.code}`}>
+                          {task.code} — {task.label}{task.active ? "" : " · inactive"}
+                        </option>
+                      ))}
+                    </select>
+                    {selectedTask && (
+                      <small>
+                        {selectedTask.status}
+                        {selectedTask.time_entry_enabled == null ? "" : ` · Temps: ${selectedTask.time_entry_enabled ? "oui" : "non"}`}
+                        {selectedTask.expenses_enabled == null ? "" : ` · Dépenses: ${selectedTask.expenses_enabled ? "oui" : "non"}`}
+                      </small>
+                    )}
+                  </label>
+
+                  <label className="span-2">
+                    <span>Plage moyen terme / WorkPackage</span>
+                    <select value={form.work_package_ref} onChange={(event) => setField("work_package_ref", event.target.value)} disabled={saving || !form.project_number}>
+                      <option value="">Aucune plage liée</option>
+                      {workPackages.map((item) => (
+                        <option value={item.reference} key={item.id}>
+                          {item.code ? `${item.code} — ` : ""}{item.name}{item.start_date ? ` · ${item.start_date}${item.end_date && item.end_date !== item.start_date ? ` → ${item.end_date}` : ""}` : ""}{item.status ? ` · ${item.status}` : ""}
+                        </option>
+                      ))}
+                    </select>
+                    {selectedWorkPackage && <small>{selectedWorkPackage.planned_hours == null ? "" : `${selectedWorkPackage.planned_hours} h prévues · `}{selectedWorkPackage.description || "Plage moyen terme sélectionnée"}</small>}
+                  </label>
+
+                  <label>
+                    <span>Confirmation</span>
+                    <select value={form.confirmation} onChange={(event) => setField("confirmation", event.target.value as FormState["confirmation"])} disabled={saving}>
+                      <option value="Confirmée">Confirmée</option>
+                      <option value="Tentative">Tentative</option>
+                    </select>
+                  </label>
+
+                  <label>
+                    <span>Ressource proposée</span>
+                    <select value={form.proposed_technician} onChange={(event) => setField("proposed_technician", event.target.value)} disabled={saving}>
+                      <option value="">Aucune ressource proposée</option>
+                      {missingProposedResource && <option value={missingProposedResource}>{missingProposedResource} — inactive/non listée</option>}
+                      {resources.map((resource) => <option value={resource.name} key={resource.id}>{resource.name}{resource.resource_class ? ` — ${resource.resource_class}` : ""}</option>)}
+                    </select>
+                  </label>
+
+                  <label>
+                    <span>Début souhaité</span>
+                    <input type="date" value={form.desired_start} onChange={(event) => setField("desired_start", event.target.value)} disabled={saving} required />
+                  </label>
+
+                  <label>
+                    <span>Fin souhaitée</span>
+                    <input type="date" min={form.desired_start || undefined} value={form.desired_end} onChange={(event) => setField("desired_end", event.target.value)} disabled={saving} />
+                  </label>
+
+                  <label>
+                    <span>Nombre de ressources simultanées</span>
+                    <input type="number" min="1" step="1" value={form.resource_count} onChange={(event) => setField("resource_count", event.target.value)} disabled={saving} required />
+                    <small>Cette valeur sert aussi de quantité initiale lorsque tu passes aux lignes multiples.</small>
+                  </label>
+
+                  <CompetencyPicker
+                    competencies={competencies}
+                    selectedIds={form.required_competency_ids}
+                    onChange={(ids) => setField("required_competency_ids", ids)}
+                    disabled={saving}
+                    label="Compétences requises"
+                    placeholder="Rechercher une compétence requise…"
+                  />
+                  {form.required_competency_ids.length === 0 && selectedDemand?.required_competencies && (
+                    <small className="legacy-competency-note">
+                      Valeur historique à convertir au catalogue : {selectedDemand.required_competencies}
+                    </small>
+                  )}
+
+                  <label>
+                    <span>Heures estimées totales</span>
+                    <input type="number" min="0.25" step="0.25" value={form.estimated_hours} onChange={(event) => setField("estimated_hours", event.target.value)} disabled={saving} placeholder="Optionnel au brouillon" />
+                    <small>Volume total de main-d’œuvre pour la demande, toutes ressources confondues.</small>
+                  </label>
+
+                  <label>
+                    <span>Jours actifs souhaités</span>
+                    <input type="number" min="1" step="1" value={form.estimated_days} onChange={(event) => setField("estimated_days", event.target.value)} disabled={saving} placeholder="Optionnel" />
+                    <small>Cible de répartition dans la fenêtre.</small>
+                  </label>
+                </div>
+              )}
+
               <div className="demand-editor-note">
                 <strong>Approbation ≠ confirmation.</strong>
-                <span>Une demande peut être approuvée tout en demeurant Tentative. Les heures représentent toujours le volume total; les jours actifs guident seulement sa répartition selon la capacité disponible.</span>
+                <span>
+                  {lineMode
+                    ? "Chaque ligne conserve sa propre confirmation et son propre effort. Si les heures d’une ligne sont vides, le backend applique et persiste la politique de 8 h par jour actif."
+                    : "Une demande peut être approuvée tout en demeurant Tentative. Les heures représentent toujours le volume total; les jours actifs guident seulement sa répartition selon la capacité disponible."}
+                </span>
               </div>
 
               <div className="demand-editor-actions">
