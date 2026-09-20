@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any, Callable
 
 from fastapi import APIRouter, Depends, Request, status
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from ..application.business_contact_admin import (
     BusinessContactAdminService,
@@ -54,6 +54,12 @@ class BusinessContactUpdateRequest(StrictRequest):
 class ContactLinkRequest(StrictRequest):
     contact_id: str | None = None
 
+    @model_validator(mode="after")
+    def require_explicit_contact_id(self) -> "ContactLinkRequest":
+        if "contact_id" not in self.model_fields_set:
+            raise ValueError("contact_id doit être fourni explicitement; null retire le rattachement.")
+        return self
+
 
 class TaskContactLinksRequest(StrictRequest):
     operational_responsible_contact_id: str | None = None
@@ -63,6 +69,12 @@ class TaskContactLinksRequest(StrictRequest):
 class DemandOperationalResponsibleRequest(StrictRequest):
     contact_id: str | None = None
     expected_version: int = Field(ge=1)
+
+    @model_validator(mode="after")
+    def require_explicit_contact_id(self) -> "DemandOperationalResponsibleRequest":
+        if "contact_id" not in self.model_fields_set:
+            raise ValueError("contact_id doit être fourni explicitement; null retire l'override.")
+        return self
 
 
 def _contact_payload(row: BusinessContactRecord) -> dict[str, object]:
