@@ -366,6 +366,9 @@ class SqlSegmentRepository(SegmentRepositoryPort):
             confirmation=confirmation,
             confirmation_overridden=overridden,
             origin=origin,
+            approved_contact_context_status=(
+                "NOT_APPLICABLE" if request is None else "LEGACY_UNKNOWN"
+            ),
             created_by_name=_optional_text(values.get("CreePar")) or self._actor_name or None,
         )
         self._session.add(requirement)
