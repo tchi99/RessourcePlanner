@@ -61,6 +61,12 @@ def required_permission(method: str, path: str) -> str | None:
         path.startswith("/api/v1/resources")
         or path.startswith("/api/v1/availability-rules")
         or path.startswith("/api/v1/competencies")
+        or path.startswith("/api/v1/business-contacts")
+        or path.startswith("/api/v1/task-catalog")
+        or (
+            path.startswith("/api/v1/projects/")
+            and path.endswith("/project-manager-contact")
+        )
     ):
         return PERMISSION_MANAGE_RESOURCES
     if path.startswith("/api/v1/work-packages"):
