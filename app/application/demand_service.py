@@ -349,9 +349,13 @@ class DemandService:
             )
 
         current = call_application_port(
-            lambda: periods.list_for_demand(
-                number,
-                request_line_id=request_line_id,
+            lambda: (
+                periods.list_for_demand(number)
+                if request_line_id is None
+                else periods.list_for_demand(
+                    number,
+                    request_line_id=request_line_id,
+                )
             ),
             code_prefix="demand_periods_lookup",
             context={
@@ -397,10 +401,14 @@ class DemandService:
 
         with self._context("replace demand periods"):
             updated = call_application_port(
-                lambda: periods.replace_for_demand(
-                    number,
-                    definitions,
-                    request_line_id=request_line_id,
+                lambda: (
+                    periods.replace_for_demand(number, definitions)
+                    if request_line_id is None
+                    else periods.replace_for_demand(
+                        number,
+                        definitions,
+                        request_line_id=request_line_id,
+                    )
                 ),
                 code_prefix="demand_periods_replace",
                 context={
@@ -447,9 +455,13 @@ class DemandService:
         periods = self._period_repository()
 
         selections = call_application_port(
-            lambda: periods.selections_for_demand(
-                number,
-                request_line_id=request_line_id,
+            lambda: (
+                periods.selections_for_demand(number)
+                if request_line_id is None
+                else periods.selections_for_demand(
+                    number,
+                    request_line_id=request_line_id,
+                )
             ),
             code_prefix="demand_period_selection_lookup",
             context={
@@ -463,11 +475,15 @@ class DemandService:
 
         with self._context("select demand alternative"):
             call_application_port(
-                lambda: periods.select_alternative(
-                    number,
-                    group,
-                    period_id,
-                    request_line_id=request_line_id,
+                lambda: (
+                    periods.select_alternative(number, group, period_id)
+                    if request_line_id is None
+                    else periods.select_alternative(
+                        number,
+                        group,
+                        period_id,
+                        request_line_id=request_line_id,
+                    )
                 ),
                 code_prefix="demand_period_select",
                 context={
