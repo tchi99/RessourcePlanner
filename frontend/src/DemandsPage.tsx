@@ -391,66 +391,92 @@ export default function DemandsPage() {
     setError(null);
     setNotice(null);
 
-    const resourceCount = Number(form.resource_count);
-    const estimatedHours = optionalNumber(form.estimated_hours);
-    const estimatedDays = optionalNumber(form.estimated_days);
     if (!selectedProject) {
       setError("Sélectionne un projet actif.");
       return;
     }
-    if (!form.desired_start) {
-      setError("La date de début souhaitée est requise.");
-      return;
-    }
-    if (form.desired_end && form.desired_end < form.desired_start) {
-      setError("La date de fin ne peut pas précéder la date de début.");
-      return;
-    }
-    if (!Number.isInteger(resourceCount) || resourceCount < 1) {
-      setError("Le nombre de ressources doit être un entier supérieur ou égal à 1.");
-      return;
-    }
-    if (Number.isNaN(estimatedHours) || Number.isNaN(estimatedDays)) {
-      setError("Les estimations doivent être numériques.");
-      return;
-    }
-    if (estimatedHours != null && estimatedHours <= 0) {
-      setError("Les heures estimées totales doivent être supérieures à zéro lorsqu'elles sont renseignées.");
-      return;
-    }
-    if (estimatedDays != null) {
-      if (!Number.isInteger(estimatedDays) || estimatedDays < 1) {
-        setError("Les jours actifs souhaités doivent être un entier supérieur ou égal à 1.");
-        return;
-      }
-      const end = form.desired_end || form.desired_start;
-      const windowDays = inclusiveCalendarDays(form.desired_start, end);
-      if (estimatedDays > windowDays) {
-        setError(`La cible de ${estimatedDays} jours actifs dépasse les ${windowDays} dates de la fenêtre demandée.`);
-        return;
-      }
-    }
 
-    const payload: DemandWrite = {
-      project_number: selectedProject.number,
-      project_name: selectedProject.name,
-      client: selectedProject.client ?? "",
-      requester: form.requester.trim() || null,
-      work_package_ref: form.work_package_ref || null,
-      task_code: form.task_code || null,
-      request_type: selectedDemand?.request_type || "Projet",
-      priority: form.priority,
-      confirmation: form.confirmation,
-      desired_start: form.desired_start,
-      desired_end: form.desired_end || null,
-      description: form.description.trim(),
-      resource_count: resourceCount,
-      required_competencies: null,
-      required_competency_ids: form.required_competency_ids,
-      estimated_hours: estimatedHours,
-      estimated_days: estimatedDays,
-      proposed_technician: form.proposed_technician || null,
-    };
+    let payload: DemandWrite;
+    if (lineMode) {
+      if (lines.length === 0) {
+        setError("Ajoute au moins une ligne de main-d’œuvre.");
+        return;
+      }
+      const invalid = lines
+        .map((line, index) => lineValidationMessage(line, index))
+        .find((message): message is string => Boolean(message));
+      if (invalid) {
+        setError(invalid);
+        return;
+      }
+      payload = {
+        project_number: selectedProject.number,
+        project_name: selectedProject.name,
+        client: selectedProject.client ?? "",
+        requester: form.requester.trim() || null,
+        request_type: selectedDemand?.request_type || "Projet",
+        priority: form.priority,
+        description: form.description.trim(),
+        lines: lines.map(demandLineWrite),
+        ...(selectedDemand ? { expected_version: selectedDemand.version } : {}),
+      };
+    } else {
+      const resourceCount = Number(form.resource_count);
+      const estimatedHours = optionalNumber(form.estimated_hours);
+      const estimatedDays = optionalNumber(form.estimated_days);
+      if (!form.desired_start) {
+        setError("La date de début souhaitée est requise.");
+        return;
+      }
+      if (form.desired_end && form.desired_end < form.desired_start) {
+        setError("La date de fin ne peut pas précéder la date de début.");
+        return;
+      }
+      if (!Number.isInteger(resourceCount) || resourceCount < 1) {
+        setError("Le nombre de ressources doit être un entier supérieur ou égal à 1.");
+        return;
+      }
+      if (Number.isNaN(estimatedHours) || Number.isNaN(estimatedDays)) {
+        setError("Les estimations doivent être numériques.");
+        return;
+      }
+      if (estimatedHours != null && estimatedHours <= 0) {
+        setError("Les heures estimées totales doivent être supérieures à zéro lorsqu'elles sont renseignées.");
+        return;
+      }
+      if (estimatedDays != null) {
+        if (!Number.isInteger(estimatedDays) || estimatedDays < 1) {
+          setError("Les jours actifs souhaités doivent être un entier supérieur ou égal à 1.");
+          return;
+        }
+        const end = form.desired_end || form.desired_start;
+        const windowDays = inclusiveCalendarDays(form.desired_start, end);
+        if (estimatedDays > windowDays) {
+          setError(`La cible de ${estimatedDays} jours actifs dépasse les ${windowDays} dates de la fenêtre demandée.`);
+          return;
+        }
+      }
+      payload = {
+        project_number: selectedProject.number,
+        project_name: selectedProject.name,
+        client: selectedProject.client ?? "",
+        requester: form.requester.trim() || null,
+        work_package_ref: form.work_package_ref || null,
+        task_code: form.task_code || null,
+        request_type: selectedDemand?.request_type || "Projet",
+        priority: form.priority,
+        confirmation: form.confirmation,
+        desired_start: form.desired_start,
+        desired_end: form.desired_end || null,
+        description: form.description.trim(),
+        resource_count: resourceCount,
+        required_competencies: null,
+        required_competency_ids: form.required_competency_ids,
+        estimated_hours: estimatedHours,
+        estimated_days: estimatedDays,
+        proposed_technician: form.proposed_technician || null,
+      };
+    }
 
     setSaving(true);
     try {
