@@ -984,7 +984,9 @@ class SqlPlannerQueryRepository(PlannerQueryPort):
             )
             if hint
         }
-        required_class = next(iter(class_hints)) if len(class_hints) == 1 else None
+        required_class = _optional_text(segment.required_resource_class)
+        if required_class is None and len(class_hints) == 1:
+            required_class = next(iter(class_hints))
         required_hours = max(float(segment.planned_hours), 0.0)
         candidates: list[dict[str, object]] = []
 
