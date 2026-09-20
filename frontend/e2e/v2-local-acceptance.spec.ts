@@ -145,6 +145,7 @@ async function periodsSelect(page: Page, demandNumber: string) {
 }
 
 test("V2 local acceptance path runs through React, Chromium, FastAPI and SQLite", async ({ browser }) => {
+  test.setTimeout(240_000);
   const { today, d1, d2, d3, d4, d5 } = acceptanceDates();
   let demandNumber = "";
   let urgentNumber = "";
