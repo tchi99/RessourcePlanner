@@ -20,6 +20,14 @@ import {
   updateDemand,
 } from "./api";
 import CompetencyPicker from "./CompetencyPicker";
+import DemandLinesEditor, {
+  DemandLineDefaults,
+  DemandLineDraft,
+  demandLineDraftFromReadModel,
+  demandLineWrite,
+  lineValidationMessage,
+  newDemandLine,
+} from "./DemandLinesEditor";
 import { useViewScope } from "./ViewScopeContext";
 import ViewScopeSelector from "./ViewScopeSelector";
 
@@ -90,6 +98,23 @@ function emptyForm(projectNumber = ""): FormState {
     estimated_hours: "",
     estimated_days: "",
     proposed_technician: "",
+  };
+}
+
+function lineDefaultsFromForm(form: FormState, resources: ResourceReadModel[]): DemandLineDefaults {
+  const proposed = resources.find((row) => row.name === form.proposed_technician) ?? null;
+  return {
+    required_resource_class: proposed?.resource_class ?? "",
+    required_competency_ids: [...form.required_competency_ids],
+    desired_start: form.desired_start,
+    desired_end: form.desired_end,
+    desired_active_days: form.estimated_days,
+    estimated_hours: form.estimated_hours,
+    work_package_ref: form.work_package_ref,
+    task_code: form.task_code,
+    proposed_resource_id: proposed?.id ?? "",
+    confirmation: form.confirmation,
+    description: "",
   };
 }
 
@@ -165,6 +190,9 @@ export default function DemandsPage() {
   const [selectedDemand, setSelectedDemand] = useState<DemandReadModel | null>(null);
   const [creating, setCreating] = useState(false);
   const [form, setForm] = useState<FormState>(() => emptyForm());
+  const [lineMode, setLineMode] = useState(false);
+  const [lines, setLines] = useState<DemandLineDraft[]>([]);
+  const [generationCount, setGenerationCount] = useState("2");
   const [loading, setLoading] = useState(true);
   const [detailLoading, setDetailLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -216,6 +244,10 @@ export default function DemandsPage() {
       .then((demand) => {
         setSelectedDemand(demand);
         setForm(formFromDemand(demand));
+        setLineMode(Boolean(demand.line_mode));
+        const activeLines = (demand.lines ?? []).filter((line) => line.active);
+        setLines(activeLines.map(demandLineDraftFromReadModel));
+        setGenerationCount(String(Math.max(activeLines.length, 1)));
       })
       .catch((reason: unknown) => {
         if (reason instanceof DOMException && reason.name === "AbortError") return;
@@ -299,6 +331,10 @@ export default function DemandsPage() {
     setSelectedNumber(detail.number);
     setSelectedDemand(detail);
     setForm(formFromDemand(detail));
+    setLineMode(Boolean(detail.line_mode));
+    const activeLines = (detail.lines ?? []).filter((line) => line.active);
+    setLines(activeLines.map(demandLineDraftFromReadModel));
+    setGenerationCount(String(Math.max(activeLines.length, 1)));
   }
 
   function beginCreate() {
@@ -308,6 +344,9 @@ export default function DemandsPage() {
     setSelectedNumber(null);
     setSelectedDemand(null);
     setForm(emptyForm(firstProject));
+    setLineMode(false);
+    setLines([]);
+    setGenerationCount("2");
     setNotice(null);
     setError(null);
     createRetry.current = null;
@@ -317,6 +356,8 @@ export default function DemandsPage() {
     if (saving) return;
     setCreating(false);
     setSelectedNumber(number);
+    setLineMode(false);
+    setLines([]);
     setNotice(null);
     setError(null);
     createRetry.current = null;
@@ -324,6 +365,24 @@ export default function DemandsPage() {
 
   function setField<K extends keyof FormState>(field: K, value: FormState[K]) {
     setForm((current) => ({ ...current, [field]: value }));
+  }
+
+  function activateLineMode() {
+    const requested = Number(form.resource_count);
+    const count = Number.isInteger(requested) && requested > 0 ? requested : 1;
+    const defaults = lineDefaultsFromForm(form, resources);
+    setLineMode(true);
+    setGenerationCount(String(count));
+    setLines(Array.from({ length: count }, () => newDemandLine(defaults)));
+    setError(null);
+    setNotice("Mode lignes activé. Chaque ligne est maintenant un besoin planifiable indépendant.");
+  }
+
+  function revertUnsavedLineMode() {
+    setLineMode(false);
+    setLines([]);
+    setNotice("Retour au besoin simple. Aucune ligne n’a encore été enregistrée.");
+    setError(null);
   }
 
   async function save(event: FormEvent<HTMLFormElement>) {
