@@ -6,7 +6,14 @@ from sqlalchemy import select
 
 from app.application.errors import ApplicationConflictError
 from app.application.project_sync import ExternalProjectRecord, ProjectSyncService
-from app.infrastructure.sql import Base, Project, create_session_factory, create_sql_engine, transactional_session
+from app.infrastructure.sql import (
+    Base,
+    BusinessContact,
+    Project,
+    create_session_factory,
+    create_sql_engine,
+    transactional_session,
+)
 from app.infrastructure.sql.project_sync_repository import SqlProjectSyncRepository
 
 
@@ -132,6 +139,53 @@ class ProjectSyncTests(unittest.TestCase):
                 )
             )
         self.assertEqual(raised.exception.code, "project_sync_external_id_conflict")
+
+    def test_incomplete_import_preserves_local_project_contact_and_existing_manager_identity(self) -> None:
+        with transactional_session(self.factory) as session:
+            session.add(
+                BusinessContact(
+                    id="BC-PM",
+                    display_name="Chargé local",
+                    phone="555-0300",
+                )
+            )
+            session.flush()
+            session.add(
+                Project(
+                    id="P-LOCAL",
+                    erp_external_id="ERP-PM",
+                    number="P-PM",
+                    name="Projet PM",
+                    project_manager_external_id="EMP-PM",
+                    project_manager_name="Chargé existant",
+                    project_manager_contact_id="BC-PM",
+                    status="Active",
+                )
+            )
+
+        result = self._sync(
+            StubProjectSource(
+                [
+                    ExternalProjectRecord(
+                        external_id="ERP-PM",
+                        number="P-PM",
+                        name="Projet PM renommé",
+                        client="Client",
+                        project_manager_external_id=None,
+                        project_manager_name=None,
+                        status="Active",
+                    )
+                ]
+            )
+        )
+        self.assertEqual(result.updated, 1)
+
+        with self.factory() as session:
+            row = session.get(Project, "P-LOCAL")
+            assert row is not None
+            self.assertEqual(row.project_manager_external_id, "EMP-PM")
+            self.assertEqual(row.project_manager_name, "Chargé existant")
+            self.assertEqual(row.project_manager_contact_id, "BC-PM")
 
     def test_missing_project_is_preserved_and_explicit_inactive_status_is_synced(self) -> None:
         source = StubProjectSource(
