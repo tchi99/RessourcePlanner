@@ -196,12 +196,11 @@ export default function DemandLinesEditor({
     const count = Number(generationCount);
     if (!Number.isInteger(count) || count < 1) return;
     const template = lines[0] ?? newDemandLine(defaults);
-    onChange(Array.from({ length: count }, (_unused, index) => ({
+    onChange(Array.from({ length: count }, () => ({
       ...template,
       key: draftKey(),
       id: undefined,
       estimated_hours_source: undefined,
-      description: index === 0 ? template.description : template.description,
     })));
   }
 
@@ -211,7 +210,7 @@ export default function DemandLinesEditor({
         <div>
           <span className="eyebrow">Besoins planifiables</span>
           <h3>Lignes de main-d’œuvre</h3>
-          <p>Chaque ligne représente un slot de ressource indépendant. Les heures laissées vides sont matérialisées par le backend à 8 h par jour actif.</p>
+          <p>Chaque ligne représente un slot de ressource indépendant. Les heures laissées vides sont calculées et persistées par le backend à 8 h par jour actif.</p>
         </div>
         <div className="request-lines-actions">
           <label>
@@ -239,7 +238,7 @@ export default function DemandLinesEditor({
         <div><strong>{lines.length}</strong><span>ligne(s)</span></div>
         <div><strong>{totalDays}</strong><span>jour(s) actif(s)</span></div>
         <div><strong>{Number(totalHours.toFixed(2))}</strong><span>heure(s) projetées</span></div>
-        <small>Les heures projetées utilisent 8 h/j uniquement pour l’aperçu; le backend demeure autoritaire et persiste la valeur lors de la soumission.</small>
+        <small>Les heures projetées utilisent 8 h/j uniquement pour l’aperçu; le backend demeure autoritaire sur la valeur persistée.</small>
       </div>
 
       <div className="request-lines-grid">
@@ -259,6 +258,12 @@ export default function DemandLinesEditor({
                 </button>
               </div>
             </div>
+
+            {lineValidationMessage(line, index) && (
+              <div className="request-line-validation" role="status">
+                {lineValidationMessage(line, index)}
+              </div>
+            )}
 
             <div className="request-line-fields">
               <label>
@@ -335,7 +340,7 @@ export default function DemandLinesEditor({
                 <small>
                   {line.estimated_hours
                     ? "Heures explicites."
-                    : "Vide : le backend applique 8 h par jour actif à la soumission."}
+                    : "Vide : le backend applique et persiste 8 h par jour actif."}
                 </small>
               </label>
 
