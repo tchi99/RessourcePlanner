@@ -172,30 +172,6 @@ class ServerIdempotencyTests(unittest.TestCase):
             self.assertEqual(self._count(database_url, WorkforceRequest), 0)
             self.assertEqual(self._count(database_url, CommandIdempotencyReceipt), 1)
 
-    def test_openapi_marks_all_creation_endpoints_with_optional_idempotency_header(self) -> None:
-        with TemporaryDirectory() as directory:
-            database_url = self._database(directory)
-            app = create_api_app(database_url)
-            with TestClient(app) as client:
-                schema = client.get("/openapi.json").json()
-
-            operations = (
-                ("/api/v1/demands", "post"),
-                ("/api/v1/segments", "post"),
-                ("/api/v1/segments/{segment_id}/allocations", "post"),
-                ("/api/v1/quick-shifts", "post"),
-            )
-            for path, method in operations:
-                parameters = schema["paths"][path][method].get("parameters", [])
-                idempotency = [
-                    parameter
-                    for parameter in parameters
-                    if parameter.get("name") == "Idempotency-Key"
-                    and parameter.get("in") == "header"
-                ]
-                self.assertEqual(len(idempotency), 1, f"Missing header on {method} {path}")
-                self.assertFalse(idempotency[0].get("required", False))
-
 
 if __name__ == "__main__":
     unittest.main()

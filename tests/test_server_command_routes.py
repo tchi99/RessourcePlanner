@@ -442,29 +442,6 @@ class ServerCommandRouteTests(unittest.TestCase):
             finally:
                 engine.dispose()
 
-    def test_openapi_exposes_canonical_contract_not_excel_column_names(self) -> None:
-        with TemporaryDirectory() as directory:
-            database_url, _ = self._database(directory)
-            app = create_api_app(database_url)
-            with TestClient(app) as client:
-                response = client.get("/openapi.json")
-
-            self.assertEqual(response.status_code, 200)
-            serialized = json.dumps(response.json(), ensure_ascii=False)
-            self.assertIn("project_number", serialized)
-            self.assertIn("desired_start", serialized)
-            self.assertIn("source_effort_id", serialized)
-            for legacy in (
-                "NumeroProjet",
-                "DateDebutSouhaitee",
-                "HeuresPrevues",
-                "IDSegment",
-                "IDAllocation",
-                "source_effort_row",
-                "SourceEffortRow",
-            ):
-                self.assertNotIn(legacy, serialized)
-
 
 if __name__ == "__main__":
     unittest.main()

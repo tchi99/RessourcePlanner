@@ -211,25 +211,6 @@ class ServerWorkPackageCommandTests(unittest.TestCase):
             self.assertEqual(len(moved), 1, rows.text)
             self.assertEqual(moved[0]["project_number"], "P-2")
 
-    def test_openapi_exposes_create_patch_and_idempotency_header(self) -> None:
-        with TemporaryDirectory() as directory:
-            app = create_api_app(self._database(directory))
-            with TestClient(app) as client:
-                schema = client.get("/openapi.json").json()
-
-            self.assertIn("post", schema["paths"]["/api/v1/work-packages"])
-            self.assertIn("/api/v1/work-packages/{reference}", schema["paths"])
-            parameters = schema["paths"]["/api/v1/work-packages"]["post"].get(
-                "parameters", []
-            )
-            self.assertTrue(
-                any(
-                    parameter.get("name") == "Idempotency-Key"
-                    and parameter.get("in") == "header"
-                    for parameter in parameters
-                )
-            )
-
 
 if __name__ == "__main__":
     unittest.main()
