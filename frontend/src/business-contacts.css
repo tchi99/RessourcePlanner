@@ -1,0 +1,105 @@
+.business-contact-panel {
+  margin-top: 1rem;
+}
+
+.business-contact-grid {
+  display: grid;
+  grid-template-columns: minmax(16rem, 0.8fr) minmax(20rem, 1.2fr);
+  gap: 1rem;
+  align-items: start;
+}
+
+.business-contact-list {
+  display: grid;
+  gap: 0.5rem;
+  max-height: 26rem;
+  overflow: auto;
+}
+
+.project-contact-admin {
+  margin-top: 1rem;
+  display: grid;
+  gap: 1rem;
+}
+
+.project-contact-admin > label {
+  display: grid;
+  gap: 0.4rem;
+  max-width: 34rem;
+}
+
+.project-task-contact-list {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.project-task-contact-list select,
+.project-contact-admin > label select {
+  width: 100%;
+  min-width: 13rem;
+}
+
+.demand-contact-card {
+  display: grid;
+  gap: 1rem;
+  padding: 1rem;
+  border: 1px solid var(--border-color, #d7dce3);
+  border-radius: 0.8rem;
+  background: var(--surface-raised, #fff);
+}
+
+.demand-contact-card > label {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.demand-line-contact-resolutions {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.demand-line-contact-row {
+  display: grid;
+  grid-template-columns: minmax(9rem, 0.7fr) minmax(14rem, 1fr) minmax(14rem, 1fr);
+  gap: 0.75rem;
+  align-items: stretch;
+  padding: 0.75rem;
+  border: 1px solid var(--border-color, #d7dce3);
+  border-radius: 0.7rem;
+}
+
+.demand-line-contact-heading,
+.contact-resolution {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.demand-line-contact-heading span,
+.contact-resolution span,
+.contact-resolution small,
+.contact-context-note {
+  opacity: 0.75;
+}
+
+.contact-resolution {
+  padding: 0.55rem 0.65rem;
+  border-radius: 0.55rem;
+  background: rgba(127, 127, 127, 0.08);
+}
+
+.contact-resolution.is-warning {
+  border: 1px solid currentColor;
+}
+
+.contact-diagnostics {
+  overflow-wrap: anywhere;
+  opacity: 0.72;
+}
+
+@media (max-width: 900px) {
+  .business-contact-grid,
+  .demand-line-contact-row {
+    grid-template-columns: 1fr;
+  }
+}
