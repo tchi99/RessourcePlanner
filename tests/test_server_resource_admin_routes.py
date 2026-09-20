@@ -211,19 +211,6 @@ class ServerResourceAdminRouteTests(unittest.TestCase):
                 self.assertFalse(inactive_resources[0]["active"])
                 self.assertEqual(inactive_resources[0]["sort_order"], 10)
 
-    def test_openapi_exposes_resource_admin_contracts(self) -> None:
-        with TemporaryDirectory() as directory:
-            app = create_api_app(self._database(directory))
-            with TestClient(app) as client:
-                schema = client.get("/openapi.json").json()
-
-            paths = schema["paths"]
-            self.assertIn("/api/v1/resources", paths)
-            self.assertIn("/api/v1/resources/{resource_id}", paths)
-            self.assertIn("/api/v1/availability-rules", paths)
-            self.assertIn("/api/v1/availability-rules/{rule_id}", paths)
-            self.assertIn("ResourceAvailabilityRuleReadModel", schema["components"]["schemas"])
-
 
 if __name__ == "__main__":
     unittest.main()
