@@ -2,24 +2,33 @@ import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   ApiError,
+  BusinessContactReadModel,
   CompetencyReadModel,
+  ContactLinkReadModel,
   DemandReadModel,
   DemandWrite,
   ProjectReadModel,
+  RequestLineContactResolutionReadModel,
   ResourceReadModel,
   TaskCatalogItemReadModel,
   WorkPackageReadModel,
   createDemand,
+  getBusinessContacts,
   getCompetencies,
   getDemand,
+  getDemandBusinessContacts,
   getDemands,
   getProjects,
+  getRequestLineContactResolution,
   getResources,
   getTaskCatalog,
   getWorkPackages,
+  setDemandOperationalResponsible,
   updateDemand,
 } from "./api";
 import CompetencyPicker from "./CompetencyPicker";
+import { ContactSelect, ResolutionSummary } from "./BusinessContactUi";
+import { useAuth } from "./AuthContext";
 import DemandLinesEditor, {
   DemandLineDefaults,
   DemandLineDraft,
@@ -189,11 +198,16 @@ function DemandCard({ demand, selected, onClick }: { demand: DemandReadModel; se
 }
 
 export default function DemandsPage() {
+  const { can } = useAuth();
   const { scope, loading: scopeLoading } = useViewScope();
+  const canManageDemands = can("manage_demands");
   const [demands, setDemands] = useState<DemandReadModel[]>([]);
   const [projects, setProjects] = useState<ProjectReadModel[]>([]);
   const [resources, setResources] = useState<ResourceReadModel[]>([]);
   const [competencies, setCompetencies] = useState<CompetencyReadModel[]>([]);
+  const [contacts, setContacts] = useState<BusinessContactReadModel[]>([]);
+  const [demandContactLink, setDemandContactLink] = useState<ContactLinkReadModel | null>(null);
+  const [lineContactResolutions, setLineContactResolutions] = useState<Record<string, RequestLineContactResolutionReadModel>>({});
   const [tasks, setTasks] = useState<TaskCatalogItemReadModel[]>([]);
   const [workPackages, setWorkPackages] = useState<WorkPackageReadModel[]>([]);
   const [selectedNumber, setSelectedNumber] = useState<string | null>(null);
@@ -206,6 +220,7 @@ export default function DemandsPage() {
   const [loading, setLoading] = useState(true);
   const [detailLoading, setDetailLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [overridePending, setOverridePending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [search, setSearch] = useState("");
@@ -224,12 +239,14 @@ export default function DemandsPage() {
       getProjects(true, controller.signal, scope),
       getResources(true, controller.signal),
       getCompetencies("", false, controller.signal),
+      getBusinessContacts(false, controller.signal),
     ])
-      .then(([demandRows, projectRows, resourceRows, competencyRows]) => {
+      .then(([demandRows, projectRows, resourceRows, competencyRows, contactRows]) => {
         setDemands(demandRows);
         setProjects(projectRows);
         setResources(resourceRows);
         setCompetencies(competencyRows);
+        setContacts(contactRows);
         setSelectedNumber((current) => {
           if (current && demandRows.some((row) => row.number === current)) return current;
           return demandRows[0]?.number ?? null;
@@ -250,14 +267,26 @@ export default function DemandsPage() {
     const controller = new AbortController();
     setDetailLoading(true);
     setError(null);
-    getDemand(selectedNumber, controller.signal)
-      .then((demand) => {
+    Promise.all([
+      getDemand(selectedNumber, controller.signal),
+      getDemandBusinessContacts(selectedNumber, controller.signal),
+    ])
+      .then(async ([demand, contactLink]) => {
         setSelectedDemand(demand);
+        setDemandContactLink(contactLink);
         setForm(formFromDemand(demand));
         setLineMode(Boolean(demand.line_mode));
         const activeLines = (demand.lines ?? []).filter((line) => line.active);
         setLines(activeLines.map(demandLineDraftFromReadModel));
         setGenerationCount(String(Math.max(activeLines.length, 1)));
+        const resolutions = await Promise.all(
+          activeLines.map((line) => getRequestLineContactResolution(line.line_id, controller.signal)),
+        );
+        if (!controller.signal.aborted) {
+          setLineContactResolutions(
+            Object.fromEntries(resolutions.map((row) => [row.line_id, row])),
+          );
+        }
       })
       .catch((reason: unknown) => {
         if (reason instanceof DOMException && reason.name === "AbortError") return;
@@ -333,16 +362,24 @@ export default function DemandsPage() {
   );
 
   async function reloadDemand(number: string) {
-    const [rows, detail] = await Promise.all([
+    const [rows, detail, contactLink] = await Promise.all([
       getDemands(undefined, scope),
       getDemand(number),
+      getDemandBusinessContacts(number),
     ]);
+    const activeLines = (detail.lines ?? []).filter((line) => line.active);
+    const resolutions = await Promise.all(
+      activeLines.map((line) => getRequestLineContactResolution(line.line_id)),
+    );
     setDemands(rows);
     setSelectedNumber(detail.number);
     setSelectedDemand(detail);
+    setDemandContactLink(contactLink);
+    setLineContactResolutions(
+      Object.fromEntries(resolutions.map((row) => [row.line_id, row])),
+    );
     setForm(formFromDemand(detail));
     setLineMode(Boolean(detail.line_mode));
-    const activeLines = (detail.lines ?? []).filter((line) => line.active);
     setLines(activeLines.map(demandLineDraftFromReadModel));
     setGenerationCount(String(Math.max(activeLines.length, 1)));
   }
@@ -353,6 +390,8 @@ export default function DemandsPage() {
     setCreating(true);
     setSelectedNumber(null);
     setSelectedDemand(null);
+    setDemandContactLink(null);
+    setLineContactResolutions({});
     setForm(emptyForm(firstProject));
     setLineMode(false);
     setLines([]);
@@ -366,6 +405,8 @@ export default function DemandsPage() {
     if (saving) return;
     setCreating(false);
     setSelectedNumber(number);
+    setDemandContactLink(null);
+    setLineContactResolutions({});
     setLineMode(false);
     setLines([]);
     setNotice(null);
@@ -520,6 +561,32 @@ export default function DemandsPage() {
     }
   }
 
+  async function changeOperationalOverride(contactId: string | null) {
+    if (!selectedDemand || overridePending) return;
+    setOverridePending(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const result = await setDemandOperationalResponsible(
+        selectedDemand.number,
+        contactId,
+        selectedDemand.version,
+      );
+      await reloadDemand(selectedDemand.number);
+      setNotice(
+        result.reapproval_required
+          ? "Responsable opérationnel modifié. Une nouvelle approbation est requise; le planning existant conserve son contexte approuvé précédent."
+          : result.changed
+            ? "Responsable opérationnel modifié."
+            : "Aucun changement de responsable opérationnel.",
+      );
+    } catch (reason: unknown) {
+      setError(messageFromError(reason));
+    } finally {
+      setOverridePending(false);
+    }
+  }
+
   const missingProposedResource = form.proposed_technician
     && !resources.some((row) => row.name === form.proposed_technician)
     ? form.proposed_technician
@@ -624,6 +691,57 @@ export default function DemandsPage() {
                 </div>
                 <small>Ces données proviennent du projet et restent en lecture seule dans la demande.</small>
               </div>
+
+              {!creating && selectedDemand && (
+                <section className="demand-contact-card">
+                  <div className="panel-heading">
+                    <div>
+                      <span className="eyebrow">Responsabilité opérationnelle</span>
+                      <h3>Contacts effectifs</h3>
+                      <p>La hiérarchie est calculée par FastAPI. React affiche la source; il ne décide pas du fallback.</p>
+                    </div>
+                  </div>
+
+                  <label>
+                    Override du responsable pour toute la demande
+                    <ContactSelect
+                      contacts={contacts}
+                      value={demandContactLink?.operational_responsible_override_contact_id ?? null}
+                      onChange={(value) => void changeOperationalOverride(value)}
+                      disabled={!canManageDemands || overridePending || saving}
+                      inheritLabel="Hériter de la tâche puis du chargé de projet"
+                    />
+                    {!canManageDemands && <small>Lecture seule : permission manage_demands requise pour modifier.</small>}
+                    {selectedDemand.status === "En planification" && canManageDemands && (
+                      <small>Modifier cet override déclenchera une nouvelle approbation sans modifier immédiatement le planning approuvé.</small>
+                    )}
+                  </label>
+
+                  <div className="demand-line-contact-resolutions">
+                    {(selectedDemand.lines ?? []).filter((line) => line.active).map((line, index) => {
+                      const resolution = lineContactResolutions[line.line_id];
+                      if (!resolution) return null;
+                      return (
+                        <article className="demand-line-contact-row" key={line.line_id}>
+                          <div className="demand-line-contact-heading">
+                            <strong>Ligne {index + 1}</strong>
+                            <span>
+                              {resolution.task_code ? `Tâche ${resolution.task_code}` : "Sans tâche"}
+                              {resolution.proposed_resource_name ? ` · ${resolution.proposed_resource_name}` : ""}
+                            </span>
+                          </div>
+                          <ResolutionSummary title="Responsable opérationnel" resolution={resolution.operational_responsible} />
+                          <ResolutionSummary title="Coordonnateur" resolution={resolution.coordinator} />
+                          {resolution.diagnostics.length > 0 && (
+                            <small className="contact-diagnostics">{resolution.diagnostics.join(" · ")}</small>
+                          )}
+                        </article>
+                      );
+                    })}
+                  </div>
+                  <small className="contact-context-note">Résolution courante des lignes enregistrées. Le contexte d'un planning déjà approuvé est conservé séparément sur ses besoins jusqu'à la réapprobation.</small>
+                </section>
+              )}
 
               <div className="demand-form-grid">
                 <label className="span-2">
