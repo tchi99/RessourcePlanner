@@ -105,11 +105,11 @@ class RequestLinePeriodApiTests(unittest.TestCase):
 
                 first = client.put(
                     f"/api/v1/demands/{number}/lines/{line_a}/periods",
-                    json=self._alternatives("L1"),
+                    json=self._alternatives("OPT"),
                 )
                 second = client.put(
                     f"/api/v1/demands/{number}/lines/{line_b}/periods",
-                    json=self._alternatives("L2"),
+                    json=self._alternatives("OPT"),
                 )
                 self.assertEqual(first.status_code, 200, first.text)
                 self.assertEqual(second.status_code, 200, second.text)
@@ -131,11 +131,11 @@ class RequestLinePeriodApiTests(unittest.TestCase):
                 self.assertEqual(line_b_periods.status_code, 200, line_b_periods.text)
                 self.assertEqual(
                     [row["period_id"] for row in line_a_periods.json()],
-                    ["L1-A", "L1-B"],
+                    ["OPT-A", "OPT-B"],
                 )
                 self.assertEqual(
                     [row["period_id"] for row in line_b_periods.json()],
-                    ["L2-A", "L2-B"],
+                    ["OPT-A", "OPT-B"],
                 )
                 self.assertTrue(
                     all(row["request_line_id"] == line_a for row in line_a_periods.json())
@@ -146,11 +146,11 @@ class RequestLinePeriodApiTests(unittest.TestCase):
 
                 selected_a = client.put(
                     f"/api/v1/demands/{number}/lines/{line_a}/alternative-groups/VISITE/selection",
-                    json={"period_id": "L1-A"},
+                    json={"period_id": "OPT-A"},
                 )
                 selected_b = client.put(
                     f"/api/v1/demands/{number}/lines/{line_b}/alternative-groups/VISITE/selection",
-                    json={"period_id": "L2-B"},
+                    json={"period_id": "OPT-B"},
                 )
                 self.assertEqual(selected_a.status_code, 200, selected_a.text)
                 self.assertEqual(selected_b.status_code, 200, selected_b.text)
@@ -163,12 +163,56 @@ class RequestLinePeriodApiTests(unittest.TestCase):
                 ).json()
                 self.assertEqual(
                     [row["period_id"] for row in selected_a_rows if row["selected"]],
-                    ["L1-A"],
+                    ["OPT-A"],
                 )
                 self.assertEqual(
                     [row["period_id"] for row in selected_b_rows if row["selected"]],
-                    ["L2-B"],
+                    ["OPT-B"],
                 )
+
+    def test_cumulative_periods_are_kept_on_their_own_line(self) -> None:
+        with TemporaryDirectory() as directory:
+            app = create_api_app(self._database(directory), actor_name="coord")
+            with TestClient(app, raise_server_exceptions=False) as client:
+                number, (line_a, line_b) = self._create_multiline(client)
+                payload = {
+                    "periods": [
+                        {
+                            "period_id": "FIXED-1",
+                            "start_date": D1.isoformat(),
+                            "end_date": D1.isoformat(),
+                            "hours": 4,
+                            "kind": "CUMULATIVE",
+                            "desired_active_days": 1,
+                        },
+                        {
+                            "period_id": "FIXED-2",
+                            "start_date": D2.isoformat(),
+                            "end_date": D2.isoformat(),
+                            "hours": 6,
+                            "kind": "CUMULATIVE",
+                            "desired_active_days": 1,
+                        },
+                    ]
+                }
+                response = client.put(
+                    f"/api/v1/demands/{number}/lines/{line_a}/periods",
+                    json=payload,
+                )
+                self.assertEqual(response.status_code, 200, response.text)
+
+                line_a_rows = client.get(
+                    f"/api/v1/demands/{number}/lines/{line_a}/periods"
+                ).json()
+                line_b_rows = client.get(
+                    f"/api/v1/demands/{number}/lines/{line_b}/periods"
+                ).json()
+                self.assertEqual(
+                    [row["period_id"] for row in line_a_rows],
+                    ["FIXED-1", "FIXED-2"],
+                )
+                self.assertEqual(sum(row["hours"] for row in line_a_rows), 10)
+                self.assertEqual(line_b_rows, [])
 
     def test_replace_is_line_scoped_and_validates_slot_semantics_and_ownership(self) -> None:
         with TemporaryDirectory() as directory:
