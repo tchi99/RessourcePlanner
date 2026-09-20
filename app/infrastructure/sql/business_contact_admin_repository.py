@@ -65,6 +65,36 @@ class SqlBusinessContactAdminRepository(BusinessContactAdminRepositoryPort):
             raise KeyError(f"Contact {wanted} introuvable")
         return wanted
 
+    def _ensure_external_identity_available(
+        self,
+        *,
+        external_system: str | None,
+        external_entity: str | None,
+        external_id: str | None,
+        exclude_contact_id: str | None = None,
+    ) -> None:
+        if not external_id:
+            return
+        statement = select(BusinessContact).where(
+            BusinessContact.external_system == external_system,
+            BusinessContact.external_entity == external_entity,
+            BusinessContact.external_id == external_id,
+        )
+        if exclude_contact_id:
+            statement = statement.where(BusinessContact.id != exclude_contact_id)
+        existing = self._session.scalar(statement)
+        if existing is not None:
+            raise ApplicationConflictError(
+                "Cette identité externe est déjà liée à un autre contact.",
+                code="business_contact_external_identity_conflict",
+                context={
+                    "contact_id": existing.id,
+                    "external_system": external_system,
+                    "external_entity": external_entity,
+                    "external_id": external_id,
+                },
+            )
+
     def list_contacts(self, *, active_only: bool = False) -> tuple[BusinessContactRecord, ...]:
         statement = select(BusinessContact)
         if active_only:
@@ -79,6 +109,11 @@ class SqlBusinessContactAdminRepository(BusinessContactAdminRepositoryPort):
         return _record(row) if row is not None else None
 
     def create_contact(self, values: Mapping[str, Any]) -> BusinessContactRecord:
+        self._ensure_external_identity_available(
+            external_system=_optional_text(values.get("external_system")),
+            external_entity=_optional_text(values.get("external_entity")),
+            external_id=_optional_text(values.get("external_id")),
+        )
         row = BusinessContact(
             id=new_id(),
             display_name=_text(values.get("display_name")),
@@ -115,6 +150,28 @@ class SqlBusinessContactAdminRepository(BusinessContactAdminRepositoryPort):
                     "current_version": int(row.version or 1),
                 },
             )
+        candidate_external_system = (
+            _optional_text(values.get("external_system"))
+            if "external_system" in values
+            else row.external_system
+        )
+        candidate_external_entity = (
+            _optional_text(values.get("external_entity"))
+            if "external_entity" in values
+            else row.external_entity
+        )
+        candidate_external_id = (
+            _optional_text(values.get("external_id"))
+            if "external_id" in values
+            else row.external_id
+        )
+        self._ensure_external_identity_available(
+            external_system=candidate_external_system,
+            external_entity=candidate_external_entity,
+            external_id=candidate_external_id,
+            exclude_contact_id=row.id,
+        )
+
         changed = False
         for field in (
             "display_name",
