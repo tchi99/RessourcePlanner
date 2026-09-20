@@ -119,6 +119,7 @@ class SqlPlanningAuditJournal:
             "planned_hours": requirement.planned_hours,
             "status": requirement.status,
             "description": requirement.description,
+            "required_resource_class": requirement.required_resource_class,
             "required_competency": requirement.required_competency,
             "planning_type": requirement.planning_type,
             "priority": requirement.priority,
