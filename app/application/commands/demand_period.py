@@ -48,6 +48,7 @@ class DemandPeriodInput:
 class DemandPeriodsReplaceCommand:
     number: str
     periods: tuple[DemandPeriodInput, ...]
+    request_line_id: str | None = None
 
     def __post_init__(self) -> None:
         _required(self.number, field="demand_number", message="Le numéro de demande est requis.")
@@ -58,6 +59,7 @@ class DemandAlternativeSelectCommand:
     number: str
     alternative_group: str
     period_id: str
+    request_line_id: str | None = None
 
     def __post_init__(self) -> None:
         _required(self.number, field="demand_number", message="Le numéro de demande est requis.")
