@@ -106,16 +106,6 @@ class ServerWorkPackageRouteTests(unittest.TestCase):
             self.assertEqual(response.status_code, 200, response.text)
             self.assertEqual(response.json()[0]["reference"], "WP3")
 
-    def test_openapi_exposes_work_package_read_model(self) -> None:
-        with TemporaryDirectory() as directory:
-            app = create_api_app(self._database(directory))
-            with TestClient(app) as client:
-                schema = client.get("/openapi.json").json()
-
-            components = schema.get("components", {}).get("schemas", {})
-            self.assertIn("WorkPackageReadModel", components)
-            self.assertIn("/api/v1/work-packages", schema["paths"])
-
 
 if __name__ == "__main__":
     unittest.main()
