@@ -13,6 +13,7 @@ from pathlib import Path
 import sys
 
 import uvicorn
+from cryptography.fernet import Fernet
 from fastapi import Request
 
 
@@ -32,6 +33,7 @@ from app.application.security import (
     ROLE_PROJECT_MANAGER,
     ROLE_TECHNICIAN,
 )
+from app.infrastructure.smtp import FernetSecretCipher
 from app.infrastructure.sql import (
     Base,
     Competency,
@@ -58,6 +60,21 @@ ROLE_IDENTITIES = {
     ROLE_COORDINATOR: ("Coordonnateur E2E", None),
     ROLE_TECHNICIAN: ("Technicien Alice", "EMP-ALICE"),
 }
+
+
+class FakePlaywrightSmtpClient:
+    """Capture explicit SMTP sends locally; never opens a network connection."""
+
+    def __init__(self) -> None:
+        self.test_count = 0
+        self.messages: list[tuple[CommunicationTransportMessage, str]] = []
+
+    def test_connection(self, configuration) -> None:
+        self.test_count += 1
+
+    def send_message(self, configuration, message, *, message_id: str) -> str:
+        self.messages.append((message, message_id))
+        return message_id
 
 
 class FakePlaywrightCommunicationTransport:
@@ -239,6 +256,8 @@ def build_app(database_path: Path, frontend_dist: Path):
     database_url = f"sqlite+pysqlite:///{database_path.as_posix()}"
     _seed(database_url)
     transport = FakePlaywrightCommunicationTransport()
+    smtp_client = FakePlaywrightSmtpClient()
+    smtp_cipher = FernetSecretCipher(Fernet.generate_key().decode("ascii"))
     dev_runtime = DevUserSwitcherRuntime(bootstrap_principal=_bootstrap_principal())
     dev_resolver = dev_user_switcher_auth_resolver(dev_runtime)
     app = create_api_app(
@@ -246,9 +265,12 @@ def build_app(database_path: Path, frontend_dist: Path):
         auth_resolver=_combined_auth_resolver(dev_resolver),
         dev_user_switcher_runtime=dev_runtime,
         communication_transport=transport,
+        smtp_cipher=smtp_cipher,
+        smtp_client=smtp_client,
     )
     attach_frontend(app, frontend_dist, required=True)
     app.state.e2e_transport = transport
+    app.state.e2e_smtp_client = smtp_client
     return app
 
 
