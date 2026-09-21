@@ -531,7 +531,11 @@ class SqlApprovedDemandSyncAdapter(ApprovedDemandSyncPort):
                     "DateFin": request.desired_end or request.desired_start,
                     "HeuresPrevues": per_resource,
                     "Statut": "À assigner",
-                    "Description": request.description or "Ressource additionnelle",
+                    "Description": (
+                        request.erp_task_label
+                        or request.description
+                        or "Ressource additionnelle"
+                    ),
                     "CompetenceRequise": request.required_competencies,
                     "TypePlanification": "Flexible",
                     "Priorite": request.priority or "Normale",
@@ -582,7 +586,12 @@ class SqlApprovedDemandSyncAdapter(ApprovedDemandSyncPort):
             requirement.start_date = request.desired_start
             requirement.end_date = request.desired_end or request.desired_start
             requirement.planned_hours = per_resource
-            requirement.description = request.description or requirement.description or ""
+            requirement.description = (
+                request.erp_task_label
+                or request.description
+                or requirement.description
+                or ""
+            )
             requirement.required_competency = request.required_competencies
             requirement.priority = request.priority or "Normale"
             requirement.origin = ORIGIN_REQUEST
