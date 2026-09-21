@@ -344,6 +344,7 @@ export default function CommunicationsPage() {
                       {batch.messages.map((message) => (
                         <div key={message.id}>
                           <strong>{message.message_key ?? message.project_id ?? message.id}</strong>
+                          <span>Sujet : {message.subject}</span>
                           <span>To : {message.recipient_email ?? "courriel manquant"}</span>
                           <span>
                             CC : {message.cc_emails.length > 0 ? message.cc_emails.join(", ") : "—"}
