@@ -3,10 +3,11 @@
     637,
     639,
     643,
-    644
+    644,
+    646
   ],
   "sample_count": "refreshed after SQLite template optimizations",
-  "total_seconds": 88.802169,
+  "total_seconds": 82.57374,
   "total_tests": 1011,
   "modules": {
     "test_acumatica_identity_schema": {
@@ -110,11 +111,11 @@
       "tests": 5
     },
     "test_contextual_planning_scope": {
-      "seconds": 2.667511,
+      "seconds": 1.596202,
       "tests": 4
     },
     "test_contextual_read_scope": {
-      "seconds": 3.490681,
+      "seconds": 1.769637,
       "tests": 6
     },
     "test_cutover_architecture": {
@@ -170,7 +171,7 @@
       "tests": 2
     },
     "test_dev_user_switcher": {
-      "seconds": 4.045721,
+      "seconds": 1.893847,
       "tests": 7
     },
     "test_docker_deployment_contract": {
@@ -678,7 +679,7 @@
       "tests": 3
     },
     "test_server_oidc": {
-      "seconds": 2.427159,
+      "seconds": 1.142957,
       "tests": 6
     },
     "test_server_openapi_contract": {
