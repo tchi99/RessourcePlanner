@@ -44,13 +44,9 @@ export default function CommunicationsPage() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
-  const includedDrafts = useMemo(
-    () => drafts.filter((draft) => draft.include),
+  const hasBlockingDraft = useMemo(
+    () => drafts.some((draft) => !draft.source.approvable),
     [drafts],
-  );
-  const hasBlockingIncluded = useMemo(
-    () => includedDrafts.some((draft) => !draft.source.approvable),
-    [includedDrafts],
   );
 
   async function reloadBatches() {
@@ -224,16 +220,9 @@ export default function CommunicationsPage() {
                           <strong>Projet {source.project_number}</strong>
                           <small>{source.message_key}</small>
                         </div>
-                        <label>
-                          <input
-                            type="checkbox"
-                            checked={draft.include}
-                            onChange={(event) => setDrafts((rows) => rows.map((row, rowIndex) =>
-                              rowIndex === index ? { ...row, include: event.target.checked } : row
-                            ))}
-                          />
-                          Inclure
-                        </label>
+                        <span className={source.approvable ? "draft-ready" : "draft-blocked"}>
+                          {source.approvable ? "Prêt à préparer" : "Destinataire bloquant"}
+                        </span>
                       </div>
 
                       <div className="draft-recipients">
@@ -306,16 +295,16 @@ export default function CommunicationsPage() {
                 type="button"
                 disabled={
                   busy
-                  || includedDrafts.length === 0
-                  || hasBlockingIncluded
+                  || drafts.length === 0
+                  || hasBlockingDraft
                 }
                 onClick={() => void prepare()}
               >
                 Préparer le lot
               </button>
               <small>
-                {hasBlockingIncluded
-                  ? "Un projet inclus contient un blocage de destinataire."
+                {hasBlockingDraft
+                  ? "Un projet contient un blocage de destinataire."
                   : "Cette action persiste la révision. Elle n’envoie rien."}
               </small>
             </div>
