@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from alembic import op
 import sqlalchemy as sa
+from uuid import uuid4
 
 
 revision: str = "0030_smtp_delivery"
@@ -111,6 +112,33 @@ def upgrade() -> None:
         ["batch_id", "provider", "status"],
         unique=False,
     )
+
+    connection = op.get_bind()
+    existing = connection.execute(
+        sa.text(
+            "SELECT m.id AS message_id, m.batch_id AS batch_id "
+            "FROM communication_messages AS m "
+            "JOIN communication_batches AS b ON b.id = m.batch_id "
+            "WHERE b.model_version = 'project_v2' AND m.included = :included"
+        ),
+        {"included": True},
+    ).mappings()
+    for row in existing:
+        connection.execute(
+            sa.text(
+                "INSERT INTO communication_deliveries "
+                "(id, batch_id, message_id, provider, status, attempt_count) "
+                "VALUES (:id, :batch_id, :message_id, :provider, :status, :attempt_count)"
+            ),
+            {
+                "id": str(uuid4()),
+                "batch_id": row["batch_id"],
+                "message_id": row["message_id"],
+                "provider": "SMTP",
+                "status": "PENDING",
+                "attempt_count": 0,
+            },
+        )
 
 
 def downgrade() -> None:
