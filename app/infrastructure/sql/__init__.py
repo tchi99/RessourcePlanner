@@ -23,6 +23,7 @@ from .communication_models import (
     CommunicationDeliveryRow,
     CommunicationMessageRow,
     CommunicationSnapshotLine,
+    SmtpConfigurationAuditRow,
     SmtpConfigurationRow,
 )
 from .communication_repository import SqlCommunicationRepository
@@ -107,6 +108,7 @@ __all__ = [
     "CommunicationDeliveryRow",
     "CommunicationMessageRow",
     "CommunicationSnapshotLine",
+    "SmtpConfigurationAuditRow",
     "SmtpConfigurationRow",
     "LoadProfileAuditedSegmentRepository",
     "LoginTransactionRecord",
