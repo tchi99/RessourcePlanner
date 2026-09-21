@@ -144,6 +144,24 @@
   font-weight: 700;
 }
 
+.draft-ready,
+.draft-blocked {
+  padding: 0.24rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 800;
+}
+
+.draft-ready {
+  background: #ecfdf3;
+  color: #067647;
+}
+
+.draft-blocked {
+  background: #fff1f0;
+  color: #b42318;
+}
+
 .draft-recipients {
   display: grid;
   grid-template-columns: minmax(220px, 0.8fr) minmax(320px, 1.7fr);
