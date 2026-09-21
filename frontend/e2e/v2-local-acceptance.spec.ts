@@ -393,7 +393,7 @@ test("V2 local acceptance path runs through React, Chromium, FastAPI and SQLite"
     await expect(page.locator(".communications-notice")).toContainText("Lot projet préparé");
 
     const batch = page.locator(".batch-row").first();
-    await expect(batch).toContainText("To : pm@example.test");
+    await expect(batch).toContainText(`To : ${testEmail("pm")}`);
     await expect(batch).toContainText(testEmail("alice"));
     await expect(batch).toContainText(testEmail("bob"));
 
@@ -402,6 +402,8 @@ test("V2 local acceptance path runs through React, Chromium, FastAPI and SQLite"
     page.once("dialog", (dialog) => dialog.accept());
     await page.locator(".batch-row").first().getByRole("button", { name: "Créer brouillons M365" }).click();
     await expect(page.locator(".communications-notice")).toContainText("brouillon(s) M365 créé(s)");
+    await page.locator(".batch-row").first().getByRole("button", { name: "Confirmer communiqué" }).click();
+    await expect(page.locator(".communications-notice")).toContainText("confirmé comme communiqué");
     await closeContext(context);
   });
 
