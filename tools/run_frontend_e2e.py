@@ -219,6 +219,7 @@ def _seed(database_url: str) -> None:
                 )
                 if employee_external_id == "EMP-PM":
                     project_manager_contact_id = record.business_contact_id
+                    users.set_business_phone(record.user_id, "450-555-0199")
 
             project = session.get(Project, "P-251-ID")
             assert project is not None
