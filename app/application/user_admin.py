@@ -62,6 +62,11 @@ class UserAdminRepositoryPort(Protocol):
         active: bool = True,
         employee_external_id: str | None = None,
     ) -> UserIdentityRecord: ...
+    def set_business_phone(
+        self,
+        user_id: str,
+        phone: str | None,
+    ) -> UserIdentityRecord: ...
 
 
 def _required(value: object, field: str) -> str:
@@ -115,6 +120,7 @@ class UserAdminService:
         subject: str,
         display_name: str,
         email: str | None,
+        phone: str | None,
         roles: tuple[str, ...] | list[str] | set[str],
         active: bool = True,
     ) -> UserIdentityRecord:
@@ -128,7 +134,7 @@ class UserAdminService:
                 code="user_admin_identity_exists",
                 context={"issuer": issuer_value, "subject": subject_value},
             )
-        return self._repository.upsert(
+        record = self._repository.upsert(
             issuer=issuer_value,
             subject=subject_value,
             display_name=display_name_value,
@@ -137,6 +143,10 @@ class UserAdminService:
             active=bool(active),
             employee_external_id=None,
         )
+        return self._repository.set_business_phone(
+            record.user_id,
+            str(phone).strip() if phone else None,
+        )
 
     def update_user(
         self,
@@ -144,6 +154,7 @@ class UserAdminService:
         *,
         display_name: str,
         email: str | None,
+        phone: str | None,
         roles: tuple[str, ...] | list[str] | set[str],
         active: bool,
         actor_user_id: str | None = None,
@@ -171,7 +182,7 @@ class UserAdminService:
                     code="user_admin_self_admin_removal",
                 )
 
-        return self._repository.upsert(
+        record = self._repository.upsert(
             issuer=existing.issuer,
             subject=existing.subject,
             display_name=_required(display_name, "display_name"),
@@ -179,4 +190,8 @@ class UserAdminService:
             roles=normalized_roles,
             active=active_value,
             employee_external_id=existing.employee_external_id,
+        )
+        return self._repository.set_business_phone(
+            record.user_id,
+            str(phone).strip() if phone else None,
         )

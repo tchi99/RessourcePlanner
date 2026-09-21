@@ -49,7 +49,12 @@ class DemandOverrideMutationResult:
 
 
 class BusinessContactAdminRepositoryPort(Protocol):
-    def list_contacts(self, *, active_only: bool = False) -> tuple[BusinessContactRecord, ...]: ...
+    def list_contacts(
+        self,
+        *,
+        active_only: bool = False,
+        user_backed_only: bool = False,
+    ) -> tuple[BusinessContactRecord, ...]: ...
     def get_contact(self, contact_id: str) -> BusinessContactRecord | None: ...
     def create_contact(self, values: Mapping[str, Any]) -> BusinessContactRecord: ...
     def update_contact(
@@ -102,9 +107,17 @@ class BusinessContactAdminService:
     def __init__(self, repository: BusinessContactAdminRepositoryPort) -> None:
         self._repository = repository
 
-    def list_contacts(self, *, active_only: bool = False) -> tuple[BusinessContactRecord, ...]:
+    def list_contacts(
+        self,
+        *,
+        active_only: bool = False,
+        user_backed_only: bool = False,
+    ) -> tuple[BusinessContactRecord, ...]:
         return call_application_port(
-            lambda: self._repository.list_contacts(active_only=active_only),
+            lambda: self._repository.list_contacts(
+                active_only=active_only,
+                user_backed_only=user_backed_only,
+            ),
             code_prefix="business_contact_list",
         )
 

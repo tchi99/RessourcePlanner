@@ -235,11 +235,15 @@ def build_business_contact_router(
     @router.get("/business-contacts")
     def list_contacts(
         active_only: bool = False,
+        user_backed_only: bool = False,
         service: BusinessContactAdminService = Depends(dependency),
     ) -> list[dict[str, object]]:
         return [
             _contact_payload(row)
-            for row in service.list_contacts(active_only=active_only)
+            for row in service.list_contacts(
+                active_only=active_only,
+                user_backed_only=user_backed_only,
+            )
         ]
 
     @router.post(

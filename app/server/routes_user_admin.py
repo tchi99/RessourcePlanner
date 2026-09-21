@@ -21,6 +21,7 @@ class UserCreateRequest(StrictRequest):
     subject: str = Field(min_length=1)
     display_name: str = Field(min_length=1)
     email: str | None = None
+    phone: str | None = None
     roles: list[str] = Field(min_length=1)
     active: bool = True
 
@@ -28,6 +29,7 @@ class UserCreateRequest(StrictRequest):
 class UserUpdateRequest(StrictRequest):
     display_name: str = Field(min_length=1)
     email: str | None = None
+    phone: str | None = None
     roles: list[str] = Field(min_length=1)
     active: bool = True
 
@@ -40,6 +42,8 @@ def _user_payload(record: UserIdentityRecord) -> dict[str, object]:
         "display_name": record.display_name,
         "email": record.email,
         "employee_external_id": record.employee_external_id,
+        "business_contact_id": record.business_contact_id,
+        "phone": record.phone,
         "roles": list(record.roles),
         "active": record.active,
     }
@@ -75,6 +79,7 @@ def build_user_admin_router(user_admin_dependency: UserAdminProvider) -> APIRout
                 subject=body.subject,
                 display_name=body.display_name,
                 email=body.email,
+                phone=body.phone,
                 roles=tuple(body.roles),
                 active=body.active,
             )
@@ -93,6 +98,7 @@ def build_user_admin_router(user_admin_dependency: UserAdminProvider) -> APIRout
                 user_id,
                 display_name=body.display_name,
                 email=body.email,
+                phone=body.phone,
                 roles=tuple(body.roles),
                 active=body.active,
                 actor_user_id=principal.local_user_id,

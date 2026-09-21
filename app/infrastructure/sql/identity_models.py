@@ -19,6 +19,14 @@ class AppUser(TimestampMixin, Base):
             sqlite_where=text("employee_external_id IS NOT NULL"),
             mssql_where=text("employee_external_id IS NOT NULL"),
         ),
+        Index(
+            "ux_app_users_business_contact_id_not_null",
+            "business_contact_id",
+            unique=True,
+            sqlite_where=text("business_contact_id IS NOT NULL"),
+            postgresql_where=text("business_contact_id IS NOT NULL"),
+            mssql_where=text("business_contact_id IS NOT NULL"),
+        ),
     )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
@@ -27,6 +35,11 @@ class AppUser(TimestampMixin, Base):
     display_name: Mapped[str] = mapped_column(String(255), nullable=False)
     email: Mapped[str | None] = mapped_column(String(320), nullable=True)
     employee_external_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    business_contact_id: Mapped[str | None] = mapped_column(
+        String(36),
+        ForeignKey("business_contacts.id"),
+        nullable=True,
+    )
     roles_json: Mapped[str] = mapped_column(Text, nullable=False)
     active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=true(), index=True)
 
