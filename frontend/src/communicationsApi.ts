@@ -1,30 +1,45 @@
 import { csrfHeaders } from "./csrf";
-export type CommunicationContact = {
-  recipient_id: string;
-  audience: "technician" | "project_manager";
+
+export type CommunicationParticipant = {
+  contact_id: string | null;
+  user_id: string | null;
   display_name: string;
   email: string | null;
+  phone: string | null;
   active: boolean;
+  diagnostics: string[];
 };
 
-export type CommunicationDraft = {
-  audience: "technician" | "project_manager";
-  recipient_id: string;
-  recipient_email: string;
+export type ProjectMessageDiagnostic = {
+  code: string;
+  severity: "BLOCKING" | "WARNING";
+  entity_type: string;
+  entity_id: string;
+  message: string;
+};
+
+export type ProjectCommunicationDraft = {
+  message_key: string;
+  audience: "project";
+  project_id: string;
+  project_number: string;
+  to_recipient: CommunicationParticipant;
+  cc_recipients: CommunicationParticipant[];
   subject: string;
   body: string;
-  message_kind: string;
+  message_kind: "project_confirmation" | "project_planning_change";
   week_start: string;
-  snapshot_fingerprint: string;
-  requires_manual_approval: boolean;
+  content_fingerprint: string;
+  approvable: boolean;
+  diagnostics: ProjectMessageDiagnostic[];
 };
 
-export type CommunicationPreview = {
+export type ProjectCommunicationPreview = {
   week_start: string;
-  mode: "weekly_plan" | "planning_change";
+  mode: "project_confirmation" | "project_planning_change";
   snapshot_fingerprint: string;
-  drafts: CommunicationDraft[];
-  missing_contact_ids: string[];
+  drafts: ProjectCommunicationDraft[];
+  diagnostics: ProjectMessageDiagnostic[];
   has_communicated_baseline: boolean;
   baseline_fingerprint: string | null;
 };
@@ -33,10 +48,16 @@ export type CommunicationMessage = {
   id: string;
   audience: string;
   recipient_id: string;
-  recipient_email: string;
+  recipient_email: string | null;
   subject: string;
   body: string;
   included: boolean;
+  message_key: string | null;
+  project_id: string | null;
+  cc_emails: string[];
+  content_fingerprint: string | null;
+  approvable: boolean;
+  diagnostics_json: string | null;
 };
 
 export type CommunicationBatch = {
@@ -59,11 +80,11 @@ export type CommunicationBatch = {
   drafts_created_at: string | null;
   messages: CommunicationMessage[];
   stale: boolean;
+  model_version: string;
 };
 
-export type CommunicationReview = {
-  audience: string;
-  recipient_id: string;
+export type ProjectCommunicationReview = {
+  message_key: string;
   include: boolean;
   subject: string;
   body: string;
@@ -95,37 +116,18 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return response.json() as Promise<T>;
 }
 
-export function listCommunicationContacts() {
-  return request<CommunicationContact[]>("/api/v1/communications/contacts");
-}
-
-export function saveCommunicationContact(contact: CommunicationContact) {
-  return request<CommunicationContact>(
-    `/api/v1/communications/contacts/${encodeURIComponent(contact.recipient_id)}`,
-    {
-      method: "PUT",
-      body: JSON.stringify({
-        audience: contact.audience,
-        display_name: contact.display_name,
-        email: contact.email,
-        active: contact.active,
-      }),
-    },
+export function getProjectCommunicationPreview(weekStart: string) {
+  return request<ProjectCommunicationPreview>(
+    `/api/v1/communications/project-preview?week_start=${encodeURIComponent(weekStart)}`,
   );
 }
 
-export function getCommunicationPreview(weekStart: string) {
-  return request<CommunicationPreview>(
-    `/api/v1/communications/preview?week_start=${encodeURIComponent(weekStart)}`,
-  );
-}
-
-export function prepareCommunicationBatch(
+export function prepareProjectCommunicationBatch(
   weekStart: string,
   expectedFingerprint: string,
-  reviews: CommunicationReview[],
+  reviews: ProjectCommunicationReview[],
 ) {
-  return request<CommunicationBatch>("/api/v1/communications/batches", {
+  return request<CommunicationBatch>("/api/v1/communications/project-batches", {
     method: "POST",
     body: JSON.stringify({
       week_start: weekStart,
@@ -135,18 +137,18 @@ export function prepareCommunicationBatch(
   });
 }
 
-export function listCommunicationBatches(weekStart: string) {
+export function listProjectCommunicationBatches(weekStart: string) {
   return request<CommunicationBatch[]>(
-    `/api/v1/communications/batches?week_start=${encodeURIComponent(weekStart)}`,
+    `/api/v1/communications/project-batches?week_start=${encodeURIComponent(weekStart)}`,
   );
 }
 
-export function communicationBatchAction(
+export function projectCommunicationBatchAction(
   batchId: string,
   action: "approve" | "create-drafts" | "cancel" | "mark-communicated",
 ) {
   return request<CommunicationBatch>(
-    `/api/v1/communications/batches/${encodeURIComponent(batchId)}/${action}`,
+    `/api/v1/communications/project-batches/${encodeURIComponent(batchId)}/${action}`,
     { method: "POST" },
   );
 }
