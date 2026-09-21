@@ -45,6 +45,9 @@ from .schemas import (
     DemandLineRequest,
     DemandPeriodsReplaceRequest,
     DemandUpdateRequest,
+    DemandWorkflowOptionalCommentRequest,
+    DemandWorkflowRequiredCommentRequest,
+    DemandWorkflowVersionRequest,
     ManualAllocationRequest,
     OptionalCommentRequest,
     QuickShiftRequest,
@@ -374,48 +377,93 @@ def build_command_router(
             )
         )
 
-    @router.post("/demands/{number}/submit")
-    def submit_demand(
+    @router.get("/demands/{number}/workflow-actions")
+    def demand_workflow_actions(
         number: str,
         facade: ApplicationFacade = Depends(facade_dependency),
     ) -> dict[str, Any]:
-        return _payload(facade.submit_demand(DemandSubmitCommand(number)))
+        return _payload(facade.demand_workflow_state(number))
+
+    @router.post("/demands/{number}/submit")
+    def submit_demand(
+        number: str,
+        body: DemandWorkflowVersionRequest | None = None,
+        facade: ApplicationFacade = Depends(facade_dependency),
+    ) -> dict[str, Any]:
+        return _payload(
+            facade.submit_demand(
+                DemandSubmitCommand(
+                    number=number,
+                    expected_version=body.expected_version if body is not None else None,
+                )
+            )
+        )
 
     @router.post("/demands/{number}/approve")
     def approve_demand(
         number: str,
-        body: OptionalCommentRequest,
+        body: DemandWorkflowOptionalCommentRequest,
         facade: ApplicationFacade = Depends(facade_dependency),
     ) -> dict[str, Any]:
-        return _payload(facade.approve_demand(DemandApproveCommand(number, body.comment)))
+        return _payload(
+            facade.approve_demand(
+                DemandApproveCommand(
+                    number=number,
+                    comment=body.comment,
+                    expected_version=body.expected_version,
+                )
+            )
+        )
 
     @router.post("/demands/{number}/emergency-plan")
     def emergency_plan_demand(
         number: str,
-        body: RequiredCommentRequest,
+        body: DemandWorkflowRequiredCommentRequest,
         facade: ApplicationFacade = Depends(facade_dependency),
     ) -> dict[str, Any]:
         action = getattr(facade, "emergency_plan_demand", None)
         if action is None:
             raise RuntimeError("Emergency demand workflow is not configured")
-        return _payload(action(DemandEmergencyOverrideCommand(number, body.comment)))
+        return _payload(
+            action(
+                DemandEmergencyOverrideCommand(
+                    number=number,
+                    comment=body.comment,
+                    expected_version=body.expected_version,
+                )
+            )
+        )
 
     @router.post("/demands/{number}/correction")
     def request_demand_correction(
         number: str,
-        body: RequiredCommentRequest,
+        body: DemandWorkflowRequiredCommentRequest,
         facade: ApplicationFacade = Depends(facade_dependency),
     ) -> dict[str, Any]:
         return _payload(
-            facade.request_demand_correction(DemandCorrectionCommand(number, body.comment))
+            facade.request_demand_correction(
+                DemandCorrectionCommand(
+                    number=number,
+                    comment=body.comment,
+                    expected_version=body.expected_version,
+                )
+            )
         )
 
     @router.post("/demands/{number}/cancel")
     def cancel_demand(
         number: str,
+        body: DemandWorkflowVersionRequest | None = None,
         facade: ApplicationFacade = Depends(facade_dependency),
     ) -> dict[str, Any]:
-        return _payload(facade.cancel_demand(DemandCancelCommand(number)))
+        return _payload(
+            facade.cancel_demand(
+                DemandCancelCommand(
+                    number=number,
+                    expected_version=body.expected_version if body is not None else None,
+                )
+            )
+        )
 
     @router.post("/segments", status_code=status.HTTP_201_CREATED)
     def create_segment(
