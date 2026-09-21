@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
+from uuid import uuid4
 from typing import Protocol
 
 from .communications import CommunicationTransportMessage
@@ -429,6 +430,110 @@ class SmtpConfigurationService:
             ok=False,
             message=result.message or "La connexion SMTP a échoué.",
             log=result.log,
+        )
+
+    def send_test_email(
+        self,
+        recipient_email: str,
+    ) -> SmtpConnectionTestResult:
+        recipient = _email(
+            recipient_email,
+            "recipient_email",
+            required=True,
+        )
+        assert recipient is not None
+
+        try:
+            configuration = self.runtime_configuration(require_enabled=False)
+        except ApplicationError as exc:
+            return SmtpConnectionTestResult(
+                ok=False,
+                message=exc.message,
+                log=(
+                    SmtpTestLogEntry(
+                        level="ERROR",
+                        step="configuration",
+                        message=f"{exc.code}: {exc.message}",
+                    ),
+                ),
+            )
+
+        connection_result = self.test_connection()
+        if not connection_result.ok:
+            return SmtpConnectionTestResult(
+                ok=False,
+                message=(
+                    "Le courriel test n'a pas été envoyé parce que "
+                    "le test de connexion SMTP a échoué."
+                ),
+                log=connection_result.log,
+            )
+
+        message_id = (
+            "<resourceplanner-smtp-test-"
+            + uuid4().hex
+            + chr(64)
+            + "local.invalid>"
+        )
+        message = CommunicationTransportMessage(
+            audience="smtp_test",
+            recipient_id="smtp_test",
+            recipient_email=recipient,
+            subject="Test SMTP — RessourcePlanner",
+            body=(
+                "Bonjour,\n\n"
+                "Ceci est un courriel de test envoyé depuis RessourcePlanner.\n"
+                "Sa réception confirme que la configuration SMTP enregistrée "
+                "peut transmettre un message.\n\n"
+                f"Serveur : {configuration.host}:{configuration.port}\n"
+                f"Sécurité : {configuration.security}\n"
+                f"Expéditeur : {configuration.from_email}\n"
+                f"Date UTC : {datetime.now(timezone.utc).isoformat()}\n\n"
+                "Aucune action n'est requise."
+            ),
+            cc_emails=(),
+        )
+        try:
+            provider_message_id = self._client.send_message(
+                configuration,
+                message,
+                message_id=message_id,
+            )
+        except Exception as exc:
+            detail = " ".join(str(exc or "").split())
+            if len(detail) > 180:
+                detail = detail[:177] + "..."
+            if detail:
+                detail = f"{type(exc).__name__}: {detail}"
+            else:
+                detail = type(exc).__name__
+            return SmtpConnectionTestResult(
+                ok=False,
+                message="La connexion SMTP fonctionne, mais l'envoi du courriel test a échoué.",
+                log=connection_result.log
+                + (
+                    SmtpTestLogEntry(
+                        level="ERROR",
+                        step="envoi",
+                        message=detail,
+                    ),
+                ),
+            )
+
+        return SmtpConnectionTestResult(
+            ok=True,
+            message=f"Courriel test envoyé à {recipient}.",
+            log=connection_result.log
+            + (
+                SmtpTestLogEntry(
+                    level="SUCCESS",
+                    step="envoi",
+                    message=(
+                        "Le serveur SMTP a accepté le courriel test "
+                        f"(Message-ID {provider_message_id})."
+                    ),
+                ),
+            ),
         )
 
     def send_message(
