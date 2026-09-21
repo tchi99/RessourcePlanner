@@ -11,6 +11,7 @@ from ..application.identity_provisioning import AutoProvisioningPolicy
 from ..application.security import AuthPrincipal, ROLE_ADMIN, normalize_roles
 from ..infrastructure.acumatica import AcumaticaProjectSource, AcumaticaProjectSourceSettings
 from ..infrastructure.acumatica.oidc import OidcClient, OidcClientSettings
+from ..infrastructure.smtp import FernetSecretCipher, SmtpClient
 from ..infrastructure.m365 import (
     MicrosoftGraphCommunicationSettings,
     MicrosoftGraphCommunicationTransport,
@@ -64,6 +65,7 @@ M365_MAILBOX_ENV = "RESOURCEPLANNER_M365_MAILBOX"
 M365_GRAPH_BASE_URL_ENV = "RESOURCEPLANNER_M365_GRAPH_BASE_URL"
 M365_AUTHORITY_HOST_ENV = "RESOURCEPLANNER_M365_AUTHORITY_HOST"
 M365_TIMEOUT_SECONDS_ENV = "RESOURCEPLANNER_M365_TIMEOUT_SECONDS"
+CONFIG_ENCRYPTION_KEY_ENV = "RESOURCEPLANNER_CONFIG_ENCRYPTION_KEY"
 
 _ALLOWED_LOG_LEVELS = {"critical", "error", "warning", "info", "debug", "trace"}
 _LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "::1"}
@@ -302,6 +304,7 @@ class ServerSettings:
     embedding: EmbeddingSettings = field(default_factory=EmbeddingSettings)
     acumatica: AcumaticaProjectSourceSettings | None = field(default=None, repr=False)
     m365: MicrosoftGraphCommunicationSettings | None = field(default=None, repr=False)
+    config_encryption_key: str | None = field(default=None, repr=False)
 
     @classmethod
     def from_environment(cls, environ: Mapping[str, str] | None = None) -> "ServerSettings":
@@ -394,6 +397,7 @@ class ServerSettings:
             embedding=embedding,
             acumatica=_acumatica_settings(values),
             m365=_m365_settings(values),
+            config_encryption_key=_text(values.get(CONFIG_ENCRYPTION_KEY_ENV)) or None,
         )
 
 
@@ -411,6 +415,15 @@ def create_configured_app(settings: ServerSettings | None = None) -> FastAPI:
         if resolved.m365 is not None
         else None
     )
+    smtp_cipher = None
+    if resolved.config_encryption_key:
+        try:
+            smtp_cipher = FernetSecretCipher(resolved.config_encryption_key)
+        except Exception as exc:
+            raise ServerConfigurationError(
+                f"{CONFIG_ENCRYPTION_KEY_ENV} n'est pas une clé Fernet valide."
+            ) from exc
+    smtp_client = SmtpClient()
     oidc_runtime = None
     dev_user_switcher_runtime = None
     if resolved.dev_user_switcher and resolved.auth_mode != "local":
@@ -453,6 +466,8 @@ def create_configured_app(settings: ServerSettings | None = None) -> FastAPI:
         oidc_runtime=oidc_runtime,
         dev_user_switcher_runtime=dev_user_switcher_runtime,
         communication_transport=communication_transport,
+        smtp_cipher=smtp_cipher,
+        smtp_client=smtp_client,
         runtime_dependencies={
             "oidc": {
                 "required": resolved.auth_mode == "oidc",
@@ -467,6 +482,11 @@ def create_configured_app(settings: ServerSettings | None = None) -> FastAPI:
             "m365": {
                 "required": False,
                 "configured": resolved.m365 is not None,
+                "check": "configuration_only",
+            },
+            "smtp": {
+                "required": False,
+                "secret_key_configured": smtp_cipher is not None,
                 "check": "configuration_only",
             },
         },

@@ -28,6 +28,7 @@ EXPECTED_TABLES = {
     "communication_contacts",
     "communication_messages",
     "communication_snapshot_lines",
+    "communication_deliveries",
     "competencies",
     "planning_change_history",
     "projects",
@@ -45,6 +46,8 @@ EXPECTED_TABLES = {
     "resource_availability_rules",
     "resource_competencies",
     "resource_requirements",
+    "smtp_configuration",
+    "smtp_configuration_audit",
     "shifts",
     "task_catalog_items",
 }

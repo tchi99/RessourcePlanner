@@ -21,6 +21,7 @@ import "./segments.css";
 import "./segment-parent.css";
 import "./technician-schedule.css";
 import "./communications.css";
+import "./configuration.css";
 import "./planning-history.css";
 import "./overallocation.css";
 

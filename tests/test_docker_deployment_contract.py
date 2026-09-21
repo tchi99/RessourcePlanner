@@ -45,6 +45,7 @@ class DockerDeploymentContractTests(unittest.TestCase):
         self.assertIn("seed-dev:", compose)
         self.assertIn('command: ["python", "tools/seed_demo_data.py"]', compose)
         self.assertIn("RESOURCEPLANNER_DEV_USER_SWITCHER", compose)
+        self.assertIn("RESOURCEPLANNER_CONFIG_ENCRYPTION_KEY", compose)
         self.assertIn("import-projects:", compose)
         self.assertIn("import-tasks:", compose)
         self.assertIn('entrypoint: ["python", "tools/import_erp_tasks.py"]', compose)
@@ -59,6 +60,9 @@ class DockerDeploymentContractTests(unittest.TestCase):
         self.assertIn("RESOURCEPLANNER_DATABASE_URL:?", compose)
         self.assertIn("restart: unless-stopped", compose)
         self.assertIn('RESOURCEPLANNER_DEV_USER_SWITCHER: "false"', compose)
+        self.assertIn("RESOURCEPLANNER_CONFIG_ENCRYPTION_KEY", compose)
+        env_example = (ROOT / "deploy" / "synology" / ".env.example").read_text(encoding="utf-8")
+        self.assertIn("RESOURCEPLANNER_CONFIG_ENCRYPTION_KEY=", env_example)
         self.assertNotIn("alembic upgrade head", compose)
         self.assertNotIn("migrate:", compose)
 

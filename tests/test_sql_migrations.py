@@ -32,6 +32,9 @@ EXPECTED_TABLES = {
     "resource_availability_rules",
     "resource_requirements",
     "shifts",
+    "smtp_configuration",
+    "smtp_configuration_audit",
+    "communication_deliveries",
 }
 
 
@@ -175,6 +178,63 @@ class SqlMigrationTests(unittest.TestCase):
             self.assertIn("CC_RECIPIENTS_JSON", ddl, url)
             self.assertIn("CONTENT_FINGERPRINT", ddl, url)
             self.assertIn("APPROVABLE", ddl, url)
+            self.assertIn("SMTP_CONFIGURATION", ddl, url)
+            self.assertIn("SMTP_CONFIGURATION_AUDIT", ddl, url)
+            self.assertIn("CHANGED_FIELDS_JSON", ddl, url)
+            self.assertIn("COMMUNICATION_DELIVERIES", ddl, url)
+            self.assertIn("ENCRYPTED_PASSWORD", ddl, url)
+            self.assertIn("PROVIDER_MESSAGE_ID", ddl, url)
+            self.assertIn("UX_COMMUNICATION_DELIVERIES_MESSAGE_PROVIDER", ddl, url)
+
+    def test_smtp_migration_backfills_existing_project_messages(self) -> None:
+        with TemporaryDirectory() as directory:
+            database_path = Path(directory) / "smtp-backfill.db"
+            config = alembic_config(database_path)
+            command.upgrade(config, "0029_project_communications")
+            engine = create_engine(f"sqlite:///{database_path.as_posix()}")
+
+            with engine.begin() as connection:
+                connection.exec_driver_sql(
+                    """
+                    INSERT INTO communication_batches (
+                        id, week_start, kind, snapshot_fingerprint, status,
+                        prepared_at, model_version
+                    ) VALUES (
+                        'B1', '2026-09-21', 'project_confirmation',
+                        'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+                        'APPROVED', '2026-09-20 12:00:00', 'project_v2'
+                    )
+                    """
+                )
+                connection.exec_driver_sql(
+                    """
+                    INSERT INTO communication_messages (
+                        id, batch_id, audience, recipient_id, recipient_email,
+                        message_key, project_id, subject, body, included,
+                        approvable
+                    ) VALUES (
+                        'M1', 'B1', 'project', 'C-PM',
+                        'pm' || char(64) || 'example.invalid',
+                        'project:P1', 'P1', 'Sujet test', 'Corps test', 1, 1
+                    )
+                    """
+                )
+            engine.dispose()
+
+            command.upgrade(config, "head")
+            engine = create_engine(f"sqlite:///{database_path.as_posix()}")
+            try:
+                with engine.connect() as connection:
+                    rows = connection.exec_driver_sql(
+                        """
+                        SELECT message_id, provider, status, attempt_count
+                        FROM communication_deliveries
+                        ORDER BY message_id
+                        """
+                    ).fetchall()
+                    self.assertEqual(rows, [("M1", "SMTP", "PENDING", 0)])
+            finally:
+                engine.dispose()
 
     def test_approved_contact_context_migration_preserves_history_as_unknown(self) -> None:
         with TemporaryDirectory() as directory:

@@ -40,6 +40,22 @@ WEEK = date(2026, 9, 21)
 TEST_DOMAIN = "example.test"
 
 
+class FakeSmtpDeliveryClient:
+    def __init__(self) -> None:
+        self.attempt_subjects: list[str] = []
+        self._failed_once = False
+
+    def test_connection(self, configuration) -> None:
+        return None
+
+    def send_message(self, configuration, message, *, message_id: str) -> str:
+        self.attempt_subjects.append(message.subject)
+        if "2000" in message.subject and not self._failed_once:
+            self._failed_once = True
+            raise RuntimeError("synthetic smtp failure")
+        return message_id
+
+
 class FakeProjectDraftTransport:
     def __init__(self) -> None:
         self.messages = ()
@@ -53,6 +69,53 @@ class FakeProjectDraftTransport:
 
 
 class SqlProjectCommunicationProjectionTests(unittest.TestCase):
+    @staticmethod
+    def _add_second_project(database_url: str) -> None:
+        engine = create_sql_engine(database_url)
+        factory = create_session_factory(engine)
+        try:
+            with factory.begin() as session:
+                session.add(
+                    Project(
+                        id="P2",
+                        number="2000",
+                        name="Deuxième projet",
+                        project_manager_external_id="LEGACY-PM",
+                        project_manager_name="Ancien nom",
+                        project_manager_contact_id="C-PM",
+                        status="Actif",
+                    )
+                )
+                session.add(
+                    ResourceRequirement(
+                        id="REQ-P2",
+                        project_id="P2",
+                        workforce_request_id=None,
+                        approved_contact_context_status="NOT_APPLICABLE",
+                        assigned_resource_id="R1",
+                        start_date=WEEK,
+                        end_date=WEEK,
+                        planned_hours=Decimal("2"),
+                        description="Travaux deuxième projet",
+                        status="Planifié",
+                        origin="AD_HOC",
+                    )
+                )
+                session.flush()
+                session.add(
+                    Shift(
+                        id="S-P2",
+                        resource_requirement_id="REQ-P2",
+                        resource_id="R1",
+                        work_date=WEEK,
+                        hours=Decimal("2"),
+                        allocation_type="Flexible",
+                        outside_standard_hours=False,
+                    )
+                )
+        finally:
+            engine.dispose()
+
     @staticmethod
     def _seed(session) -> None:
         pm_email = "pm" + chr(64) + TEST_DOMAIN
@@ -497,6 +560,111 @@ class SqlProjectCommunicationProjectionTests(unittest.TestCase):
             transport.messages[0].cc_emails,
             ("tech" + chr(64) + TEST_DOMAIN,),
         )
+
+    def test_smtp_partial_failure_retries_only_unsent_message(self) -> None:
+        with TemporaryDirectory() as directory:
+            database_url = self._database(directory)
+            self._add_second_project(database_url)
+            smtp = FakeSmtpDeliveryClient()
+            app = create_api_app(
+                database_url,
+                auth_resolver=TEST_ADMIN_AUTH_RESOLVER,
+                smtp_client=smtp,
+            )
+            with TestClient(app) as client:
+                configured = client.put(
+                    "/api/v1/admin/settings/smtp",
+                    json={
+                        "host": "smtp.example.invalid",
+                        "port": 587,
+                        "security": "STARTTLS",
+                        "username": None,
+                        "password": None,
+                        "clear_password": False,
+                        "from_email": "planning" + chr(64) + TEST_DOMAIN,
+                        "from_name": "RessourcePlanner",
+                        "reply_to": None,
+                        "timeout_seconds": 20,
+                        "enabled": True,
+                    },
+                )
+                self.assertEqual(configured.status_code, 200, configured.text)
+
+                preview = client.get(
+                    "/api/v1/communications/project-preview"
+                    "?week_start=2026-09-23"
+                )
+                self.assertEqual(preview.status_code, 200, preview.text)
+                preview_payload = preview.json()
+                self.assertEqual(len(preview_payload["drafts"]), 2)
+
+                prepared = client.post(
+                    "/api/v1/communications/project-batches",
+                    json={
+                        "week_start": "2026-09-23",
+                        "expected_fingerprint": preview_payload[
+                            "snapshot_fingerprint"
+                        ],
+                        "reviews": [],
+                    },
+                )
+                self.assertEqual(prepared.status_code, 201, prepared.text)
+                batch_id = prepared.json()["id"]
+
+                approved = client.post(
+                    f"/api/v1/communications/project-batches/{batch_id}/approve"
+                )
+                self.assertEqual(approved.status_code, 200, approved.text)
+                self.assertEqual(smtp.attempt_subjects, [])
+
+                first = client.post(
+                    f"/api/v1/communications/project-batches/{batch_id}/send-smtp"
+                )
+                self.assertEqual(first.status_code, 200, first.text)
+                first_payload = first.json()
+                self.assertEqual(first_payload["status"], "APPROVED")
+
+                first_deliveries = {
+                    message["project_id"]: next(
+                        delivery
+                        for delivery in message["deliveries"]
+                        if delivery["provider"] == "SMTP"
+                    )
+                    for message in first_payload["messages"]
+                }
+                self.assertEqual(first_deliveries["P1"]["status"], "SENT")
+                self.assertEqual(first_deliveries["P1"]["attempt_count"], 1)
+                self.assertEqual(first_deliveries["P2"]["status"], "FAILED")
+                self.assertEqual(first_deliveries["P2"]["attempt_count"], 1)
+
+                second = client.post(
+                    f"/api/v1/communications/project-batches/{batch_id}/send-smtp"
+                )
+                self.assertEqual(second.status_code, 200, second.text)
+                second_payload = second.json()
+                self.assertEqual(second_payload["status"], "COMMUNICATED")
+
+                second_deliveries = {
+                    message["project_id"]: next(
+                        delivery
+                        for delivery in message["deliveries"]
+                        if delivery["provider"] == "SMTP"
+                    )
+                    for message in second_payload["messages"]
+                }
+                self.assertEqual(second_deliveries["P1"]["status"], "SENT")
+                self.assertEqual(second_deliveries["P1"]["attempt_count"], 1)
+                self.assertEqual(second_deliveries["P2"]["status"], "SENT")
+                self.assertEqual(second_deliveries["P2"]["attempt_count"], 2)
+
+        project_1000_attempts = [
+            subject for subject in smtp.attempt_subjects if "1000" in subject
+        ]
+        project_2000_attempts = [
+            subject for subject in smtp.attempt_subjects if "2000" in subject
+        ]
+        self.assertEqual(len(project_1000_attempts), 1)
+        self.assertEqual(len(project_2000_attempts), 2)
 
     def test_http_contract_exposes_project_projection_under_communications(self) -> None:
         with TemporaryDirectory() as directory:

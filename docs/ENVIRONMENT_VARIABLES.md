@@ -65,6 +65,16 @@ Le préflight de démarrage vérifie la **configuration** OIDC, mais ne contacte
 
 L'absence d'Acumatica n'empêche pas les fonctions locales. Une configuration Acumatica **partielle** est par contre une erreur de configuration explicite au démarrage.
 
+## Configuration chiffrée / SMTP
+
+| Variable | Usage | Secret |
+| --- | --- | --- |
+| `RESOURCEPLANNER_CONFIG_ENCRYPTION_KEY` | Clé maîtresse Fernet utilisée pour chiffrer les secrets configurés depuis l’interface administrateur | **Oui** |
+
+La clé maîtresse reste **hors de la base de données** et ne doit pas être committée. Pour en générer une, utiliser un outil d’exploitation sécurisé produisant une clé Fernet URL-safe de 32 octets. La page **Configuration** peut enregistrer les paramètres SMTP non secrets sans cette variable, mais elle refuse d’enregistrer ou de déchiffrer un credential SMTP lorsque la clé est absente.
+
+Les paramètres SMTP (hôte, port, STARTTLS ou SSL/TLS, expéditeur, Reply-To, activation) sont ensuite administrés dans l’application. Le secret SMTP est chiffré avant stockage SQL et l’API retourne uniquement `password_configured=true/false`, jamais sa valeur.
+
 ## Microsoft 365 / Graph
 
 | Variable | Usage | Secret |

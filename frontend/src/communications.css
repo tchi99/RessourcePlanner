@@ -350,3 +350,24 @@
     display: grid;
   }
 }
+
+.delivery-status {
+  font-weight: 700;
+}
+
+.delivery-sent {
+  color: #067647 !important;
+}
+
+.delivery-failed {
+  color: #b42318 !important;
+}
+
+.delivery-sending,
+.delivery-pending {
+  color: #b54708 !important;
+}
+
+.smtp-send-button {
+  background: #0b6b58 !important;
+}

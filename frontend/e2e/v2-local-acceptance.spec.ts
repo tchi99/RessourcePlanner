@@ -169,12 +169,27 @@ test("V2 local acceptance path runs through React, Chromium, FastAPI and SQLite"
     const admin = await openAs(browser, "ADMIN");
     await expect(admin.page.locator(".main-nav").getByText("Ressources", { exact: true })).toBeVisible();
     await expect(admin.page.locator(".main-nav").getByText("Utilisateurs", { exact: true })).toBeVisible();
+    await expect(admin.page.locator(".main-nav").getByText("Configuration", { exact: true })).toBeVisible();
+
+    await navigateMain(admin.page, "Configuration");
+    await expect(admin.page.getByRole("heading", { name: "Configuration", level: 2 })).toBeVisible();
+    const smtpForm = admin.page.locator(".smtp-form");
+    await labelled(smtpForm, "Serveur SMTP", "input").fill("smtp.example.invalid");
+    await labelled(smtpForm, "Port", "input").fill("587");
+    await labelled(smtpForm, "Sécurité", "select").selectOption("STARTTLS");
+    await labelled(smtpForm, "Courriel expéditeur", "input").fill(testEmail("planning"));
+    await smtpForm.getByLabel("Envoi SMTP activé").check();
+    await smtpForm.getByRole("button", { name: "Enregistrer", exact: true }).click();
+    await expect(admin.page.locator(".configuration-notice")).toContainText("Configuration SMTP enregistrée");
+    await smtpForm.getByRole("button", { name: "Tester la connexion enregistrée" }).click();
+    await expect(admin.page.locator(".configuration-notice")).toContainText("Connexion SMTP réussie");
     await closeContext(admin.context);
 
     const projectManager = await openAs(browser, "PROJECT_MANAGER");
     await expect(projectManager.page.locator(".main-nav").getByText("Communications", { exact: true })).toHaveCount(0);
     await expect(projectManager.page.locator(".main-nav").getByText("Ressources", { exact: true })).toHaveCount(0);
     await expect(projectManager.page.locator(".main-nav").getByText("Utilisateurs", { exact: true })).toHaveCount(0);
+    await expect(projectManager.page.locator(".main-nav").getByText("Configuration", { exact: true })).toHaveCount(0);
     await closeContext(projectManager.context);
   });
 
@@ -408,8 +423,13 @@ test("V2 local acceptance path runs through React, Chromium, FastAPI and SQLite"
     page.once("dialog", (dialog) => dialog.accept());
     await page.locator(".batch-row").first().getByRole("button", { name: "Créer brouillons M365" }).click();
     await expect(page.locator(".communications-notice")).toContainText("brouillon(s) M365 créé(s)");
-    await page.locator(".batch-row").first().getByRole("button", { name: "Confirmer communiqué" }).click();
-    await expect(page.locator(".communications-notice")).toContainText("confirmé comme communiqué");
+
+    page.once("dialog", (dialog) => dialog.accept());
+    await page.locator(".batch-row").first().getByRole("button", { name: "Envoyer par SMTP" }).click();
+    await expect(page.locator(".communications-notice")).toContainText("Envoi SMTP complété");
+    await expect(page.locator(".batch-row").first()).toContainText("COMMUNICATED");
+    await expect(page.locator(".batch-row").first()).toContainText("SMTP : SENT");
+    await expect(page.locator(".batch-row").first().getByRole("button", { name: "Envoyer par SMTP" })).toHaveCount(0);
     await closeContext(context);
   });
 
@@ -482,6 +502,7 @@ test("V2 local acceptance path runs through React, Chromium, FastAPI and SQLite"
     await expect(page.locator(".main-nav").getByText("Communications", { exact: true })).toHaveCount(0);
     await expect(page.locator(".main-nav").getByText("Ressources", { exact: true })).toHaveCount(0);
     await expect(page.locator(".main-nav").getByText("Utilisateurs", { exact: true })).toHaveCount(0);
+    await expect(page.locator(".main-nav").getByText("Configuration", { exact: true })).toHaveCount(0);
 
     await navigateMain(page, "Demandes");
     await expect(page.getByRole("button", { name: "Segments", exact: true })).toHaveCount(0);

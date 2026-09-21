@@ -25,9 +25,15 @@ from ..application import (
 )
 from ..application.communications import CommunicationService, CommunicationTransportPort
 from ..application.project_communications import ProjectCommunicationService
+from ..application.smtp_settings import (
+    SecretCipherPort,
+    SmtpClientPort,
+    SmtpConfigurationService,
+)
 from ..application.errors import ApplicationUnavailableError
 from ..application.security import AuthPrincipal
 from ..application.user_view_context import UserViewContextRepositoryPort
+from ..infrastructure.smtp import SmtpClient
 from ..infrastructure.sql import (
     SqlSessionFactory,
     create_session_factory,
@@ -38,6 +44,7 @@ from .composition import (
     build_business_contact_admin_service,
     build_communication_service,
     build_project_communication_service,
+    build_smtp_configuration_service,
     build_competency_catalog_service,
     build_sql_facade,
     build_sql_idempotency_executor,
@@ -53,6 +60,7 @@ from .performance import (
     install_sql_performance_instrumentation,
 )
 from .readiness import DatabaseReadinessError, check_database_readiness
+from .routes_admin_settings import build_admin_settings_router
 from .routes_auth import build_auth_router
 from .routes_business_contacts import build_business_contact_router
 from .routes_commands import build_command_router
@@ -75,6 +83,7 @@ QueryDependency = Callable[[], Iterator[PlannerQueryPort]]
 UserAdminDependency = Callable[..., Any]
 CommunicationDependency = Callable[..., Any]
 ProjectCommunicationDependency = Callable[..., Any]
+SmtpSettingsDependency = Callable[..., Any]
 CompetencyDependency = Callable[[], Iterator[CompetencyCatalogService]]
 BusinessContactDependency = Callable[[], Iterator[BusinessContactAdminService]]
 UserViewContextDependency = Callable[[], Iterator[UserViewContextRepositoryPort]]
@@ -196,20 +205,51 @@ def make_user_admin_dependency(
     return dependency
 
 
+def make_smtp_settings_dependency(
+    factory: SqlSessionFactory,
+    *,
+    session_dependency: SessionDependency | None = None,
+    cipher: SecretCipherPort | None = None,
+    client: SmtpClientPort | None = None,
+) -> SmtpSettingsDependency:
+    request_session = session_dependency or make_session_dependency(factory)
+    resolved_client = client or SmtpClient()
+
+    def dependency(
+        session: Session = Depends(request_session),
+    ) -> Iterator[SmtpConfigurationService]:
+        yield build_smtp_configuration_service(
+            session,
+            cipher=cipher,
+            client=resolved_client,
+        )
+
+    return dependency
+
+
 def make_project_communication_dependency(
     factory: SqlSessionFactory,
     *,
     session_dependency: SessionDependency | None = None,
     transport: CommunicationTransportPort | None = None,
+    smtp_cipher: SecretCipherPort | None = None,
+    smtp_client: SmtpClientPort | None = None,
 ) -> ProjectCommunicationDependency:
     request_session = session_dependency or make_session_dependency(factory)
+    resolved_smtp_client = smtp_client or SmtpClient()
 
     def dependency(
         session: Session = Depends(request_session),
     ) -> Iterator[ProjectCommunicationService]:
+        smtp_service = build_smtp_configuration_service(
+            session,
+            cipher=smtp_cipher,
+            client=resolved_smtp_client,
+        )
         yield build_project_communication_service(
             session,
             transport=transport,
+            smtp_service=smtp_service,
         )
 
     return dependency
@@ -293,6 +333,8 @@ def create_api_app(
     oidc_runtime: OidcRuntime | None = None,
     dev_user_switcher_runtime: DevUserSwitcherRuntime | None = None,
     communication_transport: CommunicationTransportPort | None = None,
+    smtp_cipher: SecretCipherPort | None = None,
+    smtp_client: SmtpClientPort | None = None,
     performance_log_path: Path | None = None,
     runtime_dependencies: dict[str, Any] | None = None,
 ) -> FastAPI:
@@ -335,10 +377,18 @@ def create_api_app(
         session_dependency=session_dependency,
         transport=communication_transport,
     )
+    smtp_settings_dependency = make_smtp_settings_dependency(
+        factory,
+        session_dependency=session_dependency,
+        cipher=smtp_cipher,
+        client=smtp_client,
+    )
     project_communication_dependency = make_project_communication_dependency(
         factory,
         session_dependency=session_dependency,
         transport=communication_transport,
+        smtp_cipher=smtp_cipher,
+        smtp_client=smtp_client,
     )
     competency_dependency = make_competency_dependency(
         factory,
@@ -373,6 +423,7 @@ def create_api_app(
     app.state.user_admin_dependency = user_admin_dependency
     app.state.user_view_context_dependency = user_view_context_dependency
     app.state.communication_dependency = communication_dependency
+    app.state.smtp_settings_dependency = smtp_settings_dependency
     app.state.project_communication_dependency = project_communication_dependency
     app.state.competency_dependency = competency_dependency
     app.state.business_contact_dependency = business_contact_dependency
@@ -456,6 +507,7 @@ def create_api_app(
     if dev_user_switcher_runtime is not None:
         app.include_router(build_dev_user_switcher_router(dev_user_switcher_runtime))
     app.include_router(build_user_admin_router(user_admin_dependency))
+    app.include_router(build_admin_settings_router(smtp_settings_dependency))
     app.include_router(
         build_command_router(
             facade_dependency,

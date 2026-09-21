@@ -20,10 +20,14 @@ from .command_adapters import (
 from .communication_models import (
     CommunicationBatchRow,
     CommunicationContact,
+    CommunicationDeliveryRow,
     CommunicationMessageRow,
     CommunicationSnapshotLine,
+    SmtpConfigurationAuditRow,
+    SmtpConfigurationRow,
 )
 from .communication_repository import SqlCommunicationRepository
+from .smtp_settings_repository import SqlSmtpConfigurationRepository
 from .competency_catalog_repository import SqlCompetencyCatalogRepository
 from .demand_period_models import (
     WorkforceRequestPeriod,
@@ -101,8 +105,11 @@ __all__ = [
     "Competency",
     "CommunicationBatchRow",
     "CommunicationContact",
+    "CommunicationDeliveryRow",
     "CommunicationMessageRow",
     "CommunicationSnapshotLine",
+    "SmtpConfigurationAuditRow",
+    "SmtpConfigurationRow",
     "LoadProfileAuditedSegmentRepository",
     "LoginTransactionRecord",
     "NAMING_CONVENTION",
@@ -130,6 +137,7 @@ __all__ = [
     "SqlBusinessContactAdminRepository",
     "SqlCommandIdempotencyAdapter",
     "SqlCommunicationRepository",
+    "SqlSmtpConfigurationRepository",
     "SqlCompetencyCatalogRepository",
     "SqlDemandPeriodRepository",
     "SqlDemandRepository",

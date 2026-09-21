@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import unittest
+
+from cryptography.fernet import Fernet
 from unittest.mock import patch
 
 from app.application.security import ROLE_ADMIN, ROLE_COORDINATOR
@@ -9,6 +11,7 @@ from app.server.runtime import (
     ALLOW_LOCAL_AUTH_NETWORK_ENV,
     API_DOCS_ENABLED_ENV,
     AUTH_MODE_ENV,
+    CONFIG_ENCRYPTION_KEY_ENV,
     DATABASE_URL_ENV,
     DEV_USER_SWITCHER_ENV,
     HOST_ENV,
@@ -23,6 +26,7 @@ from app.server.runtime import (
     PORT_ENV,
     ServerConfigurationError,
     ServerSettings,
+    create_configured_app,
     main,
     run_server,
 )
@@ -202,6 +206,31 @@ class ServerRuntimeTests(unittest.TestCase):
                     LOG_LEVEL_ENV: "verbose",
                 }
             )
+
+    def test_config_encryption_key_is_loaded_but_hidden_from_repr(self) -> None:
+        key_value = Fernet.generate_key().decode("ascii")
+        settings = ServerSettings.from_environment(
+            {
+                DATABASE_URL_ENV: "sqlite+pysqlite:///:memory:",
+                CONFIG_ENCRYPTION_KEY_ENV: key_value,
+            }
+        )
+
+        self.assertEqual(settings.config_encryption_key, key_value)
+        self.assertNotIn(key_value, repr(settings))
+
+    def test_invalid_config_encryption_key_fails_before_server_start(self) -> None:
+        settings = ServerSettings.from_environment(
+            {
+                DATABASE_URL_ENV: "sqlite+pysqlite:///:memory:",
+                CONFIG_ENCRYPTION_KEY_ENV: "invalid-fernet-key",
+            }
+        )
+
+        with self.assertRaises(ServerConfigurationError) as caught:
+            create_configured_app(settings)
+
+        self.assertIn(CONFIG_ENCRYPTION_KEY_ENV, str(caught.exception))
 
     def test_database_url_is_not_exposed_by_repr(self) -> None:
         secret_url = "mssql+pyodbc://user:secret@example/database"

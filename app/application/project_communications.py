@@ -21,14 +21,18 @@ from ..domain.project_communication_messages import (
     project_projection_fingerprint,
 )
 from .communications import (
+    DELIVERY_PROVIDER_SMTP,
+    DELIVERY_STATUS_SENT,
     STATUS_APPROVED,
     STATUS_CANCELLED,
     STATUS_COMMUNICATED,
     STATUS_PREPARED,
     CommunicationBatchRecord,
+    CommunicationDeliveryRecord,
     CommunicationTransportMessage,
     CommunicationTransportPort,
 )
+from .smtp_settings import SmtpConfigurationService
 from .errors import (
     ApplicationConflictError,
     ApplicationNotFoundError,
@@ -120,6 +124,30 @@ class ProjectCommunicationWorkflowRepositoryPort(Protocol):
         actor_name: str,
     ) -> CommunicationBatchRecord: ...
 
+    def claim_smtp_delivery(
+        self,
+        *,
+        message_id: str,
+        actor_name: str,
+    ) -> CommunicationDeliveryRecord | None: ...
+
+    def complete_smtp_delivery(
+        self,
+        *,
+        delivery_id: str,
+        provider_message_id: str,
+        actor_name: str,
+    ) -> CommunicationDeliveryRecord: ...
+
+    def fail_smtp_delivery(
+        self,
+        *,
+        delivery_id: str,
+        error_code: str,
+        error_detail: str,
+        actor_name: str,
+    ) -> CommunicationDeliveryRecord: ...
+
 
 class ProjectCommunicationService:
     """Project-centric communication projection and controlled draft workflow."""
@@ -130,10 +158,12 @@ class ProjectCommunicationService:
         *,
         workflow_repository: ProjectCommunicationWorkflowRepositoryPort | None = None,
         transport: CommunicationTransportPort | None = None,
+        smtp_service: SmtpConfigurationService | None = None,
     ) -> None:
         self._repository = repository
         self._workflow_repository = workflow_repository
         self._transport = transport
+        self._smtp_service = smtp_service
 
     @staticmethod
     def _normalize_week_start(value: date) -> date:
@@ -475,6 +505,107 @@ class ProjectCommunicationService:
             created_count=result.created_count,
             actor_name=actor_name,
         )
+
+    def send_project_smtp(
+        self,
+        *,
+        batch_id: str,
+        actor_name: str,
+    ) -> CommunicationBatchRecord:
+        row = self._project_batch(batch_id)
+        if row.status != STATUS_APPROVED:
+            raise ApplicationConflictError(
+                "Le lot projet doit être approuvé avant l'envoi SMTP.",
+                code="project_communication_batch_not_approved",
+            )
+        self._assert_current_snapshot(
+            row,
+            message=(
+                "Le planning projet a changé depuis l'approbation; "
+                "préparez un nouveau lot."
+            ),
+        )
+        if self._smtp_service is None:
+            raise ApplicationUnavailableError(
+                "Le service SMTP n'est pas configuré sur ce serveur.",
+                code="smtp_service_unavailable",
+            )
+
+        # Validate configuration/decryption before claiming any delivery.
+        self._smtp_service.runtime_configuration(require_enabled=True)
+        repository = self._workflow()
+        for message in row.messages:
+            if not message.included:
+                continue
+            existing = next(
+                (
+                    delivery
+                    for delivery in message.deliveries
+                    if delivery.provider == DELIVERY_PROVIDER_SMTP
+                ),
+                None,
+            )
+            if existing is not None and existing.status == DELIVERY_STATUS_SENT:
+                continue
+
+            claimed = repository.claim_smtp_delivery(
+                message_id=message.id,
+                actor_name=actor_name,
+            )
+            if claimed is None:
+                continue
+
+            transport_message = CommunicationTransportMessage(
+                audience=message.audience,
+                recipient_id=message.message_key or message.recipient_id,
+                recipient_email=str(message.recipient_email or "").strip(),
+                subject=message.subject,
+                body=message.body,
+                cc_emails=message.cc_emails,
+            )
+            message_id = (
+                "<resourceplanner-"
+                + claimed.id
+                + chr(64)
+                + "local.invalid>"
+            )
+            try:
+                provider_message_id = self._smtp_service.send_message(
+                    transport_message,
+                    message_id=message_id,
+                )
+            except ApplicationUnavailableError as exc:
+                repository.fail_smtp_delivery(
+                    delivery_id=claimed.id,
+                    error_code=exc.code,
+                    error_detail=exc.message,
+                    actor_name=actor_name,
+                )
+                continue
+
+            repository.complete_smtp_delivery(
+                delivery_id=claimed.id,
+                provider_message_id=provider_message_id,
+                actor_name=actor_name,
+            )
+
+        refreshed = self._project_batch(row.id)
+        included = [message for message in refreshed.messages if message.included]
+        all_sent = bool(included) and all(
+            any(
+                delivery.provider == DELIVERY_PROVIDER_SMTP
+                and delivery.status == DELIVERY_STATUS_SENT
+                for delivery in message.deliveries
+            )
+            for message in included
+        )
+        if all_sent:
+            return repository.set_batch_status(
+                batch_id=refreshed.id,
+                status=STATUS_COMMUNICATED,
+                actor_name=actor_name,
+            )
+        return refreshed
 
     def cancel_project_batch(
         self,

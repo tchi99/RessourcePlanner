@@ -33,7 +33,7 @@ function kindLabel(kind: string) {
 }
 
 type DraftState = ProjectCommunicationReview & { source: ProjectCommunicationDraft };
-type BatchAction = "approve" | "create-drafts" | "cancel" | "mark-communicated";
+type BatchAction = "approve" | "create-drafts" | "send-smtp" | "cancel" | "mark-communicated";
 
 export default function CommunicationsPage() {
   const [weekStart, setWeekStart] = useState(nextMondayIso);
@@ -116,6 +116,17 @@ export default function CommunicationsPage() {
       );
       if (!confirmed) return;
     }
+    if (action === "send-smtp") {
+      const pending = batch.messages.filter((message) => (
+        message.included
+        && !message.deliveries.some((delivery) => delivery.provider === "SMTP" && delivery.status === "SENT")
+      )).length;
+      const confirmed = window.confirm(
+        `Envoyer ${pending} courriel(s) maintenant via SMTP ?\n\n`
+        + "Cette action est irréversible. Les messages déjà marqués SENT ne seront pas renvoyés.",
+      );
+      if (!confirmed) return;
+    }
 
     setBusy(true);
     setError(null);
@@ -127,6 +138,17 @@ export default function CommunicationsPage() {
           ? "Lot projet approuvé. Aucun message n’a été envoyé."
           : action === "create-drafts"
             ? `${updated.drafts_created_count} brouillon(s) M365 créé(s). Aucun courriel n’a été envoyé.`
+            : action === "send-smtp"
+              ? (() => {
+                  const deliveries = updated.messages
+                    .filter((message) => message.included)
+                    .flatMap((message) => message.deliveries.filter((delivery) => delivery.provider === "SMTP"));
+                  const sent = deliveries.filter((delivery) => delivery.status === "SENT").length;
+                  const failed = deliveries.filter((delivery) => delivery.status === "FAILED").length;
+                  return updated.status === "COMMUNICATED"
+                    ? `Envoi SMTP complété : ${sent} message(s) envoyé(s). Le lot est communiqué.`
+                    : `Envoi SMTP partiel : ${sent} envoyé(s), ${failed} en échec. Un retry ne renverra pas les messages déjà SENT.`;
+                })()
             : action === "mark-communicated"
               ? "Lot projet confirmé comme communiqué."
               : "Lot projet annulé.",
@@ -349,6 +371,18 @@ export default function CommunicationsPage() {
                           <span>
                             CC : {message.cc_emails.length > 0 ? message.cc_emails.join(", ") : "—"}
                           </span>
+                          {message.deliveries
+                            .filter((delivery) => delivery.provider === "SMTP")
+                            .map((delivery) => (
+                              <span
+                                key={delivery.id}
+                                className={`delivery-status delivery-${delivery.status.toLowerCase()}`}
+                              >
+                                SMTP : {delivery.status}
+                                {delivery.attempt_count > 0 ? ` · tentative ${delivery.attempt_count}` : ""}
+                                {delivery.error_detail ? ` · ${delivery.error_detail}` : ""}
+                              </span>
+                            ))}
                         </div>
                       ))}
                     </div>
@@ -385,6 +419,16 @@ export default function CommunicationsPage() {
                     {batch.status === "APPROVED" && (
                       <button
                         type="button"
+                        className="smtp-send-button"
+                        disabled={busy || batch.stale}
+                        onClick={() => void batchAction(batch, "send-smtp")}
+                      >
+                        Envoyer par SMTP
+                      </button>
+                    )}
+                    {batch.status === "APPROVED" && (
+                      <button
+                        type="button"
                         disabled={busy || batch.stale}
                         onClick={() => void batchAction(batch, "mark-communicated")}
                       >
@@ -399,8 +443,9 @@ export default function CommunicationsPage() {
         )}
 
         <p className="communications-help">
-          « Créer brouillons M365 » est une action externe explicite qui ne transmet aucun courriel.
-          « Confirmer communiqué » fige le snapshot de référence utilisé pour les futurs deltas.
+          « Créer brouillons M365 » crée seulement des brouillons. « Envoyer par SMTP » transmet
+          réellement les messages après approbation et marque automatiquement le lot communiqué si
+          toutes les livraisons réussissent. Les échecs restent auditables et peuvent être retentés.
         </p>
       </section>
     </section>

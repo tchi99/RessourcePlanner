@@ -193,7 +193,7 @@ deploy/synology/.env
 
 puis renseigner les valeurs réelles directement sur le NAS.
 
-Les secrets SQL/OIDC/Acumatica/M365 ne doivent jamais être intégrés dans les images ni committés.
+Les secrets SQL/OIDC/Acumatica/M365 ainsi que `RESOURCEPLANNER_CONFIG_ENCRYPTION_KEY` ne doivent jamais être intégrés dans les images ni committés. La clé de chiffrement SMTP doit être conservée uniquement dans le `.env`/gestionnaire de secrets du NAS et injectée au backend.
 
 Pour une première phase pilotée par Git/SSH :
 

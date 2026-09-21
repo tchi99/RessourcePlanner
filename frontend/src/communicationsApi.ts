@@ -44,6 +44,20 @@ export type ProjectCommunicationPreview = {
   baseline_fingerprint: string | null;
 };
 
+export type CommunicationDelivery = {
+  id: string;
+  message_id: string;
+  provider: string;
+  status: "PENDING" | "SENDING" | "SENT" | "FAILED";
+  attempt_count: number;
+  attempted_at: string | null;
+  sent_at: string | null;
+  provider_message_id: string | null;
+  error_code: string | null;
+  error_detail: string | null;
+  last_actor: string | null;
+};
+
 export type CommunicationMessage = {
   id: string;
   audience: string;
@@ -58,6 +72,7 @@ export type CommunicationMessage = {
   content_fingerprint: string | null;
   approvable: boolean;
   diagnostics_json: string | null;
+  deliveries: CommunicationDelivery[];
 };
 
 export type CommunicationBatch = {
@@ -145,7 +160,7 @@ export function listProjectCommunicationBatches(weekStart: string) {
 
 export function projectCommunicationBatchAction(
   batchId: string,
-  action: "approve" | "create-drafts" | "cancel" | "mark-communicated",
+  action: "approve" | "create-drafts" | "send-smtp" | "cancel" | "mark-communicated",
 ) {
   return request<CommunicationBatch>(
     `/api/v1/communications/project-batches/${encodeURIComponent(batchId)}/${action}`,

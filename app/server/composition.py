@@ -18,6 +18,11 @@ from ..application import (
 from ..application.communications import CommunicationService, CommunicationTransportPort
 from ..application.operational_contacts import OperationalContactService
 from ..application.project_communications import ProjectCommunicationService
+from ..application.smtp_settings import (
+    SecretCipherPort,
+    SmtpClientPort,
+    SmtpConfigurationService,
+)
 from ..application.quick_shift_service import QuickShiftService
 from ..application.segment_service import SegmentService
 from ..application.user_admin import UserAdminService
@@ -38,6 +43,7 @@ from ..infrastructure.sql import (
     SqlPlannerQueryRepositoryWithLoadProfiles,
     SqlPlanningCommandAdapter,
     SqlResourceAdminRepository,
+    SqlSmtpConfigurationRepository,
     SqlSegmentRepositoryWithActiveDayMetrics,
     SqlUserIdentityRepository,
     SqlWorkPackageRepository,
@@ -155,10 +161,26 @@ def build_communication_service(
     return CommunicationService(SqlCommunicationRepository(session), transport=transport)
 
 
+def build_smtp_configuration_service(
+    session: Session,
+    *,
+    cipher: SecretCipherPort | None,
+    client: SmtpClientPort,
+) -> SmtpConfigurationService:
+    """Compose SMTP administration and delivery configuration."""
+
+    return SmtpConfigurationService(
+        SqlSmtpConfigurationRepository(session),
+        cipher=cipher,
+        client=client,
+    )
+
+
 def build_project_communication_service(
     session: Session,
     *,
     transport: CommunicationTransportPort | None = None,
+    smtp_service: SmtpConfigurationService | None = None,
 ) -> ProjectCommunicationService:
     """Compose the #290 project-centric communication projection."""
 
@@ -172,6 +194,7 @@ def build_project_communication_service(
         ),
         workflow_repository=SqlCommunicationRepository(session),
         transport=transport,
+        smtp_service=smtp_service,
     )
 
 

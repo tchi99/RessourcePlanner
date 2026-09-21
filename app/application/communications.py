@@ -30,6 +30,12 @@ STATUS_COMMUNICATED = "COMMUNICATED"
 KIND_WEEKLY = "weekly_plan"
 KIND_CHANGE = "planning_change"
 
+DELIVERY_PROVIDER_SMTP = "SMTP"
+DELIVERY_STATUS_PENDING = "PENDING"
+DELIVERY_STATUS_SENDING = "SENDING"
+DELIVERY_STATUS_SENT = "SENT"
+DELIVERY_STATUS_FAILED = "FAILED"
+
 
 @dataclass(frozen=True, slots=True)
 class CommunicationContactRecord:
@@ -38,6 +44,21 @@ class CommunicationContactRecord:
     display_name: str
     email: str | None
     active: bool = True
+
+
+@dataclass(frozen=True, slots=True)
+class CommunicationDeliveryRecord:
+    id: str
+    message_id: str
+    provider: str
+    status: str
+    attempt_count: int
+    attempted_at: datetime | None = None
+    sent_at: datetime | None = None
+    provider_message_id: str | None = None
+    error_code: str | None = None
+    error_detail: str | None = None
+    last_actor: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -55,6 +76,7 @@ class CommunicationMessageRecord:
     content_fingerprint: str | None = None
     approvable: bool = True
     diagnostics_json: str | None = None
+    deliveries: tuple[CommunicationDeliveryRecord, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
