@@ -364,18 +364,35 @@ test("V2 local acceptance path runs through React, Chromium, FastAPI and SQLite"
     await closeContext(context);
   });
 
-  await test.step("communications are reviewed in React and only create fake local drafts", async () => {
+  await test.step("communications use project To/CC, manual review and only create fake local drafts", async () => {
     const { context, page } = await openAs(browser, "COORDINATOR");
     await navigateMain(page, "Communications");
     await expect(page.getByRole("heading", { name: "Communications de planification" })).toBeVisible();
+    await expect(page.getByText("Destinataires gérés dans Utilisateurs")).toBeVisible();
+    await expect(page.locator(".contact-row")).toHaveCount(0);
+
     await page.getByLabel("Semaine du").fill(d1);
     await page.getByRole("button", { name: "Générer la prévisualisation" }).click();
-    await expect(page.locator(".draft-card").first()).toBeVisible();
-    await expect(page.locator(".communications-warning")).toHaveCount(0);
+
+    const draft = page.locator(".draft-card").filter({ hasText: "Projet P-251" }).first();
+    await expect(draft).toBeVisible();
+    await expect(draft.locator(".draft-recipients")).toContainText("pm@example.test");
+    await expect(draft.locator(".draft-recipients")).toContainText("alice@example.test");
+    await expect(draft.locator(".draft-recipients")).toContainText("bob@example.test");
+    await expect(draft.getByText("Courriel manquant")).toHaveCount(0);
+    await expect(draft.locator("textarea")).toContainText("Chargé de projet Démo");
+    await expect(draft.locator("textarea")).toContainText("450-555-0199");
+
     await page.getByRole("button", { name: "Préparer le lot" }).click();
-    await expect(page.locator(".communications-notice")).toContainText("Lot préparé");
-    await page.locator(".batch-row").first().getByRole("button", { name: "Approuver" }).click();
-    await expect(page.locator(".communications-notice")).toContainText("Lot approuvé");
+    await expect(page.locator(".communications-notice")).toContainText("Lot projet préparé");
+
+    const batch = page.locator(".batch-row").first();
+    await expect(batch).toContainText("To : pm@example.test");
+    await expect(batch).toContainText("alice@example.test");
+    await expect(batch).toContainText("bob@example.test");
+
+    await batch.getByRole("button", { name: "Approuver" }).click();
+    await expect(page.locator(".communications-notice")).toContainText("Lot projet approuvé");
     page.once("dialog", (dialog) => dialog.accept());
     await page.locator(".batch-row").first().getByRole("button", { name: "Créer brouillons M365" }).click();
     await expect(page.locator(".communications-notice")).toContainText("brouillon(s) M365 créé(s)");
