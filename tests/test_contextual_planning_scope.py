@@ -21,140 +21,149 @@ from app.infrastructure.sql import (
 )
 from app.server import create_api_app
 from app.server.security import static_auth_resolver
+from tests.sqlite_test_template import SqliteDatabaseTemplate
 
 
 DAY = date(2026, 9, 21)
 
 
 class ContextualPlanningScopeTests(unittest.TestCase):
+    @staticmethod
+    def _seed_database(session) -> None:
+        session.add_all(
+            [
+                Project(
+                    id="P-MINE",
+                    number="P-100",
+                    name="Projet du chargé",
+                    project_manager_external_id="EMP-PM",
+                    project_manager_name="Chargé scope",
+                    status="Actif",
+                ),
+                Project(
+                    id="P-OUT",
+                    number="P-900",
+                    name="Projet hors périmètre",
+                    status="Actif",
+                ),
+                Resource(
+                    id="R-ALICE",
+                    external_id="EMP-ALICE",
+                    name="Alice",
+                    resource_class="Programmation",
+                    active=True,
+                    sort_order=10,
+                ),
+            ]
+        )
+        session.flush()
+        session.add(
+            ResourceAvailabilityRule(
+                id="SCH-ALICE",
+                resource_id="R-ALICE",
+                availability_type="Horaire standard",
+                start_date=date(2026, 1, 1),
+                end_date=date(2026, 12, 31),
+                weekdays="Lun,Mar,Mer,Jeu,Ven",
+                start_time=time(7, 0),
+                end_time=time(15, 0),
+                active=True,
+            )
+        )
+        session.add_all(
+            [
+                ResourceRequirement(
+                    id="REQ-MINE",
+                    legacy_segment_id="SEG-MINE",
+                    project_id="P-MINE",
+                    assigned_resource_id="R-ALICE",
+                    start_date=DAY,
+                    end_date=DAY,
+                    planned_hours=Decimal("8"),
+                    status="Planifié",
+                    confirmation="Confirmée",
+                    origin="AD_HOC",
+                ),
+                ResourceRequirement(
+                    id="REQ-MINE-OPEN",
+                    legacy_segment_id="SEG-MINE-OPEN",
+                    project_id="P-MINE",
+                    assigned_resource_id=None,
+                    start_date=DAY,
+                    end_date=DAY,
+                    planned_hours=Decimal("4"),
+                    status="À assigner",
+                    confirmation="Confirmée",
+                    origin="AD_HOC",
+                ),
+                ResourceRequirement(
+                    id="REQ-OUT",
+                    legacy_segment_id="SEG-OUT",
+                    project_id="P-OUT",
+                    assigned_resource_id="R-ALICE",
+                    start_date=DAY,
+                    end_date=DAY,
+                    planned_hours=Decimal("8"),
+                    status="Planifié",
+                    confirmation="Confirmée",
+                    origin="AD_HOC",
+                ),
+                ResourceRequirement(
+                    id="REQ-OUT-OPEN",
+                    legacy_segment_id="SEG-OUT-OPEN",
+                    project_id="P-OUT",
+                    assigned_resource_id=None,
+                    start_date=DAY,
+                    end_date=DAY,
+                    planned_hours=Decimal("4"),
+                    status="À assigner",
+                    confirmation="Confirmée",
+                    origin="AD_HOC",
+                ),
+            ]
+        )
+        session.flush()
+        session.add_all(
+            [
+                Shift(
+                    id="SHIFT-MINE",
+                    resource_requirement_id="REQ-MINE",
+                    resource_id="R-ALICE",
+                    work_date=DAY,
+                    hours=Decimal("2"),
+                    source="AUTO",
+                    locked=False,
+                    outside_standard_hours=False,
+                ),
+                Shift(
+                    id="SHIFT-OUT",
+                    resource_requirement_id="REQ-OUT",
+                    resource_id="R-ALICE",
+                    work_date=DAY,
+                    hours=Decimal("3"),
+                    source="AUTO",
+                    locked=False,
+                    outside_standard_hours=False,
+                ),
+            ]
+        )
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        super().setUpClass()
+        cls._database_template = SqliteDatabaseTemplate(
+            filename="planning-scope.db",
+            seed=cls._seed_database,
+        )
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        cls._database_template.cleanup()
+        super().tearDownClass()
+
     def setUp(self) -> None:
         self.temp = TemporaryDirectory()
-        database = Path(self.temp.name) / "planning-scope.db"
-        self.database_url = f"sqlite+pysqlite:///{database.as_posix()}"
-        engine = create_sql_engine(self.database_url)
-        Base.metadata.create_all(engine)
-        factory = create_session_factory(engine)
-        try:
-            with factory.begin() as session:
-                session.add_all(
-                    [
-                        Project(
-                            id="P-MINE",
-                            number="P-100",
-                            name="Projet du chargé",
-                            project_manager_external_id="EMP-PM",
-                            project_manager_name="Chargé scope",
-                            status="Actif",
-                        ),
-                        Project(
-                            id="P-OUT",
-                            number="P-900",
-                            name="Projet hors périmètre",
-                            status="Actif",
-                        ),
-                        Resource(
-                            id="R-ALICE",
-                            external_id="EMP-ALICE",
-                            name="Alice",
-                            resource_class="Programmation",
-                            active=True,
-                            sort_order=10,
-                        ),
-                    ]
-                )
-                session.flush()
-                session.add(
-                    ResourceAvailabilityRule(
-                        id="SCH-ALICE",
-                        resource_id="R-ALICE",
-                        availability_type="Horaire standard",
-                        start_date=date(2026, 1, 1),
-                        end_date=date(2026, 12, 31),
-                        weekdays="Lun,Mar,Mer,Jeu,Ven",
-                        start_time=time(7, 0),
-                        end_time=time(15, 0),
-                        active=True,
-                    )
-                )
-                session.add_all(
-                    [
-                        ResourceRequirement(
-                            id="REQ-MINE",
-                            legacy_segment_id="SEG-MINE",
-                            project_id="P-MINE",
-                            assigned_resource_id="R-ALICE",
-                            start_date=DAY,
-                            end_date=DAY,
-                            planned_hours=Decimal("8"),
-                            status="Planifié",
-                            confirmation="Confirmée",
-                            origin="AD_HOC",
-                        ),
-                        ResourceRequirement(
-                            id="REQ-MINE-OPEN",
-                            legacy_segment_id="SEG-MINE-OPEN",
-                            project_id="P-MINE",
-                            assigned_resource_id=None,
-                            start_date=DAY,
-                            end_date=DAY,
-                            planned_hours=Decimal("4"),
-                            status="À assigner",
-                            confirmation="Confirmée",
-                            origin="AD_HOC",
-                        ),
-                        ResourceRequirement(
-                            id="REQ-OUT",
-                            legacy_segment_id="SEG-OUT",
-                            project_id="P-OUT",
-                            assigned_resource_id="R-ALICE",
-                            start_date=DAY,
-                            end_date=DAY,
-                            planned_hours=Decimal("8"),
-                            status="Planifié",
-                            confirmation="Confirmée",
-                            origin="AD_HOC",
-                        ),
-                        ResourceRequirement(
-                            id="REQ-OUT-OPEN",
-                            legacy_segment_id="SEG-OUT-OPEN",
-                            project_id="P-OUT",
-                            assigned_resource_id=None,
-                            start_date=DAY,
-                            end_date=DAY,
-                            planned_hours=Decimal("4"),
-                            status="À assigner",
-                            confirmation="Confirmée",
-                            origin="AD_HOC",
-                        ),
-                    ]
-                )
-                session.flush()
-                session.add_all(
-                    [
-                        Shift(
-                            id="SHIFT-MINE",
-                            resource_requirement_id="REQ-MINE",
-                            resource_id="R-ALICE",
-                            work_date=DAY,
-                            hours=Decimal("2"),
-                            source="AUTO",
-                            locked=False,
-                            outside_standard_hours=False,
-                        ),
-                        Shift(
-                            id="SHIFT-OUT",
-                            resource_requirement_id="REQ-OUT",
-                            resource_id="R-ALICE",
-                            work_date=DAY,
-                            hours=Decimal("3"),
-                            source="AUTO",
-                            locked=False,
-                            outside_standard_hours=False,
-                        ),
-                    ]
-                )
-        finally:
-            engine.dispose()
+        self.database_url = self._database_template.copy_to(self.temp.name)
 
     def tearDown(self) -> None:
         self.temp.cleanup()
