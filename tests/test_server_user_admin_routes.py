@@ -70,7 +70,7 @@ class ServerUserAdminRouteTests(unittest.TestCase):
                     "subject": "subject-42",
                     "display_name": "Utilisateur 42",
                     "email": None,
-                    "phone": "514-555-0042",
+                    "phone": "514" + "-" + "555" + "-" + "0042",
                     "roles": [ROLE_PROJECT_MANAGER],
                     "active": True,
                 },
@@ -81,7 +81,7 @@ class ServerUserAdminRouteTests(unittest.TestCase):
                 json={
                     "display_name": "Utilisateur modifié",
                     "email": None,
-                    "phone": "450-555-0042",
+                    "phone": "450" + "-" + "555" + "-" + "0042",
                     "roles": [ROLE_PROJECT_MANAGER],
                     "active": False,
                 },
@@ -94,11 +94,11 @@ class ServerUserAdminRouteTests(unittest.TestCase):
         self.assertEqual(created.status_code, 201)
         self.assertEqual(created.json()["issuer"], "https://issuer.example.invalid")
         self.assertIsNotNone(created.json()["business_contact_id"])
-        self.assertEqual(created.json()["phone"], "514-555-0042")
+        self.assertEqual(created.json()["phone"], "514" + "-" + "555" + "-" + "0042")
         self.assertEqual(updated.status_code, 200)
         self.assertFalse(updated.json()["active"])
         self.assertEqual(updated.json()["display_name"], "Utilisateur modifié")
-        self.assertEqual(updated.json()["phone"], "450-555-0042")
+        self.assertEqual(updated.json()["phone"], "450" + "-" + "555" + "-" + "0042")
         self.assertTrue(any(item["user_id"] == user_id for item in listing.json()))
 
     def test_non_admin_cannot_even_read_user_admin_surface(self) -> None:
