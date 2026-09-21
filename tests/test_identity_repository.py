@@ -3,7 +3,7 @@ from __future__ import annotations
 import unittest
 
 from app.application.security import IdentityService, ROLE_ADMIN, ROLE_TECHNICIAN
-from app.infrastructure.sql import Base, SqlUserIdentityRepository, create_session_factory, create_sql_engine
+from app.infrastructure.sql import Base, BusinessContact, SqlUserIdentityRepository, create_session_factory, create_sql_engine
 
 
 class IdentityRepositoryTests(unittest.TestCase):
@@ -32,6 +32,13 @@ class IdentityRepositoryTests(unittest.TestCase):
             )
 
         self.assertEqual(created.roles, (ROLE_TECHNICIAN,))
+        self.assertIsNotNone(created.business_contact_id)
+        with self.factory() as session:
+            contact = session.get(BusinessContact, created.business_contact_id)
+            assert contact is not None
+            self.assertEqual(contact.display_name, "Utilisateur test")
+            self.assertEqual(contact.email, email)
+            self.assertEqual(contact.source, "APP_USER")
         self.assertIsNotNone(principal)
         assert principal is not None
         self.assertEqual(principal.local_user_id, created.user_id)
@@ -60,6 +67,11 @@ class IdentityRepositoryTests(unittest.TestCase):
         self.assertEqual(first.user_id, second.user_id)
         self.assertEqual(second.display_name, "Nom modifié")
         self.assertEqual(second.roles, (ROLE_ADMIN,))
+        self.assertEqual(first.business_contact_id, second.business_contact_id)
+        with self.factory() as session:
+            contact = session.get(BusinessContact, second.business_contact_id)
+            assert contact is not None
+            self.assertEqual(contact.display_name, "Nom modifié")
 
     def test_inactive_user_does_not_resolve(self) -> None:
         with self.factory.begin() as session:
