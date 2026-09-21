@@ -62,6 +62,8 @@ class SqlOperationalContactRepository(OperationalContactRepositoryPort):
 
     def __init__(self, session: Session) -> None:
         self._session = session
+        self._contact_cache: dict[str, BusinessContact] = {}
+        self._missing_contact_ids: set[str] = set()
 
     def _contacts(self, contact_ids: tuple[str | None, ...]) -> dict[str, BusinessContact]:
         wanted = tuple(
@@ -73,10 +75,24 @@ class SqlOperationalContactRepository(OperationalContactRepositoryPort):
         )
         if not wanted:
             return {}
-        rows = self._session.scalars(
-            select(BusinessContact).where(BusinessContact.id.in_(wanted))
-        ).all()
-        return {row.id: row for row in rows}
+        missing = tuple(
+            contact_id
+            for contact_id in wanted
+            if contact_id not in self._contact_cache
+            and contact_id not in self._missing_contact_ids
+        )
+        if missing:
+            rows = self._session.scalars(
+                select(BusinessContact).where(BusinessContact.id.in_(missing))
+            ).all()
+            found = {row.id: row for row in rows}
+            self._contact_cache.update(found)
+            self._missing_contact_ids.update(set(missing) - set(found))
+        return {
+            contact_id: self._contact_cache[contact_id]
+            for contact_id in wanted
+            if contact_id in self._contact_cache
+        }
 
     @staticmethod
     def _candidate(
