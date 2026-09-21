@@ -94,7 +94,7 @@ class ServerSmtpSettingsTests(unittest.TestCase):
                 self.assertTrue(test_response.json()["ok"])
 
             self.assertEqual(len(fake.tested), 1)
-            self.assertEqual(fake.tested[0].password, secret_value)
+            self.assertEqual(fake.tested[0].credential, secret_value)
 
     def test_coordinator_cannot_read_or_change_admin_settings(self) -> None:
         with TemporaryDirectory() as directory:
