@@ -33,111 +33,121 @@ D2 = date(2026, 8, 25)
 
 
 from tests.http_test_auth import TEST_ADMIN_AUTH_RESOLVER
+from tests.sqlite_test_template import SqliteDatabaseTemplate
 
 create_api_app = partial(create_api_app, auth_resolver=TEST_ADMIN_AUTH_RESOLVER)
 
 class ServerReadRouteTests(unittest.TestCase):
-    def _database(self, directory: str) -> str:
-        path = Path(directory) / "reads.db"
-        url = f"sqlite:///{path.as_posix()}"
-        engine = create_sql_engine(url)
-        Base.metadata.create_all(engine)
-        factory = create_session_factory(engine)
-        with transactional_session(factory) as session:
-            session.add_all(
-                [
-                    Project(
-                        id="P1",
-                        number="P-1",
-                        name="Projet actif",
-                        client="Client 1",
-                        project_manager_name="Jean",
-                        status="Actif",
-                    ),
-                    Project(id="P2", number="P-2", name="Projet fermé", status="Terminé"),
-                    Resource(
-                        id="R1",
-                        name="Alice",
-                        resource_class="Programmation",
-                        competencies="PLC; SCADA",
-                        active=True,
-                        sort_order=10,
-                    ),
-                    Resource(id="R2", name="Bob", active=False, sort_order=20),
-                ]
-            )
-            session.flush()
-            session.add(
-                ResourceAvailabilityRule(
-                    id="SCH-R1",
-                    resource_id="R1",
-                    availability_type="Horaire standard",
-                    start_date=D1,
-                    end_date=date(2026, 12, 31),
-                    weekdays="Lun,Mar,Mer,Jeu,Ven",
+    @classmethod
+    def _seed_database(cls, session) -> None:
+        session.add_all(
+            [
+                Project(
+                    id="P1",
+                    number="P-1",
+                    name="Projet actif",
+                    client="Client 1",
+                    project_manager_name="Jean",
+                    status="Actif",
+                ),
+                Project(id="P2", number="P-2", name="Projet fermé", status="Terminé"),
+                Resource(
+                    id="R1",
+                    name="Alice",
+                    resource_class="Programmation",
+                    competencies="PLC; SCADA",
                     active=True,
-                )
+                    sort_order=10,
+                ),
+                Resource(id="R2", name="Bob", active=False, sort_order=20),
+            ]
+        )
+        session.flush()
+        session.add(
+            ResourceAvailabilityRule(
+                id="SCH-R1",
+                resource_id="R1",
+                availability_type="Horaire standard",
+                start_date=D1,
+                end_date=date(2026, 12, 31),
+                weekdays="Lun,Mar,Mer,Jeu,Ven",
+                active=True,
             )
-            number = SqlDemandRepository(session, actor_name="Jean").create(
-                {
-                    "NumeroProjet": "P-1",
-                    "DateDebutSouhaitee": D1,
-                    "DateFinSouhaitee": D2,
-                    "Description": "Programmation",
-                    "NombreRessources": 1,
-                }
+        )
+        number = SqlDemandRepository(session, actor_name="Jean").create(
+            {
+                "NumeroProjet": "P-1",
+                "DateDebutSouhaitee": D1,
+                "DateFinSouhaitee": D2,
+                "Description": "Programmation",
+                "NombreRessources": 1,
+            }
+        )
+        request = session.scalar(
+            select(WorkforceRequest).where(
+                WorkforceRequest.legacy_demand_number == number
             )
-            request = session.scalar(
-                select(WorkforceRequest).where(
-                    WorkforceRequest.legacy_demand_number == number
-                )
+        )
+        assert request is not None
+        session.add(
+            ResourceRequirement(
+                id="REQ1",
+                legacy_segment_id="SEG-1",
+                project_id="P1",
+                workforce_request_id=request.id,
+                assigned_resource_id="R1",
+                start_date=D1,
+                end_date=D2,
+                planned_hours=Decimal("8"),
+                status="Planifié",
+                description="Segment API",
+                planning_type="Flexible",
+                priority="Normale",
+                origin="REQUEST",
             )
-            assert request is not None
-            session.add(
-                ResourceRequirement(
-                    id="REQ1",
-                    legacy_segment_id="SEG-1",
-                    project_id="P1",
-                    workforce_request_id=request.id,
-                    assigned_resource_id="R1",
-                    start_date=D1,
-                    end_date=D2,
-                    planned_hours=Decimal("8"),
-                    status="Planifié",
-                    description="Segment API",
-                    planning_type="Flexible",
-                    priority="Normale",
-                    origin="REQUEST",
-                )
-            )
-            session.flush()
-            session.add_all(
-                [
-                    Shift(
-                        id="S1",
-                        legacy_allocation_id="MAN-1",
-                        resource_requirement_id="REQ1",
-                        resource_id="R1",
-                        work_date=D1,
-                        hours=Decimal("4"),
-                        source="MANUAL",
-                        locked=True,
-                    ),
-                    Shift(
-                        id="S2",
-                        legacy_allocation_id="AUTO-1",
-                        resource_requirement_id="REQ1",
-                        resource_id="R1",
-                        work_date=D2,
-                        hours=Decimal("4"),
-                        source="AUTO",
-                        locked=False,
-                    ),
-                ]
-            )
-            self.demand_number = number
-        engine.dispose()
-        return url
+        )
+        session.flush()
+        session.add_all(
+            [
+                Shift(
+                    id="S1",
+                    legacy_allocation_id="MAN-1",
+                    resource_requirement_id="REQ1",
+                    resource_id="R1",
+                    work_date=D1,
+                    hours=Decimal("4"),
+                    source="MANUAL",
+                    locked=True,
+                ),
+                Shift(
+                    id="S2",
+                    legacy_allocation_id="AUTO-1",
+                    resource_requirement_id="REQ1",
+                    resource_id="R1",
+                    work_date=D2,
+                    hours=Decimal("4"),
+                    source="AUTO",
+                    locked=False,
+                ),
+            ]
+        )
+        cls.demand_number = number
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        super().setUpClass()
+        cls._database_template = SqliteDatabaseTemplate(
+            filename="reads.db",
+            seed=cls._seed_database,
+        )
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        cls._database_template.cleanup()
+        super().tearDownClass()
+
+    def _database(self, directory: str) -> str:
+        return self._database_template.copy_to(directory)
 
     def test_projects_and_resources_support_active_filters(self) -> None:
         with TemporaryDirectory() as directory:

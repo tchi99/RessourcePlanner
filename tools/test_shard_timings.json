@@ -1,10 +1,12 @@
 {
   "source_runs": [
     637,
-    639
+    639,
+    643,
+    644
   ],
-  "sample_count": 2,
-  "total_seconds": 98.347567,
+  "sample_count": "refreshed after SQLite template optimizations",
+  "total_seconds": 88.802169,
   "total_tests": 1011,
   "modules": {
     "test_acumatica_identity_schema": {
@@ -100,7 +102,7 @@
       "tests": 2
     },
     "test_confirmation_inheritance": {
-      "seconds": 3.591587,
+      "seconds": 2.52819,
       "tests": 6
     },
     "test_contact_directory": {
@@ -416,7 +418,7 @@
       "tests": 2
     },
     "test_planning_drag_drop_api": {
-      "seconds": 1.704,
+      "seconds": 1.139972,
       "tests": 3
     },
     "test_planning_engine": {
@@ -572,11 +574,11 @@
       "tests": 9
     },
     "test_request_line_materialization": {
-      "seconds": 2.818514,
+      "seconds": 1.842035,
       "tests": 4
     },
     "test_request_line_periods": {
-      "seconds": 2.916621,
+      "seconds": 2.539217,
       "tests": 4
     },
     "test_resource_management_extraction": {
@@ -620,7 +622,7 @@
       "tests": 5
     },
     "test_server_acumatica_routes": {
-      "seconds": 2.944339,
+      "seconds": 1.966287,
       "tests": 5
     },
     "test_server_acumatica_runtime": {
@@ -640,7 +642,7 @@
       "tests": 2
     },
     "test_server_command_routes": {
-      "seconds": 4.873082,
+      "seconds": 3.343458,
       "tests": 9
     },
     "test_server_communications": {
@@ -652,7 +654,7 @@
       "tests": 2
     },
     "test_server_demand_period_routes": {
-      "seconds": 2.330356,
+      "seconds": 1.308886,
       "tests": 3
     },
     "test_server_dependency_profiles": {
@@ -668,7 +670,7 @@
       "tests": 6
     },
     "test_server_idempotency": {
-      "seconds": 1.914292,
+      "seconds": 1.10359,
       "tests": 4
     },
     "test_server_launcher_contract": {
@@ -688,7 +690,7 @@
       "tests": 3
     },
     "test_server_read_routes": {
-      "seconds": 2.660679,
+      "seconds": 1.416416,
       "tests": 4
     },
     "test_server_readiness_tool": {
@@ -712,7 +714,7 @@
       "tests": 4
     },
     "test_server_work_package_commands": {
-      "seconds": 2.490724,
+      "seconds": 1.510745,
       "tests": 5
     },
     "test_server_work_package_routes": {

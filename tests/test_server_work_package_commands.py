@@ -24,59 +24,69 @@ from app.server import create_api_app
 
 
 from tests.http_test_auth import TEST_ADMIN_AUTH_RESOLVER
+from tests.sqlite_test_template import SqliteDatabaseTemplate
 
 create_api_app = partial(create_api_app, auth_resolver=TEST_ADMIN_AUTH_RESOLVER)
 
 class ServerWorkPackageCommandTests(unittest.TestCase):
-    def _database(self, directory: str) -> str:
-        path = Path(directory) / "work-package-commands.db"
-        url = f"sqlite:///{path.as_posix()}"
-        engine = create_sql_engine(url)
-        Base.metadata.create_all(engine)
-        factory = create_session_factory(engine)
-        with transactional_session(factory) as session:
-            session.add_all(
-                [
-                    Project(id="P1", number="P-1", name="Projet 1", status="Actif"),
-                    Project(id="P2", number="P-2", name="Projet 2", status="Actif"),
-                ]
-            )
-            session.flush()
-            session.add_all(
-                [
-                    WorkPackage(
-                        id="WP-LINKED",
-                        project_id="P1",
-                        code="DEV",
-                        name="Développement",
-                        start_date=date(2026, 9, 14),
-                        end_date=date(2026, 9, 25),
-                        status="planned",
-                        legacy_effort_id="EFF-LINKED",
-                    ),
-                    WorkPackage(
-                        id="WP-FREE",
-                        project_id="P1",
-                        code="PREP",
-                        name="Préparation",
-                        status="planned",
-                        legacy_effort_id="EFF-FREE",
-                    ),
-                ]
-            )
-            session.flush()
-            session.add(
-                WorkforceRequest(
-                    id="REQ-1",
-                    legacy_demand_number="DMO-2026-0001",
+    @staticmethod
+    def _seed_database(session) -> None:
+        session.add_all(
+            [
+                Project(id="P1", number="P-1", name="Projet 1", status="Actif"),
+                Project(id="P2", number="P-2", name="Projet 2", status="Actif"),
+            ]
+        )
+        session.flush()
+        session.add_all(
+            [
+                WorkPackage(
+                    id="WP-LINKED",
                     project_id="P1",
-                    work_package_id="WP-LINKED",
-                    desired_start=date(2026, 9, 14),
-                    status="Brouillon",
-                )
+                    code="DEV",
+                    name="Développement",
+                    start_date=date(2026, 9, 14),
+                    end_date=date(2026, 9, 25),
+                    status="planned",
+                    legacy_effort_id="EFF-LINKED",
+                ),
+                WorkPackage(
+                    id="WP-FREE",
+                    project_id="P1",
+                    code="PREP",
+                    name="Préparation",
+                    status="planned",
+                    legacy_effort_id="EFF-FREE",
+                ),
+            ]
+        )
+        session.flush()
+        session.add(
+            WorkforceRequest(
+                id="REQ-1",
+                legacy_demand_number="DMO-2026-0001",
+                project_id="P1",
+                work_package_id="WP-LINKED",
+                desired_start=date(2026, 9, 14),
+                status="Brouillon",
             )
-        engine.dispose()
-        return url
+        )
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        super().setUpClass()
+        cls._database_template = SqliteDatabaseTemplate(
+            filename="work-package-commands.db",
+            seed=cls._seed_database,
+        )
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        cls._database_template.cleanup()
+        super().tearDownClass()
+
+    def _database(self, directory: str) -> str:
+        return self._database_template.copy_to(directory)
 
     @staticmethod
     def _count(database_url: str, model) -> int:
