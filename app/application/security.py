@@ -148,6 +148,8 @@ class UserIdentityRecord:
     roles: tuple[str, ...]
     active: bool
     employee_external_id: str | None = None
+    business_contact_id: str | None = None
+    phone: str | None = None
 
 
 class UserIdentityRepositoryPort(Protocol):

@@ -167,6 +167,8 @@ class SqlMigrationTests(unittest.TestCase):
             )
             self.assertIn("APPROVED_REQUEST_VERSION", ddl, url)
             self.assertIn("APPROVED_CONTACT_CONTEXT_STATUS", ddl, url)
+            self.assertIn("BUSINESS_CONTACT_ID", ddl, url)
+            self.assertIn("UX_APP_USERS_BUSINESS_CONTACT_ID_NOT_NULL", ddl, url)
 
     def test_approved_contact_context_migration_preserves_history_as_unknown(self) -> None:
         with TemporaryDirectory() as directory:
@@ -350,6 +352,92 @@ class SqlMigrationTests(unittest.TestCase):
                     ).scalar_one(),
                     "Nom seulement",
                 )
+            engine.dispose()
+
+    def test_user_business_contact_migration_reuses_employee_contact_and_creates_missing_profiles(self) -> None:
+        with TemporaryDirectory() as directory:
+            database_path = Path(directory) / "user-business-contact.db"
+            config = alembic_config(database_path)
+            command.upgrade(config, "0027_approved_contact_context")
+            engine = create_engine(f"sqlite:///{database_path.as_posix()}")
+
+            with engine.begin() as connection:
+                connection.exec_driver_sql(
+                    """
+                    INSERT INTO business_contacts (
+                        id, display_name, active, source,
+                        external_system, external_entity, external_id, version
+                    ) VALUES (
+                        'C-PM', 'Chargé projet A', 1, 'MIGRATION',
+                        'RESOURCEPLANNER', 'EMPLOYEE', 'EMP-PM', 1
+                    )
+                    """
+                )
+                connection.exec_driver_sql(
+                    """
+                    INSERT INTO app_users (
+                        id, issuer, subject, display_name, email,
+                        employee_external_id, roles_json, active
+                    ) VALUES (
+                        'U-PM', 'urn:test', 'pm', 'Chargé de projet Démo',
+                        'pm' || char(64) || 'example.invalid', 'EMP-PM', '["PROJECT_MANAGER"]', 1
+                    )
+                    """
+                )
+                connection.exec_driver_sql(
+                    """
+                    INSERT INTO app_users (
+                        id, issuer, subject, display_name, email,
+                        employee_external_id, roles_json, active
+                    ) VALUES (
+                        'U-COORD', 'urn:test', 'coord', 'Coordonnateur Démo',
+                        NULL, NULL, '["COORDINATOR"]', 1
+                    )
+                    """
+                )
+            engine.dispose()
+
+            command.upgrade(config, "head")
+            engine = create_engine(f"sqlite:///{database_path.as_posix()}")
+            with engine.connect() as connection:
+                users = connection.exec_driver_sql(
+                    "SELECT id, business_contact_id FROM app_users ORDER BY id"
+                ).fetchall()
+                self.assertEqual(len(users), 2)
+                self.assertTrue(all(row[1] for row in users))
+                links = dict(users)
+                self.assertEqual(links["U-PM"], "C-PM")
+
+                pm_contact = connection.exec_driver_sql(
+                    """
+                    SELECT display_name, email, source
+                    FROM business_contacts WHERE id = 'C-PM'
+                    """
+                ).one()
+                self.assertEqual(
+                    pm_contact,
+                    ("Chargé de projet Démo", "pm" + chr(64) + "example.invalid", "APP_USER"),
+                )
+
+                coordinator_contact = connection.exec_driver_sql(
+                    """
+                    SELECT display_name, source
+                    FROM business_contacts WHERE id = ?
+                    """,
+                    (links["U-COORD"],),
+                ).one()
+                self.assertEqual(
+                    coordinator_contact,
+                    ("Coordonnateur Démo", "APP_USER"),
+                )
+            engine.dispose()
+
+            command.downgrade(config, "0027_approved_contact_context")
+            engine = create_engine(f"sqlite:///{database_path.as_posix()}")
+            columns = {
+                column["name"] for column in inspect(engine).get_columns("app_users")
+            }
+            self.assertNotIn("business_contact_id", columns)
             engine.dispose()
 
     def test_request_line_migration_backfills_without_rebuilding_plan(self) -> None:

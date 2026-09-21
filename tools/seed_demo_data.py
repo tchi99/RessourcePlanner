@@ -309,7 +309,7 @@ def _upsert_demo_resources(
         )
 
 
-def _upsert_dev_users(session: Session) -> int:
+def _upsert_dev_users(session: Session) -> tuple[int, dict[str, str]]:
     repository = SqlUserIdentityRepository(session)
     definitions = (
         ("admin", "Administrateur Démo", (ROLE_ADMIN,), None),
@@ -330,8 +330,9 @@ def _upsert_dev_users(session: Session) -> int:
             "DEV-PM-TECH",
         ),
     )
+    contact_ids: dict[str, str] = {}
     for subject, display_name, roles, employee_external_id in definitions:
-        repository.upsert(
+        record = repository.upsert(
             issuer=DEV_IDENTITY_ISSUER,
             subject=subject,
             display_name=display_name,
@@ -340,7 +341,9 @@ def _upsert_dev_users(session: Session) -> int:
             roles=roles,
             active=True,
         )
-    return len(definitions)
+        if record.business_contact_id:
+            contact_ids[subject] = record.business_contact_id
+    return len(definitions), contact_ids
 
 
 def seed_demo_session(session: Session, *, today: date | None = None) -> DemoSeedSummary:
@@ -351,7 +354,14 @@ def seed_demo_session(session: Session, *, today: date | None = None) -> DemoSee
     _clear_demo_project_data(session)
     competency_ids = _upsert_demo_competencies(session)
     _upsert_demo_resources(session, monday, competency_ids)
-    dev_user_count = _upsert_dev_users(session)
+    dev_user_count, dev_contact_ids = _upsert_dev_users(session)
+
+    coordinator_contact_id = dev_contact_ids.get("coordinator")
+    if coordinator_contact_id:
+        for resource_id in DEMO_RESOURCE_IDS:
+            resource = session.get(Resource, resource_id)
+            if resource is not None:
+                resource.coordinator_contact_id = coordinator_contact_id
 
     projects = (
         Project(
@@ -360,7 +370,8 @@ def seed_demo_session(session: Session, *, today: date | None = None) -> DemoSee
             name="Modernisation traitement d'eau",
             client="Client Démo A",
             project_manager_external_id="DEV-PM-A",
-            project_manager_name="Chargé projet A",
+            project_manager_name="Chargé de projet Démo",
+            project_manager_contact_id=dev_contact_ids.get("project-manager"),
             status="Actif",
         ),
         Project(
@@ -369,7 +380,8 @@ def seed_demo_session(session: Session, *, today: date | None = None) -> DemoSee
             name="Ligne d'emballage",
             client="Client Démo B",
             project_manager_external_id="DEV-PM-TECH",
-            project_manager_name="Chargé projet B",
+            project_manager_name="Chargé de projet / Technicien Démo",
+            project_manager_contact_id=dev_contact_ids.get("project-technician"),
             status="Actif",
         ),
         Project(
@@ -378,7 +390,8 @@ def seed_demo_session(session: Session, *, today: date | None = None) -> DemoSee
             name="Architecture contrôle et MES",
             client="Client Démo A",
             project_manager_external_id="DEV-PM-A",
-            project_manager_name="Chargé projet A",
+            project_manager_name="Chargé de projet Démo",
+            project_manager_contact_id=dev_contact_ids.get("project-manager"),
             status="Actif",
         ),
     )

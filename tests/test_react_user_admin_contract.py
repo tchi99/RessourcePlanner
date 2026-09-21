@@ -27,6 +27,10 @@ class ReactUserAdminContractTests(unittest.TestCase):
         self.assertIn('"/api/v1/admin/users/roles"', api)
         self.assertIn('"/api/v1/admin/users"', api)
         self.assertIn('method: "PATCH"', api)
+        self.assertIn("business_contact_id", api)
+        self.assertIn("phone", api)
+        self.assertIn("Téléphone", source)
+        self.assertIn("profils métier", source)
 
     def test_identity_coordinates_are_create_only_and_self_lockout_is_visible(self) -> None:
         source = (FRONTEND / "UserAdminPage.tsx").read_text(encoding="utf-8")

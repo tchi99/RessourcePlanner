@@ -15,6 +15,7 @@ from ...application.business_contact_admin import (
 from ...application.errors import ApplicationConflictError
 from .base import new_id, utc_now
 from .business_contact_models import BusinessContact
+from .identity_models import AppUser
 from .models import (
     Project,
     Resource,
@@ -95,8 +96,18 @@ class SqlBusinessContactAdminRepository(BusinessContactAdminRepositoryPort):
                 },
             )
 
-    def list_contacts(self, *, active_only: bool = False) -> tuple[BusinessContactRecord, ...]:
+    def list_contacts(
+        self,
+        *,
+        active_only: bool = False,
+        user_backed_only: bool = False,
+    ) -> tuple[BusinessContactRecord, ...]:
         statement = select(BusinessContact)
+        if user_backed_only:
+            statement = statement.join(
+                AppUser,
+                AppUser.business_contact_id == BusinessContact.id,
+            )
         if active_only:
             statement = statement.where(BusinessContact.active.is_(True))
         rows = self._session.scalars(

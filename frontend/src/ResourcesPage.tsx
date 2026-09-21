@@ -25,7 +25,6 @@ import {
 } from "./api";
 import CompetencyCatalogPanel from "./CompetencyCatalogPanel";
 import CompetencyPicker from "./CompetencyPicker";
-import BusinessContactsPanel from "./BusinessContactsPanel";
 import { ContactSelect } from "./BusinessContactUi";
 
 const WEEKDAYS = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"] as const;
@@ -602,11 +601,6 @@ export default function ResourcesPage() {
           )}
         </div>
       </div>
-
-      <BusinessContactsPanel
-        contacts={contacts}
-        onChanged={() => setRefreshKey((value) => value + 1)}
-      />
 
       <CompetencyCatalogPanel
         competencies={competencies}
