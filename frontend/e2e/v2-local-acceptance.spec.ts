@@ -380,8 +380,8 @@ test("V2 local acceptance path runs through React, Chromium, FastAPI and SQLite"
     await expect(draft.locator(".draft-recipients")).toContainText("alice@example.test");
     await expect(draft.locator(".draft-recipients")).toContainText("bob@example.test");
     await expect(draft.getByText("Courriel manquant")).toHaveCount(0);
-    await expect(draft.locator("textarea")).toContainText("Chargé de projet Démo");
-    await expect(draft.locator("textarea")).toContainText("450-555-0199");
+    await expect(draft.locator("textarea")).toHaveValue(/Chargé de projet Démo/);
+    await expect(draft.locator("textarea")).toHaveValue(/450-555-0199/);
 
     await page.getByRole("button", { name: "Préparer le lot" }).click();
     await expect(page.locator(".communications-notice")).toContainText("Lot projet préparé");
