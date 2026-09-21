@@ -8,6 +8,10 @@ from ..domain.project_communication import (
     ProjectCommunicationProjection,
     build_project_communication_projection,
 )
+from ..domain.project_communication_messages import (
+    ProjectCommunicationMessageBatch,
+    build_project_confirmation_batch,
+)
 from .errors import call_application_port
 
 
@@ -45,4 +49,13 @@ class ProjectCommunicationService:
             week_start=week,
             week_end=week_end,
             assignments=tuple(assignments),
+        )
+
+    def project_preview(
+        self,
+        *,
+        week_start: date,
+    ) -> ProjectCommunicationMessageBatch:
+        return build_project_confirmation_batch(
+            self.project_projection(week_start=week_start)
         )
