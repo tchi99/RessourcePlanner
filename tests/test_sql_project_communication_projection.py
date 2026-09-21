@@ -354,6 +354,95 @@ class SqlProjectCommunicationProjectionTests(unittest.TestCase):
             )
         )
 
+    def test_project_workflow_persists_to_cc_snapshot_and_builds_delta(self) -> None:
+        with TemporaryDirectory() as directory:
+            database_url = self._database(directory)
+            app = create_api_app(
+                database_url,
+                auth_resolver=TEST_ADMIN_AUTH_RESOLVER,
+            )
+            with TestClient(app) as client:
+                preview = client.get(
+                    "/api/v1/communications/project-preview"
+                    "?week_start=2026-09-23"
+                )
+                self.assertEqual(preview.status_code, 200, preview.text)
+                preview_payload = preview.json()
+                self.assertEqual(
+                    preview_payload["mode"],
+                    "project_confirmation",
+                )
+
+                prepared = client.post(
+                    "/api/v1/communications/project-batches",
+                    json={
+                        "week_start": "2026-09-23",
+                        "expected_fingerprint": preview_payload[
+                            "snapshot_fingerprint"
+                        ],
+                        "reviews": [],
+                    },
+                )
+                self.assertEqual(prepared.status_code, 201, prepared.text)
+                batch = prepared.json()
+                self.assertEqual(batch["model_version"], "project_v2")
+                self.assertEqual(len(batch["messages"]), 1)
+                message = batch["messages"][0]
+                self.assertEqual(message["message_key"], "project:P1")
+                self.assertEqual(
+                    message["recipient_email"],
+                    "pm" + chr(64) + TEST_DOMAIN,
+                )
+                self.assertEqual(
+                    message["cc_emails"],
+                    ["tech" + chr(64) + TEST_DOMAIN],
+                )
+                self.assertIn(
+                    "PROJECT_CC_EMAIL_MISSING",
+                    message["diagnostics_json"],
+                )
+
+                approved = client.post(
+                    f"/api/v1/communications/project-batches/{batch['id']}/approve"
+                )
+                self.assertEqual(approved.status_code, 200, approved.text)
+                communicated = client.post(
+                    f"/api/v1/communications/project-batches/{batch['id']}/mark-communicated"
+                )
+                self.assertEqual(
+                    communicated.status_code,
+                    200,
+                    communicated.text,
+                )
+
+                engine = create_sql_engine(database_url)
+                factory = create_session_factory(engine)
+                try:
+                    with factory.begin() as session:
+                        shift = session.get(Shift, "S1")
+                        assert shift is not None
+                        shift.hours = Decimal("6")
+                finally:
+                    engine.dispose()
+
+                delta = client.get(
+                    "/api/v1/communications/project-preview"
+                    "?week_start=2026-09-23"
+                )
+                self.assertEqual(delta.status_code, 200, delta.text)
+                delta_payload = delta.json()
+                self.assertTrue(delta_payload["has_communicated_baseline"])
+                self.assertEqual(
+                    delta_payload["mode"],
+                    "project_planning_change",
+                )
+                self.assertEqual(len(delta_payload["drafts"]), 1)
+                self.assertIn("6 h", delta_payload["drafts"][0]["body"])
+                self.assertNotEqual(
+                    delta_payload["snapshot_fingerprint"],
+                    delta_payload["baseline_fingerprint"],
+                )
+
     def test_http_contract_exposes_project_projection_under_communications(self) -> None:
         with TemporaryDirectory() as directory:
             app = create_api_app(
