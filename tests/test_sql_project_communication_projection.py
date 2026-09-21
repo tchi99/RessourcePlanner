@@ -317,6 +317,43 @@ class SqlProjectCommunicationProjectionTests(unittest.TestCase):
         self.assertIsNone(missing.contact.email)
         self.assertIn(DIAGNOSTIC_RESOURCE_USER_LINK_MISSING, missing.diagnostics)
 
+    def test_http_preview_exposes_one_project_message_with_to_cc_and_diagnostics(self) -> None:
+        with TemporaryDirectory() as directory:
+            app = create_api_app(
+                self._database(directory),
+                auth_resolver=TEST_ADMIN_AUTH_RESOLVER,
+            )
+            with TestClient(app) as client:
+                response = client.get(
+                    "/api/v1/communications/project-preview"
+                    "?week_start=2026-09-23"
+                )
+
+        self.assertEqual(response.status_code, 200, response.text)
+        payload = response.json()
+        self.assertEqual(len(payload["drafts"]), 1)
+        draft = payload["drafts"][0]
+        self.assertEqual(draft["message_key"], "project:P1")
+        self.assertEqual(draft["audience"], "project")
+        self.assertEqual(
+            draft["to_recipient"]["email"],
+            "pm" + chr(64) + TEST_DOMAIN,
+        )
+        self.assertEqual(
+            [row["email"] for row in draft["cc_recipients"]],
+            ["tech" + chr(64) + TEST_DOMAIN],
+        )
+        self.assertTrue(draft["approvable"])
+        self.assertIn("Responsable approuvé", draft["body"])
+        self.assertIn("555" + "-" + "0100", draft["body"])
+        self.assertTrue(
+            any(
+                row["code"] == "PROJECT_CC_EMAIL_MISSING"
+                and row["entity_id"] == "R2"
+                for row in draft["diagnostics"]
+            )
+        )
+
     def test_http_contract_exposes_project_projection_under_communications(self) -> None:
         with TemporaryDirectory() as directory:
             app = create_api_app(

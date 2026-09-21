@@ -7,6 +7,9 @@ from fastapi import APIRouter, Depends
 
 from ..application.project_communications import ProjectCommunicationService
 from ..domain.project_communication import ProjectCommunicationProjection
+from ..domain.project_communication_messages import (
+    ProjectCommunicationMessageBatch,
+)
 
 
 ProjectCommunicationDependency = Callable[..., Any]
@@ -23,5 +26,12 @@ def build_project_communication_router(
         service: ProjectCommunicationService = Depends(dependency),
     ) -> ProjectCommunicationProjection:
         return service.project_projection(week_start=week_start)
+
+    @router.get("/project-preview")
+    def project_preview(
+        week_start: date,
+        service: ProjectCommunicationService = Depends(dependency),
+    ) -> ProjectCommunicationMessageBatch:
+        return service.project_preview(week_start=week_start)
 
     return router
