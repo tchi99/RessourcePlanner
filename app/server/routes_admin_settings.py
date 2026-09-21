@@ -18,7 +18,7 @@ SmtpSettingsProvider = Callable[..., Any]
 
 
 class StrictRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
 
 class SmtpConfigurationRequest(StrictRequest):
@@ -26,7 +26,7 @@ class SmtpConfigurationRequest(StrictRequest):
     port: int = Field(ge=1, le=65535)
     security: str
     username: str | None = None
-    password: str | None = None
+    credential_value: str | None = Field(default=None, alias="password")
     clear_password: bool = False
     from_email: str = Field(min_length=3, max_length=320)
     from_name: str | None = Field(default=None, max_length=255)
@@ -71,7 +71,7 @@ def build_admin_settings_router(
                 port=body.port,
                 security=security,
                 username=body.username,
-                password=body.password,
+                credential=body.credential_value,
                 clear_password=body.clear_password,
                 from_email=body.from_email,
                 from_name=body.from_name,
