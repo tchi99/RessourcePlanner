@@ -3,6 +3,7 @@ from __future__ import annotations
 import unittest
 
 from app.application.security import (
+    PERMISSION_ADMIN_SETTINGS,
     PERMISSION_ADMIN_USERS,
     PERMISSION_APPROVE_DEMANDS,
     PERMISSION_MANAGE_COMMUNICATIONS,
@@ -38,6 +39,7 @@ class SecurityPolicyTests(unittest.TestCase):
                 PERMISSION_MANAGE_COMMUNICATIONS,
                 PERMISSION_SYNC_PROJECTS,
                 PERMISSION_ADMIN_USERS,
+                PERMISSION_ADMIN_SETTINGS,
             },
         )
 
@@ -58,6 +60,7 @@ class SecurityPolicyTests(unittest.TestCase):
         self.assertIn(PERMISSION_MANAGE_RESOURCES, coordinator)
         self.assertIn(PERMISSION_MANAGE_COMMUNICATIONS, coordinator)
         self.assertNotIn(PERMISSION_SYNC_PROJECTS, coordinator)
+        self.assertNotIn(PERMISSION_ADMIN_SETTINGS, coordinator)
 
     def test_invalid_role_is_rejected(self) -> None:
         with self.assertRaises(ValueError):
@@ -76,6 +79,14 @@ class SecurityPolicyTests(unittest.TestCase):
         self.assertEqual(
             required_permission("GET", "/api/v1/communications/contacts"),
             PERMISSION_MANAGE_COMMUNICATIONS,
+        )
+        self.assertEqual(
+            required_permission("GET", "/api/v1/admin/settings/smtp"),
+            PERMISSION_ADMIN_SETTINGS,
+        )
+        self.assertEqual(
+            required_permission("PUT", "/api/v1/admin/settings/smtp"),
+            PERMISSION_ADMIN_SETTINGS,
         )
         self.assertEqual(
             required_permission("POST", "/api/v1/demands/DMO-1/approve"),
