@@ -284,6 +284,8 @@ def _recipient_diagnostics(
 
 def _cc_recipients(
     projects: Sequence[ProjectCommunicationProject],
+    *,
+    exclude_email: str | None = None,
 ) -> tuple[ProjectCommunicationParticipant, ...]:
     by_email: dict[str, ProjectCommunicationParticipant] = {}
     for project in projects:
@@ -293,6 +295,8 @@ def _cc_recipients(
                     participant = resource.contact
                     email = (participant.email or "").strip()
                     if not participant.active or not email:
+                        continue
+                    if exclude_email and email.casefold() == exclude_email.casefold():
                         continue
                     by_email.setdefault(email.casefold(), participant)
     return tuple(
@@ -435,6 +439,7 @@ def _draft_fingerprint_payload(
     body: str,
     message_kind: str,
     diagnostics: Sequence[ProjectMessageDiagnostic],
+    source_projects: Sequence[ProjectCommunicationProject],
 ) -> tuple[object, ...]:
     return (
         message_key,
@@ -453,6 +458,7 @@ def _draft_fingerprint_payload(
             )
             for value in diagnostics
         ),
+        tuple(_project_payload(value) for value in source_projects),
     )
 
 
@@ -465,7 +471,10 @@ def _build_draft(
     change_kind: str | None = None,
 ) -> ProjectCommunicationDraft:
     message_key = f"project:{project.project_id}"
-    cc_recipients = _cc_recipients(cc_sources)
+    cc_recipients = _cc_recipients(
+        cc_sources,
+        exclude_email=project.project_manager.email,
+    )
     diagnostics = _recipient_diagnostics(project, cc_sources)
     subject = _subject(
         project,
@@ -482,6 +491,7 @@ def _build_draft(
             body=body,
             message_kind=message_kind,
             diagnostics=diagnostics,
+            source_projects=cc_sources,
         )
     )
     approvable = not any(
