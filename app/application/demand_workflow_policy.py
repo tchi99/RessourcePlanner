@@ -114,6 +114,16 @@ def _decision(
             reason="Vous n'avez pas la permission requise pour cette action.",
         )
 
+    block = (business_blocks or {}).get(action)
+    if block is not None:
+        return DemandWorkflowActionReadModel(
+            action=action,
+            allowed=False,
+            required_permission=required_permission,
+            reason_code=block.code,
+            reason=block.message,
+        )
+
     if demand.status not in _ACTION_STATUSES[action]:
         return DemandWorkflowActionReadModel(
             action=action,
@@ -124,16 +134,6 @@ def _decision(
                 f"L'action {action} n'est pas permise lorsque la demande est "
                 f"au statut {demand.status or 'inconnu'}."
             ),
-        )
-
-    block = (business_blocks or {}).get(action)
-    if block is not None:
-        return DemandWorkflowActionReadModel(
-            action=action,
-            allowed=False,
-            required_permission=required_permission,
-            reason_code=block.code,
-            reason=block.message,
         )
 
     return DemandWorkflowActionReadModel(
