@@ -137,7 +137,6 @@ def _project_payload(project: ProjectCommunicationProject) -> tuple[object, ...]
                     resource.resource_name,
                     _participant_payload(resource.contact),
                     round(float(resource.hours), 2),
-                    tuple(resource.shift_ids),
                     tuple(resource.allocation_types),
                     tuple(resource.confirmations),
                     bool(resource.outside_schedule),
@@ -235,12 +234,7 @@ def _recipient_diagnostics(
             )
         )
 
-    resources: dict[str, ProjectCommunicationParticipant] = {}
-    for source in cc_sources:
-        for day in source.days:
-            for task in day.tasks:
-                for resource in task.resources:
-                    resources.setdefault(resource.resource_id, resource.contact)
+    resources = _resource_participants(cc_sources)
     for resource_id, participant in sorted(resources.items()):
         if not participant.active:
             diagnostics.append(
@@ -282,23 +276,33 @@ def _recipient_diagnostics(
     return tuple(diagnostics)
 
 
+def _resource_participants(
+    projects: Sequence[ProjectCommunicationProject],
+) -> dict[str, ProjectCommunicationParticipant]:
+    """Return one contact per resource, preferring the latest supplied projection."""
+
+    resources: dict[str, ProjectCommunicationParticipant] = {}
+    for project in projects:
+        for day in project.days:
+            for task in day.tasks:
+                for resource in task.resources:
+                    resources[resource.resource_id] = resource.contact
+    return resources
+
+
 def _cc_recipients(
     projects: Sequence[ProjectCommunicationProject],
     *,
     exclude_email: str | None = None,
 ) -> tuple[ProjectCommunicationParticipant, ...]:
     by_email: dict[str, ProjectCommunicationParticipant] = {}
-    for project in projects:
-        for day in project.days:
-            for task in day.tasks:
-                for resource in task.resources:
-                    participant = resource.contact
-                    email = (participant.email or "").strip()
-                    if not participant.active or not email:
-                        continue
-                    if exclude_email and email.casefold() == exclude_email.casefold():
-                        continue
-                    by_email.setdefault(email.casefold(), participant)
+    for participant in _resource_participants(projects).values():
+        email = (participant.email or "").strip()
+        if not participant.active or not email:
+            continue
+        if exclude_email and email.casefold() == exclude_email.casefold():
+            continue
+        by_email.setdefault(email.casefold(), participant)
     return tuple(
         by_email[key]
         for key in sorted(
