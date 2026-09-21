@@ -5,12 +5,17 @@ from decimal import Decimal
 import json
 from typing import Sequence
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from ...application.project_communications import MODEL_VERSION_PROJECT_V2
 from ...application.communications import (
+    DELIVERY_PROVIDER_SMTP,
+    DELIVERY_STATUS_FAILED,
+    DELIVERY_STATUS_PENDING,
+    DELIVERY_STATUS_SENDING,
+    DELIVERY_STATUS_SENT,
     KIND_CHANGE,
     KIND_WEEKLY,
     STATUS_APPROVED,
@@ -19,6 +24,7 @@ from ...application.communications import (
     STATUS_PREPARED,
     CommunicationBatchRecord,
     CommunicationContactRecord,
+    CommunicationDeliveryRecord,
     CommunicationMessageRecord,
     CommunicationRepositoryPort,
 )
@@ -34,6 +40,7 @@ from .base import utc_now
 from .communication_models import (
     CommunicationBatchRow,
     CommunicationContact,
+    CommunicationDeliveryRow,
     CommunicationMessageRow,
     CommunicationSnapshotLine,
 )
@@ -221,6 +228,29 @@ class SqlCommunicationRepository(CommunicationRepositoryPort):
         ).all()
         return tuple(_technician_id(row.id) for row in rows)
 
+    def _deliveries(self, message_id: str) -> tuple[CommunicationDeliveryRecord, ...]:
+        rows = self._session.scalars(
+            select(CommunicationDeliveryRow)
+            .where(CommunicationDeliveryRow.message_id == message_id)
+            .order_by(CommunicationDeliveryRow.provider, CommunicationDeliveryRow.id)
+        ).all()
+        return tuple(
+            CommunicationDeliveryRecord(
+                id=row.id,
+                message_id=row.message_id,
+                provider=row.provider,
+                status=row.status,
+                attempt_count=int(row.attempt_count or 0),
+                attempted_at=row.attempted_at,
+                sent_at=row.sent_at,
+                provider_message_id=_optional_text(row.provider_message_id),
+                error_code=_optional_text(row.error_code),
+                error_detail=_optional_text(row.error_detail),
+                last_actor=_optional_text(row.last_actor),
+            )
+            for row in rows
+        )
+
     def _messages(self, batch_id: str) -> tuple[CommunicationMessageRecord, ...]:
         rows = self._session.scalars(
             select(CommunicationMessageRow)
@@ -253,6 +283,7 @@ class SqlCommunicationRepository(CommunicationRepositoryPort):
                     content_fingerprint=_optional_text(row.content_fingerprint),
                     approvable=bool(row.approvable),
                     diagnostics_json=_optional_text(row.diagnostics_json),
+                    deliveries=self._deliveries(row.id),
                 )
             )
         return tuple(result)
@@ -400,33 +431,117 @@ class SqlCommunicationRepository(CommunicationRepositoryPort):
                 or draft.to_recipient.user_id
                 or draft.project_id
             )
-            self._session.add(
-                CommunicationMessageRow(
-                    batch_id=batch.id,
-                    audience=draft.audience,
-                    recipient_id=recipient_id,
-                    recipient_email=_optional_text(draft.to_recipient.email),
-                    message_key=draft.message_key,
-                    project_id=draft.project_id,
-                    cc_recipients_json=json.dumps(
-                        cc_payload,
-                        ensure_ascii=False,
-                        separators=(",", ":"),
-                    ),
-                    content_fingerprint=draft.content_fingerprint,
-                    approvable=bool(draft.approvable),
-                    diagnostics_json=json.dumps(
-                        diagnostics_payload,
-                        ensure_ascii=False,
-                        separators=(",", ":"),
-                    ),
-                    subject=draft.subject,
-                    body=draft.body,
-                    included=bool(included),
-                )
+            message_row = CommunicationMessageRow(
+                batch_id=batch.id,
+                audience=draft.audience,
+                recipient_id=recipient_id,
+                recipient_email=_optional_text(draft.to_recipient.email),
+                message_key=draft.message_key,
+                project_id=draft.project_id,
+                cc_recipients_json=json.dumps(
+                    cc_payload,
+                    ensure_ascii=False,
+                    separators=(",", ":"),
+                ),
+                content_fingerprint=draft.content_fingerprint,
+                approvable=bool(draft.approvable),
+                diagnostics_json=json.dumps(
+                    diagnostics_payload,
+                    ensure_ascii=False,
+                    separators=(",", ":"),
+                ),
+                subject=draft.subject,
+                body=draft.body,
+                included=bool(included),
             )
+            self._session.add(message_row)
+            self._session.flush()
+            if included:
+                self._session.add(
+                    CommunicationDeliveryRow(
+                        batch_id=batch.id,
+                        message_id=message_row.id,
+                        provider=DELIVERY_PROVIDER_SMTP,
+                        status=DELIVERY_STATUS_PENDING,
+                    )
+                )
         self._session.flush()
         return self._batch(batch)
+
+    def claim_smtp_delivery(
+        self,
+        *,
+        message_id: str,
+        actor_name: str,
+    ) -> CommunicationDeliveryRecord | None:
+        now = utc_now()
+        result = self._session.execute(
+            update(CommunicationDeliveryRow)
+            .where(
+                CommunicationDeliveryRow.message_id == message_id,
+                CommunicationDeliveryRow.provider == DELIVERY_PROVIDER_SMTP,
+                CommunicationDeliveryRow.status.in_(
+                    (DELIVERY_STATUS_PENDING, DELIVERY_STATUS_FAILED)
+                ),
+            )
+            .values(
+                status=DELIVERY_STATUS_SENDING,
+                attempt_count=CommunicationDeliveryRow.attempt_count + 1,
+                attempted_at=now,
+                error_code=None,
+                error_detail=None,
+                last_actor=_optional_text(actor_name),
+            )
+        )
+        self._session.flush()
+        if int(result.rowcount or 0) != 1:
+            return None
+        row = self._session.scalar(
+            select(CommunicationDeliveryRow).where(
+                CommunicationDeliveryRow.message_id == message_id,
+                CommunicationDeliveryRow.provider == DELIVERY_PROVIDER_SMTP,
+            )
+        )
+        if row is None:
+            return None
+        return self._deliveries(message_id)[0]
+
+    def complete_smtp_delivery(
+        self,
+        *,
+        delivery_id: str,
+        provider_message_id: str,
+        actor_name: str,
+    ) -> CommunicationDeliveryRecord:
+        row = self._session.get(CommunicationDeliveryRow, delivery_id)
+        if row is None:
+            raise KeyError(delivery_id)
+        row.status = DELIVERY_STATUS_SENT
+        row.sent_at = utc_now()
+        row.provider_message_id = _optional_text(provider_message_id)
+        row.error_code = None
+        row.error_detail = None
+        row.last_actor = _optional_text(actor_name)
+        self._session.flush()
+        return self._deliveries(row.message_id)[0]
+
+    def fail_smtp_delivery(
+        self,
+        *,
+        delivery_id: str,
+        error_code: str,
+        error_detail: str,
+        actor_name: str,
+    ) -> CommunicationDeliveryRecord:
+        row = self._session.get(CommunicationDeliveryRow, delivery_id)
+        if row is None:
+            raise KeyError(delivery_id)
+        row.status = DELIVERY_STATUS_FAILED
+        row.error_code = _optional_text(error_code)
+        row.error_detail = _optional_text(error_detail)
+        row.last_actor = _optional_text(actor_name)
+        self._session.flush()
+        return self._deliveries(row.message_id)[0]
 
     def list_project_batches(
         self,
