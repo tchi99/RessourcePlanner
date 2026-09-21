@@ -388,11 +388,13 @@ test("V2 local acceptance path runs through React, Chromium, FastAPI and SQLite"
     await expect(draft.getByText("Courriel manquant")).toHaveCount(0);
     await expect(draft.locator("textarea")).toHaveValue(/Chargé de projet Démo/);
     await expect(draft.locator("textarea")).toHaveValue(/450-555-0199/);
+    await draft.locator(".draft-subject").fill("Confirmation E2E — P-251");
 
     await page.getByRole("button", { name: "Préparer le lot" }).click();
     await expect(page.locator(".communications-notice")).toContainText("Lot projet préparé");
 
     const batch = page.locator(".batch-row").first();
+    await expect(batch).toContainText("Sujet : Confirmation E2E — P-251");
     await expect(batch).toContainText(`To : ${testEmail("pm")}`);
     await expect(batch).toContainText(testEmail("alice"));
     await expect(batch).toContainText(testEmail("bob"));
