@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
-from typing import Callable, Protocol, Sequence, cast
+from typing import Callable, Mapping, Protocol, Sequence, cast
 
 from .demand_service import DemandService
 from .demand_workflow_policy import (
