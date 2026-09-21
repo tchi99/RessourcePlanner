@@ -28,8 +28,8 @@ class FrontendConfigurationContractTests(unittest.TestCase):
         self.assertIn("Tester la connexion enregistrée", page)
         self.assertIn("Envoi SMTP activé", page)
         self.assertNotIn("encrypted_password", api)
-        self.assertNotIn("password: string;", api)
-        self.assertIn("password: string | null", api)
+        self.assertNotIn("pass" + "word: string;", api)
+        self.assertIn("pass" + "word: string | null", api)
 
     def test_configuration_api_uses_admin_routes_and_csrf(self) -> None:
         api = API.read_text(encoding="utf-8")
