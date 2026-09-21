@@ -32,6 +32,8 @@ EXPECTED_TABLES = {
     "resource_availability_rules",
     "resource_requirements",
     "shifts",
+    "smtp_configuration",
+    "communication_deliveries",
 }
 
 
@@ -175,6 +177,11 @@ class SqlMigrationTests(unittest.TestCase):
             self.assertIn("CC_RECIPIENTS_JSON", ddl, url)
             self.assertIn("CONTENT_FINGERPRINT", ddl, url)
             self.assertIn("APPROVABLE", ddl, url)
+            self.assertIn("CREATE TABLE SMTP_CONFIGURATION", ddl, url)
+            self.assertIn("CREATE TABLE COMMUNICATION_DELIVERIES", ddl, url)
+            self.assertIn("ENCRYPTED_PASSWORD", ddl, url)
+            self.assertIn("PROVIDER_MESSAGE_ID", ddl, url)
+            self.assertIn("UX_COMMUNICATION_DELIVERIES_MESSAGE_PROVIDER", ddl, url)
 
     def test_approved_contact_context_migration_preserves_history_as_unknown(self) -> None:
         with TemporaryDirectory() as directory:
