@@ -242,7 +242,7 @@ class ProjectCommunicationMessageTests(unittest.TestCase):
         self.assertIn("Responsable : Jean Responsable — " + "555" + "-" + "0100", draft.body)
         self.assertIn("Lundi le 21 septembre 2026 — Installation de poteaux", draft.body)
         self.assertIn("Mardi le 22 septembre 2026 — Mise en service", draft.body)
-        self.assertIn("  • Alice", draft.body)
+        self.assertIn("  • Alice — 8 h", draft.body)
         self.assertNotIn("U-R1", draft.body)
         self.assertNotIn("C-R1", draft.body)
 
@@ -258,7 +258,7 @@ class ProjectCommunicationMessageTests(unittest.TestCase):
             projection(project(resources=(row,)))
         ).drafts[0]
 
-        self.assertIn("Alice (Tentative, hors horaire)", draft.body)
+        self.assertIn("Alice — 8 h (Tentative, hors horaire)", draft.body)
 
     def test_fingerprint_changes_when_hours_change_even_if_body_does_not(self) -> None:
         first = build_project_confirmation_batch(
@@ -280,7 +280,7 @@ class ProjectCommunicationMessageTests(unittest.TestCase):
             )
         )
 
-        self.assertEqual(first.drafts[0].body, second.drafts[0].body)
+        self.assertNotEqual(first.drafts[0].body, second.drafts[0].body)
         self.assertNotEqual(
             first.drafts[0].content_fingerprint,
             second.drafts[0].content_fingerprint,
