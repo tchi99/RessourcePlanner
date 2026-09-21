@@ -33,6 +33,7 @@ EXPECTED_TABLES = {
     "resource_requirements",
     "shifts",
     "smtp_configuration",
+    "smtp_configuration_audit",
     "communication_deliveries",
 }
 
@@ -178,6 +179,8 @@ class SqlMigrationTests(unittest.TestCase):
             self.assertIn("CONTENT_FINGERPRINT", ddl, url)
             self.assertIn("APPROVABLE", ddl, url)
             self.assertIn("CREATE TABLE SMTP_CONFIGURATION", ddl, url)
+            self.assertIn("CREATE TABLE SMTP_CONFIGURATION_AUDIT", ddl, url)
+            self.assertIn("CHANGED_FIELDS_JSON", ddl, url)
             self.assertIn("CREATE TABLE COMMUNICATION_DELIVERIES", ddl, url)
             self.assertIn("ENCRYPTED_PASSWORD", ddl, url)
             self.assertIn("PROVIDER_MESSAGE_ID", ddl, url)
