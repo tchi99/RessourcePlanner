@@ -31,34 +31,45 @@ WORK_DAY = date(2026, 8, 24)  # lundi
 
 
 from tests.http_test_auth import TEST_ADMIN_AUTH_RESOLVER, test_admin_auth_resolver
+from tests.sqlite_test_template import SqliteDatabaseTemplate
 
 create_api_app = partial(create_api_app, auth_resolver=TEST_ADMIN_AUTH_RESOLVER)
 
 class ServerCommandRouteTests(unittest.TestCase):
+    @staticmethod
+    def _seed_database(session) -> None:
+        session.add(Project(id="P1", number="P-1", name="Projet API"))
+        session.add(Resource(id="R1", name="Alice", active=True))
+        session.add(Competency(id="C1", name="PLC", active=True, sort_order=0))
+        session.flush()
+        session.add(
+            ResourceAvailabilityRule(
+                id="STD-R1",
+                resource_id="R1",
+                availability_type="Horaire standard",
+                weekdays="Lun,Mar,Mer,Jeu,Ven",
+                start_time=time(8, 0),
+                end_time=time(16, 0),
+                active=True,
+            )
+        )
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        super().setUpClass()
+        cls._database_template = SqliteDatabaseTemplate(
+            filename="api.db",
+            seed=cls._seed_database,
+        )
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        cls._database_template.cleanup()
+        super().tearDownClass()
+
     def _database(self, directory: str) -> tuple[str, Path]:
         path = Path(directory) / "api.db"
-        url = f"sqlite:///{path.as_posix()}"
-        engine = create_sql_engine(url)
-        Base.metadata.create_all(engine)
-        factory = create_session_factory(engine)
-        with transactional_session(factory) as session:
-            session.add(Project(id="P1", number="P-1", name="Projet API"))
-            session.add(Resource(id="R1", name="Alice", active=True))
-            session.add(Competency(id="C1", name="PLC", active=True, sort_order=0))
-            session.flush()
-            session.add(
-                ResourceAvailabilityRule(
-                    id="STD-R1",
-                    resource_id="R1",
-                    availability_type="Horaire standard",
-                    weekdays="Lun,Mar,Mer,Jeu,Ven",
-                    start_time=time(8, 0),
-                    end_time=time(16, 0),
-                    active=True,
-                )
-            )
-        engine.dispose()
-        return url, path
+        return self._database_template.copy_to(directory), path
 
     def test_create_and_patch_demand_use_canonical_http_fields(self) -> None:
         with TemporaryDirectory() as directory:

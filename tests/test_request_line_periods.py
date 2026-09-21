@@ -9,10 +9,11 @@ import unittest
 from fastapi.testclient import TestClient
 
 from app.application.security import AuthPrincipal, ROLE_TECHNICIAN
-from app.infrastructure.sql import Base, Project, Resource, create_session_factory, create_sql_engine
+from app.infrastructure.sql import Project, Resource
 from app.server import create_api_app
 from app.server.security import static_auth_resolver
 from tests.http_test_auth import TEST_ADMIN_AUTH_RESOLVER
+from tests.sqlite_test_template import SqliteDatabaseTemplate
 
 
 D1 = date(2026, 9, 21)
@@ -23,22 +24,30 @@ create_api_app = partial(create_api_app, auth_resolver=TEST_ADMIN_AUTH_RESOLVER)
 
 class RequestLinePeriodApiTests(unittest.TestCase):
     @staticmethod
-    def _database(directory: str) -> str:
-        path = Path(directory) / "line-periods.db"
-        url = f"sqlite:///{path.as_posix()}"
-        engine = create_sql_engine(url)
-        Base.metadata.create_all(engine)
-        factory = create_session_factory(engine)
-        with factory.begin() as session:
-            session.add(Project(id="P1", number="P-1", name="Projet lignes"))
-            session.add_all(
-                [
-                    Resource(id="R1", name="Alice", active=True),
-                    Resource(id="R2", name="Bob", active=True),
-                ]
-            )
-        engine.dispose()
-        return url
+    def _seed_database(session) -> None:
+        session.add(Project(id="P1", number="P-1", name="Projet lignes"))
+        session.add_all(
+            [
+                Resource(id="R1", name="Alice", active=True),
+                Resource(id="R2", name="Bob", active=True),
+            ]
+        )
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        super().setUpClass()
+        cls._database_template = SqliteDatabaseTemplate(
+            filename="line-periods.db",
+            seed=cls._seed_database,
+        )
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        cls._database_template.cleanup()
+        super().tearDownClass()
+
+    def _database(self, directory: str) -> str:
+        return self._database_template.copy_to(directory)
 
     @staticmethod
     def _create_multiline(client: TestClient) -> tuple[str, list[str]]:

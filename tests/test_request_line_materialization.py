@@ -29,6 +29,7 @@ from app.infrastructure.sql import (
 )
 from app.server import create_api_app
 from tests.http_test_auth import TEST_ADMIN_AUTH_RESOLVER
+from tests.sqlite_test_template import SqliteDatabaseTemplate
 
 
 D1 = date(2026, 9, 21)
@@ -38,97 +39,105 @@ D3 = date(2026, 9, 23)
 
 class RequestLineMaterializationHttpTests(unittest.TestCase):
     @staticmethod
-    def _database(directory: str) -> str:
-        path = Path(directory) / "request-line-materialization.db"
-        url = f"sqlite:///{path.as_posix()}"
-        engine = create_sql_engine(url)
-        Base.metadata.create_all(engine)
-        factory = create_session_factory(engine)
-        with factory.begin() as session:
-            session.add(Project(id="P1", number="P-1", name="Projet lignes"))
-            session.add_all(
-                [
-                    Resource(
-                        id="R1",
-                        name="Alice",
-                        active=True,
-                        resource_class="Programmation",
-                    ),
-                    Resource(
-                        id="R2",
-                        name="Bob",
-                        active=True,
-                        resource_class="Programmation",
-                    ),
-                    BusinessContact(
-                        id="BC-OVR-1",
-                        display_name="Responsable initial",
-                        phone="555-0101",
-                    ),
-                    BusinessContact(
-                        id="BC-OVR-2",
-                        display_name="Responsable révisé",
-                        phone="555-0102",
-                    ),
-                    Competency(id="C1", name="Ignition", active=True),
-                    Competency(id="C2", name="AVEVA", active=True),
-                    TaskCatalogEntry(
-                        id="T210",
-                        project_number="P-1",
-                        task_code="210",
-                        label="Tâche 210",
-                        active=True,
-                    ),
-                    TaskCatalogEntry(
-                        id="T220",
-                        project_number="P-1",
-                        task_code="220",
-                        label="Tâche 220",
-                        active=True,
-                    ),
-                ]
-            )
-            session.flush()
-            session.add_all(
-                [
-                    ResourceCompetency(resource_id="R1", competency_id="C1"),
-                    ResourceCompetency(resource_id="R2", competency_id="C2"),
-                    WorkPackage(
-                        id="WP1",
-                        project_id="P1",
-                        legacy_effort_id="EFF-1",
-                        code="WP-1",
-                        name="Effort 1",
-                    ),
-                    WorkPackage(
-                        id="WP2",
-                        project_id="P1",
-                        legacy_effort_id="EFF-2",
-                        code="WP-2",
-                        name="Effort 2",
-                    ),
-                    ResourceAvailabilityRule(
-                        id="STD-R1",
-                        resource_id="R1",
-                        availability_type="Horaire standard",
-                        weekdays="Lun,Mar,Mer,Jeu,Ven,Sam,Dim",
-                        start_time=time(8, 0),
-                        end_time=time(16, 0),
-                        active=True,
-                    ),
-                    ResourceAvailabilityRule(
-                        id="STD-R2",
-                        resource_id="R2",
-                        availability_type="Horaire standard",
-                        weekdays="Lun,Mar,Mer,Jeu,Ven,Sam,Dim",
-                        start_time=time(8, 0),
-                        end_time=time(16, 0),
-                        active=True,
-                    ),
-                ]
-            )
-        engine.dispose()
-        return url
+    def _seed_database(session) -> None:
+        session.add(Project(id="P1", number="P-1", name="Projet lignes"))
+        session.add_all(
+            [
+                Resource(
+                    id="R1",
+                    name="Alice",
+                    active=True,
+                    resource_class="Programmation",
+                ),
+                Resource(
+                    id="R2",
+                    name="Bob",
+                    active=True,
+                    resource_class="Programmation",
+                ),
+                BusinessContact(
+                    id="BC-OVR-1",
+                    display_name="Responsable initial",
+                    phone="555-0101",
+                ),
+                BusinessContact(
+                    id="BC-OVR-2",
+                    display_name="Responsable révisé",
+                    phone="555-0102",
+                ),
+                Competency(id="C1", name="Ignition", active=True),
+                Competency(id="C2", name="AVEVA", active=True),
+                TaskCatalogEntry(
+                    id="T210",
+                    project_number="P-1",
+                    task_code="210",
+                    label="Tâche 210",
+                    active=True,
+                ),
+                TaskCatalogEntry(
+                    id="T220",
+                    project_number="P-1",
+                    task_code="220",
+                    label="Tâche 220",
+                    active=True,
+                ),
+            ]
+        )
+        session.flush()
+        session.add_all(
+            [
+                ResourceCompetency(resource_id="R1", competency_id="C1"),
+                ResourceCompetency(resource_id="R2", competency_id="C2"),
+                WorkPackage(
+                    id="WP1",
+                    project_id="P1",
+                    legacy_effort_id="EFF-1",
+                    code="WP-1",
+                    name="Effort 1",
+                ),
+                WorkPackage(
+                    id="WP2",
+                    project_id="P1",
+                    legacy_effort_id="EFF-2",
+                    code="WP-2",
+                    name="Effort 2",
+                ),
+                ResourceAvailabilityRule(
+                    id="STD-R1",
+                    resource_id="R1",
+                    availability_type="Horaire standard",
+                    weekdays="Lun,Mar,Mer,Jeu,Ven,Sam,Dim",
+                    start_time=time(8, 0),
+                    end_time=time(16, 0),
+                    active=True,
+                ),
+                ResourceAvailabilityRule(
+                    id="STD-R2",
+                    resource_id="R2",
+                    availability_type="Horaire standard",
+                    weekdays="Lun,Mar,Mer,Jeu,Ven,Sam,Dim",
+                    start_time=time(8, 0),
+                    end_time=time(16, 0),
+                    active=True,
+                ),
+            ]
+        )
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        super().setUpClass()
+        cls._database_template = SqliteDatabaseTemplate(
+            filename="request-line-materialization.db",
+            seed=cls._seed_database,
+        )
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        cls._database_template.cleanup()
+        super().tearDownClass()
+
+    def _database(self, directory: str) -> str:
+        return self._database_template.copy_to(directory)
 
     @staticmethod
     def _create(
