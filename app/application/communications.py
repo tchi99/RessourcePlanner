@@ -41,6 +41,21 @@ class CommunicationContactRecord:
 
 
 @dataclass(frozen=True, slots=True)
+class CommunicationDeliveryRecord:
+    id: str
+    message_id: str
+    provider: str
+    status: str
+    attempt_count: int
+    attempted_at: datetime | None = None
+    sent_at: datetime | None = None
+    provider_message_id: str | None = None
+    error_code: str | None = None
+    error_detail: str | None = None
+    last_actor: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class CommunicationMessageRecord:
     id: str
     audience: str
@@ -55,6 +70,7 @@ class CommunicationMessageRecord:
     content_fingerprint: str | None = None
     approvable: bool = True
     diagnostics_json: str | None = None
+    deliveries: tuple[CommunicationDeliveryRecord, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
