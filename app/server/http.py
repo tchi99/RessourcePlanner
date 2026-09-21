@@ -11,6 +11,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
 from ..application import (
+    ApplicationAuthorizationError,
     ApplicationConflictError,
     ApplicationError,
     ApplicationFacade,
@@ -90,6 +91,8 @@ UserViewContextDependency = Callable[[], Iterator[UserViewContextRepositoryPort]
 
 
 def application_error_status(exc: ApplicationError) -> int:
+    if isinstance(exc, ApplicationAuthorizationError):
+        return 403
     if isinstance(exc, ApplicationValidationError):
         return 422
     if isinstance(exc, ApplicationNotFoundError):
