@@ -290,7 +290,11 @@ class DemandServiceTests(unittest.TestCase):
             finally:
                 events.append(("batch-exit", label))
 
-        service, _demands, _ = self._service(events=events, batch=batch)
+        service, _demands, _ = self._service(
+            record=DemandReadModel(number="DMO-1", status="Soumise"),
+            events=events,
+            batch=batch,
+        )
         result = service.approve_command(DemandApproveCommand("DMO-1", "ok"))
 
         self.assertEqual(
@@ -306,6 +310,7 @@ class DemandServiceTests(unittest.TestCase):
     def test_sync_failure_stops_rebuild_and_is_structured(self) -> None:
         events: list[object] = []
         service, _demands, _ = self._service(
+            record=DemandReadModel(number="DMO-2", status="Soumise"),
             events=events,
             sync_failure=RuntimeError("sync failed"),
         )
@@ -338,9 +343,18 @@ class DemandServiceTests(unittest.TestCase):
         self.assertEqual(events[0][2]["RequestLineHoursSource"], "DEFAULT_8H")
 
     def test_simple_lifecycle_transitions_preserve_status_and_audit_semantics(self) -> None:
-        service, _demands, events = self._service()
+        service, demands, events = self._service(
+            record=DemandReadModel(
+                number="DMO-10",
+                status="Brouillon",
+                desired_start=date(2026, 8, 25),
+                estimated_hours=8,
+            )
+        )
         service.submit("DMO-10")
+        demands.record = DemandReadModel(number="DMO-11", status="Soumise")
         service.request_correction("DMO-11", "  préciser la date  ")
+        demands.record = DemandReadModel(number="DMO-12", status="En planification")
         service.cancel("DMO-12")
 
         self.assertEqual(events[0][2], {"Statut": "Soumise"})
@@ -376,7 +390,7 @@ class DemandServiceTests(unittest.TestCase):
                 events.append(("update", number, updates, action, comment))
 
             def demands(self):
-                return [{"NoDemande": "DMO-3", "Statut": "En planification"}]
+                return [{"NoDemande": "DMO-3", "Statut": "Soumise"}]
 
         repository = FakeRepository()
         refinements = ModuleType("app.v15_refinements")
