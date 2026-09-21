@@ -290,6 +290,7 @@ class SqlCommunicationRepository(CommunicationRepositoryPort):
             .where(
                 CommunicationBatchRow.week_start == week_start,
                 CommunicationBatchRow.status == STATUS_COMMUNICATED,
+                CommunicationBatchRow.model_version == "legacy",
             )
             .order_by(CommunicationBatchRow.communicated_at.desc(), CommunicationBatchRow.id.desc())
         )
@@ -483,6 +484,7 @@ class SqlCommunicationRepository(CommunicationRepositoryPort):
             status=STATUS_PREPARED,
             prepared_by=_optional_text(actor_name),
             prepared_at=now,
+            model_version="legacy",
         )
         self._session.add(batch)
         self._session.flush()
@@ -519,7 +521,9 @@ class SqlCommunicationRepository(CommunicationRepositoryPort):
         return self._batch(batch)
 
     def list_batches(self, *, week_start: date | None = None) -> tuple[CommunicationBatchRecord, ...]:
-        statement = select(CommunicationBatchRow)
+        statement = select(CommunicationBatchRow).where(
+            CommunicationBatchRow.model_version == "legacy"
+        )
         if week_start is not None:
             statement = statement.where(CommunicationBatchRow.week_start == week_start)
         rows = self._session.scalars(
