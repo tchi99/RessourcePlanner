@@ -2,15 +2,13 @@ import { useEffect, useMemo, useState } from "react";
 
 import {
   CommunicationBatch,
-  CommunicationContact,
-  CommunicationPreview,
-  CommunicationReview,
-  communicationBatchAction,
-  getCommunicationPreview,
-  listCommunicationBatches,
-  listCommunicationContacts,
-  prepareCommunicationBatch,
-  saveCommunicationContact,
+  ProjectCommunicationDraft,
+  ProjectCommunicationPreview,
+  ProjectCommunicationReview,
+  getProjectCommunicationPreview,
+  listProjectCommunicationBatches,
+  prepareProjectCommunicationBatch,
+  projectCommunicationBatchAction,
 } from "./communicationsApi";
 
 function nextMondayIso() {
@@ -30,38 +28,40 @@ function formatDateTime(value: string | null) {
   }).format(new Date(value));
 }
 
-type DraftState = CommunicationReview & { recipient_email: string };
+function kindLabel(kind: string) {
+  return kind === "project_confirmation" ? "Confirmation par projet" : "Modification de planning";
+}
+
+type DraftState = ProjectCommunicationReview & { source: ProjectCommunicationDraft };
 type BatchAction = "approve" | "create-drafts" | "cancel" | "mark-communicated";
 
 export default function CommunicationsPage() {
   const [weekStart, setWeekStart] = useState(nextMondayIso);
-  const [contacts, setContacts] = useState<CommunicationContact[]>([]);
   const [batches, setBatches] = useState<CommunicationBatch[]>([]);
-  const [preview, setPreview] = useState<CommunicationPreview | null>(null);
+  const [preview, setPreview] = useState<ProjectCommunicationPreview | null>(null);
   const [drafts, setDrafts] = useState<DraftState[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
-  const missingContactSet = useMemo(
-    () => new Set(preview?.missing_contact_ids ?? []),
-    [preview],
+  const includedDrafts = useMemo(
+    () => drafts.filter((draft) => draft.include),
+    [drafts],
+  );
+  const hasBlockingIncluded = useMemo(
+    () => includedDrafts.some((draft) => !draft.source.approvable),
+    [includedDrafts],
   );
 
-  async function reloadLists() {
-    const [contactRows, batchRows] = await Promise.all([
-      listCommunicationContacts(),
-      listCommunicationBatches(weekStart),
-    ]);
-    setContacts(contactRows);
-    setBatches(batchRows);
+  async function reloadBatches() {
+    setBatches(await listProjectCommunicationBatches(weekStart));
   }
 
   useEffect(() => {
     setPreview(null);
     setDrafts([]);
     setError(null);
-    void reloadLists().catch((reason: unknown) => {
+    void reloadBatches().catch((reason: unknown) => {
       setError(reason instanceof Error ? reason.message : "Impossible de charger les communications.");
     });
   }, [weekStart]);
@@ -71,34 +71,19 @@ export default function CommunicationsPage() {
     setError(null);
     setNotice(null);
     try {
-      const row = await getCommunicationPreview(weekStart);
+      const row = await getProjectCommunicationPreview(weekStart);
       setPreview(row);
       setDrafts(
         row.drafts.map((draft) => ({
-          audience: draft.audience,
-          recipient_id: draft.recipient_id,
-          recipient_email: draft.recipient_email,
+          message_key: draft.message_key,
           include: true,
           subject: draft.subject,
           body: draft.body,
+          source: draft,
         })),
       );
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Prévisualisation impossible.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function saveContact(contact: CommunicationContact) {
-    setBusy(true);
-    setError(null);
-    try {
-      const saved = await saveCommunicationContact(contact);
-      setContacts((rows) => rows.map((row) => row.recipient_id === saved.recipient_id ? saved : row));
-      setNotice(`Contact ${saved.display_name} enregistré.`);
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Enregistrement impossible.");
     } finally {
       setBusy(false);
     }
@@ -110,15 +95,15 @@ export default function CommunicationsPage() {
     setError(null);
     setNotice(null);
     try {
-      await prepareCommunicationBatch(
+      await prepareProjectCommunicationBatch(
         preview.week_start,
         preview.snapshot_fingerprint,
-        drafts.map(({ recipient_email: _recipientEmail, ...row }) => row),
+        drafts.map(({ source: _source, ...review }) => review),
       );
-      setNotice("Lot préparé. Aucun message n’a été envoyé.");
+      setNotice("Lot projet préparé. Aucun message n’a été envoyé.");
       setPreview(null);
       setDrafts([]);
-      await reloadLists();
+      await reloadBatches();
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Préparation impossible.");
     } finally {
@@ -140,17 +125,17 @@ export default function CommunicationsPage() {
     setError(null);
     setNotice(null);
     try {
-      const updated = await communicationBatchAction(batch.id, action);
+      const updated = await projectCommunicationBatchAction(batch.id, action);
       setNotice(
         action === "approve"
-          ? "Lot approuvé. Aucun message n’a été envoyé."
+          ? "Lot projet approuvé. Aucun message n’a été envoyé."
           : action === "create-drafts"
             ? `${updated.drafts_created_count} brouillon(s) M365 créé(s). Aucun courriel n’a été envoyé.`
             : action === "mark-communicated"
-              ? "Lot confirmé comme communiqué."
-              : "Lot annulé.",
+              ? "Lot projet confirmé comme communiqué."
+              : "Lot projet annulé.",
       );
-      await reloadLists();
+      await reloadBatches();
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Action impossible.");
     } finally {
@@ -162,104 +147,83 @@ export default function CommunicationsPage() {
     <section className="communications-page">
       <header className="communications-header">
         <div>
-          <span className="eyebrow">Révision manuelle</span>
+          <span className="eyebrow">Communication par projet</span>
           <h2>Communications de planification</h2>
           <p>
-            Préparez, révisez et approuvez les messages. Après approbation, une action séparée peut
-            créer les brouillons dans Microsoft 365. Aucun courriel n’est envoyé automatiquement.
+            Un message est préparé par projet : le chargé de projet est en To et les ressources
+            réellement affectées sont en CC. Les coordonnées proviennent des profils Utilisateurs.
           </p>
         </div>
         <label>
           Semaine du
-          <input type="date" value={weekStart} onChange={(event) => setWeekStart(event.target.value)} />
+          <input
+            type="date"
+            value={weekStart}
+            onChange={(event) => setWeekStart(event.target.value)}
+          />
         </label>
       </header>
 
       {error && <div className="error-panel"><strong>Erreur</strong><span>{error}</span></div>}
       {notice && <div className="communications-notice">{notice}</div>}
 
-      <div className="communications-grid">
-        <section className="communications-card contacts-card">
-          <div className="communications-card-heading">
-            <div>
-              <span className="eyebrow">Répertoire explicite</span>
-              <h3>Contacts</h3>
-            </div>
-            <span>{contacts.length} contact(s)</span>
-          </div>
-          <p className="communications-help">
-            Les adresses ne sont jamais déduites d’un nom. Les techniciens sont liés à une ressource
-            stable; les chargés de projet nécessitent un identifiant externe stable.
-          </p>
-          <div className="contacts-list">
-            {contacts.map((contact) => (
-              <div
-                className={`contact-row ${missingContactSet.has(contact.recipient_id) ? "is-missing" : ""}`}
-                key={contact.recipient_id}
-              >
-                <div className="contact-identity">
-                  <strong>{contact.display_name}</strong>
-                  <small>{contact.audience === "technician" ? "Technicien" : "Chargé de projet"}</small>
-                </div>
-                <input
-                  type="email"
-                  aria-label={`Courriel de ${contact.display_name}`}
-                  placeholder="adresse@entreprise"
-                  value={contact.email ?? ""}
-                  onChange={(event) => setContacts((rows) => rows.map((row) =>
-                    row.recipient_id === contact.recipient_id ? { ...row, email: event.target.value || null } : row
-                  ))}
-                />
-                <label className="contact-active">
-                  <input
-                    type="checkbox"
-                    checked={contact.active}
-                    onChange={(event) => setContacts((rows) => rows.map((row) =>
-                      row.recipient_id === contact.recipient_id ? { ...row, active: event.target.checked } : row
-                    ))}
-                  />
-                  Actif
-                </label>
-                <button type="button" disabled={busy} onClick={() => void saveContact(contact)}>
-                  Enregistrer
-                </button>
-              </div>
-            ))}
-          </div>
-        </section>
+      <section className="communications-card communications-source-card">
+        <div>
+          <span className="eyebrow">Référentiel métier</span>
+          <strong>Destinataires gérés dans Utilisateurs</strong>
+        </div>
+        <p>
+          Les adresses ne sont jamais déduites d’un nom. Corrigez un courriel ou un téléphone dans
+          le profil utilisateur correspondant; la prévisualisation signalera toute donnée manquante.
+        </p>
+      </section>
 
-        <section className="communications-card preview-card">
-          <div className="communications-card-heading">
-            <div>
-              <span className="eyebrow">Planning courant</span>
-              <h3>Prévisualisation</h3>
-            </div>
-            <button type="button" disabled={busy} onClick={() => void runPreview()}>
-              Générer la prévisualisation
-            </button>
+      <section className="communications-card preview-card">
+        <div className="communications-card-heading">
+          <div>
+            <span className="eyebrow">Planning courant</span>
+            <h3>Prévisualisation par projet</h3>
           </div>
+          <button type="button" disabled={busy} onClick={() => void runPreview()}>
+            Générer la prévisualisation
+          </button>
+        </div>
 
-          {!preview ? (
-            <p className="communications-empty">Aucune prévisualisation générée.</p>
-          ) : (
-            <>
-              <div className="preview-summary">
-                <strong>{preview.mode === "weekly_plan" ? "Plan hebdomadaire" : "Avis de modification"}</strong>
-                <span>{preview.drafts.length} message(s)</span>
-                <span>{preview.has_communicated_baseline ? "Snapshot communiqué trouvé" : "Premier envoi de cette semaine"}</span>
-              </div>
-              {preview.missing_contact_ids.length > 0 && (
-                <div className="communications-warning">
-                  Coordonnées manquantes : {preview.missing_contact_ids.join(", ")}. Complétez-les avant de préparer le lot.
-                </div>
-              )}
-              {drafts.length === 0 ? (
-                <p className="communications-empty">Aucun changement à communiquer pour cette version.</p>
-              ) : (
-                <div className="draft-list">
-                  {drafts.map((draft, index) => (
-                    <article className="draft-card" key={`${draft.audience}:${draft.recipient_id}`}>
+        {!preview ? (
+          <p className="communications-empty">Aucune prévisualisation générée.</p>
+        ) : (
+          <>
+            <div className="preview-summary">
+              <strong>{kindLabel(preview.mode)}</strong>
+              <span>{preview.drafts.length} projet(s) à communiquer</span>
+              <span>
+                {preview.has_communicated_baseline
+                  ? "Snapshot communiqué trouvé"
+                  : "Première communication de cette semaine"}
+              </span>
+            </div>
+
+            {drafts.length === 0 ? (
+              <p className="communications-empty">
+                Aucun changement à communiquer pour cette version du planning.
+              </p>
+            ) : (
+              <div className="draft-list">
+                {drafts.map((draft, index) => {
+                  const source = draft.source;
+                  const blocking = source.diagnostics.filter((row) => row.severity === "BLOCKING");
+                  const warnings = source.diagnostics.filter((row) => row.severity === "WARNING");
+                  return (
+                    <article
+                      className={`draft-card ${source.approvable ? "" : "is-blocked"}`}
+                      key={source.message_key}
+                      data-message-key={source.message_key}
+                    >
                       <div className="draft-heading">
+                        <div>
+                          <strong>Projet {source.project_number}</strong>
+                          <small>{source.message_key}</small>
+                        </div>
                         <label>
                           <input
                             type="checkbox"
@@ -270,60 +234,115 @@ export default function CommunicationsPage() {
                           />
                           Inclure
                         </label>
-                        <span>{draft.recipient_email}</span>
                       </div>
-                      <input
-                        className="draft-subject"
-                        value={draft.subject}
-                        onChange={(event) => setDrafts((rows) => rows.map((row, rowIndex) =>
-                          rowIndex === index ? { ...row, subject: event.target.value } : row
-                        ))}
-                      />
-                      <textarea
-                        rows={9}
-                        value={draft.body}
-                        onChange={(event) => setDrafts((rows) => rows.map((row, rowIndex) =>
-                          rowIndex === index ? { ...row, body: event.target.value } : row
-                        ))}
-                      />
+
+                      <div className="draft-recipients">
+                        <div>
+                          <span>To</span>
+                          <strong>{source.to_recipient.display_name}</strong>
+                          <small className={source.to_recipient.email ? "" : "recipient-missing"}>
+                            {source.to_recipient.email ?? "Courriel manquant"}
+                          </small>
+                        </div>
+                        <div>
+                          <span>CC</span>
+                          <div className="recipient-chips">
+                            {source.cc_recipients.length === 0 ? (
+                              <small>Aucune ressource avec courriel explicite</small>
+                            ) : source.cc_recipients.map((recipient) => (
+                              <span key={recipient.email ?? recipient.contact_id ?? recipient.display_name}>
+                                {recipient.display_name} · {recipient.email}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+
+                      {(blocking.length > 0 || warnings.length > 0) && (
+                        <div className="draft-diagnostics" aria-label={`Diagnostics ${source.project_number}`}>
+                          {blocking.map((diagnostic) => (
+                            <div className="diagnostic-blocking" key={`${diagnostic.code}:${diagnostic.entity_id}`}>
+                              <strong>Blocage</strong>
+                              <span>{diagnostic.message}</span>
+                            </div>
+                          ))}
+                          {warnings.map((diagnostic) => (
+                            <div className="diagnostic-warning" key={`${diagnostic.code}:${diagnostic.entity_id}`}>
+                              <strong>Anomalie</strong>
+                              <span>{diagnostic.message}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      <label className="draft-field">
+                        <span>Sujet</span>
+                        <input
+                          className="draft-subject"
+                          value={draft.subject}
+                          onChange={(event) => setDrafts((rows) => rows.map((row, rowIndex) =>
+                            rowIndex === index ? { ...row, subject: event.target.value } : row
+                          ))}
+                        />
+                      </label>
+                      <label className="draft-field">
+                        <span>Corps du message</span>
+                        <textarea
+                          rows={11}
+                          value={draft.body}
+                          onChange={(event) => setDrafts((rows) => rows.map((row, rowIndex) =>
+                            rowIndex === index ? { ...row, body: event.target.value } : row
+                          ))}
+                        />
+                      </label>
                     </article>
-                  ))}
-                </div>
-              )}
-              <div className="communications-actions">
-                <button
-                  type="button"
-                  disabled={busy || drafts.length === 0 || preview.missing_contact_ids.length > 0}
-                  onClick={() => void prepare()}
-                >
-                  Préparer le lot
-                </button>
-                <small>Cette action persiste la révision. Elle n’envoie rien.</small>
+                  );
+                })}
               </div>
-            </>
-          )}
-        </section>
-      </div>
+            )}
+
+            <div className="communications-actions">
+              <button
+                type="button"
+                disabled={
+                  busy
+                  || includedDrafts.length === 0
+                  || hasBlockingIncluded
+                }
+                onClick={() => void prepare()}
+              >
+                Préparer le lot
+              </button>
+              <small>
+                {hasBlockingIncluded
+                  ? "Un projet inclus contient un blocage de destinataire."
+                  : "Cette action persiste la révision. Elle n’envoie rien."}
+              </small>
+            </div>
+          </>
+        )}
+      </section>
 
       <section className="communications-card batches-card">
         <div className="communications-card-heading">
           <div>
-            <span className="eyebrow">Journal SQL</span>
-            <h3>Lots de la semaine</h3>
+            <span className="eyebrow">Audit SQL</span>
+            <h3>Lots projet de la semaine</h3>
           </div>
           <span>{batches.length} lot(s)</span>
         </div>
+
         {batches.length === 0 ? (
-          <p className="communications-empty">Aucun lot préparé pour cette semaine.</p>
+          <p className="communications-empty">Aucun lot projet préparé pour cette semaine.</p>
         ) : (
           <div className="batch-list">
             {batches.map((batch) => {
               const included = batch.messages.filter((message) => message.included).length;
               return (
                 <article className={`batch-row status-${batch.status.toLowerCase()}`} key={batch.id}>
-                  <div>
-                    <strong>{batch.kind === "weekly_plan" ? "Plan hebdomadaire" : "Modification"}</strong>
-                    <span>{batch.status} · {included}/{batch.messages.length} message(s) inclus</span>
+                  <div className="batch-summary">
+                    <strong>{kindLabel(batch.kind)}</strong>
+                    <span>{batch.status} · {included}/{batch.messages.length} projet(s) inclus</span>
                     <small>Préparé {formatDateTime(batch.prepared_at)} par {batch.prepared_by ?? "—"}</small>
                     {batch.drafts_created_at && (
                       <small>
@@ -332,19 +351,55 @@ export default function CommunicationsPage() {
                       </small>
                     )}
                     {batch.stale && <small className="stale-label">Le planning a changé depuis ce lot.</small>}
+                    <div className="batch-message-list">
+                      {batch.messages.map((message) => (
+                        <div key={message.id}>
+                          <strong>{message.message_key ?? message.project_id ?? message.id}</strong>
+                          <span>To : {message.recipient_email ?? "courriel manquant"}</span>
+                          <span>
+                            CC : {message.cc_emails.length > 0 ? message.cc_emails.join(", ") : "—"}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                   <div className="batch-actions">
                     {batch.status === "PREPARED" && (
-                      <button type="button" disabled={busy || batch.stale} onClick={() => void batchAction(batch, "approve")}>Approuver</button>
+                      <button
+                        type="button"
+                        disabled={busy || batch.stale}
+                        onClick={() => void batchAction(batch, "approve")}
+                      >
+                        Approuver
+                      </button>
                     )}
                     {(batch.status === "PREPARED" || batch.status === "APPROVED") && (
-                      <button type="button" className="secondary" disabled={busy} onClick={() => void batchAction(batch, "cancel")}>Annuler</button>
+                      <button
+                        type="button"
+                        className="secondary"
+                        disabled={busy}
+                        onClick={() => void batchAction(batch, "cancel")}
+                      >
+                        Annuler
+                      </button>
                     )}
                     {batch.status === "APPROVED" && !batch.drafts_created_at && (
-                      <button type="button" disabled={busy || batch.stale} onClick={() => void batchAction(batch, "create-drafts")}>Créer brouillons M365</button>
+                      <button
+                        type="button"
+                        disabled={busy || batch.stale}
+                        onClick={() => void batchAction(batch, "create-drafts")}
+                      >
+                        Créer brouillons M365
+                      </button>
                     )}
                     {batch.status === "APPROVED" && (
-                      <button type="button" disabled={busy || batch.stale} onClick={() => void batchAction(batch, "mark-communicated")}>Confirmer communiqué</button>
+                      <button
+                        type="button"
+                        disabled={busy || batch.stale}
+                        onClick={() => void batchAction(batch, "mark-communicated")}
+                      >
+                        Confirmer communiqué
+                      </button>
                     )}
                   </div>
                 </article>
@@ -352,9 +407,10 @@ export default function CommunicationsPage() {
             })}
           </div>
         )}
+
         <p className="communications-help">
           « Créer brouillons M365 » est une action externe explicite qui ne transmet aucun courriel.
-          « Confirmer communiqué » enregistre le snapshot de référence pour détecter les futurs changements.
+          « Confirmer communiqué » fige le snapshot de référence utilisé pour les futurs deltas.
         </p>
       </section>
     </section>
