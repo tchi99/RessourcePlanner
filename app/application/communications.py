@@ -45,10 +45,16 @@ class CommunicationMessageRecord:
     id: str
     audience: str
     recipient_id: str
-    recipient_email: str
+    recipient_email: str | None
     subject: str
     body: str
     included: bool
+    message_key: str | None = None
+    project_id: str | None = None
+    cc_emails: tuple[str, ...] = ()
+    content_fingerprint: str | None = None
+    approvable: bool = True
+    diagnostics_json: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -72,6 +78,7 @@ class CommunicationBatchRecord:
     drafts_created_at: datetime | None = None
     messages: tuple[CommunicationMessageRecord, ...] = ()
     stale: bool = False
+    model_version: str = "legacy"
 
 
 @dataclass(frozen=True, slots=True)
@@ -101,6 +108,7 @@ class CommunicationTransportMessage:
     recipient_email: str
     subject: str
     body: str
+    cc_emails: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -441,6 +449,7 @@ class CommunicationService:
                 recipient_email=message.recipient_email,
                 subject=message.subject,
                 body=message.body,
+                cc_emails=message.cc_emails,
             )
             for message in row.messages
             if message.included
