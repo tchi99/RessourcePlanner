@@ -122,6 +122,50 @@ class ServerSmtpSettingsTests(unittest.TestCase):
             self.assertEqual(len(fake.tested), 1)
             self.assertEqual(fake.tested[0].credential, secret_value)
 
+    def test_admin_can_send_test_email_when_general_smtp_is_disabled(self) -> None:
+        with TemporaryDirectory() as directory:
+            fake = FakeSmtpClient()
+            app = create_api_app(
+                self._database(directory),
+                auth_resolver=TEST_ADMIN_AUTH_RESOLVER,
+                smtp_client=fake,
+            )
+            recipient = "recipient" + chr(64) + TEST_DOMAIN
+            with TestClient(app) as client:
+                configured = client.put(
+                    "/api/v1/admin/settings/smtp",
+                    json={
+                        "host": "smtp.example.invalid",
+                        "port": 587,
+                        "security": "STARTTLS",
+                        "username": None,
+                        "password": None,
+                        "clear_password": False,
+                        "from_email": "planning" + chr(64) + TEST_DOMAIN,
+                        "from_name": "RessourcePlanner",
+                        "reply_to": None,
+                        "timeout_seconds": 20,
+                        "enabled": False,
+                    },
+                )
+                self.assertEqual(configured.status_code, 200, configured.text)
+
+                response = client.post(
+                    "/api/v1/admin/settings/smtp/test-email",
+                    json={"recipient_email": recipient},
+                )
+                self.assertEqual(response.status_code, 200, response.text)
+                payload = response.json()
+                self.assertTrue(payload["ok"])
+                self.assertEqual(payload["log"][-1]["step"], "envoi")
+
+            self.assertEqual(len(fake.sent), 1)
+            _configuration, message, message_id = fake.sent[0]
+            self.assertEqual(message.recipient_email, recipient)
+            self.assertEqual(message.subject, "Test SMTP — RessourcePlanner")
+            self.assertIn("Ceci est un courriel de test", message.body)
+            self.assertTrue(message_id.startswith("<resourceplanner-smtp-test-"))
+
     def test_failed_smtp_test_returns_diagnostic_log_without_http_error(self) -> None:
         with TemporaryDirectory() as directory:
             app = create_api_app(
