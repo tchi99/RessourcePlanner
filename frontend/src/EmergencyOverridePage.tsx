@@ -113,7 +113,11 @@ export default function EmergencyOverridePage() {
     setError(null);
     setNotice(null);
     try {
-      const result = await emergencyPlanDemand(selected.number, justification);
+      const result = await emergencyPlanDemand(
+        selected.number,
+        justification,
+        selected.version,
+      );
       await refresh(result.demand_number);
       const planning = result.planning;
       setNotice(
