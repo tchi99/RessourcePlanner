@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import date
 import hashlib
 import json
@@ -556,10 +556,7 @@ def build_project_confirmation_batch(
     )
     return ProjectCommunicationMessageBatch(
         drafts=drafts,
-        snapshot_fingerprint=_batch_fingerprint(
-            drafts,
-            week_start=projection.week_start,
-        ),
+        snapshot_fingerprint=project_projection_fingerprint(projection),
         diagnostics=diagnostics,
     )
 
@@ -617,9 +614,137 @@ def build_project_delta_batch(
     )
     return ProjectCommunicationMessageBatch(
         drafts=result,
-        snapshot_fingerprint=_batch_fingerprint(
-            result,
-            week_start=current.week_start,
-        ),
+        snapshot_fingerprint=project_projection_fingerprint(current),
         diagnostics=diagnostics,
+    )
+
+
+def serialize_project_projection(
+    projection: ProjectCommunicationProjection,
+) -> str:
+    """Serialize the immutable communicated projection for durable delta baselines."""
+
+    def convert(value):
+        if isinstance(value, date):
+            return value.isoformat()
+        if isinstance(value, dict):
+            return {str(key): convert(item) for key, item in value.items()}
+        if isinstance(value, (list, tuple)):
+            return [convert(item) for item in value]
+        return value
+
+    return json.dumps(
+        convert(asdict(projection)),
+        ensure_ascii=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    )
+
+
+def deserialize_project_projection(payload: str) -> ProjectCommunicationProjection:
+    """Restore a projection snapshot without consulting mutable business tables."""
+
+    data = json.loads(payload)
+
+    def participant(row):
+        return ProjectCommunicationParticipant(
+            contact_id=row.get("contact_id"),
+            user_id=row.get("user_id"),
+            display_name=str(row.get("display_name") or ""),
+            email=row.get("email"),
+            phone=row.get("phone"),
+            active=bool(row.get("active")),
+            diagnostics=tuple(row.get("diagnostics") or ()),
+        )
+
+    def resolution(row):
+        return ContactResolution(
+            status=str(row.get("status") or ""),
+            contact_id=row.get("contact_id"),
+            display_name=row.get("display_name"),
+            email=row.get("email"),
+            phone=row.get("phone"),
+            source_type=str(row.get("source_type") or ""),
+            source_entity_id=row.get("source_entity_id"),
+            source_label=row.get("source_label"),
+            diagnostics=tuple(row.get("diagnostics") or ()),
+        )
+
+    projects = []
+    for project_row in data.get("projects") or ():
+        days = []
+        for day_row in project_row.get("days") or ():
+            tasks = []
+            for task_row in day_row.get("tasks") or ():
+                resources = tuple(
+                    __import__(
+                        "app.domain.project_communication",
+                        fromlist=["ProjectCommunicationResource"],
+                    ).ProjectCommunicationResource(
+                        resource_id=str(resource_row.get("resource_id") or ""),
+                        resource_name=str(resource_row.get("resource_name") or ""),
+                        contact=participant(resource_row.get("contact") or {}),
+                        hours=float(resource_row.get("hours") or 0),
+                        shift_ids=tuple(resource_row.get("shift_ids") or ()),
+                        allocation_types=tuple(
+                            resource_row.get("allocation_types") or ()
+                        ),
+                        confirmations=tuple(
+                            resource_row.get("confirmations") or ()
+                        ),
+                        outside_schedule=bool(
+                            resource_row.get("outside_schedule")
+                        ),
+                        diagnostics=tuple(
+                            resource_row.get("diagnostics") or ()
+                        ),
+                    )
+                    for resource_row in task_row.get("resources") or ()
+                )
+                tasks.append(
+                    __import__(
+                        "app.domain.project_communication",
+                        fromlist=["ProjectCommunicationTask"],
+                    ).ProjectCommunicationTask(
+                        task_description=str(
+                            task_row.get("task_description") or ""
+                        ),
+                        task_ids=tuple(task_row.get("task_ids") or ()),
+                        task_codes=tuple(task_row.get("task_codes") or ()),
+                        operational_responsibles=tuple(
+                            resolution(value)
+                            for value in task_row.get(
+                                "operational_responsibles"
+                            ) or ()
+                        ),
+                        resources=resources,
+                        diagnostics=tuple(task_row.get("diagnostics") or ()),
+                    )
+                )
+            days.append(
+                __import__(
+                    "app.domain.project_communication",
+                    fromlist=["ProjectCommunicationDay"],
+                ).ProjectCommunicationDay(
+                    day=date.fromisoformat(str(day_row["day"])),
+                    tasks=tuple(tasks),
+                )
+            )
+        projects.append(
+            ProjectCommunicationProject(
+                project_id=str(project_row.get("project_id") or ""),
+                project_number=str(project_row.get("project_number") or ""),
+                project_name=str(project_row.get("project_name") or ""),
+                project_manager=participant(
+                    project_row.get("project_manager") or {}
+                ),
+                days=tuple(days),
+                diagnostics=tuple(project_row.get("diagnostics") or ()),
+            )
+        )
+    return ProjectCommunicationProjection(
+        week_start=date.fromisoformat(str(data["week_start"])),
+        week_end=date.fromisoformat(str(data["week_end"])),
+        projects=tuple(projects),
+        diagnostics=tuple(data.get("diagnostics") or ()),
     )
