@@ -388,7 +388,7 @@ class CommunicationService:
 
     def _batch(self, batch_id: str) -> CommunicationBatchRecord:
         row = self._repository.get_batch(str(batch_id or "").strip())
-        if row is None:
+        if row is None or row.model_version != "legacy":
             raise ApplicationNotFoundError(
                 "Lot de communication introuvable.",
                 code="communication_batch_not_found",
