@@ -12,6 +12,7 @@ from app.application.smtp_settings import (
 from app.infrastructure.smtp import FernetSecretCipher
 from app.infrastructure.sql import (
     Base,
+    SmtpConfigurationAuditRow,
     SmtpConfigurationRow,
     SqlSmtpConfigurationRepository,
     create_session_factory,
@@ -79,6 +80,14 @@ class SmtpConfigurationTests(unittest.TestCase):
                 self.assertIsNotNone(row.encrypted_password)
                 self.assertNotEqual(row.encrypted_password, secret_value)
                 self.assertEqual(cipher.decrypt(row.encrypted_password or ""), secret_value)
+
+                audits = session.query(SmtpConfigurationAuditRow).all()
+                self.assertEqual(len(audits), 1)
+                self.assertEqual(audits[0].event_type, "SMTP_CONFIG_UPDATED")
+                self.assertEqual(audits[0].actor_name, "Admin test")
+                self.assertIn("credential", audits[0].changed_fields_json)
+                self.assertNotIn(secret_value, audits[0].changed_fields_json)
+                self.assertNotIn(row.encrypted_password or "", audits[0].changed_fields_json)
 
                 service.test_connection()
                 self.assertEqual(len(fake.tested), 1)
