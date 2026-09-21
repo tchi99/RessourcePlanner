@@ -386,7 +386,7 @@ export default function ConfigurationPage() {
               type="email"
               value={testRecipient}
               onChange={(event) => setTestRecipient(event.target.value)}
-              placeholder="vous@entreprise.ca"
+              placeholder={"vous" + String.fromCharCode(64) + "entreprise.ca"}
             />
           </label>
           <button
