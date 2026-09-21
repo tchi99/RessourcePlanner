@@ -71,20 +71,6 @@ class ServerWorkPackageCommandTests(unittest.TestCase):
                 status="Brouillon",
             )
         )
-        engine.dispose()
-        return url
-
-    @staticmethod
-    def _count(database_url: str, model) -> int:
-        engine = create_sql_engine(database_url)
-        factory = create_session_factory(engine)
-        try:
-        with factory() as session:
-            value = session.scalar(select(func.count()).select_from(model))
-            return int(value or 0)
-        finally:
-        engine.dispose()
-
 
     @classmethod
     def setUpClass(cls) -> None:
@@ -101,6 +87,17 @@ class ServerWorkPackageCommandTests(unittest.TestCase):
 
     def _database(self, directory: str) -> str:
         return self._database_template.copy_to(directory)
+
+    @staticmethod
+    def _count(database_url: str, model) -> int:
+        engine = create_sql_engine(database_url)
+        factory = create_session_factory(engine)
+        try:
+            with factory() as session:
+                value = session.scalar(select(func.count()).select_from(model))
+                return int(value or 0)
+        finally:
+            engine.dispose()
 
     def test_create_is_idempotent_and_read_model_reflects_result(self) -> None:
         with TemporaryDirectory() as directory:
