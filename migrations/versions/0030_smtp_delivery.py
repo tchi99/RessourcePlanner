@@ -1,0 +1,126 @@
+"""Add SMTP admin configuration and per-message delivery audit.
+
+Revision ID: 0030_smtp_delivery
+Revises: 0029_project_communications
+"""
+
+from __future__ import annotations
+
+from alembic import op
+import sqlalchemy as sa
+
+
+revision: str = "0030_smtp_delivery"
+down_revision: str | None = "0029_project_communications"
+branch_labels: str | None = None
+depends_on: str | None = None
+
+
+def upgrade() -> None:
+    op.create_table(
+        "smtp_configuration",
+        sa.Column("id", sa.String(length=32), nullable=False),
+        sa.Column("host", sa.String(length=255), nullable=True),
+        sa.Column("port", sa.Integer(), server_default="587", nullable=False),
+        sa.Column(
+            "security",
+            sa.String(length=32),
+            server_default="STARTTLS",
+            nullable=False,
+        ),
+        sa.Column("username", sa.String(length=255), nullable=True),
+        sa.Column("encrypted_password", sa.Text(), nullable=True),
+        sa.Column("from_email", sa.String(length=320), nullable=True),
+        sa.Column("from_name", sa.String(length=255), nullable=True),
+        sa.Column("reply_to", sa.String(length=320), nullable=True),
+        sa.Column(
+            "timeout_seconds",
+            sa.Integer(),
+            server_default="20",
+            nullable=False,
+        ),
+        sa.Column(
+            "enabled",
+            sa.Boolean(),
+            server_default=sa.false(),
+            nullable=False,
+        ),
+        sa.Column("updated_by", sa.String(length=255), nullable=True),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.func.now(),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.func.now(),
+            nullable=False,
+        ),
+        sa.PrimaryKeyConstraint("id", name="pk_smtp_configuration"),
+    )
+
+    op.create_table(
+        "communication_deliveries",
+        sa.Column("id", sa.String(length=36), nullable=False),
+        sa.Column("batch_id", sa.String(length=36), nullable=False),
+        sa.Column("message_id", sa.String(length=36), nullable=False),
+        sa.Column("provider", sa.String(length=32), nullable=False),
+        sa.Column(
+            "status",
+            sa.String(length=32),
+            server_default="PENDING",
+            nullable=False,
+        ),
+        sa.Column(
+            "attempt_count",
+            sa.Integer(),
+            server_default="0",
+            nullable=False,
+        ),
+        sa.Column("attempted_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("sent_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("provider_message_id", sa.String(length=320), nullable=True),
+        sa.Column("error_code", sa.String(length=128), nullable=True),
+        sa.Column("error_detail", sa.String(length=255), nullable=True),
+        sa.Column("last_actor", sa.String(length=255), nullable=True),
+        sa.ForeignKeyConstraint(
+            ["batch_id"],
+            ["communication_batches.id"],
+            name="fk_communication_deliveries_batch_id_communication_batches",
+            ondelete="CASCADE",
+        ),
+        sa.ForeignKeyConstraint(
+            ["message_id"],
+            ["communication_messages.id"],
+            name="fk_communication_deliveries_message_id_communication_messages",
+            ondelete="CASCADE",
+        ),
+        sa.PrimaryKeyConstraint("id", name="pk_communication_deliveries"),
+    )
+    op.create_index(
+        "ux_communication_deliveries_message_provider",
+        "communication_deliveries",
+        ["message_id", "provider"],
+        unique=True,
+    )
+    op.create_index(
+        "ix_communication_deliveries_batch_status",
+        "communication_deliveries",
+        ["batch_id", "provider", "status"],
+        unique=False,
+    )
+
+
+def downgrade() -> None:
+    op.drop_index(
+        "ix_communication_deliveries_batch_status",
+        table_name="communication_deliveries",
+    )
+    op.drop_index(
+        "ux_communication_deliveries_message_provider",
+        table_name="communication_deliveries",
+    )
+    op.drop_table("communication_deliveries")
+    op.drop_table("smtp_configuration")
