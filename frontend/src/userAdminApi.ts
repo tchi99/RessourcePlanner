@@ -7,6 +7,8 @@ export type UserAdminReadModel = {
   display_name: string;
   email: string | null;
   employee_external_id: string | null;
+  business_contact_id: string | null;
+  phone: string | null;
   roles: string[];
   active: boolean;
 };
@@ -22,6 +24,7 @@ export type UserAdminCreate = {
   subject: string;
   display_name: string;
   email: string | null;
+  phone: string | null;
   roles: string[];
   active: boolean;
 };
@@ -29,6 +32,7 @@ export type UserAdminCreate = {
 export type UserAdminUpdate = {
   display_name: string;
   email: string | null;
+  phone: string | null;
   roles: string[];
   active: boolean;
 };
