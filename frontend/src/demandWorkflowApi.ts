@@ -18,6 +18,30 @@ export type DemandWorkflowResult = {
   planning: PlanningResult | null;
 };
 
+export type WorkflowAction =
+  | "modify"
+  | "submit"
+  | "approve"
+  | "emergency-plan"
+  | "correction"
+  | "cancel";
+
+export type DemandWorkflowActionState = {
+  action: WorkflowAction;
+  allowed: boolean;
+  required_permission: string;
+  reason_code: string | null;
+  reason: string | null;
+};
+
+export type DemandWorkflowState = {
+  demand_number: string;
+  status: string;
+  version: number;
+  available_actions: WorkflowAction[];
+  actions: DemandWorkflowActionState[];
+};
+
 type ApiErrorPayload = {
   error?: {
     code?: string;
@@ -27,10 +51,37 @@ type ApiErrorPayload = {
 
 const API_BASE = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/$/, "");
 
+async function apiError(response: Response): Promise<ApiError> {
+  let payload: ApiErrorPayload | null = null;
+  try {
+    payload = (await response.json()) as ApiErrorPayload;
+  } catch {
+    // Keep the stable fallback when an intermediary returns non-JSON content.
+  }
+  return new ApiError(
+    payload?.error?.message || `Erreur HTTP ${response.status}`,
+    response.status,
+    payload?.error?.code ?? null,
+  );
+}
+
+export async function getDemandWorkflowState(
+  number: string,
+): Promise<DemandWorkflowState> {
+  const response = await fetch(
+    `${API_BASE}/api/v1/demands/${encodeURIComponent(number)}/workflow-actions`,
+    {
+      headers: { Accept: "application/json" },
+    },
+  );
+  if (!response.ok) throw await apiError(response);
+  return response.json() as Promise<DemandWorkflowState>;
+}
+
 async function workflowPost(
   number: string,
-  action: "submit" | "approve" | "emergency-plan" | "correction" | "cancel",
-  body?: { comment: string },
+  action: Exclude<WorkflowAction, "modify">,
+  body?: { comment?: string; expected_version?: number },
 ): Promise<DemandWorkflowResult> {
   const response = await fetch(
     `${API_BASE}/api/v1/demands/${encodeURIComponent(number)}/${action}`,
@@ -44,39 +95,51 @@ async function workflowPost(
     },
   );
 
-  if (!response.ok) {
-    let payload: ApiErrorPayload | null = null;
-    try {
-      payload = (await response.json()) as ApiErrorPayload;
-    } catch {
-      // Keep the stable fallback when an intermediary returns non-JSON content.
-    }
-    throw new ApiError(
-      payload?.error?.message || `Erreur HTTP ${response.status}`,
-      response.status,
-      payload?.error?.code ?? null,
-    );
-  }
-
+  if (!response.ok) throw await apiError(response);
   return response.json() as Promise<DemandWorkflowResult>;
 }
 
-export function submitDemand(number: string) {
-  return workflowPost(number, "submit");
+function versionBody(expectedVersion?: number) {
+  return expectedVersion === undefined ? undefined : { expected_version: expectedVersion };
 }
 
-export function approveDemand(number: string, comment: string) {
-  return workflowPost(number, "approve", { comment });
+export function submitDemand(number: string, expectedVersion?: number) {
+  return workflowPost(number, "submit", versionBody(expectedVersion));
 }
 
-export function emergencyPlanDemand(number: string, comment: string) {
-  return workflowPost(number, "emergency-plan", { comment });
+export function approveDemand(
+  number: string,
+  comment: string,
+  expectedVersion?: number,
+) {
+  return workflowPost(number, "approve", {
+    comment,
+    ...(expectedVersion === undefined ? {} : { expected_version: expectedVersion }),
+  });
 }
 
-export function requestDemandCorrection(number: string, comment: string) {
-  return workflowPost(number, "correction", { comment });
+export function emergencyPlanDemand(
+  number: string,
+  comment: string,
+  expectedVersion?: number,
+) {
+  return workflowPost(number, "emergency-plan", {
+    comment,
+    ...(expectedVersion === undefined ? {} : { expected_version: expectedVersion }),
+  });
 }
 
-export function cancelDemand(number: string) {
-  return workflowPost(number, "cancel");
+export function requestDemandCorrection(
+  number: string,
+  comment: string,
+  expectedVersion?: number,
+) {
+  return workflowPost(number, "correction", {
+    comment,
+    ...(expectedVersion === undefined ? {} : { expected_version: expectedVersion }),
+  });
+}
+
+export function cancelDemand(number: string, expectedVersion?: number) {
+  return workflowPost(number, "cancel", versionBody(expectedVersion));
 }
