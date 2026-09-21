@@ -25,6 +25,18 @@ from .errors import (
     ApplicationValidationError,
     call_application_port,
 )
+from .demand_workflow_policy import (
+    ACTION_APPROVE,
+    ACTION_CANCEL,
+    ACTION_CORRECTION,
+    ACTION_MODIFY,
+    ACTION_SUBMIT,
+    DemandWorkflowBlock,
+    DemandWorkflowReadModel,
+    assert_demand_action,
+    demand_workflow_state,
+)
+from .security import PERMISSION_APPROVE_DEMANDS, PERMISSION_MANAGE_DEMANDS
 from .read_models import DemandPeriodReadModel
 from .repository_ports import DemandPeriodRepositoryPort, DemandRepositoryPort
 
@@ -66,6 +78,7 @@ class DemandService:
         *,
         periods: DemandPeriodRepositoryPort | None = None,
         current_user: str = "",
+        permissions: Sequence[str] | None = None,
         batch: Callable[[str], ContextManager[Any]] | None = None,
     ) -> None:
         self._demands = demands
@@ -73,6 +86,10 @@ class DemandService:
         self._approved_sync = approved_sync
         self._periods = periods
         self._current_user = str(current_user or "")
+        self._permissions = tuple(permissions) if permissions is not None else (
+            PERMISSION_MANAGE_DEMANDS,
+            PERMISSION_APPROVE_DEMANDS,
+        )
         self._batch = batch
 
     def _context(self, label: str) -> ContextManager[Any]:
@@ -200,6 +217,51 @@ class DemandService:
             )
         return existing
 
+    def _workflow_business_blocks(
+        self,
+        existing: Any,
+    ) -> Mapping[str, DemandWorkflowBlock]:
+        return {}
+
+    def workflow_state(self, number: str) -> DemandWorkflowReadModel:
+        identifier = self._required_identifier(number, entity="demand")
+        existing = self._demand_or_not_found(identifier)
+        return demand_workflow_state(
+            existing,
+            permissions=self._permissions,
+            business_blocks=self._workflow_business_blocks(existing),
+        )
+
+    @staticmethod
+    def _assert_expected_version(existing: Any, expected_version: int | None) -> None:
+        if expected_version is None:
+            return
+        if int(expected_version) != int(existing.version):
+            raise ApplicationConflictError(
+                "La demande a été modifiée depuis sa lecture.",
+                code="demand_version_conflict",
+                context={
+                    "demand_number": existing.number,
+                    "expected_version": int(expected_version),
+                    "current_version": int(existing.version),
+                },
+            )
+
+    def _assert_workflow_action(
+        self,
+        existing: Any,
+        action: str,
+        *,
+        expected_version: int | None = None,
+    ) -> None:
+        self._assert_expected_version(existing, expected_version)
+        assert_demand_action(
+            existing,
+            action,
+            permissions=self._permissions,
+            business_blocks=self._workflow_business_blocks(existing),
+        )
+
     def create_command(self, command: DemandCreateCommand) -> str:
         values = command.to_repository_values()
         with self._context("create demand"):
@@ -224,22 +286,17 @@ class DemandService:
 
         data = command.to_repository_values()
         expected_version = data.pop("ExpectedVersion", None)
+        self._assert_workflow_action(
+            existing,
+            ACTION_MODIFY,
+            expected_version=expected_version,
+        )
         if "RequestLines" in data:
             if expected_version is None:
                 raise ApplicationValidationError(
                     "expected_version est requis pour modifier les lignes d'une demande.",
                     code="demand_version_required",
                     context={"demand_number": number},
-                )
-            if int(expected_version) != int(existing.version):
-                raise ApplicationConflictError(
-                    "La demande a été modifiée depuis sa lecture.",
-                    code="demand_version_conflict",
-                    context={
-                        "demand_number": number,
-                        "expected_version": int(expected_version),
-                        "current_version": int(existing.version),
-                    },
                 )
             data["ExpectedVersion"] = int(expected_version)
         if "RequestLines" not in data and not existing.line_mode:
@@ -488,14 +545,15 @@ class DemandService:
 
     def submit_command(self, command: DemandSubmitCommand) -> None:
         number = self._required_identifier(command.number, entity="demand")
-        existing = call_application_port(
-            lambda: self._demands.get(number),
-            code_prefix="demand_lookup",
-            context={"demand_number": number},
+        existing = self._demand_or_not_found(number)
+        self._assert_workflow_action(
+            existing,
+            ACTION_SUBMIT,
+            expected_version=command.expected_version,
         )
         active_lines = (
             tuple(line for line in existing.lines if line.active)
-            if existing is not None and existing.line_mode
+            if existing.line_mode
             else ()
         )
         if active_lines:
@@ -571,10 +629,11 @@ class DemandService:
 
     def approve_command(self, command: DemandApproveCommand) -> dict[str, Any]:
         number = self._required_identifier(command.number, entity="demand")
-        existing = call_application_port(
-            lambda: self._demands.get(number),
-            code_prefix="demand_lookup",
-            context={"demand_number": number},
+        existing = self._demand_or_not_found(number)
+        self._assert_workflow_action(
+            existing,
+            ACTION_APPROVE,
+            expected_version=command.expected_version,
         )
         comment = str(command.comment or "")
         with self._context("approve demand"):
@@ -614,6 +673,12 @@ class DemandService:
                 code="demand_correction_comment_required",
                 context={"demand_number": number},
             )
+        existing = self._demand_or_not_found(number)
+        self._assert_workflow_action(
+            existing,
+            ACTION_CORRECTION,
+            expected_version=command.expected_version,
+        )
         with self._context("request demand correction"):
             call_application_port(
                 lambda: self._demands.update(
@@ -631,6 +696,12 @@ class DemandService:
 
     def cancel_command(self, command: DemandCancelCommand) -> None:
         number = self._required_identifier(command.number, entity="demand")
+        existing = self._demand_or_not_found(number)
+        self._assert_workflow_action(
+            existing,
+            ACTION_CANCEL,
+            expected_version=command.expected_version,
+        )
         cancel_materialized = getattr(self._approved_sync, "cancel_materialized", None)
         with self._context("cancel demand"):
             if callable(cancel_materialized):
