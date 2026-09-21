@@ -29,39 +29,49 @@ D2 = date(2026, 9, 8)
 
 
 from tests.http_test_auth import TEST_ADMIN_AUTH_RESOLVER
+from tests.sqlite_test_template import SqliteDatabaseTemplate
 
 create_api_app = partial(create_api_app, auth_resolver=TEST_ADMIN_AUTH_RESOLVER)
 
 class ServerDemandPeriodRouteTests(unittest.TestCase):
-    def _database(self, directory: str) -> str:
-        path = Path(directory) / "period-api.db"
-        url = f"sqlite:///{path.as_posix()}"
-        engine = create_sql_engine(url)
-        Base.metadata.create_all(engine)
-        factory = create_session_factory(engine)
-        with transactional_session(factory) as session:
-            session.add(Project(id="P1", number="P-1", name="Projet périodes"))
-            session.add_all(
-                [
-                    Resource(id="R1", name="Alice", active=True),
-                    Resource(id="R2", name="Bob", active=True),
-                ]
-            )
-            session.flush()
-            for resource_id, rule_id in (("R1", "STD-1"), ("R2", "STD-2")):
-                session.add(
-                    ResourceAvailabilityRule(
-                        id=rule_id,
-                        resource_id=resource_id,
-                        availability_type="Horaire standard",
-                        weekdays="Lun,Mar,Mer,Jeu,Ven",
-                        start_time=time(8, 0),
-                        end_time=time(16, 0),
-                        active=True,
-                    )
+    @staticmethod
+    def _seed_database(session) -> None:
+        session.add(Project(id="P1", number="P-1", name="Projet périodes"))
+        session.add_all(
+            [
+                Resource(id="R1", name="Alice", active=True),
+                Resource(id="R2", name="Bob", active=True),
+            ]
+        )
+        session.flush()
+        for resource_id, rule_id in (("R1", "STD-1"), ("R2", "STD-2")):
+            session.add(
+                ResourceAvailabilityRule(
+                    id=rule_id,
+                    resource_id=resource_id,
+                    availability_type="Horaire standard",
+                    weekdays="Lun,Mar,Mer,Jeu,Ven",
+                    start_time=time(8, 0),
+                    end_time=time(16, 0),
+                    active=True,
                 )
-        engine.dispose()
-        return url
+            )
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        super().setUpClass()
+        cls._database_template = SqliteDatabaseTemplate(
+            filename="period-api.db",
+            seed=cls._seed_database,
+        )
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        cls._database_template.cleanup()
+        super().tearDownClass()
+
+    def _database(self, directory: str) -> str:
+        return self._database_template.copy_to(directory)
 
     @staticmethod
     def _alternatives(*, second_hours: float = 8) -> dict:
