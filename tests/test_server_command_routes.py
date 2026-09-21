@@ -25,6 +25,8 @@ from app.infrastructure.sql import (
     transactional_session,
 )
 from app.server import create_api_app
+from app.application.security import AuthPrincipal, ROLE_PROJECT_MANAGER
+from app.server.security import static_auth_resolver
 
 
 WORK_DAY = date(2026, 8, 24)  # lundi
@@ -536,6 +538,35 @@ class ServerCommandRouteTests(unittest.TestCase):
                     repeated_submit.json()["error"]["code"],
                     "demand_transition_invalid",
                 )
+
+
+            project_manager = AuthPrincipal.from_roles(
+                local_user_id="pm-1",
+                issuer="urn:test",
+                subject="pm-subject",
+                display_name="Chargé de projet",
+                email=None,
+                roles=(ROLE_PROJECT_MANAGER,),
+                auth_mode="test",
+            )
+            project_manager_app = create_api_app(
+                database_url,
+                actor_name="Chargé de projet",
+                auth_resolver=static_auth_resolver(project_manager),
+            )
+            with TestClient(
+                project_manager_app,
+                raise_server_exceptions=False,
+            ) as project_manager_client:
+                restricted = project_manager_client.get(
+                    f"/api/v1/demands/{number}/workflow-actions"
+                )
+                self.assertEqual(restricted.status_code, 200, restricted.text)
+                available = set(restricted.json()["available_actions"])
+                self.assertIn("modify", available)
+                self.assertIn("cancel", available)
+                self.assertNotIn("approve", available)
+                self.assertNotIn("correction", available)
 
 
 if __name__ == "__main__":
