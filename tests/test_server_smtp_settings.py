@@ -8,6 +8,7 @@ from cryptography.fernet import Fernet
 from fastapi.testclient import TestClient
 
 from app.application.security import AuthPrincipal, ROLE_COORDINATOR
+from app.application.smtp_settings import SmtpConnectionTestResult, SmtpTestLogEntry
 from app.infrastructure.smtp import FernetSecretCipher
 from app.infrastructure.sql import Base, create_sql_engine
 from app.server import create_api_app
@@ -16,6 +17,29 @@ from tests.http_test_auth import TEST_ADMIN_AUTH_RESOLVER
 
 
 TEST_DOMAIN = "example.test"
+
+
+class FailingDiagnosticSmtpClient:
+    def test_connection(self, configuration):
+        return SmtpConnectionTestResult(
+            ok=False,
+            message="Échec du test SMTP à l'étape « authentification ».",
+            log=(
+                SmtpTestLogEntry(
+                    level="INFO",
+                    step="connexion",
+                    message="Connexion TCP établie.",
+                ),
+                SmtpTestLogEntry(
+                    level="ERROR",
+                    step="authentification",
+                    message="SMTP 535: Authentication failed",
+                ),
+            ),
+        )
+
+    def send_message(self, configuration, message, *, message_id: str) -> str:
+        return message_id
 
 
 class FakeSmtpClient:
@@ -95,6 +119,41 @@ class ServerSmtpSettingsTests(unittest.TestCase):
 
             self.assertEqual(len(fake.tested), 1)
             self.assertEqual(fake.tested[0].credential, secret_value)
+
+    def test_failed_smtp_test_returns_diagnostic_log_without_http_error(self) -> None:
+        with TemporaryDirectory() as directory:
+            app = create_api_app(
+                self._database(directory),
+                auth_resolver=TEST_ADMIN_AUTH_RESOLVER,
+                smtp_client=FailingDiagnosticSmtpClient(),
+            )
+            with TestClient(app) as client:
+                configured = client.put(
+                    "/api/v1/admin/settings/smtp",
+                    json={
+                        "host": "smtp.example.invalid",
+                        "port": 587,
+                        "security": "STARTTLS",
+                        "username": None,
+                        "password": None,
+                        "clear_password": False,
+                        "from_email": "planning" + chr(64) + TEST_DOMAIN,
+                        "from_name": "RessourcePlanner",
+                        "reply_to": None,
+                        "timeout_seconds": 20,
+                        "enabled": False,
+                    },
+                )
+                self.assertEqual(configured.status_code, 200, configured.text)
+
+                response = client.post("/api/v1/admin/settings/smtp/test")
+                self.assertEqual(response.status_code, 200, response.text)
+                payload = response.json()
+                self.assertFalse(payload["ok"])
+                self.assertEqual(payload["log"][-1]["level"], "ERROR")
+                self.assertEqual(payload["log"][-1]["step"], "authentification")
+                self.assertIn("SMTP 535", payload["log"][-1]["message"])
+                self.assertNotIn("password", response.text.lower())
 
     def test_coordinator_cannot_read_or_change_admin_settings(self) -> None:
         with TemporaryDirectory() as directory:
