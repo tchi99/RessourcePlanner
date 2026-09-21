@@ -267,8 +267,9 @@ test("V2 local acceptance path runs through React, Chromium, FastAPI and SQLite"
     await expect(page.locator(".demand-notice")).toContainText("soumise pour approbation");
     await expect(page.getByTestId("plan-delta-preview")).toBeVisible();
 
-    await page.getByRole("button", { name: "Approuver", exact: true }).click();
-    await expect(page.locator(".error-panel")).toContainText("permission_denied");
+    await expect(
+      page.getByRole("button", { name: "Approuver", exact: true }),
+    ).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Segments", exact: true })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Urgence", exact: true })).toHaveCount(0);
 
