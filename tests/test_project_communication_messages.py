@@ -260,7 +260,7 @@ class ProjectCommunicationMessageTests(unittest.TestCase):
 
         self.assertIn("Alice — 8 h (Tentative, hors horaire)", draft.body)
 
-    def test_fingerprint_changes_when_hours_change_even_if_body_does_not(self) -> None:
+    def test_fingerprint_changes_when_hours_change(self) -> None:
         first = build_project_confirmation_batch(
             projection(
                 project(
@@ -286,6 +286,17 @@ class ProjectCommunicationMessageTests(unittest.TestCase):
             second.drafts[0].content_fingerprint,
         )
         self.assertNotEqual(first.snapshot_fingerprint, second.snapshot_fingerprint)
+
+    def test_delta_rejects_different_weeks(self) -> None:
+        previous = projection(project())
+        current = ProjectCommunicationProjection(
+            week_start=date(2026, 9, 28),
+            week_end=date(2026, 10, 4),
+            projects=(project(),),
+        )
+
+        with self.assertRaises(ValueError):
+            compare_project_communication_projections(previous, current)
 
     def test_delta_only_creates_draft_for_affected_project(self) -> None:
         stable = project(project_id="P1", number="1000")
