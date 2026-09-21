@@ -9,6 +9,7 @@ from fastapi.responses import JSONResponse
 
 from ..application.security import (
     AuthPrincipal,
+    PERMISSION_ADMIN_SETTINGS,
     PERMISSION_ADMIN_USERS,
     PERMISSION_APPROVE_DEMANDS,
     PERMISSION_MANAGE_COMMUNICATIONS,
@@ -51,6 +52,8 @@ def required_permission(method: str, path: str) -> str | None:
         return None
     if path.startswith("/api/v1/dev/user-switcher"):
         return None
+    if path.startswith("/api/v1/admin/settings"):
+        return PERMISSION_ADMIN_SETTINGS
     if path.startswith("/api/v1/admin/users"):
         return PERMISSION_ADMIN_USERS
     if path.startswith("/api/v1/communications"):
