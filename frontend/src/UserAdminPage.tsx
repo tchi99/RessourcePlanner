@@ -19,6 +19,7 @@ type Draft = {
   subject: string;
   display_name: string;
   email: string;
+  phone: string;
   roles: string[];
   active: boolean;
 };
@@ -29,6 +30,7 @@ function blankDraft(): Draft {
     subject: "",
     display_name: "",
     email: "",
+    phone: "",
     roles: [],
     active: true,
   };
@@ -40,6 +42,7 @@ function draftFrom(user: UserAdminReadModel): Draft {
     subject: user.subject,
     display_name: user.display_name,
     email: user.email ?? "",
+    phone: user.phone ?? "",
     roles: [...user.roles],
     active: user.active,
   };
@@ -172,6 +175,7 @@ export default function UserAdminPage() {
           subject: draft.subject.trim(),
           display_name: draft.display_name.trim(),
           email: draft.email.trim() || null,
+          phone: draft.phone.trim() || null,
           roles: draft.roles,
           active: draft.active,
         };
@@ -181,6 +185,7 @@ export default function UserAdminPage() {
         saved = await updateAdminUser(selected.user_id, {
           display_name: draft.display_name.trim(),
           email: draft.email.trim() || null,
+          phone: draft.phone.trim() || null,
           roles: draft.roles,
           active: draft.active,
         });
@@ -208,7 +213,7 @@ export default function UserAdminPage() {
           <span className="eyebrow">Sécurité</span>
           <h2>Utilisateurs et rôles</h2>
           <p>
-            Les identités OIDC sont provisionnées ici. Les permissions effectives restent définies et appliquées par FastAPI.
+            Les identités OIDC et leurs profils métier sont administrés ici. Les permissions restent définies et appliquées par FastAPI.
           </p>
         </div>
         <button className="primary-button" type="button" onClick={startCreate}>
@@ -307,6 +312,14 @@ export default function UserAdminPage() {
                     type="email"
                     value={draft.email}
                     onChange={(event) => setDraft((current) => ({ ...current, email: event.target.value }))}
+                    placeholder="Optionnel"
+                  />
+                </label>
+                <label>
+                  Téléphone
+                  <input
+                    value={draft.phone}
+                    onChange={(event) => setDraft((current) => ({ ...current, phone: event.target.value }))}
                     placeholder="Optionnel"
                   />
                 </label>
