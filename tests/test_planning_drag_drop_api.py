@@ -24,97 +24,105 @@ from app.server import create_api_app
 
 
 from tests.http_test_auth import TEST_ADMIN_AUTH_RESOLVER
+from tests.sqlite_test_template import SqliteDatabaseTemplate
 
 create_api_app = partial(create_api_app, auth_resolver=TEST_ADMIN_AUTH_RESOLVER)
 
 class PlanningDragDropApiTests(unittest.TestCase):
-    def _database(self, directory: str) -> str:
-        path = Path(directory) / "planning-drag-drop.db"
-        url = f"sqlite+pysqlite:///{path.as_posix()}"
-        engine = create_sql_engine(url)
-        Base.metadata.create_all(engine)
-        factory = create_session_factory(engine)
+    @staticmethod
+    def _seed_database(session) -> None:
+        project = Project(
+            id="P-275",
+            number="P-275",
+            name="Projet drag drop",
+            status="active",
+        )
+        alice = Resource(
+            id="R-ALICE-275",
+            name="Alice DnD",
+            resource_class="Programmation",
+            active=True,
+            sort_order=10,
+        )
+        bob = Resource(
+            id="R-BOB-275",
+            name="Bob DnD",
+            resource_class="Programmation",
+            active=True,
+            sort_order=20,
+        )
+        session.add_all([project, alice, bob])
+        session.flush()
 
-        with factory.begin() as session:
-            project = Project(
-                id="P-275",
-                number="P-275",
-                name="Projet drag drop",
-                status="active",
-            )
-            alice = Resource(
-                id="R-ALICE-275",
-                name="Alice DnD",
-                resource_class="Programmation",
-                active=True,
-                sort_order=10,
-            )
-            bob = Resource(
-                id="R-BOB-275",
-                name="Bob DnD",
-                resource_class="Programmation",
-                active=True,
-                sort_order=20,
-            )
-            session.add_all([project, alice, bob])
-            session.flush()
-
-            for resource, suffix in ((alice, "ALICE"), (bob, "BOB")):
-                session.add(
-                    ResourceAvailabilityRule(
-                        id=f"SCH-{suffix}-275",
-                        resource_id=resource.id,
-                        availability_type="Horaire standard",
-                        start_date=date(2026, 1, 1),
-                        end_date=date(2026, 12, 31),
-                        weekdays="Lun,Mar,Mer,Jeu,Ven",
-                        start_time=time(7, 0),
-                        end_time=time(15, 0),
-                        active=True,
-                    )
-                )
+        for resource, suffix in ((alice, "ALICE"), (bob, "BOB")):
             session.add(
                 ResourceAvailabilityRule(
-                    id="VAC-BOB-275",
-                    resource_id=bob.id,
-                    availability_type="Vacances",
-                    start_date=date(2026, 9, 23),
-                    end_date=date(2026, 9, 23),
+                    id=f"SCH-{suffix}-275",
+                    resource_id=resource.id,
+                    availability_type="Horaire standard",
+                    start_date=date(2026, 1, 1),
+                    end_date=date(2026, 12, 31),
+                    weekdays="Lun,Mar,Mer,Jeu,Ven",
+                    start_time=time(7, 0),
+                    end_time=time(15, 0),
                     active=True,
                 )
             )
-
-            requirement = ResourceRequirement(
-                id="REQ-275",
-                legacy_segment_id="SEG-275",
-                project_id=project.id,
-                assigned_resource_id=alice.id,
-                start_date=date(2026, 9, 21),
-                end_date=date(2026, 9, 25),
-                planned_hours=Decimal("8"),
-                status="Planifié",
-                confirmation="Confirmée",
-                origin="AD_HOC",
+        session.add(
+            ResourceAvailabilityRule(
+                id="VAC-BOB-275",
+                resource_id=bob.id,
+                availability_type="Vacances",
+                start_date=date(2026, 9, 23),
+                end_date=date(2026, 9, 23),
+                active=True,
             )
-            session.add(requirement)
-            session.flush()
-            session.add(
-                Shift(
-                    id="SHIFT-275",
-                    resource_requirement_id=requirement.id,
-                    resource_id=alice.id,
-                    work_date=date(2026, 9, 21),
-                    hours=Decimal("8"),
-                    allocation_type="Flexible",
-                    source="AUTO",
-                    locked=False,
-                    outside_standard_hours=False,
-                    note="Quart généré",
-                )
-            )
+        )
 
-        engine.dispose()
-        return url
+        requirement = ResourceRequirement(
+            id="REQ-275",
+            legacy_segment_id="SEG-275",
+            project_id=project.id,
+            assigned_resource_id=alice.id,
+            start_date=date(2026, 9, 21),
+            end_date=date(2026, 9, 25),
+            planned_hours=Decimal("8"),
+            status="Planifié",
+            confirmation="Confirmée",
+            origin="AD_HOC",
+        )
+        session.add(requirement)
+        session.flush()
+        session.add(
+            Shift(
+                id="SHIFT-275",
+                resource_requirement_id=requirement.id,
+                resource_id=alice.id,
+                work_date=date(2026, 9, 21),
+                hours=Decimal("8"),
+                allocation_type="Flexible",
+                source="AUTO",
+                locked=False,
+                outside_standard_hours=False,
+                note="Quart généré",
+            )
+        )
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        super().setUpClass()
+        cls._database_template = SqliteDatabaseTemplate(
+            filename="planning-drag-drop.db",
+            seed=cls._seed_database,
+        )
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        cls._database_template.cleanup()
+        super().tearDownClass()
+
+    def _database(self, directory: str) -> str:
+        return self._database_template.copy_to(directory)
 
     def test_move_contract_reassigns_day_and_locks_explicit_decision(self) -> None:
         with TemporaryDirectory() as directory:
