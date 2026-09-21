@@ -22,6 +22,7 @@ from app.infrastructure.sql import (
 )
 from app.server import create_api_app
 from app.server.oidc import OidcRuntime, oidc_session_auth_resolver
+from tests.sqlite_test_template import SqliteDatabaseTemplate
 
 
 ISSUER = "https://identity.example.invalid"
@@ -54,24 +55,39 @@ class FakeOidcClient:
 
 
 class ServerOidcTests(unittest.TestCase):
+    @classmethod
+    def _seed_database(cls, session) -> None:
+        user = SqlUserIdentityRepository(session).upsert(
+            issuer=ISSUER,
+            subject="subject-1",
+            display_name="Technicien OIDC",
+            email=None,
+            roles=(ROLE_TECHNICIAN,),
+        )
+        cls.user_id = user.user_id
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        super().setUpClass()
+        cls._database_template = SqliteDatabaseTemplate(
+            filename="oidc.db",
+            seed=cls._seed_database,
+        )
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        cls._database_template.cleanup()
+        super().tearDownClass()
+
     def setUp(self) -> None:
         self.temp = TemporaryDirectory()
         self.database_path = Path(self.temp.name) / "oidc.db"
-        self.database_url = f"sqlite+pysqlite:///{self.database_path.as_posix()}"
-        engine = create_sql_engine(self.database_url)
-        Base.metadata.create_all(engine)
-        self.factory = create_session_factory(engine)
-        with self.factory.begin() as session:
-            self.user = SqlUserIdentityRepository(session).upsert(
-                issuer=ISSUER,
-                subject="subject-1",
-                display_name="Technicien OIDC",
-                email=None,
-                roles=(ROLE_TECHNICIAN,),
-            )
-        engine.dispose()
+        self.database_url = self._database_template.copy_to(self.temp.name)
+        self.engine = create_sql_engine(self.database_url)
+        self.factory = create_session_factory(self.engine)
 
     def tearDown(self) -> None:
+        self.engine.dispose()
         self.temp.cleanup()
 
     def _app(
@@ -254,13 +270,13 @@ class ServerOidcTests(unittest.TestCase):
             repository.create_session(
                 raw_token="expired-token",
                 csrf_token="expired-csrf",
-                user_id=self.user.user_id,
+                user_id=self.user_id,
                 expires_at=now - timedelta(seconds=1),
             )
             repository.create_session(
                 raw_token="revoked-token",
                 csrf_token="revoked-csrf",
-                user_id=self.user.user_id,
+                user_id=self.user_id,
                 expires_at=now + timedelta(hours=1),
             )
             repository.revoke_session("revoked-token")
