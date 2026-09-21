@@ -35,6 +35,9 @@ class MicrosoftGraphCommunicationTransportTests(unittest.TestCase):
             recipient_email=address,
             subject="Planning semaine prochaine",
             body="Bonjour\nVoici votre planning.",
+            cc_emails=(
+                "cc-" + local_part + chr(64) + TEST_DOMAIN,
+            ),
         )
 
     def test_create_drafts_uses_app_only_token_and_never_calls_send(self) -> None:
@@ -54,6 +57,10 @@ class MicrosoftGraphCommunicationTransportTests(unittest.TestCase):
                 payload = json.loads(request.content)
                 self.assertEqual(payload["body"]["contentType"], "Text")
                 self.assertTrue(payload["toRecipients"][0]["emailAddress"]["address"].endswith(TEST_DOMAIN))
+                self.assertEqual(len(payload["ccRecipients"]), 1)
+                self.assertTrue(
+                    payload["ccRecipients"][0]["emailAddress"]["address"].endswith(TEST_DOMAIN)
+                )
                 self.assertEqual(request.headers["Authorization"], "Bearer test-token")
                 return httpx.Response(201, json={"id": f"draft-{draft_number}"})
             self.fail(f"Requête Graph inattendue: {request.method} {request.url}")
