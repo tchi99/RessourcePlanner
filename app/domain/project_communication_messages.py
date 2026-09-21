@@ -8,9 +8,12 @@ from typing import Sequence
 
 from .operational_contacts import ContactResolution, STATUS_RESOLVED
 from .project_communication import (
+    ProjectCommunicationDay,
     ProjectCommunicationParticipant,
     ProjectCommunicationProject,
     ProjectCommunicationProjection,
+    ProjectCommunicationResource,
+    ProjectCommunicationTask,
 )
 
 
@@ -677,10 +680,7 @@ def deserialize_project_projection(payload: str) -> ProjectCommunicationProjecti
             tasks = []
             for task_row in day_row.get("tasks") or ():
                 resources = tuple(
-                    __import__(
-                        "app.domain.project_communication",
-                        fromlist=["ProjectCommunicationResource"],
-                    ).ProjectCommunicationResource(
+                    ProjectCommunicationResource(
                         resource_id=str(resource_row.get("resource_id") or ""),
                         resource_name=str(resource_row.get("resource_name") or ""),
                         contact=participant(resource_row.get("contact") or {}),
@@ -702,10 +702,7 @@ def deserialize_project_projection(payload: str) -> ProjectCommunicationProjecti
                     for resource_row in task_row.get("resources") or ()
                 )
                 tasks.append(
-                    __import__(
-                        "app.domain.project_communication",
-                        fromlist=["ProjectCommunicationTask"],
-                    ).ProjectCommunicationTask(
+                    ProjectCommunicationTask(
                         task_description=str(
                             task_row.get("task_description") or ""
                         ),
@@ -722,10 +719,7 @@ def deserialize_project_projection(payload: str) -> ProjectCommunicationProjecti
                     )
                 )
             days.append(
-                __import__(
-                    "app.domain.project_communication",
-                    fromlist=["ProjectCommunicationDay"],
-                ).ProjectCommunicationDay(
+                ProjectCommunicationDay(
                     day=date.fromisoformat(str(day_row["day"])),
                     tasks=tuple(tasks),
                 )
