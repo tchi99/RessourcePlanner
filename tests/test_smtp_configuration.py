@@ -60,7 +60,7 @@ class SmtpConfigurationTests(unittest.TestCase):
                         port=587,
                         security=SMTP_SECURITY_STARTTLS,
                         username="mailer",
-                        password=secret_value,
+                        credential=secret_value,
                         clear_password=False,
                         from_email="planning" + chr(64) + TEST_DOMAIN,
                         from_name="RessourcePlanner",
@@ -82,7 +82,7 @@ class SmtpConfigurationTests(unittest.TestCase):
 
                 service.test_connection()
                 self.assertEqual(len(fake.tested), 1)
-                self.assertEqual(fake.tested[0].password, secret_value)
+                self.assertEqual(fake.tested[0].credential, secret_value)
         finally:
             engine.dispose()
 
@@ -102,7 +102,7 @@ class SmtpConfigurationTests(unittest.TestCase):
                             port=587,
                             security=SMTP_SECURITY_STARTTLS,
                             username="mailer",
-                            password="smtp-" + "secret",
+                            credential="smtp-" + "secret",
                             clear_password=False,
                             from_email="planning" + chr(64) + TEST_DOMAIN,
                             from_name=None,
