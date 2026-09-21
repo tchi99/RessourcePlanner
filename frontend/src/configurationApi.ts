@@ -16,6 +16,18 @@ export type SmtpConfiguration = {
   updated_at: string | null;
 };
 
+export type SmtpTestLogEntry = {
+  level: "INFO" | "SUCCESS" | "ERROR";
+  step: string;
+  message: string;
+};
+
+export type SmtpConnectionTestResult = {
+  ok: boolean;
+  message: string;
+  log: SmtpTestLogEntry[];
+};
+
 export type SmtpConfigurationUpdate = {
   host: string;
   port: number;
@@ -71,7 +83,7 @@ export function saveSmtpConfiguration(payload: SmtpConfigurationUpdate) {
 }
 
 export function testSmtpConnection() {
-  return request<{ ok: boolean; message: string }>("/api/v1/admin/settings/smtp/test", {
+  return request<SmtpConnectionTestResult>("/api/v1/admin/settings/smtp/test", {
     method: "POST",
   });
 }
