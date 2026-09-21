@@ -16,7 +16,7 @@ class SqlIdentityResourceLinkRepository(IdentityResourceLinkRepositoryPort):
 
     def get_user_by_id(self, user_id: str) -> UserIdentityRecord | None:
         row = self._session.get(AppUser, str(user_id).strip())
-        return SqlUserIdentityRepository._record(row) if row is not None else None
+        return SqlUserIdentityRepository(self._session)._record(row) if row is not None else None
 
     def get_user_by_employee_external_id(
         self,
@@ -28,7 +28,7 @@ class SqlIdentityResourceLinkRepository(IdentityResourceLinkRepositoryPort):
         row = self._session.scalar(
             select(AppUser).where(AppUser.employee_external_id == external_id)
         )
-        return SqlUserIdentityRepository._record(row) if row is not None else None
+        return SqlUserIdentityRepository(self._session)._record(row) if row is not None else None
 
     def resource_exists_by_external_id(self, employee_external_id: str) -> bool:
         external_id = str(employee_external_id or "").strip()
@@ -49,4 +49,4 @@ class SqlIdentityResourceLinkRepository(IdentityResourceLinkRepositoryPort):
         value = str(employee_external_id or "").strip() or None
         row.employee_external_id = value
         self._session.flush()
-        return SqlUserIdentityRepository._record(row)
+        return SqlUserIdentityRepository(self._session)._record(row)
