@@ -21,15 +21,14 @@ class ReactBusinessContactContractTests(unittest.TestCase):
         self.assertIn("/api/v1/request-lines/", source)
         self.assertIn("RequestLineContactResolutionReadModel", source)
 
-    def test_resources_page_keeps_business_contacts_distinct_from_auth_users(self) -> None:
+    def test_resources_page_selects_user_backed_business_contacts(self) -> None:
         source = (FRONTEND / "ResourcesPage.tsx").read_text(encoding="utf-8")
-        panel = (FRONTEND / "BusinessContactsPanel.tsx").read_text(encoding="utf-8")
+        api = (FRONTEND / "api.ts").read_text(encoding="utf-8")
 
         self.assertIn("Coordonnateur de la ressource", source)
         self.assertIn("setResourceCoordinatorContact", source)
-        self.assertIn("BusinessContactsPanel", source)
-        self.assertIn("Aucun rôle d'accès n'est accordé ici.", panel)
-        self.assertNotIn("AppUser", panel)
+        self.assertNotIn("BusinessContactsPanel", source)
+        self.assertIn('user_backed_only: "true"', api)
 
     def test_projects_page_exposes_separate_task_responsible_and_coordinator(self) -> None:
         source = (FRONTEND / "ProjectsPage.tsx").read_text(encoding="utf-8")
