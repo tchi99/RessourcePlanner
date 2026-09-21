@@ -16,6 +16,8 @@ from ..application import (
     WorkPackageService,
 )
 from ..application.communications import CommunicationService, CommunicationTransportPort
+from ..application.operational_contacts import OperationalContactService
+from ..application.project_communications import ProjectCommunicationService
 from ..application.quick_shift_service import QuickShiftService
 from ..application.segment_service import SegmentService
 from ..application.user_admin import UserAdminService
@@ -31,6 +33,8 @@ from ..infrastructure.sql import (
     SqlEmergencyDemandRepository,
     SqlOverallocationAllocationCommandAdapter,
     SqlPeriodAwareApprovedDemandSyncAdapter,
+    SqlOperationalContactRepository,
+    SqlProjectCommunicationRepository,
     SqlPlannerQueryRepositoryWithLoadProfiles,
     SqlPlanningCommandAdapter,
     SqlResourceAdminRepository,
@@ -149,6 +153,22 @@ def build_communication_service(
     """Compose controlled communication preparation and explicit external draft creation."""
 
     return CommunicationService(SqlCommunicationRepository(session), transport=transport)
+
+
+def build_project_communication_service(
+    session: Session,
+) -> ProjectCommunicationService:
+    """Compose the #290 project-centric communication projection."""
+
+    operational = OperationalContactService(
+        SqlOperationalContactRepository(session)
+    )
+    return ProjectCommunicationService(
+        SqlProjectCommunicationRepository(
+            session,
+            operational_contacts=operational,
+        )
+    )
 
 
 def build_business_contact_admin_service(
