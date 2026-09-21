@@ -368,6 +368,7 @@ class DemandService:
     ) -> tuple[Sequence[DemandPeriodReadModel], bool]:
         number = self._required_identifier(command.number, entity="demand")
         existing = self._demand_or_not_found(number)
+        self._assert_workflow_action(existing, ACTION_MODIFY)
         request_line_id = self._period_line_scope(
             existing,
             command.request_line_id,
@@ -484,6 +485,7 @@ class DemandService:
         )
         period_id = self._required_identifier(command.period_id, entity="period")
         existing = self._demand_or_not_found(number)
+        self._assert_workflow_action(existing, ACTION_MODIFY)
         request_line_id = self._period_line_scope(
             existing,
             command.request_line_id,
