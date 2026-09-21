@@ -117,7 +117,7 @@ class SqlAuthSessionRepository:
         user = self._session.get(AppUser, row.user_id)
         if user is None or not user.active:
             return None
-        record = SqlUserIdentityRepository._record(user)
+        record = SqlUserIdentityRepository(self._session)._record(user)
         return AuthPrincipal.from_roles(
             local_user_id=record.user_id,
             issuer=record.issuer,
