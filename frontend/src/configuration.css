@@ -108,3 +108,71 @@
     flex-direction: column;
   }
 }
+
+
+.configuration-key-help {
+  display: grid;
+  gap: 0.35rem;
+  margin-top: 0.35rem;
+  padding: 0.65rem;
+  border: 1px solid #e4e7ec;
+  border-radius: 8px;
+  background: #f8fafc;
+  font-size: 0.75rem;
+}
+
+.configuration-key-help code,
+.smtp-test-log code {
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.smtp-test-log {
+  gap: 0.75rem;
+}
+
+.smtp-test-success {
+  color: #067647;
+}
+
+.smtp-test-error {
+  color: #b42318;
+}
+
+.smtp-test-log-list {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.smtp-test-log-entry {
+  display: grid;
+  grid-template-columns: 72px 120px minmax(0, 1fr);
+  gap: 0.5rem;
+  align-items: start;
+  padding: 0.55rem 0.65rem;
+  border-radius: 8px;
+  background: #f8fafc;
+  font-size: 0.75rem;
+}
+
+.smtp-test-log-entry > span {
+  font-weight: 800;
+}
+
+.smtp-test-log-entry.level-success > span {
+  color: #067647;
+}
+
+.smtp-test-log-entry.level-error {
+  background: #fff1f0;
+}
+
+.smtp-test-log-entry.level-error > span {
+  color: #b42318;
+}
+
+@media (max-width: 620px) {
+  .smtp-test-log-entry {
+    grid-template-columns: 1fr;
+  }
+}

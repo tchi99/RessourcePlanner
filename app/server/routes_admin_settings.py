@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+
 from typing import Any, Callable
 
 from fastapi import APIRouter, Depends, Request
@@ -9,12 +11,15 @@ from ..application.security import AuthPrincipal
 from ..application.smtp_settings import (
     SMTP_SECURITY_MODES,
     SmtpConfigurationService,
+    SmtpConnectionTestResult,
     SmtpConfigurationUpdate,
     SmtpConfigurationView,
 )
 
 
 SmtpSettingsProvider = Callable[..., Any]
+
+LOGGER = logging.getLogger(__name__)
 
 
 class StrictRequest(BaseModel):
@@ -85,11 +90,15 @@ def build_admin_settings_router(
     @router.post("/smtp/test")
     def test_smtp_connection(
         service: SmtpConfigurationService = Depends(smtp_dependency),
-    ) -> dict[str, object]:
-        service.test_connection()
-        return {
-            "ok": True,
-            "message": "Connexion SMTP réussie.",
-        }
+    ) -> SmtpConnectionTestResult:
+        result = service.test_connection()
+        for entry in result.log:
+            message = "smtp_test step=%s level=%s message=%s"
+            args = (entry.step, entry.level, entry.message)
+            if entry.level == "ERROR":
+                LOGGER.warning(message, *args)
+            else:
+                LOGGER.info(message, *args)
+        return result
 
     return router

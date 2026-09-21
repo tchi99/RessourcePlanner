@@ -6,6 +6,7 @@ from typing import Protocol
 
 from .communications import CommunicationTransportMessage
 from .errors import (
+    ApplicationError,
     ApplicationUnavailableError,
     ApplicationValidationError,
 )
@@ -14,6 +15,20 @@ from .errors import (
 SMTP_SECURITY_STARTTLS = "STARTTLS"
 SMTP_SECURITY_SSL_TLS = "SSL_TLS"
 SMTP_SECURITY_MODES = (SMTP_SECURITY_STARTTLS, SMTP_SECURITY_SSL_TLS)
+
+
+@dataclass(frozen=True, slots=True)
+class SmtpTestLogEntry:
+    level: str
+    step: str
+    message: str
+
+
+@dataclass(frozen=True, slots=True)
+class SmtpConnectionTestResult:
+    ok: bool
+    message: str
+    log: tuple[SmtpTestLogEntry, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -95,7 +110,10 @@ class SecretCipherPort(Protocol):
 
 
 class SmtpClientPort(Protocol):
-    def test_connection(self, configuration: SmtpRuntimeConfiguration) -> None: ...
+    def test_connection(
+        self,
+        configuration: SmtpRuntimeConfiguration,
+    ) -> SmtpConnectionTestResult: ...
 
     def send_message(
         self,
@@ -362,16 +380,56 @@ class SmtpConfigurationService:
             timeout_seconds=row.timeout_seconds,
         )
 
-    def test_connection(self) -> None:
-        configuration = self.runtime_configuration(require_enabled=False)
+    def test_connection(self) -> SmtpConnectionTestResult:
         try:
-            self._client.test_connection(configuration)
+            configuration = self.runtime_configuration(require_enabled=False)
+        except ApplicationError as exc:
+            return SmtpConnectionTestResult(
+                ok=False,
+                message=exc.message,
+                log=(
+                    SmtpTestLogEntry(
+                        level="ERROR",
+                        step="configuration",
+                        message=f"{exc.code}: {exc.message}",
+                    ),
+                ),
+            )
+
+        try:
+            result = self._client.test_connection(configuration)
         except Exception as exc:
-            raise ApplicationUnavailableError(
-                "La connexion SMTP a échoué.",
-                code="smtp_connection_failed",
-                context={"reason": type(exc).__name__},
-            ) from exc
+            return SmtpConnectionTestResult(
+                ok=False,
+                message="La connexion SMTP a échoué.",
+                log=(
+                    SmtpTestLogEntry(
+                        level="ERROR",
+                        step="client",
+                        message=type(exc).__name__,
+                    ),
+                ),
+            )
+
+        if result is None:
+            return SmtpConnectionTestResult(
+                ok=True,
+                message="Connexion SMTP réussie.",
+                log=(
+                    SmtpTestLogEntry(
+                        level="SUCCESS",
+                        step="résultat",
+                        message="Le client SMTP a confirmé la connexion.",
+                    ),
+                ),
+            )
+        if result.ok:
+            return result
+        return SmtpConnectionTestResult(
+            ok=False,
+            message=result.message or "La connexion SMTP a échoué.",
+            log=result.log,
+        )
 
     def send_message(
         self,

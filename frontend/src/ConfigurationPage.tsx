@@ -3,6 +3,7 @@ import { FormEvent, useEffect, useState } from "react";
 import {
   SmtpConfiguration,
   SmtpConfigurationUpdate,
+  SmtpConnectionTestResult,
   getSmtpConfiguration,
   saveSmtpConfiguration,
   testSmtpConnection,
@@ -55,6 +56,7 @@ export default function ConfigurationPage() {
   const [testing, setTesting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [smtpTest, setSmtpTest] = useState<SmtpConnectionTestResult | null>(null);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -130,9 +132,15 @@ export default function ConfigurationPage() {
     setTesting(true);
     setError(null);
     setNotice(null);
+    setSmtpTest(null);
     try {
       const result = await testSmtpConnection();
-      setNotice(result.message);
+      setSmtpTest(result);
+      if (result.ok) {
+        setNotice(result.message);
+      } else {
+        setError(result.message);
+      }
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Le test SMTP a échoué.");
     } finally {
@@ -171,8 +179,18 @@ export default function ConfigurationPage() {
           <small>
             {configuration.encryption_available
               ? "Les nouveaux secrets peuvent être chiffrés avant stockage SQL."
-              : "Définissez RESOURCEPLANNER_CONFIG_ENCRYPTION_KEY sur le serveur pour gérer un mot de passe SMTP."}
+              : "Définissez RESOURCEPLANNER_CONFIG_ENCRYPTION_KEY dans le .env utilisé par le backend, puis recréez le conteneur backend."}
           </small>
+          {!configuration.encryption_available && (
+            <div className="configuration-key-help">
+              <span>Générer une clé Fernet :</span>
+              <code>
+                python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+              </code>
+              <span>Puis ajoutez la valeur au fichier <code>.env</code> :</span>
+              <code>RESOURCEPLANNER_CONFIG_ENCRYPTION_KEY=&lt;clé générée&gt;</code>
+            </div>
+          )}
         </div>
         <div className="configuration-card">
           <span className="eyebrow">Secret SMTP</span>
@@ -323,6 +341,36 @@ export default function ConfigurationPage() {
           </button>
         </div>
       </form>
+
+      {smtpTest && (
+        <section className="configuration-card smtp-test-log" aria-live="polite">
+          <div className="configuration-section-heading">
+            <div>
+              <span className="eyebrow">Diagnostic</span>
+              <h3>Journal du dernier test SMTP</h3>
+            </div>
+            <strong className={smtpTest.ok ? "smtp-test-success" : "smtp-test-error"}>
+              {smtpTest.ok ? "Succès" : "Échec"}
+            </strong>
+          </div>
+          <div className="smtp-test-log-list">
+            {smtpTest.log.map((entry, index) => (
+              <div
+                className={`smtp-test-log-entry level-${entry.level.toLowerCase()}`}
+                key={`${entry.step}-${index}`}
+              >
+                <span>{entry.level}</span>
+                <strong>{entry.step}</strong>
+                <code>{entry.message}</code>
+              </div>
+            ))}
+          </div>
+          <small>
+            Le journal masque le mot de passe SMTP. Il est également écrit dans les logs du backend
+            sous la forme <code>smtp_test ...</code>.
+          </small>
+        </section>
+      )}
     </section>
   );
 }
