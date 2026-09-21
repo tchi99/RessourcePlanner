@@ -220,7 +220,12 @@ class SqlPeriodAwareApprovedDemandSyncAdapter(ApprovedDemandSyncPort):
                 "HeuresPrevues": planned_hours,
                 "JoursActifsCibles": period.desired_active_days,
                 "Statut": "Planifié" if proposed is not None else "À assigner",
-                "Description": period.note or request.description or "Période approuvée",
+                "Description": (
+                    period.note
+                    or request.erp_task_label
+                    or request.description
+                    or "Période approuvée"
+                ),
                 "CompetenceRequise": request.required_competencies,
                 "TypePlanification": "Flexible",
                 "Priorite": request.priority or "Normale",
@@ -346,7 +351,12 @@ class SqlPeriodAwareApprovedDemandSyncAdapter(ApprovedDemandSyncPort):
                 requirement.end_date = period.end_date
                 requirement.planned_hours = Decimal(str(split_hours[index])).quantize(Decimal("0.01"))
                 requirement.desired_active_days = period.desired_active_days
-                requirement.description = period.note or request.description or ""
+                requirement.description = (
+                    period.note
+                    or request.erp_task_label
+                    or request.description
+                    or ""
+                )
                 requirement.required_competency = request.required_competencies
                 requirement.priority = request.priority or "Normale"
                 requirement.origin = ORIGIN_REQUEST
@@ -565,6 +575,7 @@ class SqlPeriodAwareApprovedDemandSyncAdapter(ApprovedDemandSyncPort):
                     proposed_resource_id=line.proposed_resource_id,
                     description=(
                         _text(line.description)
+                        or _text(line.erp_task_label)
                         or _text(request.description)
                         or "Besoin approuvé"
                     ),
