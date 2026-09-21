@@ -38,106 +38,120 @@ from app.infrastructure.sql.user_view_context_repository import (
 )
 from app.server import create_api_app
 from app.server.security import static_auth_resolver
+from tests.sqlite_test_template import SqliteDatabaseTemplate
 
 
 DAY = date(2026, 9, 21)
 
 
 class UserViewContextTests(unittest.TestCase):
+    @staticmethod
+    def _seed_database(session) -> None:
+        session.add_all(
+            [
+                Project(
+                    id="P-MANAGED",
+                    number="P-100",
+                    name="Projet géré",
+                    project_manager_external_id="EMP-MULTI",
+                    status="Actif",
+                ),
+                Project(
+                    id="P-ASSIGNED",
+                    number="P-200",
+                    name="Projet affecté",
+                    status="Actif",
+                ),
+                Project(
+                    id="P-SHIFTED",
+                    number="P-300",
+                    name="Projet shift",
+                    status="Actif",
+                ),
+                Project(
+                    id="P-PM-ONLY",
+                    number="P-400",
+                    name="Projet CP sans ressource",
+                    project_manager_external_id="EMP-PM-ONLY",
+                    status="Actif",
+                ),
+            ]
+        )
+        session.add_all(
+            [
+                Resource(
+                    id="R-MULTI",
+                    external_id="EMP-MULTI",
+                    name="Ressource multi-rôle",
+                    active=True,
+                    sort_order=10,
+                ),
+                Resource(
+                    id="R-OTHER",
+                    external_id="EMP-OTHER",
+                    name="Autre ressource",
+                    active=True,
+                    sort_order=20,
+                ),
+            ]
+        )
+        session.flush()
+        session.add_all(
+            [
+                ResourceRequirement(
+                    id="REQ-ASSIGNED",
+                    project_id="P-ASSIGNED",
+                    assigned_resource_id="R-MULTI",
+                    start_date=DAY,
+                    end_date=DAY,
+                    planned_hours=Decimal("8"),
+                    status="Planifié",
+                    origin="AD_HOC",
+                ),
+                ResourceRequirement(
+                    id="REQ-SHIFTED",
+                    project_id="P-SHIFTED",
+                    assigned_resource_id="R-OTHER",
+                    start_date=DAY,
+                    end_date=DAY,
+                    planned_hours=Decimal("8"),
+                    status="Planifié",
+                    origin="AD_HOC",
+                ),
+            ]
+        )
+        session.flush()
+        session.add(
+            Shift(
+                id="SHIFT-MULTI",
+                resource_requirement_id="REQ-SHIFTED",
+                resource_id="R-MULTI",
+                work_date=DAY,
+                hours=Decimal("4"),
+                source="MANUAL",
+                locked=True,
+            )
+        )
+
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        super().setUpClass()
+        cls._database_template = SqliteDatabaseTemplate(
+            filename="context.db",
+            seed=cls._seed_database,
+        )
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        cls._database_template.cleanup()
+        super().tearDownClass()
+
     def setUp(self) -> None:
         self.temp = TemporaryDirectory()
-        database = Path(self.temp.name) / "context.db"
-        self.database_url = f"sqlite+pysqlite:///{database.as_posix()}"
+        self.database_url = self._database_template.copy_to(self.temp.name)
         self.engine = create_sql_engine(self.database_url)
-        Base.metadata.create_all(self.engine)
         self.factory = create_session_factory(self.engine)
-
-        with self.factory.begin() as session:
-            session.add_all(
-                [
-                    Project(
-                        id="P-MANAGED",
-                        number="P-100",
-                        name="Projet géré",
-                        project_manager_external_id="EMP-MULTI",
-                        status="Actif",
-                    ),
-                    Project(
-                        id="P-ASSIGNED",
-                        number="P-200",
-                        name="Projet affecté",
-                        status="Actif",
-                    ),
-                    Project(
-                        id="P-SHIFTED",
-                        number="P-300",
-                        name="Projet shift",
-                        status="Actif",
-                    ),
-                    Project(
-                        id="P-PM-ONLY",
-                        number="P-400",
-                        name="Projet CP sans ressource",
-                        project_manager_external_id="EMP-PM-ONLY",
-                        status="Actif",
-                    ),
-                ]
-            )
-            session.add_all(
-                [
-                    Resource(
-                        id="R-MULTI",
-                        external_id="EMP-MULTI",
-                        name="Ressource multi-rôle",
-                        active=True,
-                        sort_order=10,
-                    ),
-                    Resource(
-                        id="R-OTHER",
-                        external_id="EMP-OTHER",
-                        name="Autre ressource",
-                        active=True,
-                        sort_order=20,
-                    ),
-                ]
-            )
-            session.flush()
-            session.add_all(
-                [
-                    ResourceRequirement(
-                        id="REQ-ASSIGNED",
-                        project_id="P-ASSIGNED",
-                        assigned_resource_id="R-MULTI",
-                        start_date=DAY,
-                        end_date=DAY,
-                        planned_hours=Decimal("8"),
-                        status="Planifié",
-                        origin="AD_HOC",
-                    ),
-                    ResourceRequirement(
-                        id="REQ-SHIFTED",
-                        project_id="P-SHIFTED",
-                        assigned_resource_id="R-OTHER",
-                        start_date=DAY,
-                        end_date=DAY,
-                        planned_hours=Decimal("8"),
-                        status="Planifié",
-                        origin="AD_HOC",
-                    ),
-                ]
-            )
-            session.flush()
-            session.add(
-                Shift(
-                    id="SHIFT-MULTI",
-                    resource_requirement_id="REQ-SHIFTED",
-                    resource_id="R-MULTI",
-                    work_date=DAY,
-                    hours=Decimal("4"),
-                    source="MANUAL",
-                    locked=True,
-                )
-            )
 
     def tearDown(self) -> None:
         self.engine.dispose()
