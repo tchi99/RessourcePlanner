@@ -3,7 +3,14 @@ from __future__ import annotations
 from datetime import date, timedelta
 import unittest
 
-from app.infrastructure.sql import Base, create_session_factory, create_sql_engine
+from app.infrastructure.sql import (
+    Base,
+    Project,
+    Resource,
+    SqlUserIdentityRepository,
+    create_session_factory,
+    create_sql_engine,
+)
 from app.infrastructure.sql.web_query_repository import SqlPlannerQueryRepositoryWeb
 from tools.seed_demo_data import seed_demo_database, seed_demo_session
 
@@ -56,6 +63,24 @@ class DemoSeedTests(unittest.TestCase):
         self.assertEqual(pending["DEMO-DMO-002"].window_hours, 12.0)
         self.assertEqual(snapshot.firm_hours, 30.0)
         self.assertEqual(snapshot.potential_hours, 16.0)
+
+        with self.factory() as session:
+            users = SqlUserIdentityRepository(session).list_users()
+            by_name = {user.display_name: user for user in users}
+            self.assertIsNotNone(by_name["Coordonnateur Démo"].business_contact_id)
+            self.assertIsNotNone(by_name["Chargé de projet Démo"].business_contact_id)
+            project = session.get(Project, "DEMO-P-1001")
+            assert project is not None
+            self.assertEqual(
+                project.project_manager_contact_id,
+                by_name["Chargé de projet Démo"].business_contact_id,
+            )
+            resource = session.get(Resource, "DEMO-R-AUTO-1")
+            assert resource is not None
+            self.assertEqual(
+                resource.coordinator_contact_id,
+                by_name["Coordonnateur Démo"].business_contact_id,
+            )
 
     def test_database_entrypoint_refuses_non_sqlite(self) -> None:
         with self.assertRaisesRegex(ValueError, "limité à SQLite"):
