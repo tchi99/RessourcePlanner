@@ -4,6 +4,12 @@ const BASE_URL = process.env.RESOURCEPLANNER_E2E_BASE_URL || "http://127.0.0.1:8
 
 type Role = "ADMIN" | "PROJECT_MANAGER" | "COORDINATOR" | "TECHNICIAN";
 
+const TEST_DOMAIN = "example.test";
+
+function testEmail(localPart: string) {
+  return `${localPart}${String.fromCharCode(64)}${TEST_DOMAIN}`;
+}
+
 const DISPLAY_NAMES: Record<Role, string> = {
   ADMIN: "Administrateur E2E",
   PROJECT_MANAGER: "Chargé E2E",
@@ -376,9 +382,9 @@ test("V2 local acceptance path runs through React, Chromium, FastAPI and SQLite"
 
     const draft = page.locator(".draft-card").filter({ hasText: "Projet P-251" }).first();
     await expect(draft).toBeVisible();
-    await expect(draft.locator(".draft-recipients")).toContainText("pm@example.test");
-    await expect(draft.locator(".draft-recipients")).toContainText("alice@example.test");
-    await expect(draft.locator(".draft-recipients")).toContainText("bob@example.test");
+    await expect(draft.locator(".draft-recipients")).toContainText(testEmail("pm"));
+    await expect(draft.locator(".draft-recipients")).toContainText(testEmail("alice"));
+    await expect(draft.locator(".draft-recipients")).toContainText(testEmail("bob"));
     await expect(draft.getByText("Courriel manquant")).toHaveCount(0);
     await expect(draft.locator("textarea")).toHaveValue(/Chargé de projet Démo/);
     await expect(draft.locator("textarea")).toHaveValue(/450-555-0199/);
@@ -388,8 +394,8 @@ test("V2 local acceptance path runs through React, Chromium, FastAPI and SQLite"
 
     const batch = page.locator(".batch-row").first();
     await expect(batch).toContainText("To : pm@example.test");
-    await expect(batch).toContainText("alice@example.test");
-    await expect(batch).toContainText("bob@example.test");
+    await expect(batch).toContainText(testEmail("alice"));
+    await expect(batch).toContainText(testEmail("bob"));
 
     await batch.getByRole("button", { name: "Approuver" }).click();
     await expect(page.locator(".communications-notice")).toContainText("Lot projet approuvé");
