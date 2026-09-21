@@ -411,6 +411,18 @@ class SmtpConfigurationService:
                 ),
             )
 
+        if result is None:
+            return SmtpConnectionTestResult(
+                ok=True,
+                message="Connexion SMTP réussie.",
+                log=(
+                    SmtpTestLogEntry(
+                        level="SUCCESS",
+                        step="résultat",
+                        message="Le client SMTP a confirmé la connexion.",
+                    ),
+                ),
+            )
         if result.ok:
             return result
         return SmtpConnectionTestResult(
