@@ -615,6 +615,7 @@ class SqlProjectCommunicationProjectionTests(unittest.TestCase):
                     f"/api/v1/communications/project-batches/{batch_id}/approve"
                 )
                 self.assertEqual(approved.status_code, 200, approved.text)
+                self.assertEqual(smtp.attempt_subjects, [])
 
                 first = client.post(
                     f"/api/v1/communications/project-batches/{batch_id}/send-smtp"
