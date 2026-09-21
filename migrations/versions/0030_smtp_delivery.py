@@ -63,6 +63,27 @@ def upgrade() -> None:
     )
 
     op.create_table(
+        "smtp_configuration_audit",
+        sa.Column("id", sa.String(length=36), nullable=False),
+        sa.Column("event_type", sa.String(length=64), nullable=False),
+        sa.Column("actor_name", sa.String(length=255), nullable=True),
+        sa.Column("changed_fields_json", sa.Text(), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.func.now(),
+            nullable=False,
+        ),
+        sa.PrimaryKeyConstraint("id", name="pk_smtp_configuration_audit"),
+    )
+    op.create_index(
+        "ix_smtp_configuration_audit_created",
+        "smtp_configuration_audit",
+        ["created_at"],
+        unique=False,
+    )
+
+    op.create_table(
         "communication_deliveries",
         sa.Column("id", sa.String(length=36), nullable=False),
         sa.Column("batch_id", sa.String(length=36), nullable=False),
@@ -154,4 +175,9 @@ def downgrade() -> None:
         table_name="communication_deliveries",
     )
     op.drop_table("communication_deliveries")
+    op.drop_index(
+        "ix_smtp_configuration_audit_created",
+        table_name="smtp_configuration_audit",
+    )
+    op.drop_table("smtp_configuration_audit")
     op.drop_table("smtp_configuration")
