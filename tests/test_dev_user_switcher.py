@@ -32,151 +32,159 @@ from app.server.dev_user_switcher import (
     dev_user_switcher_auth_resolver,
 )
 from app.server.security import static_auth_resolver
+from tests.sqlite_test_template import SqliteDatabaseTemplate
 
 
 DAY = date(2026, 9, 18)
 
 
 class DevUserSwitcherTests(unittest.TestCase):
+    @classmethod
+    def _seed_database(cls, session) -> None:
+        users = SqlUserIdentityRepository(session)
+        admin = users.upsert(
+            issuer="urn:test:dev",
+            subject="admin",
+            display_name="Administrateur Dev",
+            email=None,
+            roles=(ROLE_ADMIN,),
+        )
+        project_manager = users.upsert(
+            issuer="urn:test:dev",
+            subject="project-manager",
+            display_name="Chargé de projet",
+            email=None,
+            employee_external_id="EMP-PM",
+            roles=(ROLE_PROJECT_MANAGER,),
+        )
+        tech_a = users.upsert(
+            issuer="urn:test:dev",
+            subject="tech-a",
+            display_name="Technicien A",
+            email=None,
+            employee_external_id="EMP-A",
+            roles=(ROLE_TECHNICIAN,),
+        )
+        tech_b = users.upsert(
+            issuer="urn:test:dev",
+            subject="tech-b",
+            display_name="Technicien B",
+            email=None,
+            employee_external_id="EMP-B",
+            roles=(ROLE_TECHNICIAN,),
+        )
+        inactive = users.upsert(
+            issuer="urn:test:dev",
+            subject="inactive",
+            display_name="Utilisateur inactif",
+            email=None,
+            roles=(ROLE_TECHNICIAN,),
+            active=False,
+        )
+        cls.user_ids = {
+            "admin": admin.user_id,
+            "project_manager": project_manager.user_id,
+            "tech_a": tech_a.user_id,
+            "tech_b": tech_b.user_id,
+            "inactive": inactive.user_id,
+        }
+
+        session.add(
+            Project(
+                id="P-DEV",
+                number="P-DEV",
+                name="Projet identités dev",
+                project_manager_external_id="EMP-PM",
+                status="Actif",
+            )
+        )
+        session.add_all(
+            [
+                Resource(
+                    id="R-A",
+                    external_id="EMP-A",
+                    name="Ressource A",
+                    active=True,
+                    sort_order=10,
+                ),
+                Resource(
+                    id="R-B",
+                    external_id="EMP-B",
+                    name="Ressource B",
+                    active=True,
+                    sort_order=20,
+                ),
+            ]
+        )
+        session.flush()
+        session.add_all(
+            [
+                ResourceRequirement(
+                    id="REQ-A",
+                    legacy_segment_id="DEV-SEG-A",
+                    project_id="P-DEV",
+                    assigned_resource_id="R-A",
+                    start_date=DAY,
+                    end_date=DAY,
+                    planned_hours=Decimal("8"),
+                    status="Planifié",
+                    origin="AD_HOC",
+                ),
+                ResourceRequirement(
+                    id="REQ-B",
+                    legacy_segment_id="DEV-SEG-B",
+                    project_id="P-DEV",
+                    assigned_resource_id="R-B",
+                    start_date=DAY,
+                    end_date=DAY,
+                    planned_hours=Decimal("4"),
+                    status="Planifié",
+                    origin="AD_HOC",
+                ),
+            ]
+        )
+        session.flush()
+        session.add_all(
+            [
+                Shift(
+                    id="SHIFT-A",
+                    legacy_allocation_id="DEV-ALLOC-A",
+                    resource_requirement_id="REQ-A",
+                    resource_id="R-A",
+                    work_date=DAY,
+                    hours=Decimal("8"),
+                    source="MANUAL",
+                    locked=True,
+                ),
+                Shift(
+                    id="SHIFT-B",
+                    legacy_allocation_id="DEV-ALLOC-B",
+                    resource_requirement_id="REQ-B",
+                    resource_id="R-B",
+                    work_date=DAY,
+                    hours=Decimal("4"),
+                    source="MANUAL",
+                    locked=True,
+                ),
+            ]
+        )
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        super().setUpClass()
+        cls._database_template = SqliteDatabaseTemplate(
+            filename="switcher.db",
+            seed=cls._seed_database,
+        )
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        cls._database_template.cleanup()
+        super().tearDownClass()
+
     def setUp(self) -> None:
         self.temp = TemporaryDirectory()
-        database = Path(self.temp.name) / "switcher.db"
-        self.database_url = f"sqlite+pysqlite:///{database.as_posix()}"
-
-        engine = create_sql_engine(self.database_url)
-        Base.metadata.create_all(engine)
-        factory = create_session_factory(engine)
-        try:
-            with factory.begin() as session:
-                users = SqlUserIdentityRepository(session)
-                admin = users.upsert(
-                    issuer="urn:test:dev",
-                    subject="admin",
-                    display_name="Administrateur Dev",
-                    email=None,
-                    roles=(ROLE_ADMIN,),
-                )
-                project_manager = users.upsert(
-                    issuer="urn:test:dev",
-                    subject="project-manager",
-                    display_name="Chargé de projet",
-                    email=None,
-                    employee_external_id="EMP-PM",
-                    roles=(ROLE_PROJECT_MANAGER,),
-                )
-                tech_a = users.upsert(
-                    issuer="urn:test:dev",
-                    subject="tech-a",
-                    display_name="Technicien A",
-                    email=None,
-                    employee_external_id="EMP-A",
-                    roles=(ROLE_TECHNICIAN,),
-                )
-                tech_b = users.upsert(
-                    issuer="urn:test:dev",
-                    subject="tech-b",
-                    display_name="Technicien B",
-                    email=None,
-                    employee_external_id="EMP-B",
-                    roles=(ROLE_TECHNICIAN,),
-                )
-                inactive = users.upsert(
-                    issuer="urn:test:dev",
-                    subject="inactive",
-                    display_name="Utilisateur inactif",
-                    email=None,
-                    roles=(ROLE_TECHNICIAN,),
-                    active=False,
-                )
-                self.user_ids = {
-                    "admin": admin.user_id,
-                    "project_manager": project_manager.user_id,
-                    "tech_a": tech_a.user_id,
-                    "tech_b": tech_b.user_id,
-                    "inactive": inactive.user_id,
-                }
-
-                session.add(
-                    Project(
-                        id="P-DEV",
-                        number="P-DEV",
-                        name="Projet identités dev",
-                        project_manager_external_id="EMP-PM",
-                        status="Actif",
-                    )
-                )
-                session.add_all(
-                    [
-                        Resource(
-                            id="R-A",
-                            external_id="EMP-A",
-                            name="Ressource A",
-                            active=True,
-                            sort_order=10,
-                        ),
-                        Resource(
-                            id="R-B",
-                            external_id="EMP-B",
-                            name="Ressource B",
-                            active=True,
-                            sort_order=20,
-                        ),
-                    ]
-                )
-                session.flush()
-                session.add_all(
-                    [
-                        ResourceRequirement(
-                            id="REQ-A",
-                            legacy_segment_id="DEV-SEG-A",
-                            project_id="P-DEV",
-                            assigned_resource_id="R-A",
-                            start_date=DAY,
-                            end_date=DAY,
-                            planned_hours=Decimal("8"),
-                            status="Planifié",
-                            origin="AD_HOC",
-                        ),
-                        ResourceRequirement(
-                            id="REQ-B",
-                            legacy_segment_id="DEV-SEG-B",
-                            project_id="P-DEV",
-                            assigned_resource_id="R-B",
-                            start_date=DAY,
-                            end_date=DAY,
-                            planned_hours=Decimal("4"),
-                            status="Planifié",
-                            origin="AD_HOC",
-                        ),
-                    ]
-                )
-                session.flush()
-                session.add_all(
-                    [
-                        Shift(
-                            id="SHIFT-A",
-                            legacy_allocation_id="DEV-ALLOC-A",
-                            resource_requirement_id="REQ-A",
-                            resource_id="R-A",
-                            work_date=DAY,
-                            hours=Decimal("8"),
-                            source="MANUAL",
-                            locked=True,
-                        ),
-                        Shift(
-                            id="SHIFT-B",
-                            legacy_allocation_id="DEV-ALLOC-B",
-                            resource_requirement_id="REQ-B",
-                            resource_id="R-B",
-                            work_date=DAY,
-                            hours=Decimal("4"),
-                            source="MANUAL",
-                            locked=True,
-                        ),
-                    ]
-                )
-        finally:
-            engine.dispose()
+        self.database_url = self._database_template.copy_to(self.temp.name)
 
         self.bootstrap = AuthPrincipal.from_roles(
             local_user_id=None,
