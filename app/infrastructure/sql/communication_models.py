@@ -133,6 +133,24 @@ class SmtpConfigurationRow(TimestampMixin, Base):
     updated_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
 
+class SmtpConfigurationAuditRow(Base):
+    __tablename__ = "smtp_configuration_audit"
+    __table_args__ = (
+        Index(
+            "ix_smtp_configuration_audit_created",
+            "created_at",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(ID_LENGTH), primary_key=True, default=new_id)
+    event_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    actor_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    changed_fields_json: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utc_now
+    )
+
+
 class CommunicationDeliveryRow(Base):
     __tablename__ = "communication_deliveries"
     __table_args__ = (
