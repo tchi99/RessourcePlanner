@@ -762,7 +762,10 @@ export function syncAcumaticaProjects() {
 }
 
 export function getBusinessContacts(activeOnly = false, signal?: AbortSignal) {
-  const params = new URLSearchParams({ active_only: String(activeOnly) });
+  const params = new URLSearchParams({
+    active_only: String(activeOnly),
+    user_backed_only: "true",
+  });
   return getJson<BusinessContactReadModel[]>(
     `/api/v1/business-contacts?${params.toString()}`,
     signal,
