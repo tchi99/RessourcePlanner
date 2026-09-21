@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 from datetime import date, timedelta
+import hashlib
 from typing import Protocol, Sequence
 
 from ..domain.project_communication import (
@@ -214,7 +215,24 @@ class ProjectCommunicationService:
             return draft, True
         subject = draft.subject if review.subject is None else review.subject.strip()
         body = draft.body if review.body is None else review.body.strip()
-        return replace(draft, subject=subject, body=body), bool(review.include)
+        content_fingerprint = hashlib.sha256(
+            (
+                draft.content_fingerprint
+                + "\n"
+                + subject
+                + "\n"
+                + body
+            ).encode("utf-8")
+        ).hexdigest()
+        return (
+            replace(
+                draft,
+                subject=subject,
+                body=body,
+                content_fingerprint=content_fingerprint,
+            ),
+            bool(review.include),
+        )
 
     def prepare_project_batch(
         self,
