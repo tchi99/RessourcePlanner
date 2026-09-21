@@ -39,12 +39,14 @@ class FailingDiagnosticSmtpClient:
         )
 
     def send_message(self, configuration, message, *, message_id: str) -> str:
+        self.sent.append((configuration, message, message_id))
         return message_id
 
 
 class FakeSmtpClient:
     def __init__(self) -> None:
         self.tested = []
+        self.sent = []
 
     def test_connection(self, configuration) -> None:
         self.tested.append(configuration)
