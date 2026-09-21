@@ -22,7 +22,10 @@ from app.domain.project_communication_messages import (
     build_project_confirmation_batch,
     build_project_delta_batch,
     compare_project_communication_projections,
+    deserialize_project_projection,
     french_long_date,
+    project_projection_fingerprint,
+    serialize_project_projection,
 )
 
 
@@ -286,6 +289,18 @@ class ProjectCommunicationMessageTests(unittest.TestCase):
             second.drafts[0].content_fingerprint,
         )
         self.assertNotEqual(first.snapshot_fingerprint, second.snapshot_fingerprint)
+
+    def test_projection_snapshot_round_trip_preserves_delta_state(self) -> None:
+        original = projection(project(second_day=True))
+        restored = deserialize_project_projection(
+            serialize_project_projection(original)
+        )
+
+        self.assertEqual(restored, original)
+        self.assertEqual(
+            project_projection_fingerprint(restored),
+            project_projection_fingerprint(original),
+        )
 
     def test_delta_rejects_different_weeks(self) -> None:
         previous = projection(project())
