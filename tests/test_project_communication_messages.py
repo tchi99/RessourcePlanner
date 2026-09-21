@@ -308,6 +308,43 @@ class ProjectCommunicationMessageTests(unittest.TestCase):
         self.assertEqual(batch.drafts[0].message_kind, MESSAGE_KIND_PLANNING_CHANGE)
         self.assertIn("Mise à jour du planning communiqué.", batch.drafts[0].body)
 
+    def test_internal_shift_id_change_does_not_create_delta(self) -> None:
+        before_resource = resource("R1", "Alice", address=email("alice"))
+        after_resource = ProjectCommunicationResource(
+            resource_id=before_resource.resource_id,
+            resource_name=before_resource.resource_name,
+            contact=before_resource.contact,
+            hours=before_resource.hours,
+            shift_ids=("S-REBUILT",),
+            allocation_types=before_resource.allocation_types,
+            confirmations=before_resource.confirmations,
+            outside_schedule=before_resource.outside_schedule,
+        )
+
+        changes = compare_project_communication_projections(
+            projection(project(resources=(before_resource,))),
+            projection(project(resources=(after_resource,))),
+        )
+
+        self.assertEqual(changes, ())
+
+    def test_same_resource_contact_change_prefers_current_email_in_delta_cc(self) -> None:
+        before = project(
+            resources=(resource("R1", "Alice", address=email("alice-old")),)
+        )
+        after = project(
+            resources=(resource("R1", "Alice", address=email("alice-new")),)
+        )
+        draft = build_project_delta_batch(
+            projection(before),
+            projection(after),
+        ).drafts[0]
+
+        self.assertEqual(
+            [row.email for row in draft.cc_recipients],
+            [email("alice-new")],
+        )
+
     def test_resource_change_delta_ccs_old_and_new_resources(self) -> None:
         before = project(
             resources=(resource("R1", "Alice", address=email("alice")),)
