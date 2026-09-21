@@ -6,7 +6,7 @@ Revises: 0029_project_communications
 
 from __future__ import annotations
 
-from alembic import op
+from alembic import context, op
 import sqlalchemy as sa
 from uuid import uuid4
 
@@ -112,6 +112,9 @@ def upgrade() -> None:
         ["batch_id", "provider", "status"],
         unique=False,
     )
+
+    if context.is_offline_mode():
+        return
 
     connection = op.get_bind()
     existing = connection.execute(
