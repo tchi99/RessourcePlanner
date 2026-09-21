@@ -6,7 +6,7 @@ from decimal import Decimal
 from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Index, Integer, Numeric, String, Text, true
 from sqlalchemy.orm import Mapped, mapped_column
 
-from .base import Base, TimestampMixin, new_id
+from .base import Base, TimestampMixin, new_id, utc_now
 
 
 ID_LENGTH = 36
@@ -108,3 +108,75 @@ class CommunicationSnapshotLine(Base):
     allocation_type: Mapped[str] = mapped_column(String(32), nullable=False, server_default="Flexible")
     outside_schedule: Mapped[bool] = mapped_column(Boolean, nullable=False)
     confirmation: Mapped[str] = mapped_column(String(32), nullable=False, server_default="Confirmée")
+
+
+class SmtpConfigurationRow(TimestampMixin, Base):
+    __tablename__ = "smtp_configuration"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default="smtp")
+    host: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    port: Mapped[int] = mapped_column(Integer, nullable=False, server_default="587")
+    security: Mapped[str] = mapped_column(
+        String(32), nullable=False, server_default="STARTTLS"
+    )
+    username: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    encrypted_password: Mapped[str | None] = mapped_column(Text, nullable=True)
+    from_email: Mapped[str | None] = mapped_column(String(320), nullable=True)
+    from_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    reply_to: Mapped[str | None] = mapped_column(String(320), nullable=True)
+    timeout_seconds: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default="20"
+    )
+    enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="0"
+    )
+    updated_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+
+class CommunicationDeliveryRow(Base):
+    __tablename__ = "communication_deliveries"
+    __table_args__ = (
+        Index(
+            "ux_communication_deliveries_message_provider",
+            "message_id",
+            "provider",
+            unique=True,
+        ),
+        Index(
+            "ix_communication_deliveries_batch_status",
+            "batch_id",
+            "provider",
+            "status",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(ID_LENGTH), primary_key=True, default=new_id)
+    batch_id: Mapped[str] = mapped_column(
+        String(ID_LENGTH),
+        ForeignKey("communication_batches.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    message_id: Mapped[str] = mapped_column(
+        String(ID_LENGTH),
+        ForeignKey("communication_messages.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    provider: Mapped[str] = mapped_column(String(32), nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(32), nullable=False, server_default="PENDING"
+    )
+    attempt_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default="0"
+    )
+    attempted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    sent_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    provider_message_id: Mapped[str | None] = mapped_column(
+        String(320), nullable=True
+    )
+    error_code: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    error_detail: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    last_actor: Mapped[str | None] = mapped_column(String(255), nullable=True)
