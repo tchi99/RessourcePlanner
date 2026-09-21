@@ -87,3 +87,10 @@ export function testSmtpConnection() {
     method: "POST",
   });
 }
+
+export function sendSmtpTestEmail(recipientEmail: string) {
+  return request<SmtpConnectionTestResult>("/api/v1/admin/settings/smtp/test-email", {
+    method: "POST",
+    body: JSON.stringify({ recipient_email: recipientEmail }),
+  });
+}

@@ -6,6 +6,7 @@ import {
   SmtpConnectionTestResult,
   getSmtpConfiguration,
   saveSmtpConfiguration,
+  sendSmtpTestEmail,
   testSmtpConnection,
 } from "./configurationApi";
 
@@ -57,6 +58,8 @@ export default function ConfigurationPage() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [smtpTest, setSmtpTest] = useState<SmtpConnectionTestResult | null>(null);
+  const [testRecipient, setTestRecipient] = useState("");
+  const [sendingTestEmail, setSendingTestEmail] = useState(false);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -145,6 +148,33 @@ export default function ConfigurationPage() {
       setError(reason instanceof Error ? reason.message : "Le test SMTP a échoué.");
     } finally {
       setTesting(false);
+    }
+  }
+
+  async function sendTestEmail() {
+    if (sendingTestEmail) return;
+    const recipient = testRecipient.trim();
+    if (!recipient) {
+      setError("Entrez l’adresse qui doit recevoir le courriel test.");
+      return;
+    }
+
+    setSendingTestEmail(true);
+    setError(null);
+    setNotice(null);
+    setSmtpTest(null);
+    try {
+      const result = await sendSmtpTestEmail(recipient);
+      setSmtpTest(result);
+      if (result.ok) {
+        setNotice(result.message);
+      } else {
+        setError(result.message);
+      }
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "L’envoi du courriel test a échoué.");
+    } finally {
+      setSendingTestEmail(false);
     }
   }
 
@@ -338,6 +368,40 @@ export default function ConfigurationPage() {
             onClick={() => void testConnection()}
           >
             {testing ? "Test en cours…" : "Tester la connexion enregistrée"}
+          </button>
+        </div>
+
+        <div className="smtp-test-email">
+          <div>
+            <span className="eyebrow">Envoi réel de validation</span>
+            <h4>Courriel test</h4>
+            <small>
+              Envoie un vrai courriel avec la configuration SMTP enregistrée. Cette action ne crée
+              aucun lot de communication et peut être utilisée avant d’activer l’envoi SMTP général.
+            </small>
+          </div>
+          <label>
+            Destinataire du courriel test
+            <input
+              type="email"
+              value={testRecipient}
+              onChange={(event) => setTestRecipient(event.target.value)}
+              placeholder={"vous" + String.fromCharCode(64) + "entreprise.ca"}
+            />
+          </label>
+          <button
+            className="quiet-button"
+            type="button"
+            disabled={
+              sendingTestEmail
+              || pending
+              || !configuration.host
+              || !configuration.from_email
+              || !testRecipient.trim()
+            }
+            onClick={() => void sendTestEmail()}
+          >
+            {sendingTestEmail ? "Envoi en cours…" : "Envoyer un courriel test"}
           </button>
         </div>
       </form>

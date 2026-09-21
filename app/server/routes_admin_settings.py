@@ -26,6 +26,10 @@ class StrictRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
 
+class SmtpTestEmailRequest(StrictRequest):
+    recipient_email: str = Field(min_length=3, max_length=320)
+
+
 class SmtpConfigurationRequest(StrictRequest):
     host: str = Field(min_length=1, max_length=255)
     port: int = Field(ge=1, le=65535)
@@ -86,6 +90,21 @@ def build_admin_settings_router(
             ),
             actor_name=_actor(request),
         )
+
+    @router.post("/smtp/test-email")
+    def send_smtp_test_email(
+        body: SmtpTestEmailRequest,
+        service: SmtpConfigurationService = Depends(smtp_dependency),
+    ) -> SmtpConnectionTestResult:
+        result = service.send_test_email(body.recipient_email)
+        for entry in result.log:
+            message = "smtp_test_email step=%s level=%s message=%s"
+            args = (entry.step, entry.level, entry.message)
+            if entry.level == "ERROR":
+                LOGGER.warning(message, *args)
+            else:
+                LOGGER.info(message, *args)
+        return result
 
     @router.post("/smtp/test")
     def test_smtp_connection(
