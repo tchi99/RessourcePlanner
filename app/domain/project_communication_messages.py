@@ -568,6 +568,13 @@ def compare_project_communication_projections(
     previous: ProjectCommunicationProjection,
     current: ProjectCommunicationProjection,
 ) -> tuple[ProjectCommunicationChange, ...]:
+    if (
+        previous.week_start != current.week_start
+        or previous.week_end != current.week_end
+    ):
+        raise ValueError(
+            "Les deltas de communication doivent comparer la même semaine."
+        )
     before = {project.project_id: project for project in previous.projects}
     after = {project.project_id: project for project in current.projects}
     changes: list[ProjectCommunicationChange] = []
