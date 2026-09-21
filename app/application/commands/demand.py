@@ -498,20 +498,24 @@ class DemandUpdateCommand:
 @dataclass(frozen=True, slots=True)
 class DemandSubmitCommand:
     number: str
+    expected_version: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
 class DemandApproveCommand:
     number: str
     comment: str = ""
+    expected_version: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
 class DemandCorrectionCommand:
     number: str
     comment: str
+    expected_version: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
 class DemandCancelCommand:
     number: str
+    expected_version: int | None = None
