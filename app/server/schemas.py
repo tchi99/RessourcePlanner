@@ -255,6 +255,18 @@ class DemandAlternativeSelectionRequest(StrictRequest):
     period_id: str = Field(min_length=1)
 
 
+class DemandWorkflowVersionRequest(StrictRequest):
+    expected_version: int | None = Field(default=None, ge=1)
+
+
+class DemandWorkflowOptionalCommentRequest(DemandWorkflowVersionRequest):
+    comment: str = ""
+
+
+class DemandWorkflowRequiredCommentRequest(DemandWorkflowVersionRequest):
+    comment: str = Field(min_length=1)
+
+
 class OptionalCommentRequest(StrictRequest):
     comment: str = ""
 
