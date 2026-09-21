@@ -35,7 +35,6 @@ from app.application.security import (
 from app.infrastructure.sql import (
     Base,
     Competency,
-    CommunicationContact,
     Project,
     Resource,
     ResourceAvailabilityRule,
@@ -199,34 +198,32 @@ def _seed(database_url: str) -> None:
                     )
                 )
 
-            session.add(
-                CommunicationContact(
-                    recipient_id="pm:EMP-PM",
-                    audience="project_manager",
-                    display_name="Chargé E2E",
-                    email=f"pm{chr(64)}{address_domain}",
-                    active=True,
-                )
-            )
-
             users = SqlUserIdentityRepository(session)
-            for subject, display_name, role, employee_external_id in (
-                ("admin", "Administrateur Démo", ROLE_ADMIN, None),
-                ("coordinator", "Coordonnateur Démo", ROLE_COORDINATOR, None),
-                ("project-manager", "Chargé de projet Démo", ROLE_PROJECT_MANAGER, "EMP-PM"),
-                ("manager", "Gestionnaire Démo", ROLE_MANAGER, None),
-                ("technician-a", "Technicien Démo A", ROLE_TECHNICIAN, "EMP-ALICE"),
-                ("technician-b", "Technicien Démo B", ROLE_TECHNICIAN, "EMP-BOB"),
+            project_manager_contact_id = None
+            for subject, display_name, role, employee_external_id, email_local in (
+                ("admin", "Administrateur Démo", ROLE_ADMIN, None, "admin"),
+                ("coordinator", "Coordonnateur Démo", ROLE_COORDINATOR, None, "coord"),
+                ("project-manager", "Chargé de projet Démo", ROLE_PROJECT_MANAGER, "EMP-PM", "pm"),
+                ("manager", "Gestionnaire Démo", ROLE_MANAGER, None, "manager"),
+                ("technician-a", "Technicien Démo A", ROLE_TECHNICIAN, "EMP-ALICE", "alice"),
+                ("technician-b", "Technicien Démo B", ROLE_TECHNICIAN, "EMP-BOB", "bob"),
             ):
-                users.upsert(
+                record = users.upsert(
                     issuer="urn:resourceplanner:e2e-dev",
                     subject=subject,
                     display_name=display_name,
-                    email=None,
+                    email=f"{email_local}{chr(64)}{address_domain}",
                     employee_external_id=employee_external_id,
                     roles=(role,),
                     active=True,
                 )
+                if employee_external_id == "EMP-PM":
+                    project_manager_contact_id = record.business_contact_id
+
+            project = session.get(Project, "P-251-ID")
+            assert project is not None
+            assert project_manager_contact_id is not None
+            project.project_manager_contact_id = project_manager_contact_id
     finally:
         engine.dispose()
 
