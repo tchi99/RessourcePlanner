@@ -2,12 +2,14 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 from decimal import Decimal
+import json
 from typing import Sequence
 
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from ...application.project_communications import MODEL_VERSION_PROJECT_V2
 from ...application.communications import (
     KIND_CHANGE,
     KIND_WEEKLY,
@@ -21,6 +23,12 @@ from ...application.communications import (
     CommunicationRepositoryPort,
 )
 from ...domain.communication_planning import CommunicationDraft, WeeklyAssignment
+from ...domain.project_communication import ProjectCommunicationProjection
+from ...domain.project_communication_messages import (
+    ProjectCommunicationDraft,
+    deserialize_project_projection,
+    serialize_project_projection,
+)
 from ...domain.confirmation import effective_confirmation
 from .base import utc_now
 from .communication_models import (
@@ -219,18 +227,35 @@ class SqlCommunicationRepository(CommunicationRepositoryPort):
             .where(CommunicationMessageRow.batch_id == batch_id)
             .order_by(CommunicationMessageRow.audience, CommunicationMessageRow.recipient_id)
         ).all()
-        return tuple(
-            CommunicationMessageRecord(
-                id=row.id,
-                audience=row.audience,
-                recipient_id=row.recipient_id,
-                recipient_email=row.recipient_email,
-                subject=row.subject,
-                body=row.body,
-                included=bool(row.included),
+        result: list[CommunicationMessageRecord] = []
+        for row in rows:
+            cc_emails: tuple[str, ...] = ()
+            if row.cc_recipients_json:
+                payload = json.loads(row.cc_recipients_json)
+                cc_emails = tuple(
+                    str(item.get("email") or "").strip()
+                    for item in payload
+                    if isinstance(item, dict)
+                    and str(item.get("email") or "").strip()
+                )
+            result.append(
+                CommunicationMessageRecord(
+                    id=row.id,
+                    audience=row.audience,
+                    recipient_id=row.recipient_id,
+                    recipient_email=_optional_text(row.recipient_email),
+                    subject=row.subject,
+                    body=row.body,
+                    included=bool(row.included),
+                    message_key=_optional_text(row.message_key),
+                    project_id=_optional_text(row.project_id),
+                    cc_emails=cc_emails,
+                    content_fingerprint=_optional_text(row.content_fingerprint),
+                    approvable=bool(row.approvable),
+                    diagnostics_json=_optional_text(row.diagnostics_json),
+                )
             )
-            for row in rows
-        )
+        return tuple(result)
 
     def _batch(self, row: CommunicationBatchRow) -> CommunicationBatchRecord:
         return CommunicationBatchRecord(
@@ -252,6 +277,7 @@ class SqlCommunicationRepository(CommunicationRepositoryPort):
             drafts_created_by=_optional_text(row.drafts_created_by),
             drafts_created_at=row.drafts_created_at,
             messages=self._messages(row.id),
+            model_version=_text(row.model_version) or "legacy",
         )
 
     def latest_communicated_snapshot(
@@ -264,6 +290,7 @@ class SqlCommunicationRepository(CommunicationRepositoryPort):
             .where(
                 CommunicationBatchRow.week_start == week_start,
                 CommunicationBatchRow.status == STATUS_COMMUNICATED,
+                CommunicationBatchRow.model_version == "legacy",
             )
             .order_by(CommunicationBatchRow.communicated_at.desc(), CommunicationBatchRow.id.desc())
         )
@@ -297,6 +324,129 @@ class SqlCommunicationRepository(CommunicationRepositoryPort):
                 for row in rows
             ),
         )
+
+    def latest_communicated_project_snapshot(
+        self,
+        *,
+        week_start: date,
+    ) -> tuple[str, ProjectCommunicationProjection] | None:
+        batch = self._session.scalar(
+            select(CommunicationBatchRow)
+            .where(
+                CommunicationBatchRow.week_start == week_start,
+                CommunicationBatchRow.status == STATUS_COMMUNICATED,
+                CommunicationBatchRow.model_version == MODEL_VERSION_PROJECT_V2,
+                CommunicationBatchRow.project_snapshot_json.is_not(None),
+            )
+            .order_by(
+                CommunicationBatchRow.communicated_at.desc(),
+                CommunicationBatchRow.id.desc(),
+            )
+        )
+        if batch is None or not batch.project_snapshot_json:
+            return None
+        return (
+            batch.snapshot_fingerprint,
+            deserialize_project_projection(batch.project_snapshot_json),
+        )
+
+    def create_project_prepared_batch(
+        self,
+        *,
+        week_start: date,
+        kind: str,
+        fingerprint: str,
+        actor_name: str,
+        messages: Sequence[tuple[ProjectCommunicationDraft, bool]],
+        snapshot: ProjectCommunicationProjection,
+    ) -> CommunicationBatchRecord:
+        if kind not in {"project_confirmation", "project_planning_change"}:
+            raise ValueError(f"Type de lot projet invalide: {kind}")
+        batch = CommunicationBatchRow(
+            week_start=week_start,
+            kind=kind,
+            snapshot_fingerprint=fingerprint,
+            status=STATUS_PREPARED,
+            prepared_by=_optional_text(actor_name),
+            prepared_at=utc_now(),
+            model_version=MODEL_VERSION_PROJECT_V2,
+            project_snapshot_json=serialize_project_projection(snapshot),
+        )
+        self._session.add(batch)
+        self._session.flush()
+
+        for draft, included in messages:
+            cc_payload = [
+                {
+                    "contact_id": participant.contact_id,
+                    "user_id": participant.user_id,
+                    "display_name": participant.display_name,
+                    "email": participant.email,
+                }
+                for participant in draft.cc_recipients
+            ]
+            diagnostics_payload = [
+                {
+                    "code": diagnostic.code,
+                    "severity": diagnostic.severity,
+                    "entity_type": diagnostic.entity_type,
+                    "entity_id": diagnostic.entity_id,
+                    "message": diagnostic.message,
+                }
+                for diagnostic in draft.diagnostics
+            ]
+            recipient_id = (
+                draft.to_recipient.contact_id
+                or draft.to_recipient.user_id
+                or draft.project_id
+            )
+            self._session.add(
+                CommunicationMessageRow(
+                    batch_id=batch.id,
+                    audience=draft.audience,
+                    recipient_id=recipient_id,
+                    recipient_email=_optional_text(draft.to_recipient.email),
+                    message_key=draft.message_key,
+                    project_id=draft.project_id,
+                    cc_recipients_json=json.dumps(
+                        cc_payload,
+                        ensure_ascii=False,
+                        separators=(",", ":"),
+                    ),
+                    content_fingerprint=draft.content_fingerprint,
+                    approvable=bool(draft.approvable),
+                    diagnostics_json=json.dumps(
+                        diagnostics_payload,
+                        ensure_ascii=False,
+                        separators=(",", ":"),
+                    ),
+                    subject=draft.subject,
+                    body=draft.body,
+                    included=bool(included),
+                )
+            )
+        self._session.flush()
+        return self._batch(batch)
+
+    def list_project_batches(
+        self,
+        *,
+        week_start: date | None = None,
+    ) -> tuple[CommunicationBatchRecord, ...]:
+        statement = select(CommunicationBatchRow).where(
+            CommunicationBatchRow.model_version == MODEL_VERSION_PROJECT_V2
+        )
+        if week_start is not None:
+            statement = statement.where(
+                CommunicationBatchRow.week_start == week_start
+            )
+        rows = self._session.scalars(
+            statement.order_by(
+                CommunicationBatchRow.prepared_at.desc(),
+                CommunicationBatchRow.id.desc(),
+            )
+        ).all()
+        return tuple(self._batch(row) for row in rows)
 
     def has_duplicate_batch(
         self,
@@ -334,6 +484,7 @@ class SqlCommunicationRepository(CommunicationRepositoryPort):
             status=STATUS_PREPARED,
             prepared_by=_optional_text(actor_name),
             prepared_at=now,
+            model_version="legacy",
         )
         self._session.add(batch)
         self._session.flush()
@@ -370,7 +521,9 @@ class SqlCommunicationRepository(CommunicationRepositoryPort):
         return self._batch(batch)
 
     def list_batches(self, *, week_start: date | None = None) -> tuple[CommunicationBatchRecord, ...]:
-        statement = select(CommunicationBatchRow)
+        statement = select(CommunicationBatchRow).where(
+            CommunicationBatchRow.model_version == "legacy"
+        )
         if week_start is not None:
             statement = statement.where(CommunicationBatchRow.week_start == week_start)
         rows = self._session.scalars(

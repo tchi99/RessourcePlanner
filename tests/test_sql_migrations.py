@@ -169,6 +169,12 @@ class SqlMigrationTests(unittest.TestCase):
             self.assertIn("APPROVED_CONTACT_CONTEXT_STATUS", ddl, url)
             self.assertIn("BUSINESS_CONTACT_ID", ddl, url)
             self.assertIn("UX_APP_USERS_BUSINESS_CONTACT_ID_NOT_NULL", ddl, url)
+            self.assertIn("MODEL_VERSION", ddl, url)
+            self.assertIn("PROJECT_SNAPSHOT_JSON", ddl, url)
+            self.assertIn("MESSAGE_KEY", ddl, url)
+            self.assertIn("CC_RECIPIENTS_JSON", ddl, url)
+            self.assertIn("CONTENT_FINGERPRINT", ddl, url)
+            self.assertIn("APPROVABLE", ddl, url)
 
     def test_approved_contact_context_migration_preserves_history_as_unknown(self) -> None:
         with TemporaryDirectory() as directory:

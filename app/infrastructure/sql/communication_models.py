@@ -56,11 +56,18 @@ class CommunicationBatchRow(Base):
     drafts_created_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     drafts_created_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
     drafts_created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    model_version: Mapped[str] = mapped_column(
+        String(32), nullable=False, server_default="legacy"
+    )
+    project_snapshot_json: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 class CommunicationMessageRow(Base):
     __tablename__ = "communication_messages"
-    __table_args__ = (Index("ix_communication_messages_batch", "batch_id", "audience"),)
+    __table_args__ = (
+        Index("ix_communication_messages_batch", "batch_id", "audience"),
+        Index("ix_communication_messages_batch_key", "batch_id", "message_key"),
+    )
 
     id: Mapped[str] = mapped_column(String(ID_LENGTH), primary_key=True, default=new_id)
     batch_id: Mapped[str] = mapped_column(
@@ -68,7 +75,15 @@ class CommunicationMessageRow(Base):
     )
     audience: Mapped[str] = mapped_column(String(32), nullable=False)
     recipient_id: Mapped[str] = mapped_column(String(180), nullable=False)
-    recipient_email: Mapped[str] = mapped_column(String(320), nullable=False)
+    recipient_email: Mapped[str | None] = mapped_column(String(320), nullable=True)
+    message_key: Mapped[str | None] = mapped_column(String(180), nullable=True)
+    project_id: Mapped[str | None] = mapped_column(String(ID_LENGTH), nullable=True)
+    cc_recipients_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    content_fingerprint: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    approvable: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=true()
+    )
+    diagnostics_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     subject: Mapped[str] = mapped_column(String(512), nullable=False)
     body: Mapped[str] = mapped_column(Text, nullable=False)
     included: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=true())

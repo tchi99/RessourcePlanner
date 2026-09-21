@@ -200,13 +200,17 @@ def make_project_communication_dependency(
     factory: SqlSessionFactory,
     *,
     session_dependency: SessionDependency | None = None,
+    transport: CommunicationTransportPort | None = None,
 ) -> ProjectCommunicationDependency:
     request_session = session_dependency or make_session_dependency(factory)
 
     def dependency(
         session: Session = Depends(request_session),
     ) -> Iterator[ProjectCommunicationService]:
-        yield build_project_communication_service(session)
+        yield build_project_communication_service(
+            session,
+            transport=transport,
+        )
 
     return dependency
 
@@ -334,6 +338,7 @@ def create_api_app(
     project_communication_dependency = make_project_communication_dependency(
         factory,
         session_dependency=session_dependency,
+        transport=communication_transport,
     )
     competency_dependency = make_competency_dependency(
         factory,
