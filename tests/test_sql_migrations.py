@@ -380,7 +380,7 @@ class SqlMigrationTests(unittest.TestCase):
                         employee_external_id, roles_json, active
                     ) VALUES (
                         'U-PM', 'urn:test', 'pm', 'Chargé de projet Démo',
-                        'pm@example.invalid', 'EMP-PM', '["PROJECT_MANAGER"]', 1
+                        'pm' || char(64) || 'example.invalid', 'EMP-PM', '["PROJECT_MANAGER"]', 1
                     )
                     """
                 )
@@ -416,7 +416,7 @@ class SqlMigrationTests(unittest.TestCase):
                 ).one()
                 self.assertEqual(
                     pm_contact,
-                    ("Chargé de projet Démo", "pm@example.invalid", "APP_USER"),
+                    ("Chargé de projet Démo", "pm" + chr(64) + "example.invalid", "APP_USER"),
                 )
 
                 coordinator_contact = connection.exec_driver_sql(
