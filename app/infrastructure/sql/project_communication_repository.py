@@ -26,6 +26,9 @@ DIAGNOSTIC_RESOURCE_USER_LINK_MISSING = "RESOURCE_USER_LINK_MISSING"
 DIAGNOSTIC_RESOURCE_CONTACT_MISSING = "RESOURCE_CONTACT_MISSING"
 DIAGNOSTIC_RESOURCE_CONTACT_INACTIVE = "RESOURCE_CONTACT_INACTIVE"
 DIAGNOSTIC_RESOURCE_EMAIL_MISSING = "RESOURCE_EMAIL_MISSING"
+DIAGNOSTIC_OPERATIONAL_RESPONSIBLE_USER_MISSING = (
+    "OPERATIONAL_RESPONSIBLE_USER_MISSING"
+)
 DIAGNOSTIC_TASK_DESCRIPTION_FALLBACK = "TASK_DESCRIPTION_FALLBACK"
 
 
@@ -298,11 +301,23 @@ class SqlProjectCommunicationRepository(ProjectCommunicationRepositoryPort):
                 users_by_employee=users_by_employee,
                 contacts=contacts_by_id,
             )
+            operational_diagnostics: list[str] = []
+            responsible_contact_id = _text(
+                resolution.operational_responsible.contact_id
+            )
+            if (
+                responsible_contact_id
+                and responsible_contact_id not in users_by_contact
+            ):
+                operational_diagnostics.append(
+                    DIAGNOSTIC_OPERATIONAL_RESPONSIBLE_USER_MISSING
+                )
             diagnostics = _unique(
                 list(resolution.diagnostics)
                 + list(description_diagnostics)
                 + list(manager.diagnostics)
                 + list(resource_contact.diagnostics)
+                + operational_diagnostics
             )
             result.append(
                 ProjectCommunicationAssignment(
