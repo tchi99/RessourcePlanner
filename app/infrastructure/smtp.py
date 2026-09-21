@@ -50,7 +50,7 @@ class SmtpClient:
         if configuration.username:
             client.login(
                 configuration.username,
-                configuration.password or "",
+                configuration.credential or "",
             )
 
     def test_connection(self, configuration: SmtpRuntimeConfiguration) -> None:
