@@ -91,6 +91,7 @@ class ServerUserAdminRouteTests(unittest.TestCase):
         self.assertEqual(roles.status_code, 200)
         admin_role = next(item for item in roles.json() if item["role"] == ROLE_ADMIN)
         self.assertIn("admin_users", admin_role["permissions"])
+        self.assertIn("admin_settings", admin_role["permissions"])
         self.assertEqual(created.status_code, 201)
         self.assertEqual(created.json()["issuer"], "https://issuer.example.invalid")
         self.assertIsNotNone(created.json()["business_contact_id"])
