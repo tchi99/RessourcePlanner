@@ -25,120 +25,129 @@ from app.infrastructure.sql import (
 )
 from app.server import create_api_app
 from app.server.security import static_auth_resolver
+from tests.sqlite_test_template import SqliteDatabaseTemplate
 
 
 DAY = date(2026, 9, 21)
 
 
 class ContextualReadScopeTests(unittest.TestCase):
+    @staticmethod
+    def _seed_database(session) -> None:
+        session.add_all(
+            [
+                Project(
+                    id="P-MANAGED",
+                    number="P-100",
+                    name="Projet géré",
+                    project_manager_external_id="EMP-MULTI",
+                    project_manager_name="Gestionnaire multi",
+                    status="Actif",
+                ),
+                Project(
+                    id="P-PARTICIPATING",
+                    number="P-200",
+                    name="Projet participé",
+                    status="Actif",
+                ),
+                Project(
+                    id="P-PM-ONLY",
+                    number="P-300",
+                    name="Projet CP sans ressource",
+                    project_manager_external_id="EMP-PM-ONLY",
+                    project_manager_name="Gestionnaire sans ressource",
+                    status="Actif",
+                ),
+                Project(
+                    id="P-OTHER",
+                    number="P-900",
+                    name="Projet global seulement",
+                    status="Actif",
+                ),
+            ]
+        )
+        session.add(
+            Resource(
+                id="R-MULTI",
+                external_id="EMP-MULTI",
+                name="Ressource multi-rôle",
+                active=True,
+                sort_order=10,
+            )
+        )
+        session.flush()
+        session.add(
+            ResourceRequirement(
+                id="REQ-PARTICIPATING",
+                project_id="P-PARTICIPATING",
+                assigned_resource_id="R-MULTI",
+                start_date=DAY,
+                end_date=DAY,
+                planned_hours=Decimal("8"),
+                status="Planifié",
+                origin="AD_HOC",
+            )
+        )
+        session.add_all(
+            [
+                WorkPackage(
+                    id="WP-MANAGED",
+                    project_id="P-MANAGED",
+                    code="MGT",
+                    name="WP géré",
+                    status="planned",
+                ),
+                WorkPackage(
+                    id="WP-PARTICIPATING",
+                    project_id="P-PARTICIPATING",
+                    code="PART",
+                    name="WP participé",
+                    status="planned",
+                ),
+                WorkPackage(
+                    id="WP-PM-ONLY",
+                    project_id="P-PM-ONLY",
+                    code="PM",
+                    name="WP CP seul",
+                    status="planned",
+                ),
+                WorkPackage(
+                    id="WP-OTHER",
+                    project_id="P-OTHER",
+                    code="OTH",
+                    name="WP global",
+                    status="planned",
+                ),
+            ]
+        )
+        demands = SqlDemandRepository(session, actor_name="test")
+        for project_number in ("P-100", "P-200", "P-300", "P-900"):
+            demands.create(
+                {
+                    "NumeroProjet": project_number,
+                    "DateDebutSouhaitee": DAY,
+                    "DateFinSouhaitee": DAY,
+                    "Description": f"Demande {project_number}",
+                    "NombreRessources": 1,
+                }
+            )
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        super().setUpClass()
+        cls._database_template = SqliteDatabaseTemplate(
+            filename="scope.db",
+            seed=cls._seed_database,
+        )
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        cls._database_template.cleanup()
+        super().tearDownClass()
+
     def setUp(self) -> None:
         self.temp = TemporaryDirectory()
-        database = Path(self.temp.name) / "scope.db"
-        self.database_url = f"sqlite+pysqlite:///{database.as_posix()}"
-        engine = create_sql_engine(self.database_url)
-        Base.metadata.create_all(engine)
-        factory = create_session_factory(engine)
-        try:
-            with factory.begin() as session:
-                session.add_all(
-                    [
-                        Project(
-                            id="P-MANAGED",
-                            number="P-100",
-                            name="Projet géré",
-                            project_manager_external_id="EMP-MULTI",
-                            project_manager_name="Gestionnaire multi",
-                            status="Actif",
-                        ),
-                        Project(
-                            id="P-PARTICIPATING",
-                            number="P-200",
-                            name="Projet participé",
-                            status="Actif",
-                        ),
-                        Project(
-                            id="P-PM-ONLY",
-                            number="P-300",
-                            name="Projet CP sans ressource",
-                            project_manager_external_id="EMP-PM-ONLY",
-                            project_manager_name="Gestionnaire sans ressource",
-                            status="Actif",
-                        ),
-                        Project(
-                            id="P-OTHER",
-                            number="P-900",
-                            name="Projet global seulement",
-                            status="Actif",
-                        ),
-                    ]
-                )
-                session.add(
-                    Resource(
-                        id="R-MULTI",
-                        external_id="EMP-MULTI",
-                        name="Ressource multi-rôle",
-                        active=True,
-                        sort_order=10,
-                    )
-                )
-                session.flush()
-                session.add(
-                    ResourceRequirement(
-                        id="REQ-PARTICIPATING",
-                        project_id="P-PARTICIPATING",
-                        assigned_resource_id="R-MULTI",
-                        start_date=DAY,
-                        end_date=DAY,
-                        planned_hours=Decimal("8"),
-                        status="Planifié",
-                        origin="AD_HOC",
-                    )
-                )
-                session.add_all(
-                    [
-                        WorkPackage(
-                            id="WP-MANAGED",
-                            project_id="P-MANAGED",
-                            code="MGT",
-                            name="WP géré",
-                            status="planned",
-                        ),
-                        WorkPackage(
-                            id="WP-PARTICIPATING",
-                            project_id="P-PARTICIPATING",
-                            code="PART",
-                            name="WP participé",
-                            status="planned",
-                        ),
-                        WorkPackage(
-                            id="WP-PM-ONLY",
-                            project_id="P-PM-ONLY",
-                            code="PM",
-                            name="WP CP seul",
-                            status="planned",
-                        ),
-                        WorkPackage(
-                            id="WP-OTHER",
-                            project_id="P-OTHER",
-                            code="OTH",
-                            name="WP global",
-                            status="planned",
-                        ),
-                    ]
-                )
-                demands = SqlDemandRepository(session, actor_name="test")
-                for project_number in ("P-100", "P-200", "P-300", "P-900"):
-                    demands.create(
-                        {
-                            "NumeroProjet": project_number,
-                            "DateDebutSouhaitee": DAY,
-                            "DateFinSouhaitee": DAY,
-                            "Description": f"Demande {project_number}",
-                            "NombreRessources": 1,
-                        }
-                    )
-        finally:
-            engine.dispose()
+        self.database_url = self._database_template.copy_to(self.temp.name)
 
     def tearDown(self) -> None:
         self.temp.cleanup()
