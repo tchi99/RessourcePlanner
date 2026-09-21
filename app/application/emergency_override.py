@@ -5,6 +5,10 @@ from datetime import date, datetime, timedelta, timezone
 from typing import Callable, Protocol, Sequence, cast
 
 from .demand_service import DemandService
+from .demand_workflow_policy import (
+    ACTION_EMERGENCY_PLAN,
+    DemandWorkflowBlock,
+)
 from .errors import (
     ApplicationConflictError,
     ApplicationOperationError,
@@ -20,6 +24,7 @@ from .results import DemandMutationResult, PlanningResult
 class DemandEmergencyOverrideCommand:
     number: str
     comment: str
+    expected_version: int | None = None
 
 
 class EmergencyDemandRepositoryPort(Protocol):
@@ -152,6 +157,62 @@ class EmergencyDemandService(DemandService):
         super().__init__(*args, **kwargs)
         self._today_provider = today_provider
 
+    def _workflow_business_blocks(
+        self,
+        existing: DemandReadModel,
+    ) -> Mapping[str, DemandWorkflowBlock]:
+        blocks = dict(super()._workflow_business_blocks(existing))
+        periods = self._emergency_periods(existing.number)
+        eligible, reason = emergency_override_eligibility(
+            existing,
+            today=self._today_provider(),
+            periods=periods,
+        )
+        if eligible:
+            return blocks
+
+        messages = {
+            "ALREADY_ACTIVE": (
+                "demand_emergency_override_already_active",
+                "Une dérogation urgente est déjà active. La demande doit être régularisée par l'approbation normale avant toute nouvelle dérogation.",
+                "conflict",
+            ),
+            "STATUS_NOT_SUBMITTED": (
+                "demand_emergency_status_not_submitted",
+                "La dérogation urgente est réservée aux demandes Soumises.",
+                "validation",
+            ),
+            "NOT_URGENT": (
+                "demand_emergency_not_urgent",
+                "La demande doit être marquée Urgent pour utiliser cette dérogation.",
+                "validation",
+            ),
+            "WINDOW_INCOMPLETE": (
+                "demand_emergency_window_incomplete",
+                "La fenêtre urgente ne peut pas être déterminée; sélectionner les alternatives requises ou compléter les dates.",
+                "validation",
+            ),
+            "OUTSIDE_CURRENT_WEEK": (
+                "demand_emergency_outside_current_week",
+                "La dérogation urgente est limitée aux besoins qui chevauchent la semaine courante.",
+                "validation",
+            ),
+        }
+        code, message, error_kind = messages.get(
+            str(reason or ""),
+            (
+                "demand_emergency_not_eligible",
+                "La demande n'est pas admissible à la dérogation urgente.",
+                "validation",
+            ),
+        )
+        blocks[ACTION_EMERGENCY_PLAN] = DemandWorkflowBlock(
+            code=code,
+            message=message,
+            error_kind=error_kind,
+        )
+        return blocks
+
     def _emergency_repository(self) -> EmergencyDemandRepositoryPort:
         repository = self._demands
         if not hasattr(repository, "activate_emergency_override") or not hasattr(
@@ -188,33 +249,11 @@ class EmergencyDemandService(DemandService):
             )
 
         existing = self._demand_or_not_found(number)
-        periods = self._emergency_periods(number)
-        eligible, eligibility_reason = emergency_override_eligibility(
+        self._assert_workflow_action(
             existing,
-            today=self._today_provider(),
-            periods=periods,
+            ACTION_EMERGENCY_PLAN,
+            expected_version=command.expected_version,
         )
-        if not eligible:
-            if eligibility_reason == "ALREADY_ACTIVE":
-                raise ApplicationConflictError(
-                    "Une dérogation urgente est déjà active. La demande doit être régularisée par l'approbation normale avant toute nouvelle dérogation.",
-                    code="demand_emergency_override_already_active",
-                    context={"demand_number": number},
-                )
-            messages = {
-                "STATUS_NOT_SUBMITTED": "La dérogation urgente est réservée aux demandes Soumises.",
-                "NOT_URGENT": "La demande doit être marquée Urgent pour utiliser cette dérogation.",
-                "WINDOW_INCOMPLETE": "La fenêtre urgente ne peut pas être déterminée; sélectionner les alternatives requises ou compléter les dates.",
-                "OUTSIDE_CURRENT_WEEK": "La dérogation urgente est limitée aux besoins qui chevauchent la semaine courante.",
-            }
-            raise ApplicationValidationError(
-                messages.get(
-                    eligibility_reason,
-                    "La demande n'est pas admissible à la dérogation urgente.",
-                ),
-                code=f"demand_emergency_{str(eligibility_reason or 'not_eligible').lower()}",
-                context={"demand_number": number},
-            )
 
         repository = self._emergency_repository()
         now = datetime.now(timezone.utc)
