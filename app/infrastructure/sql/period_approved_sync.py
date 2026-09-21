@@ -536,6 +536,7 @@ class SqlPeriodAwareApprovedDemandSyncAdapter(ApprovedDemandSyncPort):
                             description=(
                                 _text(period.note)
                                 or _text(line.description)
+                                or _text(line.erp_task_label)
                                 or _text(request.description)
                                 or "Période approuvée"
                             ),
