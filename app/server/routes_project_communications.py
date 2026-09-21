@@ -106,6 +106,17 @@ def build_project_communication_router(
             actor_name=_actor(request),
         )
 
+    @router.post("/project-batches/{batch_id}/send-smtp")
+    def send_project_smtp(
+        batch_id: str,
+        request: Request,
+        service: ProjectCommunicationService = Depends(dependency),
+    ) -> CommunicationBatchRecord:
+        return service.send_project_smtp(
+            batch_id=batch_id,
+            actor_name=_actor(request),
+        )
+
     @router.post("/project-batches/{batch_id}/cancel")
     def cancel_project_batch(
         batch_id: str,
