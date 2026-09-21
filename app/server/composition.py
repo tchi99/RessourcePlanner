@@ -157,6 +157,8 @@ def build_communication_service(
 
 def build_project_communication_service(
     session: Session,
+    *,
+    transport: CommunicationTransportPort | None = None,
 ) -> ProjectCommunicationService:
     """Compose the #290 project-centric communication projection."""
 
@@ -167,7 +169,9 @@ def build_project_communication_service(
         SqlProjectCommunicationRepository(
             session,
             operational_contacts=operational,
-        )
+        ),
+        workflow_repository=SqlCommunicationRepository(session),
+        transport=transport,
     )
 
 
