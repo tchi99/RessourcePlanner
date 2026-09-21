@@ -59,11 +59,25 @@ from .employee_sync import (
     ExternalEmployeeRecord,
 )
 from .errors import (
+    ApplicationAuthorizationError,
     ApplicationConflictError,
     ApplicationError,
     ApplicationNotFoundError,
     ApplicationOperationError,
     ApplicationValidationError,
+)
+from .demand_workflow_policy import (
+    ACTION_APPROVE,
+    ACTION_CANCEL,
+    ACTION_CORRECTION,
+    ACTION_EMERGENCY_PLAN,
+    ACTION_MODIFY,
+    ACTION_SUBMIT,
+    DemandWorkflowActionReadModel,
+    DemandWorkflowBlock,
+    DemandWorkflowReadModel,
+    assert_demand_action,
+    demand_workflow_state,
 )
 from .facade import ApplicationFacade
 from .emergency_override import (
@@ -183,6 +197,7 @@ __all__ = [
     "AllocationCommandPort",
     "AllocationMutationResult",
     "AllocationService",
+    "ApplicationAuthorizationError",
     "ApplicationConflictError",
     "ApplicationError",
     "ApplicationFacade",
