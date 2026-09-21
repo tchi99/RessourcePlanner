@@ -25,6 +25,7 @@ from .commands import (
     WorkPackageUpdateCommand,
 )
 from .demand_service import DemandService
+from .demand_workflow_policy import DemandWorkflowReadModel
 from .errors import ApplicationOperationError
 from .planning_service import PlanningService
 from .quick_shift_service import QuickShiftService
@@ -164,6 +165,9 @@ class ApplicationFacade:
             period_id=_identifier(command.period_id),
             planning=PlanningResult.from_mapping(summary) if summary is not None else None,
         )
+
+    def demand_workflow_state(self, number: str) -> DemandWorkflowReadModel:
+        return self._demands.workflow_state(number)
 
     def submit_demand(self, command: DemandSubmitCommand) -> DemandMutationResult:
         self._demands.submit_command(command)

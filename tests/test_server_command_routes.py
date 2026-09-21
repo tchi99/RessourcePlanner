@@ -25,6 +25,8 @@ from app.infrastructure.sql import (
     transactional_session,
 )
 from app.server import create_api_app
+from app.application.security import AuthPrincipal, ROLE_PROJECT_MANAGER
+from app.server.security import static_auth_resolver
 
 
 WORK_DAY = date(2026, 8, 24)  # lundi
@@ -452,6 +454,119 @@ class ServerCommandRouteTests(unittest.TestCase):
                     self.assertEqual(int(request_count or 0), 0)
             finally:
                 engine.dispose()
+
+
+    def test_demand_workflow_policy_rejects_direct_invalid_and_stale_transitions(self) -> None:
+        with TemporaryDirectory() as directory:
+            database_url, _ = self._database(directory)
+            app = create_api_app(
+                database_url,
+                actor_name="Jean",
+                auth_resolver=test_admin_auth_resolver("Jean"),
+            )
+            with TestClient(app, raise_server_exceptions=False) as client:
+                created = client.post(
+                    "/api/v1/demands",
+                    json={
+                        "project_number": "P-1",
+                        "desired_start": WORK_DAY.isoformat(),
+                        "estimated_hours": 8,
+                        "priority": "Normale",
+                    },
+                )
+                self.assertEqual(created.status_code, 201, created.text)
+                number = created.json()["demand_number"]
+
+                workflow = client.get(
+                    f"/api/v1/demands/{number}/workflow-actions"
+                )
+                self.assertEqual(workflow.status_code, 200, workflow.text)
+                before = workflow.json()
+                self.assertEqual(before["status"], "Brouillon")
+                self.assertEqual(
+                    set(before["available_actions"]),
+                    {"modify", "submit", "cancel"},
+                )
+
+                invalid_approval = client.post(
+                    f"/api/v1/demands/{number}/approve",
+                    json={
+                        "comment": "Contournement direct",
+                        "expected_version": before["version"],
+                    },
+                )
+                self.assertEqual(invalid_approval.status_code, 409, invalid_approval.text)
+                self.assertEqual(
+                    invalid_approval.json()["error"]["code"],
+                    "demand_transition_invalid",
+                )
+
+                stale_submit = client.post(
+                    f"/api/v1/demands/{number}/submit",
+                    json={"expected_version": before["version"] + 99},
+                )
+                self.assertEqual(stale_submit.status_code, 409, stale_submit.text)
+                self.assertEqual(
+                    stale_submit.json()["error"]["code"],
+                    "demand_version_conflict",
+                )
+
+                submitted = client.post(
+                    f"/api/v1/demands/{number}/submit",
+                    json={"expected_version": before["version"]},
+                )
+                self.assertEqual(submitted.status_code, 200, submitted.text)
+                self.assertEqual(submitted.json()["status"], "Soumise")
+
+                after = client.get(
+                    f"/api/v1/demands/{number}/workflow-actions"
+                )
+                self.assertEqual(after.status_code, 200, after.text)
+                state = after.json()
+                self.assertEqual(state["status"], "Soumise")
+                self.assertIn("approve", state["available_actions"])
+                self.assertIn("correction", state["available_actions"])
+                self.assertNotIn("submit", state["available_actions"])
+                self.assertNotIn("emergency-plan", state["available_actions"])
+
+                repeated_submit = client.post(
+                    f"/api/v1/demands/{number}/submit",
+                    json={"expected_version": state["version"]},
+                )
+                self.assertEqual(repeated_submit.status_code, 409, repeated_submit.text)
+                self.assertEqual(
+                    repeated_submit.json()["error"]["code"],
+                    "demand_transition_invalid",
+                )
+
+
+            project_manager = AuthPrincipal.from_roles(
+                local_user_id="pm-1",
+                issuer="urn:test",
+                subject="pm-subject",
+                display_name="Chargé de projet",
+                email=None,
+                roles=(ROLE_PROJECT_MANAGER,),
+                auth_mode="test",
+            )
+            project_manager_app = create_api_app(
+                database_url,
+                actor_name="Chargé de projet",
+                auth_resolver=static_auth_resolver(project_manager),
+            )
+            with TestClient(
+                project_manager_app,
+                raise_server_exceptions=False,
+            ) as project_manager_client:
+                restricted = project_manager_client.get(
+                    f"/api/v1/demands/{number}/workflow-actions"
+                )
+                self.assertEqual(restricted.status_code, 200, restricted.text)
+                available = set(restricted.json()["available_actions"])
+                self.assertIn("modify", available)
+                self.assertIn("cancel", available)
+                self.assertNotIn("approve", available)
+                self.assertNotIn("correction", available)
 
 
 if __name__ == "__main__":

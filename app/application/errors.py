@@ -37,6 +37,10 @@ class ApplicationError(Exception):
         }
 
 
+class ApplicationAuthorizationError(ApplicationError):
+    default_code = "permission_denied"
+
+
 class ApplicationValidationError(ApplicationError):
     default_code = "validation_error"
 

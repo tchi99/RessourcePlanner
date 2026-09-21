@@ -4,9 +4,12 @@ import { ApiError, type DemandReadModel, getDemand, getDemands } from "./api";
 import {
   approveDemand,
   cancelDemand,
+  getDemandWorkflowState,
   requestDemandCorrection,
   submitDemand,
   type DemandWorkflowResult,
+  type DemandWorkflowState,
+  type WorkflowAction,
 } from "./demandWorkflowApi";
 import {
   getDemandPlanDelta,
@@ -15,7 +18,10 @@ import {
 } from "./planDeltaApi";
 import "./planDelta.css";
 
-type WorkflowAction = "submit" | "approve" | "correction" | "cancel";
+type WorkflowButtonAction = Extract<
+  WorkflowAction,
+  "submit" | "approve" | "correction" | "cancel"
+>;
 
 function errorMessage(reason: unknown): string {
   if (reason instanceof ApiError) {
@@ -28,20 +34,7 @@ function normalStatus(status: string | null | undefined): string {
   return (status ?? "").trim().toLocaleLowerCase("fr-CA");
 }
 
-function expectedActions(status: string): WorkflowAction[] {
-  const normalized = normalStatus(status);
-  if (normalized === "brouillon" || normalized === "à corriger" || normalized === "a corriger") {
-    return ["submit", "cancel"];
-  }
-  if (normalized === "soumise") return ["approve", "correction", "cancel"];
-  if (normalized === "en planification") return ["cancel"];
-  if (normalized === "annulée" || normalized === "annulee" || normalized === "fermé" || normalized === "ferme") {
-    return [];
-  }
-  return ["submit", "approve", "correction", "cancel"];
-}
-
-function actionLabel(action: WorkflowAction): string {
+function actionLabel(action: WorkflowButtonAction): string {
   switch (action) {
     case "submit": return "Soumettre";
     case "approve": return "Approuver";
@@ -89,10 +82,11 @@ export default function DemandWorkflowPage() {
   const [demands, setDemands] = useState<DemandReadModel[]>([]);
   const [selectedNumber, setSelectedNumber] = useState("");
   const [selectedDemand, setSelectedDemand] = useState<DemandReadModel | null>(null);
+  const [workflowState, setWorkflowState] = useState<DemandWorkflowState | null>(null);
   const [approvalComment, setApprovalComment] = useState("");
   const [correctionComment, setCorrectionComment] = useState("");
   const [loading, setLoading] = useState(true);
-  const [pendingAction, setPendingAction] = useState<WorkflowAction | null>(null);
+  const [pendingAction, setPendingAction] = useState<WorkflowButtonAction | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [planDelta, setPlanDelta] = useState<DemandPlanDelta | null>(null);
@@ -107,10 +101,15 @@ export default function DemandWorkflowPage() {
     setSelectedNumber(nextNumber);
     if (!nextNumber) {
       setSelectedDemand(null);
+      setWorkflowState(null);
       return;
     }
-    const detail = await getDemand(nextNumber);
+    const [detail, workflow] = await Promise.all([
+      getDemand(nextNumber),
+      getDemandWorkflowState(nextNumber),
+    ]);
     setSelectedDemand(detail);
+    setWorkflowState(workflow);
   }
 
   useEffect(() => {
@@ -123,8 +122,16 @@ export default function DemandWorkflowPage() {
         const first = rows[0]?.number || "";
         setSelectedNumber(first);
         if (first) {
-          const detail = await getDemand(first);
-          if (active) setSelectedDemand(detail);
+          const [detail, workflow] = await Promise.all([
+            getDemand(first),
+            getDemandWorkflowState(first),
+          ]);
+          if (active) {
+            setSelectedDemand(detail);
+            setWorkflowState(workflow);
+          }
+        } else if (active) {
+          setWorkflowState(null);
         }
       })
       .catch((reason: unknown) => {
@@ -140,9 +147,15 @@ export default function DemandWorkflowPage() {
     if (!selectedNumber || loading) return;
     let active = true;
     setError(null);
-    getDemand(selectedNumber)
-      .then((detail) => {
-        if (active) setSelectedDemand(detail);
+    Promise.all([
+      getDemand(selectedNumber),
+      getDemandWorkflowState(selectedNumber),
+    ])
+      .then(([detail, workflow]) => {
+        if (active) {
+          setSelectedDemand(detail);
+          setWorkflowState(workflow);
+        }
       })
       .catch((reason: unknown) => {
         if (active) setError(errorMessage(reason));
@@ -177,11 +190,18 @@ export default function DemandWorkflowPage() {
   }, [selectedDemand?.number, selectedDemand?.status]);
 
   const actions = useMemo(
-    () => expectedActions(selectedDemand?.status ?? ""),
-    [selectedDemand?.status],
+    () =>
+      (workflowState?.available_actions ?? []).filter(
+        (action): action is WorkflowButtonAction =>
+          action === "submit" ||
+          action === "approve" ||
+          action === "correction" ||
+          action === "cancel",
+      ),
+    [workflowState],
   );
 
-  async function runAction(action: WorkflowAction) {
+  async function runAction(action: WorkflowButtonAction) {
     if (!selectedDemand || pendingAction) return;
     if (action === "correction" && !correctionComment.trim()) {
       setError("Un commentaire est requis pour demander une correction.");
@@ -193,15 +213,24 @@ export default function DemandWorkflowPage() {
     setError(null);
     setNotice(null);
     try {
+      const expectedVersion = workflowState?.version ?? selectedDemand.version;
       let result: DemandWorkflowResult;
       if (action === "submit") {
-        result = await submitDemand(selectedDemand.number);
+        result = await submitDemand(selectedDemand.number, expectedVersion);
       } else if (action === "approve") {
-        result = await approveDemand(selectedDemand.number, approvalComment.trim());
+        result = await approveDemand(
+          selectedDemand.number,
+          approvalComment.trim(),
+          expectedVersion,
+        );
       } else if (action === "correction") {
-        result = await requestDemandCorrection(selectedDemand.number, correctionComment.trim());
+        result = await requestDemandCorrection(
+          selectedDemand.number,
+          correctionComment.trim(),
+          expectedVersion,
+        );
       } else {
-        result = await cancelDemand(selectedDemand.number);
+        result = await cancelDemand(selectedDemand.number, expectedVersion);
       }
 
       await refresh(result.demand_number);

@@ -11,6 +11,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
 from ..application import (
+    ApplicationAuthorizationError,
     ApplicationConflictError,
     ApplicationError,
     ApplicationFacade,
@@ -90,6 +91,8 @@ UserViewContextDependency = Callable[[], Iterator[UserViewContextRepositoryPort]
 
 
 def application_error_status(exc: ApplicationError) -> int:
+    if isinstance(exc, ApplicationAuthorizationError):
+        return 403
     if isinstance(exc, ApplicationValidationError):
         return 422
     if isinstance(exc, ApplicationNotFoundError):
@@ -123,6 +126,11 @@ def _request_actor(request: Request, fallback: str) -> str:
     return principal.display_name if principal is not None else fallback
 
 
+def _request_permissions(request: Request) -> tuple[str, ...]:
+    principal: AuthPrincipal | None = getattr(request.state, "auth_principal", None)
+    return tuple(principal.permissions) if principal is not None else ()
+
+
 def make_facade_dependency(
     factory: SqlSessionFactory,
     *,
@@ -135,7 +143,11 @@ def make_facade_dependency(
         request: Request,
         session: Session = Depends(request_session),
     ) -> Iterator[ApplicationFacade]:
-        yield build_sql_facade(session, actor_name=_request_actor(request, actor_name))
+        yield build_sql_facade(
+            session,
+            actor_name=_request_actor(request, actor_name),
+            permissions=_request_permissions(request),
+        )
 
     return dependency
 

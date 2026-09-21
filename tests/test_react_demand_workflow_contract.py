@@ -20,21 +20,22 @@ class ReactDemandWorkflowContractTests(unittest.TestCase):
         self.assertIn("Workflow", workspace)
         self.assertIn('import "./demand-workflow.css"', main)
 
-    def test_workflow_client_uses_existing_fastapi_commands(self) -> None:
+    def test_workflow_client_uses_authoritative_backend_policy(self) -> None:
         source = (ROOT / "frontend" / "src" / "demandWorkflowApi.ts").read_text(
             encoding="utf-8"
         )
-
-        self.assertIn(
-            '"submit" | "approve" | "emergency-plan" | "correction" | "cancel"',
-            source,
+        page = (ROOT / "frontend" / "src" / "DemandWorkflowPage.tsx").read_text(
+            encoding="utf-8"
         )
+
+        self.assertIn("/workflow-actions", source)
+        self.assertIn("getDemandWorkflowState", source)
+        self.assertIn("expected_version", source)
         self.assertIn("/api/v1/demands/${encodeURIComponent(number)}/${action}", source)
-        self.assertIn('workflowPost(number, "submit")', source)
-        self.assertIn('workflowPost(number, "approve", { comment })', source)
-        self.assertIn('workflowPost(number, "emergency-plan", { comment })', source)
-        self.assertIn('workflowPost(number, "correction", { comment })', source)
-        self.assertIn('workflowPost(number, "cancel")', source)
+        self.assertIn("workflowState?.available_actions", page)
+        self.assertIn("getDemandWorkflowState", page)
+        self.assertIn("workflowState?.version ?? selectedDemand.version", page)
+        self.assertNotIn("function expectedActions", page)
 
     def test_workflow_separates_approval_from_confirmation(self) -> None:
         source = (ROOT / "frontend" / "src" / "DemandWorkflowPage.tsx").read_text(

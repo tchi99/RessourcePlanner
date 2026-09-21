@@ -89,13 +89,16 @@ class RepositoryPortTests(unittest.TestCase):
         sync_events: list[object] = []
 
         class Port:
+            def __init__(self):
+                self.status = "En planification"
+
             def list(self):
                 return ()
 
             def get(self, number: str):
                 return DemandReadModel(
                     number=number,
-                    status="En planification",
+                    status=self.status,
                     desired_start=date(2026, 8, 25),
                     desired_end=date(2026, 8, 29),
                 )
@@ -106,6 +109,8 @@ class RepositoryPortTests(unittest.TestCase):
 
             def update(self, number, updates, *, action, comment=""):
                 writes.append(("update", number, dict(updates), action, comment))
+                if "Statut" in updates:
+                    self.status = str(updates["Statut"])
 
         service = DemandService(
             Port(),

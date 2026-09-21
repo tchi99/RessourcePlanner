@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
+
 from sqlalchemy.orm import Session
 
 from ..application import (
@@ -63,6 +65,7 @@ def build_sql_facade(
     session: Session,
     *,
     actor_name: str = "api",
+    permissions: Sequence[str] | None = None,
 ) -> ApplicationFacade:
     """Compose one application facade inside the caller-owned SQL transaction."""
 
@@ -102,6 +105,7 @@ def build_sql_facade(
             approved_sync,
             periods=periods,
             current_user=actor,
+            permissions=permissions,
         ),
         segments=SegmentService(segments, planning_commands),
         allocations=AllocationService(allocation_commands),
