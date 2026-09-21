@@ -416,7 +416,8 @@ def _project_body(
                     )
             for resource in task.resources:
                 lines.append(
-                    f"  • {resource.resource_name}{_resource_suffix(resource)}"
+                    f"  • {resource.resource_name} — {resource.hours:g} h"
+                    f"{_resource_suffix(resource)}"
                 )
     return "\n".join(lines)
 
