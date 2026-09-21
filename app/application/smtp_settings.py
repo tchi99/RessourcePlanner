@@ -55,7 +55,7 @@ class SmtpRuntimeConfiguration:
     port: int
     security: str
     username: str | None
-    password: str | None
+    credential: str | None
     from_email: str
     from_name: str | None
     reply_to: str | None
@@ -68,7 +68,7 @@ class SmtpConfigurationUpdate:
     port: int
     security: str
     username: str | None
-    password: str | None
+    credential: str | None
     clear_password: bool
     from_email: str
     from_name: str | None
@@ -270,13 +270,13 @@ class SmtpConfigurationService:
         )
         if update.clear_password:
             encrypted_password = None
-        elif _text(update.password):
+        elif _text(update.credential):
             if self._cipher is None:
                 raise ApplicationUnavailableError(
                     "La clé de chiffrement serveur n'est pas configurée.",
                     code="smtp_encryption_key_unavailable",
                 )
-            encrypted_password = self._cipher.encrypt(_text(update.password))
+            encrypted_password = self._cipher.encrypt(_text(update.credential))
 
         if username and not encrypted_password:
             raise ApplicationValidationError(
@@ -331,7 +331,7 @@ class SmtpConfigurationService:
                 "L'envoi SMTP est désactivé dans la configuration.",
                 code="smtp_configuration_disabled",
             )
-        password = None
+        credential_value = None
         if row.encrypted_password:
             if self._cipher is None:
                 raise ApplicationUnavailableError(
@@ -339,13 +339,13 @@ class SmtpConfigurationService:
                     code="smtp_encryption_key_unavailable",
                 )
             try:
-                password = self._cipher.decrypt(row.encrypted_password)
+                credential_value = self._cipher.decrypt(row.encrypted_password)
             except Exception as exc:
                 raise ApplicationUnavailableError(
                     "Le secret SMTP enregistré ne peut pas être déchiffré avec la clé serveur actuelle.",
                     code="smtp_secret_decryption_failed",
                 ) from exc
-        if row.username and not password:
+        if row.username and not credential_value:
             raise ApplicationValidationError(
                 "Le mot de passe SMTP est absent.",
                 code="smtp_configuration_password_required",
@@ -355,7 +355,7 @@ class SmtpConfigurationService:
             port=row.port,
             security=row.security,
             username=row.username,
-            password=password,
+            credential=credential_value,
             from_email=row.from_email,
             from_name=row.from_name,
             reply_to=row.reply_to,
