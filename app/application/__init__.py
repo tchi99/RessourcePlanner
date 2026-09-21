@@ -98,6 +98,10 @@ from .operational_contacts import (
     RequestLineContactResolution,
 )
 from .plan_delta import DemandPlanDeltaItemReadModel, DemandPlanDeltaReadModel
+from .project_communications import (
+    ProjectCommunicationRepositoryPort,
+    ProjectCommunicationService,
+)
 from .planning_service import PlanningService
 from .project_sync import (
     ExternalProjectRecord,
@@ -261,6 +265,8 @@ __all__ = [
     "PlanningResult",
     "PlanningService",
     "PlanningSnapshotReadModel",
+    "ProjectCommunicationRepositoryPort",
+    "ProjectCommunicationService",
     "ProjectReadModel",
     "ProjectSourcePort",
     "ProjectSyncRepositoryPort",

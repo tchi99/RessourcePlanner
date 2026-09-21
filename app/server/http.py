@@ -24,6 +24,7 @@ from ..application import (
     ProjectSourcePort,
 )
 from ..application.communications import CommunicationService, CommunicationTransportPort
+from ..application.project_communications import ProjectCommunicationService
 from ..application.errors import ApplicationUnavailableError
 from ..application.security import AuthPrincipal
 from ..application.user_view_context import UserViewContextRepositoryPort
@@ -36,6 +37,7 @@ from ..infrastructure.sql import (
 from .composition import (
     build_business_contact_admin_service,
     build_communication_service,
+    build_project_communication_service,
     build_competency_catalog_service,
     build_sql_facade,
     build_sql_idempotency_executor,
@@ -56,6 +58,7 @@ from .routes_business_contacts import build_business_contact_router
 from .routes_commands import build_command_router
 from .routes_competencies import build_competency_router
 from .routes_communications import build_communication_router
+from .routes_project_communications import build_project_communication_router
 from .routes_dev_user_switcher import build_dev_user_switcher_router
 from .routes_integrations import build_integration_router
 from .routes_me import build_me_router
@@ -71,6 +74,7 @@ IdempotencyDependency = Callable[[], Iterator[IdempotentCommandExecutor]]
 QueryDependency = Callable[[], Iterator[PlannerQueryPort]]
 UserAdminDependency = Callable[..., Any]
 CommunicationDependency = Callable[..., Any]
+ProjectCommunicationDependency = Callable[..., Any]
 CompetencyDependency = Callable[[], Iterator[CompetencyCatalogService]]
 BusinessContactDependency = Callable[[], Iterator[BusinessContactAdminService]]
 UserViewContextDependency = Callable[[], Iterator[UserViewContextRepositoryPort]]
@@ -188,6 +192,21 @@ def make_user_admin_dependency(
         session: Session = Depends(request_session),
     ) -> Iterator[Any]:
         yield build_user_admin_service(session)
+
+    return dependency
+
+
+def make_project_communication_dependency(
+    factory: SqlSessionFactory,
+    *,
+    session_dependency: SessionDependency | None = None,
+) -> ProjectCommunicationDependency:
+    request_session = session_dependency or make_session_dependency(factory)
+
+    def dependency(
+        session: Session = Depends(request_session),
+    ) -> Iterator[ProjectCommunicationService]:
+        yield build_project_communication_service(session)
 
     return dependency
 
@@ -312,6 +331,10 @@ def create_api_app(
         session_dependency=session_dependency,
         transport=communication_transport,
     )
+    project_communication_dependency = make_project_communication_dependency(
+        factory,
+        session_dependency=session_dependency,
+    )
     competency_dependency = make_competency_dependency(
         factory,
         session_dependency=session_dependency,
@@ -345,6 +368,7 @@ def create_api_app(
     app.state.user_admin_dependency = user_admin_dependency
     app.state.user_view_context_dependency = user_view_context_dependency
     app.state.communication_dependency = communication_dependency
+    app.state.project_communication_dependency = project_communication_dependency
     app.state.competency_dependency = competency_dependency
     app.state.business_contact_dependency = business_contact_dependency
     app.state.runtime_dependencies = dict(runtime_dependencies or {})
@@ -455,6 +479,9 @@ def create_api_app(
         )
     )
     app.include_router(build_communication_router(communication_dependency))
+    app.include_router(
+        build_project_communication_router(project_communication_dependency)
+    )
     app.include_router(
         build_integration_router(
             session_dependency,
