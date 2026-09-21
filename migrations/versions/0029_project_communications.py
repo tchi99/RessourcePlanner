@@ -79,6 +79,12 @@ def downgrade() -> None:
         "ix_communication_messages_batch_key",
         table_name="communication_messages",
     )
+    op.execute(
+        sa.text(
+            "UPDATE communication_messages "
+            "SET recipient_email = '' WHERE recipient_email IS NULL"
+        )
+    )
     with op.batch_alter_table("communication_messages") as batch:
         batch.alter_column(
             "recipient_email",
