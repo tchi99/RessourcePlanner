@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { useAuth } from "./AuthContext";
 import CommunicationsPage from "./CommunicationsPage";
+import ConfigurationPage from "./ConfigurationPage";
 import DevUserSwitcher from "./DevUserSwitcher";
 import DemandsWorkspace from "./DemandsWorkspace";
 import MediumTermPage from "./MediumTermPage";
@@ -11,7 +12,7 @@ import ResourcesPage from "./ResourcesPage";
 import TechnicianSchedulePage from "./TechnicianSchedulePage";
 import UserAdminPage from "./UserAdminPage";
 
-type View = "my-schedule" | "planning" | "medium-term" | "demands" | "projects" | "resources" | "users" | "communications";
+type View = "my-schedule" | "planning" | "medium-term" | "demands" | "projects" | "resources" | "users" | "communications" | "configuration";
 
 type NavItem = { key: View; label: string; eyebrow: string; permission?: string };
 
@@ -24,6 +25,7 @@ const navItems: NavItem[] = [
   { key: "communications", label: "Communications", eyebrow: "Révision", permission: "manage_communications" },
   { key: "resources", label: "Ressources", eyebrow: "Administration", permission: "manage_resources" },
   { key: "users", label: "Utilisateurs", eyebrow: "Sécurité", permission: "admin_users" },
+  { key: "configuration", label: "Configuration", eyebrow: "Administration", permission: "admin_settings" },
 ];
 
 function Placeholder({ view }: { view: View }) {
@@ -193,6 +195,8 @@ export default function App() {
             <ResourcesPage />
           ) : view === "users" && can("admin_users") ? (
             <UserAdminPage />
+          ) : view === "configuration" && can("admin_settings") ? (
+            <ConfigurationPage />
           ) : (
             <Placeholder view={view} />
           )}
