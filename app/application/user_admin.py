@@ -120,8 +120,8 @@ class UserAdminService:
         subject: str,
         display_name: str,
         email: str | None,
-        phone: str | None,
         roles: tuple[str, ...] | list[str] | set[str],
+        phone: str | None = None,
         active: bool = True,
     ) -> UserIdentityRecord:
         issuer_value = _required(issuer, "issuer")
@@ -154,9 +154,9 @@ class UserAdminService:
         *,
         display_name: str,
         email: str | None,
-        phone: str | None,
         roles: tuple[str, ...] | list[str] | set[str],
         active: bool,
+        phone: str | None = None,
         actor_user_id: str | None = None,
     ) -> UserIdentityRecord:
         user_id_value = _required(user_id, "user_id")
