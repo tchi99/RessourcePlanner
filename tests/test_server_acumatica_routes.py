@@ -21,6 +21,7 @@ from app.infrastructure.sql import (
 )
 from app.performance_diagnostics import read_performance_samples
 from app.server import create_api_app
+from tests.sqlite_test_template import SqliteDatabaseTemplate
 
 
 from tests.http_test_auth import TEST_ADMIN_AUTH_RESOLVER
@@ -59,13 +60,21 @@ class FailingProjectSource:
 
 
 class ServerAcumaticaRouteTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        super().setUpClass()
+        cls._database_template = SqliteDatabaseTemplate(
+            filename="acumatica.db",
+            seed=lambda session: None,
+        )
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        cls._database_template.cleanup()
+        super().tearDownClass()
+
     def _database(self, directory: str) -> str:
-        path = Path(directory) / "acumatica.db"
-        url = f"sqlite:///{path.as_posix()}"
-        engine = create_sql_engine(url)
-        Base.metadata.create_all(engine)
-        engine.dispose()
-        return url
+        return self._database_template.copy_to(directory)
 
     def test_unconfigured_integration_reports_status_and_returns_503_for_sync(self) -> None:
         with TemporaryDirectory() as directory:
