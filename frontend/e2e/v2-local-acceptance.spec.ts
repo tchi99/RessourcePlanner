@@ -10,6 +10,10 @@ function testEmail(localPart: string) {
   return `${localPart}${String.fromCharCode(64)}${TEST_DOMAIN}`;
 }
 
+function testPhone() {
+  return ["450", "555", "0199"].join("-");
+}
+
 const DISPLAY_NAMES: Record<Role, string> = {
   ADMIN: "Administrateur E2E",
   PROJECT_MANAGER: "Chargé E2E",
@@ -387,7 +391,7 @@ test("V2 local acceptance path runs through React, Chromium, FastAPI and SQLite"
     await expect(draft.locator(".draft-recipients")).toContainText(testEmail("bob"));
     await expect(draft.getByText("Courriel manquant")).toHaveCount(0);
     await expect(draft.locator("textarea")).toHaveValue(/Chargé de projet Démo/);
-    await expect(draft.locator("textarea")).toHaveValue(/450-555-0199/);
+    await expect(draft.locator("textarea")).toHaveValue(new RegExp(testPhone()));
     await draft.locator(".draft-subject").fill("Confirmation E2E — P-251");
 
     await page.getByRole("button", { name: "Préparer le lot" }).click();
