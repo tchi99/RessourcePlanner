@@ -270,6 +270,66 @@ class RequestLineMaterializationHttpTests(unittest.TestCase):
             finally:
                 engine.dispose()
 
+    def test_approval_snapshots_task_label_before_request_description(self) -> None:
+        with TemporaryDirectory() as directory:
+            database_url = self._database(directory)
+            app = create_api_app(
+                database_url,
+                actor_name="coord-290a",
+                auth_resolver=TEST_ADMIN_AUTH_RESOLVER,
+            )
+            with TestClient(app, raise_server_exceptions=False) as client:
+                response = client.post(
+                    "/api/v1/demands",
+                    json={
+                        "project_number": "P-1",
+                        "description": "Description générale",
+                        "submit": True,
+                        "lines": [
+                            {
+                                "desired_start": D1.isoformat(),
+                                "desired_end": D1.isoformat(),
+                                "estimated_hours": 8,
+                                "desired_active_days": 1,
+                                "task_code": "210",
+                                "proposed_resource_id": "R1",
+                            }
+                        ],
+                    },
+                )
+                self.assertEqual(response.status_code, 201, response.text)
+                number = response.json()["demand_number"]
+                approved = client.post(
+                    f"/api/v1/demands/{number}/approve",
+                    json={"comment": "Approbation 290A"},
+                )
+                self.assertEqual(approved.status_code, 200, approved.text)
+
+            engine = create_sql_engine(database_url)
+            factory = create_session_factory(engine)
+            try:
+                with factory() as session:
+                    request = session.scalar(
+                        select(WorkforceRequest).where(
+                            WorkforceRequest.legacy_demand_number == number
+                        )
+                    )
+                    assert request is not None
+                    requirement = session.scalar(
+                        select(ResourceRequirement).where(
+                            ResourceRequirement.workforce_request_id == request.id,
+                            ResourceRequirement.status != "Annulé",
+                        )
+                    )
+                    assert requirement is not None
+                    self.assertEqual(requirement.description, "Tâche 210")
+                    self.assertEqual(
+                        requirement.approved_task_catalog_item_id,
+                        "T210",
+                    )
+            finally:
+                engine.dispose()
+
     def test_same_named_alternatives_materialize_independently_per_line(self) -> None:
         with TemporaryDirectory() as directory:
             database_url = self._database(directory)
