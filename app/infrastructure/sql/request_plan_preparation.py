@@ -631,9 +631,14 @@ class SqlRequestPlanPreparer:
             ) or None
             start_date = date.fromisoformat(_text(row.get("start_date")))
             end_date = date.fromisoformat(_text(row.get("end_date")))
-            total_hours = Decimal(_text(row.get("hours"))).quantize(
-                Decimal("0.01")
-            )
+            total_hours = Decimal(
+                str(
+                    choices.budget_overrides.get(
+                        identity_key,
+                        _text(row.get("hours")),
+                    )
+                )
+            ).quantize(Decimal("0.01"))
             slot_count = 1 if line_mode else max(int(row.get("slot_count") or 1), 1)
             split_hours = split_total_workforce_hours(total_hours, slot_count)
             base_key = (
