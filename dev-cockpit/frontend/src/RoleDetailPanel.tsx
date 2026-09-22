@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import MarkdownDocument from './MarkdownDocument'
 import type {
   ArchitectureDetail,
@@ -391,16 +391,14 @@ function DeveloperDetails({ dashboard }: { dashboard: Dashboard | null }) {
     ? issue?.sections.find((section) => section.work_key === work.subitem_key) ?? null
     : null
 
-  const documents = useMemo(() => {
-    const byPath = new Map<string, DetailDocument>()
-    for (const document of issue?.documents ?? []) {
-      byPath.set(document.path, document)
-    }
-    for (const document of commit?.documentation ?? []) {
-      byPath.set(document.path, document)
-    }
-    return [...byPath.values()]
-  }, [issue, commit])
+  const byDocumentPath = new Map<string, DetailDocument>()
+  for (const document of issue?.documents ?? []) {
+    byDocumentPath.set(document.path, document)
+  }
+  for (const document of commit?.documentation ?? []) {
+    byDocumentPath.set(document.path, document)
+  }
+  const documents = [...byDocumentPath.values()]
 
   async function copyPrompt() {
     if (!prompt) return
