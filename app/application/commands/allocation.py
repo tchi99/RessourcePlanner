@@ -43,6 +43,7 @@ class ManualAllocationCreateCommand:
     note: str = ""
     confirmation: str | None = None
     overallocation_policy: str | None = None
+    resource_id: str | None = None
 
     def __post_init__(self) -> None:
         if self.confirmation is not None:
@@ -98,6 +99,7 @@ class ManualAllocationUpdateCommand:
     confirmation: str | None = None
     clear_confirmation_override: bool = False
     overallocation_policy: str | None = None
+    resource_id: str | None = None
 
     def __post_init__(self) -> None:
         if self.confirmation is not None:
@@ -155,6 +157,7 @@ class ManualAllocationMoveCommand:
     allocation_id: str
     technician: str
     day: date
+    resource_id: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -171,3 +174,4 @@ class ManualAllocationDeleteCommand:
 class SegmentAssignCommand:
     segment_id: str
     technician: str
+    resource_id: str | None = None
