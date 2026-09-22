@@ -25,9 +25,13 @@ class ReactDemandPeriodsContractTests(unittest.TestCase):
         source = (ROOT / "frontend" / "src" / "api.ts").read_text(encoding="utf-8")
 
         self.assertIn("getDemandPeriods", source)
+        self.assertIn("getDemandLinePeriods", source)
         self.assertIn("replaceDemandPeriods", source)
+        self.assertIn("replaceDemandLinePeriods", source)
         self.assertIn("selectDemandAlternative", source)
+        self.assertIn("selectDemandLineAlternative", source)
         self.assertIn("/periods`,", source)
+        self.assertIn("/lines/${encodeURIComponent(lineId)}/periods`,", source)
         self.assertIn("/alternative-groups/${encodeURIComponent(alternativeGroup)}/selection", source)
         self.assertIn("period_id: periodId", source)
 
@@ -42,6 +46,10 @@ class ReactDemandPeriodsContractTests(unittest.TestCase):
         self.assertIn("Le groupe ${group} doit contenir au moins deux options.", source)
         self.assertIn("Une seule option d'un même groupe est retenue", source)
         self.assertIn("Retenir cette option", source)
+        self.assertIn("Ligne de demande", source)
+        self.assertIn("selectedDemand?.line_mode", source)
+        self.assertIn("singleSlot={Boolean(selectedLine)}", source)
+        self.assertIn("Une période de RequestLine représente exactement un slot.", source)
         self.assertIn("disabled={saving || dirty || period.selected}", source)
 
     def test_period_save_preserves_backend_authority_and_reapproval_signal(self) -> None:
@@ -50,9 +58,11 @@ class ReactDemandPeriodsContractTests(unittest.TestCase):
         )
 
         self.assertIn("await replaceDemandPeriods(selectedDemand.number, payload)", source)
+        self.assertIn("await replaceDemandLinePeriods(selectedDemand.number, selectedLine.line_id, payload)", source)
         self.assertIn("result.reapproval_required", source)
         self.assertIn("le plan approuvé précédent reste inchangé", source)
         self.assertIn("await selectDemandAlternative(selectedDemand.number, group, periodId)", source)
+        self.assertIn("await selectDemandLineAlternative(", source)
         self.assertNotIn("projected_hours_without_double_counting", source)
 
 

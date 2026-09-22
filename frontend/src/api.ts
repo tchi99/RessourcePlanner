@@ -349,6 +349,7 @@ export type ShiftReadModel = {
 export type DemandPeriodReadModel = {
   period_id: string;
   demand_number: string;
+  request_line_id: string | null;
   sequence: number;
   kind: "CUMULATIVE" | "ALTERNATIVE";
   start_date: string;
@@ -358,6 +359,7 @@ export type DemandPeriodReadModel = {
   alternative_group: string | null;
   proposed_resource: string | null;
   resource_count: number;
+  desired_active_days: number | null;
   note: string | null;
   selected: boolean;
 };
@@ -1058,6 +1060,17 @@ export function getDemandPeriods(number: string, signal?: AbortSignal) {
   );
 }
 
+export function getDemandLinePeriods(
+  number: string,
+  lineId: string,
+  signal?: AbortSignal,
+) {
+  return getJson<DemandPeriodReadModel[]>(
+    `/api/v1/demands/${encodeURIComponent(number)}/lines/${encodeURIComponent(lineId)}/periods`,
+    signal,
+  );
+}
+
 export function createDemand(payload: DemandWrite, idempotencyKey: string) {
   return sendJson<DemandMutationResult>(
     "/api/v1/demands",
@@ -1086,6 +1099,18 @@ export function replaceDemandPeriods(number: string, periods: DemandPeriodWrite[
   );
 }
 
+export function replaceDemandLinePeriods(
+  number: string,
+  lineId: string,
+  periods: DemandPeriodWrite[],
+) {
+  return sendJson<DemandPeriodsMutationResult>(
+    `/api/v1/demands/${encodeURIComponent(number)}/lines/${encodeURIComponent(lineId)}/periods`,
+    "PUT",
+    { periods },
+  );
+}
+
 export function selectDemandAlternative(
   number: string,
   alternativeGroup: string,
@@ -1093,6 +1118,19 @@ export function selectDemandAlternative(
 ) {
   return sendJson<DemandAlternativeSelectionResult>(
     `/api/v1/demands/${encodeURIComponent(number)}/alternative-groups/${encodeURIComponent(alternativeGroup)}/selection`,
+    "PUT",
+    { period_id: periodId },
+  );
+}
+
+export function selectDemandLineAlternative(
+  number: string,
+  lineId: string,
+  alternativeGroup: string,
+  periodId: string,
+) {
+  return sendJson<DemandAlternativeSelectionResult>(
+    `/api/v1/demands/${encodeURIComponent(number)}/lines/${encodeURIComponent(lineId)}/alternative-groups/${encodeURIComponent(alternativeGroup)}/selection`,
     "PUT",
     { period_id: periodId },
   );

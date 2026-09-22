@@ -5,21 +5,21 @@ import {
   type DemandPeriodReadModel,
   type DemandPeriodWrite,
   type DemandReadModel,
+  type DemandLineReadModel,
   type ResourceReadModel,
+  getDemandLinePeriods,
   getDemandPeriods,
   getDemands,
   getResources,
+  replaceDemandLinePeriods,
   replaceDemandPeriods,
   selectDemandAlternative,
+  selectDemandLineAlternative,
 } from "./api";
 
 type PeriodDraft = DemandPeriodWrite & {
   desired_active_days: number | null;
   selected: boolean;
-};
-
-type PeriodReadWithActiveDays = DemandPeriodReadModel & {
-  desired_active_days?: number | null;
 };
 
 function errorMessage(reason: unknown): string {
@@ -36,7 +36,7 @@ function newPeriodId(): string {
 }
 
 function fromRead(row: DemandPeriodReadModel): PeriodDraft {
-  const activeDays = (row as PeriodReadWithActiveDays).desired_active_days ?? null;
+  const activeDays = row.desired_active_days ?? null;
   return {
     period_id: row.period_id,
     start_date: row.start_date,
@@ -53,13 +53,19 @@ function fromRead(row: DemandPeriodReadModel): PeriodDraft {
   };
 }
 
-function baseDates(demand: DemandReadModel | null): { start: string; end: string } {
-  const start = demand?.desired_start ?? new Date().toISOString().slice(0, 10);
-  return { start, end: demand?.desired_end ?? start };
+function baseDates(
+  demand: DemandReadModel | null,
+  line: DemandLineReadModel | null,
+): { start: string; end: string } {
+  const start = line?.desired_start ?? demand?.desired_start ?? new Date().toISOString().slice(0, 10);
+  return { start, end: line?.desired_end ?? demand?.desired_end ?? start };
 }
 
-function defaultActiveDays(demand: DemandReadModel | null): number | null {
-  const value = demand?.estimated_days;
+function defaultActiveDays(
+  demand: DemandReadModel | null,
+  line: DemandLineReadModel | null,
+): number | null {
+  const value = line?.desired_active_days ?? demand?.estimated_days;
   return value != null && Number.isInteger(value) && value > 0 ? value : null;
 }
 
@@ -112,12 +118,14 @@ function PeriodFields({
   period,
   resources,
   disabled,
+  singleSlot,
   onChange,
   onRemove,
 }: {
   period: PeriodDraft;
   resources: ResourceReadModel[];
   disabled: boolean;
+  singleSlot: boolean;
   onChange: (next: PeriodDraft) => void;
   onRemove: () => void;
 }) {
@@ -153,8 +161,15 @@ function PeriodFields({
         </label>
         <label>
           <span>Ressources simultanées</span>
-          <input type="number" min="1" step="1" value={period.resource_count} disabled={disabled} onChange={(event) => change("resource_count", Number(event.target.value))} />
-          <small>Parallélisme souhaité; ne multiplie pas les heures.</small>
+          <input
+            type="number"
+            min="1"
+            step="1"
+            value={period.resource_count}
+            disabled={disabled || singleSlot}
+            onChange={(event) => change("resource_count", Number(event.target.value))}
+          />
+          <small>{singleSlot ? "Une période de RequestLine représente exactement un slot." : "Parallélisme souhaité; ne multiplie pas les heures."}</small>
         </label>
         <label>
           <span>Jours actifs souhaités</span>
@@ -205,6 +220,7 @@ export default function DemandPeriodsPage() {
   const [demands, setDemands] = useState<DemandReadModel[]>([]);
   const [resources, setResources] = useState<ResourceReadModel[]>([]);
   const [selectedNumber, setSelectedNumber] = useState("");
+  const [selectedLineId, setSelectedLineId] = useState("");
   const [periods, setPeriods] = useState<PeriodDraft[]>([]);
   const [loading, setLoading] = useState(true);
   const [periodLoading, setPeriodLoading] = useState(false);
@@ -217,6 +233,27 @@ export default function DemandPeriodsPage() {
     () => demands.find((row) => row.number === selectedNumber) ?? null,
     [demands, selectedNumber],
   );
+
+  const selectedLine = useMemo(
+    () =>
+      selectedDemand?.line_mode
+        ? selectedDemand.lines.find((row) => row.active && row.line_id === selectedLineId) ?? null
+        : null,
+    [selectedDemand, selectedLineId],
+  );
+
+  useEffect(() => {
+    if (!selectedDemand?.line_mode) {
+      setSelectedLineId("");
+      return;
+    }
+    const activeLines = selectedDemand.lines.filter((row) => row.active);
+    setSelectedLineId((current) =>
+      activeLines.some((row) => row.line_id === current)
+        ? current
+        : activeLines[0]?.line_id ?? "",
+    );
+  }, [selectedDemand?.number, selectedDemand?.line_mode, selectedDemand?.lines]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -236,7 +273,7 @@ export default function DemandPeriodsPage() {
   }, []);
 
   useEffect(() => {
-    if (!selectedNumber) {
+    if (!selectedNumber || (selectedDemand?.line_mode && !selectedLineId)) {
       setPeriods([]);
       return;
     }
@@ -244,7 +281,10 @@ export default function DemandPeriodsPage() {
     setPeriodLoading(true);
     setError(null);
     setNotice(null);
-    getDemandPeriods(selectedNumber, controller.signal)
+    const request = selectedDemand?.line_mode
+      ? getDemandLinePeriods(selectedNumber, selectedLineId, controller.signal)
+      : getDemandPeriods(selectedNumber, controller.signal);
+    request
       .then((rows) => {
         setPeriods(rows.map(fromRead));
         setDirty(false);
@@ -256,7 +296,7 @@ export default function DemandPeriodsPage() {
         if (!controller.signal.aborted) setPeriodLoading(false);
       });
     return () => controller.abort();
-  }, [selectedNumber]);
+  }, [selectedNumber, selectedDemand?.line_mode, selectedLineId]);
 
   const cumulative = periods.filter((row) => row.kind === "CUMULATIVE");
   const alternativeGroups = useMemo(() => {
@@ -284,7 +324,7 @@ export default function DemandPeriodsPage() {
   }
 
   function addCumulative() {
-    const { start, end } = baseDates(selectedDemand);
+    const { start, end } = baseDates(selectedDemand, selectedLine);
     setPeriods((current) => [
       ...current,
       {
@@ -294,10 +334,10 @@ export default function DemandPeriodsPage() {
         hours: 8,
         kind: "CUMULATIVE",
         alternative_group: null,
-        confirmation: (selectedDemand?.confirmation === "Confirmée" ? "Confirmée" : "Tentative"),
-        proposed_resource: selectedDemand?.proposed_resource ?? null,
-        resource_count: selectedDemand?.resource_count ?? 1,
-        desired_active_days: defaultActiveDays(selectedDemand),
+        confirmation: ((selectedLine?.confirmation ?? selectedDemand?.confirmation) === "Confirmée" ? "Confirmée" : "Tentative"),
+        proposed_resource: selectedLine?.proposed_resource ?? selectedDemand?.proposed_resource ?? null,
+        resource_count: selectedLine ? 1 : selectedDemand?.resource_count ?? 1,
+        desired_active_days: defaultActiveDays(selectedDemand, selectedLine),
         note: "",
         selected: false,
       },
@@ -307,7 +347,7 @@ export default function DemandPeriodsPage() {
   }
 
   function addAlternativeGroup() {
-    const { start, end } = baseDates(selectedDemand);
+    const { start, end } = baseDates(selectedDemand, selectedLine);
     const group = nextAlternativeGroup(periods);
     const base: Omit<PeriodDraft, "period_id"> = {
       start_date: start,
@@ -315,10 +355,10 @@ export default function DemandPeriodsPage() {
       hours: 8,
       kind: "ALTERNATIVE",
       alternative_group: group,
-      confirmation: (selectedDemand?.confirmation === "Confirmée" ? "Confirmée" : "Tentative"),
-      proposed_resource: selectedDemand?.proposed_resource ?? null,
-      resource_count: selectedDemand?.resource_count ?? 1,
-      desired_active_days: defaultActiveDays(selectedDemand),
+      confirmation: ((selectedLine?.confirmation ?? selectedDemand?.confirmation) === "Confirmée" ? "Confirmée" : "Tentative"),
+      proposed_resource: selectedLine?.proposed_resource ?? selectedDemand?.proposed_resource ?? null,
+      resource_count: selectedLine ? 1 : selectedDemand?.resource_count ?? 1,
+      desired_active_days: defaultActiveDays(selectedDemand, selectedLine),
       note: "",
       selected: false,
     };
@@ -333,7 +373,7 @@ export default function DemandPeriodsPage() {
 
   function addAlternativeOption(group: string) {
     const existing = periods.find((row) => row.kind === "ALTERNATIVE" && row.alternative_group === group);
-    const { start, end } = baseDates(selectedDemand);
+    const { start, end } = baseDates(selectedDemand, selectedLine);
     setPeriods((current) => [
       ...current,
       {
@@ -346,7 +386,7 @@ export default function DemandPeriodsPage() {
         confirmation: existing?.confirmation ?? "Tentative",
         proposed_resource: existing?.proposed_resource ?? null,
         resource_count: existing?.resource_count ?? 1,
-        desired_active_days: existing?.desired_active_days ?? defaultActiveDays(selectedDemand),
+        desired_active_days: existing?.desired_active_days ?? defaultActiveDays(selectedDemand, selectedLine),
         note: "",
         selected: false,
       },
@@ -368,11 +408,16 @@ export default function DemandPeriodsPage() {
     try {
       const payload = periods.map(({ selected: _selected, ...row }) => ({
         ...row,
+        resource_count: selectedLine ? 1 : row.resource_count,
         alternative_group: row.kind === "ALTERNATIVE" ? row.alternative_group?.trim() || null : null,
         note: row.note.trim(),
       }));
-      const result = await replaceDemandPeriods(selectedDemand.number, payload);
-      const refreshed = await getDemandPeriods(selectedDemand.number);
+      const result = selectedLine
+        ? await replaceDemandLinePeriods(selectedDemand.number, selectedLine.line_id, payload)
+        : await replaceDemandPeriods(selectedDemand.number, payload);
+      const refreshed = selectedLine
+        ? await getDemandLinePeriods(selectedDemand.number, selectedLine.line_id)
+        : await getDemandPeriods(selectedDemand.number);
       setPeriods(refreshed.map(fromRead));
       setDirty(false);
       setNotice(
@@ -395,8 +440,19 @@ export default function DemandPeriodsPage() {
     setError(null);
     setNotice(null);
     try {
-      await selectDemandAlternative(selectedDemand.number, group, periodId);
-      const refreshed = await getDemandPeriods(selectedDemand.number);
+      if (selectedLine) {
+        await selectDemandLineAlternative(
+          selectedDemand.number,
+          selectedLine.line_id,
+          group,
+          periodId,
+        );
+      } else {
+        await selectDemandAlternative(selectedDemand.number, group, periodId);
+      }
+      const refreshed = selectedLine
+        ? await getDemandLinePeriods(selectedDemand.number, selectedLine.line_id)
+        : await getDemandPeriods(selectedDemand.number);
       setPeriods(refreshed.map(fromRead));
       setNotice(`Option ${periodId} retenue pour ${group}. Les autres options du groupe restent alternatives et ne sont pas matérialisées en parallèle.`);
     } catch (reason: unknown) {
@@ -422,13 +478,37 @@ export default function DemandPeriodsPage() {
       <div className="period-demand-picker">
         <label>
           <span>Demande</span>
-          <select value={selectedNumber} disabled={loading || saving || dirty} onChange={(event) => setSelectedNumber(event.target.value)}>
+          <select
+            value={selectedNumber}
+            disabled={loading || saving || dirty}
+            onChange={(event) => {
+              setSelectedNumber(event.target.value);
+              setSelectedLineId("");
+            }}
+          >
             <option value="">Sélectionner une demande…</option>
             {demands.map((demand) => (
               <option value={demand.number} key={demand.number}>{demand.number} — {demand.project_number || "Projet"} — {demand.status}</option>
             ))}
           </select>
         </label>
+        {selectedDemand?.line_mode && (
+          <label>
+            <span>Ligne de demande</span>
+            <select
+              aria-label="Ligne de demande"
+              value={selectedLineId}
+              disabled={loading || saving || dirty}
+              onChange={(event) => setSelectedLineId(event.target.value)}
+            >
+              {selectedDemand.lines.filter((line) => line.active).map((line) => (
+                <option value={line.line_id} key={line.line_id}>
+                  Ligne {line.position + 1} — {line.description || line.required_resource_class || line.task_code || "Besoin"}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         {dirty && <span className="period-dirty-warning">Enregistre ou recharge avant de changer de demande.</span>}
       </div>
 
@@ -436,10 +516,11 @@ export default function DemandPeriodsPage() {
         <div className="period-demand-summary">
           <div><span>Projet</span><strong>{selectedDemand.project_number} — {selectedDemand.project_name || "Projet"}</strong></div>
           <div><span>Statut</span><strong>{selectedDemand.status}</strong></div>
-          <div><span>Confirmation demande</span><strong>{selectedDemand.confirmation || "Confirmée"}</strong></div>
-          <div><span>Heures demande</span><strong>{selectedDemand.estimated_hours ?? "—"} h totales</strong></div>
-          <div><span>Jours demande</span><strong>{selectedDemand.estimated_days ?? "—"} jour(s) actif(s)</strong></div>
-          <div><span>Ressources</span><strong>{selectedDemand.resource_count || 1} simultanée(s)</strong></div>
+          <div><span>Portée périodes</span><strong>{selectedLine ? `Ligne ${selectedLine.position + 1}` : "Demande générale"}</strong></div>
+          <div><span>Confirmation</span><strong>{selectedLine?.confirmation ?? selectedDemand.confirmation ?? "Confirmée"}</strong></div>
+          <div><span>Heures</span><strong>{selectedLine?.estimated_hours ?? selectedDemand.estimated_hours ?? "—"} h totales</strong></div>
+          <div><span>Jours</span><strong>{selectedLine?.desired_active_days ?? selectedDemand.estimated_days ?? "—"} jour(s) actif(s)</strong></div>
+          <div><span>Ressources</span><strong>{selectedLine ? 1 : selectedDemand.resource_count || 1} simultanée(s)</strong></div>
           <div><span>Plage moyen terme</span><strong>{selectedDemand.work_package_name || selectedDemand.work_package_ref || "Aucune"}</strong></div>
         </div>
       )}
@@ -447,8 +528,8 @@ export default function DemandPeriodsPage() {
       {selectedDemand && (
         <div className="period-toolbar">
           <div>
-            <button type="button" className="secondary-button" onClick={addCumulative} disabled={saving || periodLoading}>+ Période cumulative</button>
-            <button type="button" className="secondary-button" onClick={addAlternativeGroup} disabled={saving || periodLoading}>+ Groupe alternatif</button>
+            <button type="button" className="secondary-button" onClick={addCumulative} disabled={saving || periodLoading || (selectedDemand.line_mode && !selectedLine)}>+ Période cumulative</button>
+            <button type="button" className="secondary-button" onClick={addAlternativeGroup} disabled={saving || periodLoading || (selectedDemand.line_mode && !selectedLine)}>+ Groupe alternatif</button>
           </div>
           <button type="button" className="primary-button" onClick={savePeriods} disabled={saving || periodLoading || !dirty}>
             {saving ? "Enregistrement…" : "Enregistrer les périodes"}
@@ -480,6 +561,7 @@ export default function DemandPeriodsPage() {
                   period={period}
                   resources={resources}
                   disabled={saving}
+                  singleSlot={Boolean(selectedLine)}
                   onChange={(next) => replacePeriod(index, next)}
                   onRemove={() => removePeriod(period.period_id)}
                 />
@@ -515,6 +597,7 @@ export default function DemandPeriodsPage() {
                           period={period}
                           resources={resources}
                           disabled={saving}
+                          singleSlot={Boolean(selectedLine)}
                           onChange={(next) => replacePeriod(index, next)}
                           onRemove={() => removePeriod(period.period_id)}
                         />
