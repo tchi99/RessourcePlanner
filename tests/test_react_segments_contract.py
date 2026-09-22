@@ -58,7 +58,7 @@ class ReactSegmentsContractTests(unittest.TestCase):
         self.assertIn("allowLockedOverallocation,", editor)
         self.assertIn("const createPayload: SegmentWrite", editor)
         self.assertIn("await createSegment(createPayload, key)", editor)
-        self.assertIn("await assignSegment(savedSegmentId, selectedTechnician)", editor)
+        self.assertIn("await assignSegment(savedSegmentId, selectedTargetResourceId)", editor)
         self.assertIn("await cancelSegment(segmentId)", editor)
         self.assertIn("source_effort_id: null", editor)
         update_block = editor.split("const editablePayload", 1)[1].split("const createPayload: SegmentWrite", 1)[0]
