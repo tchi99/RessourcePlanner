@@ -79,7 +79,7 @@ class SqlMigrationTests(unittest.TestCase):
             with engine.connect() as connection:
                 self.assertEqual(
                     connection.execute(
-                        text("SELECT version FROM planning_mutation_state WHERE id = 1")
+                        text("SELECT version FROM planning_mutation_state WHERE id = 'GLOBAL'")
                     ).scalar_one(),
                     1,
                 )
