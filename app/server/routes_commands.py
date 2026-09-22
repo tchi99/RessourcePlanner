@@ -522,7 +522,15 @@ def build_command_router(
         body: SegmentAssignRequest,
         facade: ApplicationFacade = Depends(facade_dependency),
     ) -> dict[str, Any]:
-        return _payload(facade.assign_segment(SegmentAssignCommand(segment_id, body.technician)))
+        return _payload(
+            facade.assign_segment(
+                SegmentAssignCommand(
+                    segment_id=segment_id,
+                    technician=body.technician or "",
+                    resource_id=body.resource_id,
+                )
+            )
+        )
 
     @router.post("/segments/{segment_id}/allocations", status_code=status.HTTP_201_CREATED)
     def create_allocation(
@@ -544,7 +552,10 @@ def build_command_router(
                 facade.create_allocation(
                     ManualAllocationCreateCommand(
                         segment_id=segment_id,
-                        **body.model_dump(),
+                        **{
+                            **body.model_dump(),
+                            "technician": body.technician or "",
+                        },
                     )
                 )
             ),
@@ -557,6 +568,7 @@ def build_command_router(
         facade: ApplicationFacade = Depends(facade_dependency),
     ) -> dict[str, Any]:
         values = body.model_dump()
+        values["technician"] = body.technician or ""
         confirmation = values.pop("confirmation")
         return _payload(
             facade.update_allocation(
@@ -579,8 +591,9 @@ def build_command_router(
             facade.move_allocation(
                 ManualAllocationMoveCommand(
                     allocation_id=allocation_id,
-                    technician=body.technician,
+                    technician=body.technician or "",
                     day=body.day,
+                    resource_id=body.resource_id,
                 )
             )
         )
