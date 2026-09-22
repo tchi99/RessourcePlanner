@@ -33,7 +33,7 @@ class SqlPlanningMutationVersionTests(unittest.TestCase):
         with self.factory() as session:
             repository = SqlPlanningMutationVersionRepository(session)
             self.assertEqual(repository.current_version(), 1)
-            self.assertIsNone(session.get(PlanningMutationState, 1))
+            self.assertIsNone(session.get(PlanningMutationState, "GLOBAL"))
 
     def test_reentrant_guard_advances_once_per_transaction(self) -> None:
         with self.factory() as session:
