@@ -321,6 +321,13 @@ test("V2 local acceptance path runs through React, Chromium, FastAPI and SQLite"
     await expect(firstAlternative.getByRole("button", { name: "Option retenue" })).toBeVisible();
 
     await workflowSelect(projectManager.page, demandNumber);
+    await expect(projectManager.page.getByTestId("approval-state")).toContainText("CAPTURED");
+    await expect(projectManager.page.getByTestId("envelope-decision")).toContainText(
+      "Réapprobation requise",
+    );
+    await expect(projectManager.page.getByTestId("envelope-decision")).toContainText(
+      "l’ancien plan reste la référence",
+    );
     const delta = projectManager.page.getByTestId("plan-delta-preview");
     await expect(delta).toContainText("Plan actuel → plan proposé");
     await expect(delta.locator(".plan-delta-row").first()).toBeVisible();
@@ -699,6 +706,46 @@ test("multi-line demand editor generates independent RequestLines and materializ
 
   await expect(editor.locator(".request-line-card")).toHaveCount(2);
   await expect(labelled(editor.locator(".request-line-card").nth(0), "Heures", "input")).toHaveValue("");
+
+  await periodsSelect(projectManager.page, number);
+  const lineSelector = projectManager.page.getByLabel("Ligne de demande");
+  await expect(lineSelector).toBeVisible();
+  await expect(lineSelector.locator("option")).toHaveCount(2);
+
+  await lineSelector.selectOption(activeLines[0].line_id);
+  await expect(projectManager.page.locator(".period-demand-summary")).toContainText("Ligne 1");
+  await projectManager.page.getByRole("button", { name: /Période cumulative/ }).click();
+  let linePeriod = projectManager.page.locator(".period-card.cumulative").first();
+  await labelled(linePeriod, "Début", "input").fill(d1);
+  await labelled(linePeriod, "Fin", "input").fill(d1);
+  await labelled(linePeriod, "Heures totales", "input").fill("8");
+  await expect(labelled(linePeriod, "Ressources simultanées", "input")).toBeDisabled();
+  await expect(labelled(linePeriod, "Ressources simultanées", "input")).toHaveValue("1");
+  await projectManager.page.getByRole("button", { name: "Enregistrer les périodes" }).click();
+  await expect(projectManager.page.locator(".demand-notice")).toHaveText("Périodes enregistrées.");
+
+  await lineSelector.selectOption(activeLines[1].line_id);
+  await expect(projectManager.page.locator(".period-demand-summary")).toContainText("Ligne 2");
+  await expect(projectManager.page.locator(".period-empty")).toBeVisible();
+  await projectManager.page.getByRole("button", { name: /Période cumulative/ }).click();
+  linePeriod = projectManager.page.locator(".period-card.cumulative").first();
+  await labelled(linePeriod, "Début", "input").fill(d2);
+  await labelled(linePeriod, "Fin", "input").fill(d2);
+  await labelled(linePeriod, "Heures totales", "input").fill("8");
+  await expect(labelled(linePeriod, "Ressources simultanées", "input")).toBeDisabled();
+  await projectManager.page.getByRole("button", { name: "Enregistrer les périodes" }).click();
+  await expect(projectManager.page.locator(".demand-notice")).toHaveText("Périodes enregistrées.");
+
+  const firstLinePeriods = await projectManager.page.request.get(
+    `/api/v1/demands/${encodeURIComponent(number)}/lines/${encodeURIComponent(activeLines[0].line_id)}/periods`,
+  );
+  expect(firstLinePeriods.ok()).toBeTruthy();
+  expect((await firstLinePeriods.json()) as Array<unknown>).toHaveLength(1);
+  const secondLinePeriods = await projectManager.page.request.get(
+    `/api/v1/demands/${encodeURIComponent(number)}/lines/${encodeURIComponent(activeLines[1].line_id)}/periods`,
+  );
+  expect(secondLinePeriods.ok()).toBeTruthy();
+  expect((await secondLinePeriods.json()) as Array<unknown>).toHaveLength(1);
 
   await workflowSelect(projectManager.page, number);
   await projectManager.page.getByRole("button", { name: "Soumettre", exact: true }).click();
