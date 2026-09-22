@@ -324,6 +324,7 @@ class PlanningSnapshotReadModel:
     demands: tuple[DemandReadModel, ...]
     segments: tuple[SegmentReadModel, ...]
     shifts: tuple[ShiftReadModel, ...]
+    planning_version: int = 1
     pending_loads: tuple[PendingDemandLoadReadModel, ...] = ()
     capacity_buckets: tuple[MediumTermCapacityBucketReadModel, ...] = ()
     firm_hours: float = 0.0

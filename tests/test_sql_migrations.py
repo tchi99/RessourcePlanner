@@ -7,7 +7,7 @@ import unittest
 
 from alembic import command
 from alembic.config import Config
-from sqlalchemy import create_engine, inspect
+from sqlalchemy import create_engine, inspect, text
 
 from app.infrastructure.sql import Base
 
@@ -18,6 +18,7 @@ INITIAL_REVISION = MIGRATIONS / "versions" / "0001_initial_planning_schema.py"
 EXPECTED_TABLES = {
     "business_contacts",
     "command_idempotency_receipts",
+    "planning_mutation_state",
     "projects",
     "request_approval_references",
     "request_approval_revisions",
@@ -75,6 +76,13 @@ class SqlMigrationTests(unittest.TestCase):
             upgraded = set(inspect(engine).get_table_names())
             self.assertTrue(EXPECTED_TABLES.issubset(upgraded))
             self.assertIn("alembic_version", upgraded)
+            with engine.connect() as connection:
+                self.assertEqual(
+                    connection.execute(
+                        text("SELECT version FROM planning_mutation_state WHERE id = 'GLOBAL'")
+                    ).scalar_one(),
+                    1,
+                )
             engine.dispose()
 
             command.downgrade(config, "base")

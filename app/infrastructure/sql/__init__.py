@@ -87,6 +87,10 @@ from .period_approved_sync import SqlPeriodAwareApprovedDemandSyncAdapter
 from .planning_audit import PlanningChangeHistory
 from .planning_authorization_repository import SqlRequestPlanningAuthorizationRepository
 from .planning_repository import SqlPlanningReadRepository
+from .planning_version import (
+    PlanningMutationState,
+    SqlPlanningMutationVersionRepository,
+)
 from .capacity_query_repository import SqlPlannerQueryRepository
 from .project_sync_repository import SqlProjectSyncRepository
 from .task_catalog_repository import SqlTaskCatalogRepository
@@ -134,6 +138,7 @@ __all__ = [
     "OverallocationAuditedAllocationCommandAdapter",
     "OverallocationAuditedSegmentRepository",
     "PlanningChangeHistory",
+    "PlanningMutationState",
     "Project",
     "RequestLine",
     "RequestApprovalReference",
@@ -176,6 +181,7 @@ __all__ = [
     "SqlPlanningCommandAdapter",
     "SqlRequestPlanningAuthorizationRepository",
     "SqlPlanningReadRepository",
+    "SqlPlanningMutationVersionRepository",
     "SqlProjectSyncRepository",
     "SqlTaskCatalogRepository",
     "SqlRequestApprovalRevisionRepository",

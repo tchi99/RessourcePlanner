@@ -4,8 +4,10 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ...application.command_ports import ApprovedDemandSyncPort
+from ...application.repository_ports import PlanningMutationVersionPort
 from .models import WorkforceRequest
 from .planning_audit import ENTITY_SEGMENT, SqlPlanningAuditJournal
+from .planning_version import SqlPlanningMutationVersionRepository
 
 
 def _text(value: object) -> str:
@@ -20,10 +22,13 @@ class EmergencyAwareApprovedDemandSyncAdapter(ApprovedDemandSyncPort):
         delegate: ApprovedDemandSyncPort,
         journal: SqlPlanningAuditJournal,
         session: Session,
+        *,
+        versioning: PlanningMutationVersionPort | None = None,
     ) -> None:
         self._delegate = delegate
         self._journal = journal
         self._session = session
+        self._versioning = versioning or SqlPlanningMutationVersionRepository(session)
 
     def _is_emergency_materialization(self, demand_number: str) -> bool:
         wanted = _text(demand_number)
@@ -40,6 +45,7 @@ class EmergencyAwareApprovedDemandSyncAdapter(ApprovedDemandSyncPort):
         )
 
     def cancel_materialized(self, demand_number: str) -> None:
+        self._versioning.acquire()
         action = getattr(self._delegate, "cancel_materialized", None)
         if not callable(action):
             raise RuntimeError(
@@ -62,6 +68,7 @@ class EmergencyAwareApprovedDemandSyncAdapter(ApprovedDemandSyncPort):
             )
 
     def sync_operational_choices(self, demand_number: str) -> None:
+        self._versioning.acquire()
         action = getattr(self._delegate, "sync_operational_choices", None)
         if not callable(action):
             raise RuntimeError(
@@ -84,6 +91,7 @@ class EmergencyAwareApprovedDemandSyncAdapter(ApprovedDemandSyncPort):
             )
 
     def sync_approved(self, demand_number: str) -> None:
+        self._versioning.acquire()
         emergency = self._is_emergency_materialization(demand_number)
         before = self._journal.request_requirements(demand_number)
         self._delegate.sync_approved(demand_number)

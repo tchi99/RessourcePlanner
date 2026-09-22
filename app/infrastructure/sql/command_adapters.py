@@ -12,6 +12,7 @@ from ...application.command_ports import (
     ApprovedDemandSyncPort,
     PlanningCommandPort,
 )
+from ...application.repository_ports import PlanningMutationVersionPort
 from ...domain.availability_rules import availability_hours_for_day
 from ...domain.confirmation import CONFIRMATION_CONFIRMED, normalize_confirmation
 from ...domain.planning_engine import build_allocation_plan
@@ -28,6 +29,7 @@ from .models import (
     WorkforceRequestHistory,
 )
 from .planning_repository import SqlPlanningReadRepository
+from .planning_version import SqlPlanningMutationVersionRepository
 from .segment_repository import SqlSegmentRepository
 
 
@@ -50,8 +52,14 @@ class SqlPlanningCommandAdapter(PlanningCommandPort):
     engine result. Any failure therefore rolls the whole unit of work back naturally.
     """
 
-    def __init__(self, session: Session) -> None:
+    def __init__(
+        self,
+        session: Session,
+        *,
+        versioning: PlanningMutationVersionPort | None = None,
+    ) -> None:
         self._session = session
+        self._versioning = versioning or SqlPlanningMutationVersionRepository(session)
 
     def _active_locked_shifts(self) -> list[Shift]:
         return list(
@@ -70,6 +78,7 @@ class SqlPlanningCommandAdapter(PlanningCommandPort):
         )
 
     def rebuild(self) -> Mapping[str, Any]:
+        self._versioning.acquire()
         snapshot = SqlPlanningReadRepository(self._session).capture()
         calculation = project_planning_snapshot(snapshot)
         if calculation.unsupported_segment_ids:
@@ -186,9 +195,14 @@ class SqlAllocationCommandAdapter(AllocationCommandPort):
         session: Session,
         *,
         planning: PlanningCommandPort | None = None,
+        versioning: PlanningMutationVersionPort | None = None,
     ) -> None:
         self._session = session
-        self._planning = planning or SqlPlanningCommandAdapter(session)
+        self._versioning = versioning or SqlPlanningMutationVersionRepository(session)
+        self._planning = planning or SqlPlanningCommandAdapter(
+            session,
+            versioning=self._versioning,
+        )
 
     def _requirement(self, identifier: str) -> ResourceRequirement:
         wanted = _text(identifier)
@@ -279,6 +293,7 @@ class SqlAllocationCommandAdapter(AllocationCommandPort):
         note: str = "",
         confirmation: str | None = None,
     ) -> str:
+        self._versioning.acquire()
         requirement = self._requirement(segment_id)
         resource = self._resource(technician)
         day, hours = self._validate_manual(
@@ -321,6 +336,7 @@ class SqlAllocationCommandAdapter(AllocationCommandPort):
         note: str = "",
         confirmation: str | None = None,
     ) -> None:
+        self._versioning.acquire()
         shift = self._shift(allocation_id)
         if shift is None:
             raise KeyError(f"Allocation {allocation_id} introuvable")
@@ -357,6 +373,7 @@ class SqlAllocationCommandAdapter(AllocationCommandPort):
         technician: str,
         day_value: Any,
     ) -> None:
+        self._versioning.acquire()
         shift = self._shift(allocation_id)
         if shift is None:
             raise KeyError(f"Allocation {allocation_id} introuvable")
@@ -385,6 +402,7 @@ class SqlAllocationCommandAdapter(AllocationCommandPort):
         self._planning.rebuild()
 
     def release_manual(self, allocation_id: str) -> None:
+        self._versioning.acquire()
         shift = self._shift(allocation_id)
         if shift is None:
             return
@@ -393,6 +411,7 @@ class SqlAllocationCommandAdapter(AllocationCommandPort):
         self._planning.rebuild()
 
     def delete_manual(self, allocation_id: str) -> None:
+        self._versioning.acquire()
         shift = self._shift(allocation_id)
         if shift is None:
             return
@@ -401,6 +420,7 @@ class SqlAllocationCommandAdapter(AllocationCommandPort):
         self._planning.rebuild()
 
     def assign_segment(self, segment_id: str, technician: str) -> Mapping[str, Any]:
+        self._versioning.acquire()
         requirement = self._requirement(segment_id)
         resource = self._resource(technician)
         requirement.assigned_resource_id = resource.id

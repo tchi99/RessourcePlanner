@@ -11,7 +11,11 @@ from sqlalchemy.orm import Session
 
 from ...application.errors import ApplicationValidationError
 from ...application.read_models import SegmentMobilizedResourceReadModel, SegmentReadModel
-from ...application.repository_ports import PlanningAuthorizationPort, SegmentRepositoryPort
+from ...application.repository_ports import (
+    PlanningAuthorizationPort,
+    PlanningMutationVersionPort,
+    SegmentRepositoryPort,
+)
 from ...domain.availability_rules import availability_hours_for_day
 from ...domain.planning_engine import MISSING_ALLOCATION_TYPE
 from ...domain.manual_overallocation import (
@@ -274,8 +278,9 @@ class SqlOverallocationAllocationCommandAdapter(SqlAllocationCommandAdapter):
         *,
         planning=None,
         authorization: PlanningAuthorizationPort | None = None,
+        versioning: PlanningMutationVersionPort | None = None,
     ) -> None:
-        super().__init__(session, planning=planning)
+        super().__init__(session, planning=planning, versioning=versioning)
         self._overallocation_session = session
         self._authorization = authorization
         self._active_policy: str | None = None
