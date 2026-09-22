@@ -124,6 +124,12 @@ class DemandApprovalEnvelopePolicyPort(Protocol):
         decision: EnvelopeDecision,
     ) -> None: ...
 
+    def record_candidate_decision(
+        self,
+        demand_number: str,
+        decision: EnvelopeDecision,
+    ) -> None: ...
+
     def stamp_direct_approval(
         self,
         demand_number: str,
