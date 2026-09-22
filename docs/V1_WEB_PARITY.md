@@ -36,7 +36,7 @@ Les blocages réels du cutover sont maintenant surtout environnementaux et de ba
 2. #208 — bascule SQL autoritaire et retrait du runtime V1;
 3. #336 — nettoyage post-cutover des artefacts legacy.
 
-#330 améliore actuellement l'ergonomie du détail de demande React, mais ne réintroduit pas un manque de capacité métier exclusif à NiceGUI.
+#330 est maintenant terminé (PR #379, CI #752 verte). Il consolide l'ergonomie du détail de demande React sans réintroduire un manque de capacité métier exclusif à NiceGUI.
 
 ## Matrice actuelle
 
@@ -45,7 +45,7 @@ Les blocages réels du cutover sont maintenant surtout environnementaux et de ba
 | Planning opérationnel | couvert | aucun bloqueur V1 |
 | Quick Shift / ad hoc | couvert | aucun bloqueur V1 |
 | Moyen terme / WorkPackages | couvert | aucun bloqueur V1 |
-| Demandes / approbations | couvert | #330 consolide l'UX, pas le modèle |
+| Demandes / approbations | couvert | #330 terminé; aucun bloqueur V1 |
 | Périodes / alternatives | couvert par ligne | règles autoritaires dans #13 |
 | Segments / besoins | couvert | #212 fermé |
 | Ressources / compétences / disponibilités | couvert | #211 fermé |
@@ -75,8 +75,8 @@ Le backend conserve les outils de rebuild/support nécessaires, mais le runtime 
 
 Les issues suivantes améliorent le produit sans être des preuves que NiceGUI doit rester en production :
 
-- #330 — détail de demande React unifié;
-- #332 — partage et duplication atomiques de quarts;
+- #330 — détail de demande React unifié — terminé, PR #379 / CI #752;
+- #332 — partage et duplication atomiques de quarts — prochaine tranche produit;
 - #333 — extension de fenêtre et dialogue DnD contextuel;
 - #291/#292 — actifs réservables et qualifications;
 - #276 — routage d'approbation par tâche;
@@ -104,6 +104,6 @@ La cible de déploiement est la VM Ubuntu documentée dans `DEPLOYMENT_UBUNTU_VM
 - #162 — SQL Server réel;
 - #208 — cutover autoritaire;
 - #211/#212 — anciens bloqueurs de parité, terminés;
-- #330 — consolidation UX Demandes;
+- #330 — consolidation UX Demandes, terminée;
 - #336 — nettoyage post-cutover;
 - `docs/DEMANDS_V2_ARCHITECTURE.md`.
