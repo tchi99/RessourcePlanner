@@ -96,15 +96,22 @@ class GitHubClient:
     async def list_branches(self, repo: str, per_page: int = 100) -> list[dict[str, Any]]:
         return await self._get(f"/repos/{repo}/branches", {"per_page": per_page})
 
-    async def get_text_file(self, repo: str, path: str) -> str:
-        payload = await self._get(f"/repos/{repo}/contents/{path}")
+    async def get_text_file(self, repo: str, path: str, ref: str | None = None) -> str:
+        params = {"ref": ref} if ref else None
+        payload = await self._get(f"/repos/{repo}/contents/{path}", params)
         encoded = payload.get("content") or ""
         if payload.get("encoding") != "base64":
             raise GitHubError(502, f"Encodage inattendu pour {path}.")
         return base64.b64decode(encoded).decode("utf-8")
 
-    async def list_directory(self, repo: str, path: str) -> list[dict[str, Any]]:
-        payload = await self._get(f"/repos/{repo}/contents/{path}")
+    async def list_directory(
+        self,
+        repo: str,
+        path: str,
+        ref: str | None = None,
+    ) -> list[dict[str, Any]]:
+        params = {"ref": ref} if ref else None
+        payload = await self._get(f"/repos/{repo}/contents/{path}", params)
         if not isinstance(payload, list):
             raise GitHubError(502, f"{path} n'est pas un répertoire GitHub.")
         return payload
