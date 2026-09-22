@@ -60,11 +60,14 @@ def _run_summary(run: dict[str, Any], jobs: list[dict[str, Any]]) -> dict[str, A
     }
 
 
-async def _pr_summary(client: GitHubClient, repo: str, pr: dict[str, Any]) -> dict[str, Any]:
-    details = await client.get_pull(repo, int(pr["number"]))
-    head = details.get("head") or {}
-    sha = head.get("sha")
-    runs_raw = await client.workflow_runs_for_sha(repo, sha, per_page=5) if sha else []
+async def _runs_for_sha(
+    client: GitHubClient,
+    repo: str,
+    sha: str | None,
+) -> list[dict[str, Any]]:
+    if not sha:
+        return []
+    runs_raw = await client.workflow_runs_for_sha(repo, sha, per_page=5)
     jobs_by_run = await asyncio.gather(
         *[client.run_jobs(repo, int(run["id"])) for run in runs_raw[:5]],
         return_exceptions=True,
@@ -72,6 +75,14 @@ async def _pr_summary(client: GitHubClient, repo: str, pr: dict[str, Any]) -> di
     runs: list[dict[str, Any]] = []
     for run, jobs in zip(runs_raw[:5], jobs_by_run):
         runs.append(_run_summary(run, jobs if isinstance(jobs, list) else []))
+    return runs
+
+
+async def _pr_summary(client: GitHubClient, repo: str, pr: dict[str, Any]) -> dict[str, Any]:
+    details = await client.get_pull(repo, int(pr["number"]))
+    head = details.get("head") or {}
+    sha = head.get("sha")
+    runs = await _runs_for_sha(client, repo, sha)
     return {
         "number": details.get("number"),
         "title": details.get("title"),
@@ -152,6 +163,20 @@ async def build_dashboard(client: GitHubClient, settings: Settings, repo: str) -
     )
     active_subitem = None if block_done else first_unfinished(subitems)
     active_key = active_subitem.key if active_subitem else str(parent_issue)
+    explicit_in_progress = bool(
+        (
+            active_subitem
+            and (
+                active_subitem.marker == "🟡"
+                or "en cours" in active_subitem.title.lower()
+            )
+        )
+        or (
+            active_subitem is None
+            and parent_item
+            and parent_item.marker == "🟡"
+        )
+    )
 
     open_prs = await asyncio.gather(*[_pr_summary(client, repo, pr) for pr in open_raw[:12]]) if open_raw else []
     primary_pr = next((pr for pr in open_prs if matches_work_key(pr, active_key)), None)
@@ -189,6 +214,11 @@ async def build_dashboard(client: GitHubClient, settings: Settings, repo: str) -
     active_sha = (primary_pr or {}).get("head_sha") or (active_branch or {}).get("sha")
     active_commit = await client.get_commit(repo, active_sha) if active_sha else None
     active_commit_info = commit_summary(active_commit)
+    active_runs = (
+        (primary_pr or {}).get("runs") or []
+        if primary_pr
+        else await _runs_for_sha(client, repo, active_sha)
+    )
 
     blocked_by_roadmap = bool(
         (active_subitem and (active_subitem.marker == "⏳" or "bloqu" in active_subitem.title.lower()))
@@ -200,6 +230,10 @@ async def build_dashboard(client: GitHubClient, settings: Settings, repo: str) -
         active_branch=active_branch,
         active_commit_date=(active_commit_info or {}).get("date"),
         stalled_after_minutes=settings.stalled_after_minutes,
+        active_runs=active_runs,
+        explicit_in_progress=explicit_in_progress,
+        issue_updated_at=active_issue_raw.get("updated_at"),
+        roadmap_updated_at=roadmap_raw.get("updated_at"),
         blocked_by_roadmap=blocked_by_roadmap,
     )
 
@@ -281,8 +315,11 @@ async def build_dashboard(client: GitHubClient, settings: Settings, repo: str) -
             "last_commit": active_commit_info,
             "states": derived["states"],
             "stalled": derived["stalled"],
+            "stall_level": derived["stall_level"],
             "stalled_details": derived["stalled_details"],
             "failed_jobs": derived["failed_jobs"],
+            "explicit_in_progress": explicit_in_progress,
+            "active_runs": active_runs,
             "merged_but_unmarked_pr": merged_but_unmarked,
         },
         "architecture": {
