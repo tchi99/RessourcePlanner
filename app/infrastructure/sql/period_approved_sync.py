@@ -919,6 +919,8 @@ class SqlPeriodAwareApprovedDemandSyncAdapter(ApprovedDemandSyncPort):
     def sync_approved(self, demand_number: str) -> None:
         request = self._request(demand_number)
         periods = self._active_periods(request.id)
+        if not bool(request.line_mode) and not periods:
+            self._legacy.prevalidate_approved(demand_number)
         emergency = self._emergency_materialization(request)
         revision = (
             None
