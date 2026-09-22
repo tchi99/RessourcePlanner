@@ -91,7 +91,8 @@ Backend :
 
 ```bash
 python -m pip install -r dev-cockpit/backend/requirements.txt
-PYTHONPATH=dev-cockpit/backend python -m uvicorn app.main:app --host 127.0.0.1 --port 8001
+cd dev-cockpit/backend
+python -m uvicorn app.main:app --host 127.0.0.1 --port 8001
 ```
 
 Frontend :
@@ -107,8 +108,11 @@ Vite écoute sur `127.0.0.1:5174` et relaie `/api` vers `127.0.0.1:8001`.
 ## Tests
 
 ```bash
-PYTHONPATH=dev-cockpit/backend python -m unittest discover -s dev-cockpit/backend/tests -v
-cd dev-cockpit/frontend && npm install --no-audit --no-fund && npm run build
+cd dev-cockpit/backend
+python -m unittest discover -s tests -v
+cd ../frontend
+npm install --no-audit --no-fund
+npm run build
 ```
 
 Validation Compose :
