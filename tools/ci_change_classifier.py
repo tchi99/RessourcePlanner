@@ -22,6 +22,10 @@ FRONTEND_PATTERNS = (
     "frontend/**",
 )
 
+DEV_COCKPIT_PATTERNS = (
+    "dev-cockpit/**",
+)
+
 RUNTIME_PATTERNS = (
     "Dockerfile.backend",
     "docker-compose.yml",
@@ -43,7 +47,6 @@ CONSERVATIVE_PATTERNS = (
     "requirements*.txt",
     "constraints*.txt",
     "tools/**",
-    "dev-cockpit/**",
 )
 
 
@@ -97,6 +100,8 @@ def classify_changes(paths: Iterable[str]) -> CiChangeClassification:
             frontend = True
         elif _matches(path, RUNTIME_PATTERNS):
             runtime = True
+        elif _matches(path, DEV_COCKPIT_PATTERNS):
+            pass
         elif _matches(path, CONSERVATIVE_PATTERNS):
             conservative = True
         else:
