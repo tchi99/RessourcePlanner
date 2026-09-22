@@ -153,6 +153,8 @@ def merge_subitems(primary: list[WorkItem], secondary: list[WorkItem]) -> list[W
         current.done = current.done or item.done
         if item.done:
             current.marker = "✅"
+        elif current.marker is None and item.marker is not None:
+            current.marker = item.marker
         if not current.title and item.title:
             current.title = item.title
     return [merged[key] for key in order]
