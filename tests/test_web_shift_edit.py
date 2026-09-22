@@ -98,7 +98,7 @@ class WebShiftEditApiTests(unittest.TestCase):
                 updated = client.put(
                     f"/api/v1/allocations/{auto_shift['allocation_id']}",
                     json={
-                        "technician": "Alice",
+                        "resource_id": "R1",
                         "day": DAY.isoformat(),
                         "hours": 4,
                         "outside_standard_hours": False,

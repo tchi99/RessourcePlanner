@@ -204,9 +204,13 @@ class SqlAllocationCommandAdapter(AllocationCommandPort):
             raise ValueError(f"Le segment {wanted} n'est plus actif.")
         return requirement
 
-    def _resource(self, name: str) -> Resource:
-        wanted = _text(name)
-        resource = self._session.scalar(select(Resource).where(Resource.name == wanted))
+    def _resource(self, reference: str) -> Resource:
+        wanted = _text(reference)
+        resource = self._session.get(Resource, wanted)
+        if resource is None:
+            resource = self._session.scalar(
+                select(Resource).where(Resource.name == wanted)
+            )
         if resource is None:
             raise KeyError(f"Ressource {wanted} introuvable")
         if not resource.active:
@@ -285,9 +289,6 @@ class SqlAllocationCommandAdapter(AllocationCommandPort):
             bool(hors_horaire),
         )
 
-        requirement.assigned_resource_id = resource.id
-        if requirement.status == "À assigner":
-            requirement.status = "Planifié"
 
         identifier = f"MAN-{new_id()}"
         shift = Shift(
@@ -334,9 +335,6 @@ class SqlAllocationCommandAdapter(AllocationCommandPort):
             exclude_shift_id=shift.id,
         )
 
-        requirement.assigned_resource_id = resource.id
-        if requirement.status == "À assigner":
-            requirement.status = "Planifié"
         shift.resource_id = resource.id
         shift.work_date = day
         shift.hours = hours
@@ -378,9 +376,6 @@ class SqlAllocationCommandAdapter(AllocationCommandPort):
             exclude_shift_id=shift.id,
         )
 
-        requirement.assigned_resource_id = resource.id
-        if requirement.status == "À assigner":
-            requirement.status = "Planifié"
         shift.resource_id = resource.id
         shift.work_date = day
         shift.allocation_type = requirement.planning_type

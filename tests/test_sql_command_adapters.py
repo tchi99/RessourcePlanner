@@ -192,6 +192,100 @@ class SqlCommandAdapterTests(unittest.TestCase):
             self.assertEqual(summary["allocated_hours"], 0.0)
             self.assertEqual(summary["unallocated_hours"], 8.0)
 
+    def test_manual_shift_mutations_keep_automatic_target_and_accept_resource_ids(self) -> None:
+        with transactional_session(self.factory) as session:
+            requirement = self._add_requirement(
+                session,
+                identifier="SEG-TARGET-STABLE",
+                hours=Decimal("8"),
+                resource_id="R1",
+            )
+            adapter = SqlAllocationCommandAdapter(session)
+
+            allocation_id = adapter.create_manual(
+                "SEG-TARGET-STABLE",
+                "R2",
+                D1,
+                2,
+                False,
+            )
+            self.assertEqual(requirement.assigned_resource_id, "R1")
+
+            manual = session.scalar(
+                select(Shift).where(Shift.legacy_allocation_id == allocation_id)
+            )
+            self.assertIsNotNone(manual)
+            assert manual is not None
+            self.assertEqual(manual.resource_id, "R2")
+            self.assertTrue(manual.locked)
+
+            auto = session.scalars(
+                select(Shift).where(
+                    Shift.resource_requirement_id == requirement.id,
+                    Shift.locked.is_(False),
+                )
+            ).all()
+            self.assertTrue(auto)
+            self.assertTrue(all(row.resource_id == "R1" for row in auto))
+            self.assertEqual(sum(float(row.hours) for row in auto), 6.0)
+
+            adapter.update_manual(allocation_id, "R2", D1, 3, False)
+            self.assertEqual(requirement.assigned_resource_id, "R1")
+            manual = session.scalar(
+                select(Shift).where(Shift.legacy_allocation_id == allocation_id)
+            )
+            assert manual is not None
+            self.assertEqual(manual.resource_id, "R2")
+            self.assertEqual(manual.hours, Decimal("3.00"))
+
+            adapter.move_manual(allocation_id, "R2", D2)
+            self.assertEqual(requirement.assigned_resource_id, "R1")
+            manual = session.scalar(
+                select(Shift).where(Shift.legacy_allocation_id == allocation_id)
+            )
+            assert manual is not None
+            self.assertEqual(manual.resource_id, "R2")
+            self.assertEqual(manual.work_date, D2)
+
+            auto = session.scalars(
+                select(Shift).where(
+                    Shift.resource_requirement_id == requirement.id,
+                    Shift.locked.is_(False),
+                )
+            ).all()
+            self.assertTrue(auto)
+            self.assertTrue(all(row.resource_id == "R1" for row in auto))
+            self.assertEqual(sum(float(row.hours) for row in auto), 5.0)
+
+    def test_manual_shift_does_not_assign_unassigned_requirement(self) -> None:
+        with transactional_session(self.factory) as session:
+            requirement = self._add_requirement(
+                session,
+                identifier="SEG-NO-TARGET",
+                hours=Decimal("8"),
+                resource_id=None,
+            )
+            requirement.status = "À assigner"
+            adapter = SqlAllocationCommandAdapter(session)
+
+            allocation_id = adapter.create_manual(
+                "SEG-NO-TARGET",
+                "R2",
+                D1,
+                2,
+                False,
+            )
+
+            self.assertIsNone(requirement.assigned_resource_id)
+            self.assertEqual(requirement.status, "À assigner")
+            manual = session.scalar(
+                select(Shift).where(Shift.legacy_allocation_id == allocation_id)
+            )
+            self.assertIsNotNone(manual)
+            assert manual is not None
+            self.assertEqual(manual.resource_id, "R2")
+            self.assertTrue(manual.locked)
+
     def test_manual_shift_create_release_and_total_guard(self) -> None:
         with transactional_session(self.factory) as session:
             requirement = self._add_requirement(

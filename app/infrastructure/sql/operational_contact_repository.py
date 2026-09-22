@@ -22,7 +22,6 @@ from ...domain.operational_contacts import (
     DIAGNOSTIC_TASK_REFERENCE_INVALID,
     DIAGNOSTIC_TASK_REFERENCE_LEGACY_CODE,
     DIAGNOSTIC_TASK_REFERENCE_UNRESOLVED,
-    DIAGNOSTIC_SHIFT_RESOURCE_DIFFERS_FROM_REQUIREMENT,
     SOURCE_PROJECT_MANAGER,
     SOURCE_REQUEST_OVERRIDE,
     SOURCE_RESOURCE_COORDINATOR,
@@ -242,14 +241,6 @@ class SqlOperationalContactRepository(OperationalContactRepositoryPort):
             if shift is not None
             else requirement.assigned_resource_id
         )
-        if (
-            shift is not None
-            and requirement.assigned_resource_id
-            and shift.resource_id != requirement.assigned_resource_id
-        ):
-            diagnostics.append(
-                DIAGNOSTIC_SHIFT_RESOURCE_DIFFERS_FROM_REQUIREMENT
-            )
         resource, resource_context_known, resource_context_diagnostics = (
             self._materialized_resource(
                 resource_id=resource_id,
