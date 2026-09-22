@@ -56,21 +56,21 @@ def upgrade() -> None:
         ),
         sa.CheckConstraint(
             "request_version >= 1",
-            name="ck_request_approval_revisions_request_approval_revision_request_version_positive",
+            name="ck_request_approval_revisions_req_version_positive",
         ),
         sa.CheckConstraint(
             "payload_format_version >= 1",
-            name="ck_request_approval_revisions_request_approval_revision_format_version_positive",
+            name="ck_request_approval_revisions_format_version_positive",
         ),
         sa.ForeignKeyConstraint(
             ["workforce_request_id"],
             ["workforce_requests.id"],
-            name="fk_request_approval_revisions_workforce_request_id_workforce_requests",
+            name="fk_req_approval_revisions_request",
         ),
         sa.ForeignKeyConstraint(
             ["previous_revision_id"],
             ["request_approval_revisions.id"],
-            name="fk_request_approval_revisions_previous_revision_id_request_approval_revisions",
+            name="fk_req_approval_revisions_previous",
         ),
         sa.PrimaryKeyConstraint("id", name="pk_request_approval_revisions"),
     )
@@ -123,17 +123,17 @@ def upgrade() -> None:
         ),
         sa.CheckConstraint(
             "status IN ('CAPTURED', 'LEGACY_UNKNOWN')",
-            name="ck_request_approval_references_request_approval_reference_status",
+            name="ck_request_approval_references_status",
         ),
         sa.ForeignKeyConstraint(
             ["workforce_request_id"],
             ["workforce_requests.id"],
-            name="fk_request_approval_references_workforce_request_id_workforce_requests",
+            name="fk_req_approval_refs_request",
         ),
         sa.ForeignKeyConstraint(
             ["active_revision_id"],
             ["request_approval_revisions.id"],
-            name="fk_request_approval_references_active_revision_id_request_approval_revisions",
+            name="fk_req_approval_refs_active_revision",
         ),
         sa.PrimaryKeyConstraint(
             "workforce_request_id",
@@ -163,7 +163,7 @@ def upgrade() -> None:
             )
         )
         batch_op.create_foreign_key(
-            "fk_resource_requirements_approval_revision_id_request_approval_revisions",
+            "fk_resource_requirements_approval_revision",
             "request_approval_revisions",
             ["approval_revision_id"],
             ["id"],
@@ -220,7 +220,7 @@ def downgrade() -> None:
         batch_op.drop_index("ix_resource_requirements_approved_entry_key")
         batch_op.drop_index("ix_resource_requirements_approval_revision_id")
         batch_op.drop_constraint(
-            "fk_resource_requirements_approval_revision_id_request_approval_revisions",
+            "fk_resource_requirements_approval_revision",
             type_="foreignkey",
         )
         batch_op.drop_constraint(
