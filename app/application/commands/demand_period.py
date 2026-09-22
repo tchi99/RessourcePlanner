@@ -61,6 +61,7 @@ class DemandAlternativeSelectCommand:
     period_id: str
     request_line_id: str | None = None
     expected_operational_version: int | None = None
+    operational: bool = False
 
     def __post_init__(self) -> None:
         _required(self.number, field="demand_number", message="Le numéro de demande est requis.")
