@@ -56,7 +56,7 @@ class PlanDeltaGroupingTests(unittest.TestCase):
             ),
         )
 
-        items = _delta_items(rows)
+        items = _delta_items(rows, resource_id_by_name={"Alice": "R1"})
 
         self.assertEqual(len(items), 1)
         self.assertEqual(items[0].change, "MOVE")
@@ -64,6 +64,8 @@ class PlanDeltaGroupingTests(unittest.TestCase):
         self.assertEqual(items[0].proposed_date, D2)
         self.assertEqual(items[0].current_hours, 8.0)
         self.assertEqual(items[0].proposed_hours, 8.0)
+        self.assertEqual(items[0].current_resource_id, "R1")
+        self.assertEqual(items[0].proposed_resource_id, "R1")
 
 
 class SqlPlanDeltaPreviewTests(unittest.TestCase):
@@ -208,6 +210,8 @@ class SqlPlanDeltaPreviewTests(unittest.TestCase):
             self.assertEqual(result.items[0].segment_id, "SEG-1")
             self.assertEqual(result.items[0].current_date, D1)
             self.assertEqual(result.items[0].proposed_date, D2)
+            self.assertEqual(result.items[0].current_resource_id, "R1")
+            self.assertEqual(result.items[0].proposed_resource_id, "R1")
 
             self.assertEqual(
                 session.scalar(select(func.count()).select_from(ResourceRequirement)),
