@@ -354,6 +354,11 @@ class DemandService:
             )
 
         if not needs_approval:
+            call_application_port(
+                lambda: policy.record_candidate_decision(number, decision),
+                code_prefix="approval_envelope_decision_audit",
+                context={"demand_number": number},
+            )
             return False
 
         if PERMISSION_APPROVE_DEMANDS in self._permissions:
