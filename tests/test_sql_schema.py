@@ -62,6 +62,7 @@ class SqlSchemaTests(unittest.TestCase):
 
         requirements = Base.metadata.tables["resource_requirements"].c
         requests = Base.metadata.tables["workforce_requests"].c
+        request_history = Base.metadata.tables["workforce_request_history"].c
         projects = Base.metadata.tables["projects"].c
         resources = Base.metadata.tables["resources"].c
         business_contacts = Base.metadata.tables["business_contacts"].c
@@ -129,6 +130,8 @@ class SqlSchemaTests(unittest.TestCase):
         self.assertTrue(business_contacts.external_id.nullable)
         self.assertFalse(business_contacts.version.nullable)
         self.assertTrue(requests.work_package_id.nullable)
+        self.assertTrue(requests.requester_user_id.nullable)
+        self.assertTrue(request_history.actor_user_id.nullable)
         self.assertTrue(requests.erp_task_code.nullable)
         self.assertTrue(requests.erp_task_label.nullable)
         self.assertFalse(requests.project_id.nullable)

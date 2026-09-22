@@ -872,5 +872,65 @@ class SqlMigrationTests(unittest.TestCase):
             engine.dispose()
 
 
+    def test_canonical_requester_migration_does_not_guess_identity_from_name(self) -> None:
+        with TemporaryDirectory() as directory:
+            database_path = Path(directory) / "canonical-requester.db"
+            config = alembic_config(database_path)
+            command.upgrade(config, "0033_request_operational_budgets")
+            engine = create_engine(f"sqlite:///{database_path.as_posix()}")
+
+            with engine.begin() as connection:
+                connection.exec_driver_sql(
+                    "INSERT INTO projects (id, number, name) "
+                    "VALUES ('P1', 'P-1', 'Projet existant')"
+                )
+                connection.exec_driver_sql(
+                    """
+                    INSERT INTO app_users (
+                        id, issuer, subject, display_name, roles_json, active
+                    ) VALUES (
+                        'U1', 'urn:test', 'subject-1', 'Nom identique',
+                        '["PROJECT_MANAGER"]', 1
+                    )
+                    """
+                )
+                connection.exec_driver_sql(
+                    """
+                    INSERT INTO workforce_requests (
+                        id, project_id, requester_name, status
+                    ) VALUES (
+                        'D1', 'P1', 'Nom identique', 'Brouillon'
+                    )
+                    """
+                )
+                connection.exec_driver_sql(
+                    """
+                    INSERT INTO workforce_request_history (
+                        id, workforce_request_id, action, actor_name, occurred_at
+                    ) VALUES (
+                        'H1', 'D1', 'Création', 'Nom identique', CURRENT_TIMESTAMP
+                    )
+                    """
+                )
+            engine.dispose()
+
+            command.upgrade(config, "head")
+            engine = create_engine(f"sqlite:///{database_path.as_posix()}")
+            try:
+                with engine.connect() as connection:
+                    request = connection.exec_driver_sql(
+                        "SELECT requester_user_id, requester_name "
+                        "FROM workforce_requests WHERE id = 'D1'"
+                    ).one()
+                    self.assertEqual(request, (None, "Nom identique"))
+                    history = connection.exec_driver_sql(
+                        "SELECT actor_user_id, actor_name "
+                        "FROM workforce_request_history WHERE id = 'H1'"
+                    ).one()
+                    self.assertEqual(history, (None, "Nom identique"))
+            finally:
+                engine.dispose()
+
+
 if __name__ == "__main__":
     unittest.main()

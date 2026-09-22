@@ -6,6 +6,7 @@ import {
   CompetencyReadModel,
   ContactLinkReadModel,
   DemandReadModel,
+  DemandRequesterReadModel,
   DemandWrite,
   ProjectReadModel,
   RequestLineContactResolutionReadModel,
@@ -17,6 +18,7 @@ import {
   getCompetencies,
   getDemand,
   getDemandBusinessContacts,
+  getDemandRequesters,
   getDemands,
   getProjects,
   getRequestLineContactResolution,
@@ -42,7 +44,7 @@ import ViewScopeSelector from "./ViewScopeSelector";
 
 type FormState = {
   project_number: string;
-  requester: string;
+  requester_user_id: string;
   work_package_ref: string;
   task_code: string;
   priority: string;
@@ -91,10 +93,10 @@ function inclusiveCalendarDays(start: string, end: string): number {
   return Math.floor((Date.parse(end) - Date.parse(start)) / 86_400_000) + 1;
 }
 
-function emptyForm(projectNumber = ""): FormState {
+function emptyForm(projectNumber = "", requesterUserId = ""): FormState {
   return {
     project_number: projectNumber,
-    requester: "",
+    requester_user_id: requesterUserId,
     work_package_ref: "",
     task_code: "",
     priority: "Normale",
@@ -130,7 +132,7 @@ function lineDefaultsFromForm(form: FormState, resources: ResourceReadModel[]): 
 function formFromDemand(demand: DemandReadModel): FormState {
   return {
     project_number: demand.project_number ?? "",
-    requester: demand.requester ?? "",
+    requester_user_id: demand.requester_user_id ?? "",
     work_package_ref: demand.work_package_ref ?? "",
     task_code: demand.task_code ?? "",
     priority: demand.priority ?? "Normale",
@@ -198,10 +200,14 @@ function DemandCard({ demand, selected, onClick }: { demand: DemandReadModel; se
 }
 
 export default function DemandsPage() {
-  const { can } = useAuth();
+  const { can, principal } = useAuth();
   const { scope, loading: scopeLoading } = useViewScope();
   const canManageDemands = can("manage_demands");
+  const canDelegateRequester = Boolean(
+    principal?.roles.some((role) => role === "COORDINATOR" || role === "ADMIN"),
+  );
   const [demands, setDemands] = useState<DemandReadModel[]>([]);
+  const [requesters, setRequesters] = useState<DemandRequesterReadModel[]>([]);
   const [projects, setProjects] = useState<ProjectReadModel[]>([]);
   const [resources, setResources] = useState<ResourceReadModel[]>([]);
   const [competencies, setCompetencies] = useState<CompetencyReadModel[]>([]);
@@ -240,13 +246,17 @@ export default function DemandsPage() {
       getResources(true, controller.signal),
       getCompetencies("", false, controller.signal),
       getBusinessContacts(false, controller.signal),
+      canManageDemands
+        ? getDemandRequesters(controller.signal)
+        : Promise.resolve([] as DemandRequesterReadModel[]),
     ])
-      .then(([demandRows, projectRows, resourceRows, competencyRows, contactRows]) => {
+      .then(([demandRows, projectRows, resourceRows, competencyRows, contactRows, requesterRows]) => {
         setDemands(demandRows);
         setProjects(projectRows);
         setResources(resourceRows);
         setCompetencies(competencyRows);
         setContacts(contactRows);
+        setRequesters(requesterRows);
         setSelectedNumber((current) => {
           if (current && demandRows.some((row) => row.number === current)) return current;
           return demandRows[0]?.number ?? null;
@@ -260,7 +270,7 @@ export default function DemandsPage() {
         if (!controller.signal.aborted) setLoading(false);
       });
     return () => controller.abort();
-  }, [scope, scopeLoading]);
+  }, [scope, scopeLoading, canManageDemands]);
 
   useEffect(() => {
     if (creating || !selectedNumber) return;
@@ -392,7 +402,7 @@ export default function DemandsPage() {
     setSelectedDemand(null);
     setDemandContactLink(null);
     setLineContactResolutions({});
-    setForm(emptyForm(firstProject));
+    setForm(emptyForm(firstProject, principal?.local_user_id ?? ""));
     setLineMode(false);
     setLines([]);
     setGenerationCount("2");
@@ -464,7 +474,15 @@ export default function DemandsPage() {
         project_number: selectedProject.number,
         project_name: selectedProject.name,
         client: selectedProject.client ?? "",
-        requester: form.requester.trim() || null,
+        ...(creating
+          ? { requester_user_id: form.requester_user_id || principal?.local_user_id || null }
+          : (
+            canDelegateRequester
+            && form.requester_user_id
+            && form.requester_user_id !== (selectedDemand?.requester_user_id ?? "")
+              ? { requester_user_id: form.requester_user_id }
+              : {}
+          )),
         request_type: selectedDemand?.request_type || "Projet",
         priority: form.priority,
         description: form.description.trim(),
@@ -511,7 +529,15 @@ export default function DemandsPage() {
         project_number: selectedProject.number,
         project_name: selectedProject.name,
         client: selectedProject.client ?? "",
-        requester: form.requester.trim() || null,
+        ...(creating
+          ? { requester_user_id: form.requester_user_id || principal?.local_user_id || null }
+          : (
+            canDelegateRequester
+            && form.requester_user_id
+            && form.requester_user_id !== (selectedDemand?.requester_user_id ?? "")
+              ? { requester_user_id: form.requester_user_id }
+              : {}
+          )),
         work_package_ref: form.work_package_ref || null,
         task_code: form.task_code || null,
         request_type: selectedDemand?.request_type || "Projet",
@@ -775,7 +801,32 @@ export default function DemandsPage() {
 
                 <label>
                   <span>Demandeur</span>
-                  <input value={form.requester} onChange={(event) => setField("requester", event.target.value)} disabled={saving} placeholder="Nom du demandeur" />
+                  {canDelegateRequester ? (
+                    <select
+                      value={form.requester_user_id}
+                      onChange={(event) => setField("requester_user_id", event.target.value)}
+                      disabled={saving}
+                    >
+                      {!form.requester_user_id && selectedDemand?.requester && (
+                        <option value="">Historique — {selectedDemand.requester}</option>
+                      )}
+                      {requesters.map((requester) => (
+                        <option value={requester.user_id} key={requester.user_id}>
+                          {requester.display_name}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <input
+                      value={selectedDemand?.requester || principal?.display_name || ""}
+                      disabled
+                      readOnly
+                      aria-label="Demandeur"
+                    />
+                  )}
+                  {!selectedDemand?.requester_user_id && selectedDemand?.requester && (
+                    <small>Demande historique : identité canonique non attribuée.</small>
+                  )}
                 </label>
 
                 <label>

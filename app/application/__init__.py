@@ -67,6 +67,12 @@ from .errors import (
     ApplicationOperationError,
     ApplicationValidationError,
 )
+from .demand_requesters import (
+    DemandRequesterDirectoryPort,
+    DemandRequesterReadModel,
+    DemandRequesterService,
+    is_admissible_requester,
+)
 from .demand_workflow_policy import (
     ACTION_APPROVE,
     ACTION_CANCEL,

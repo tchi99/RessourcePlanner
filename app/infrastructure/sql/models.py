@@ -189,6 +189,9 @@ class WorkforceRequest(TimestampMixin, Base):
     )
     erp_task_code: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
     erp_task_label: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    requester_user_id: Mapped[str | None] = mapped_column(
+        String(ID_LENGTH), ForeignKey("app_users.id"), nullable=True, index=True
+    )
     requester_external_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
     requester_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     operational_responsible_override_contact_id: Mapped[str | None] = mapped_column(
@@ -382,6 +385,9 @@ class WorkforceRequestHistory(Base):
     status: Mapped[str | None] = mapped_column(String(32), nullable=True)
     comment: Mapped[str | None] = mapped_column(Text, nullable=True)
     details: Mapped[str | None] = mapped_column(Text, nullable=True)
+    actor_user_id: Mapped[str | None] = mapped_column(
+        String(ID_LENGTH), ForeignKey("app_users.id"), nullable=True, index=True
+    )
     actor_external_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
     actor_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

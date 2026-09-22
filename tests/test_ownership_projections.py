@@ -14,6 +14,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 
 from app.application.commands import DemandCreateCommand, DemandUpdateCommand
+from app.application.security import AuthPrincipal, ROLE_COORDINATOR, ROLE_PROJECT_MANAGER
 from app.infrastructure.excel.segment_repository import ExcelSegmentRepository
 from app.infrastructure.sql import (
     Base,
@@ -21,12 +22,14 @@ from app.infrastructure.sql import (
     Resource,
     ResourceRequirement,
     Shift,
+    SqlUserIdentityRepository,
     WorkforceRequest,
     create_session_factory,
     create_sql_engine,
     transactional_session,
 )
 from app.server import create_api_app
+from app.server.security import static_auth_resolver
 
 
 DAY = date(2026, 8, 24)
@@ -57,8 +60,46 @@ class OwnershipProjectionTests(unittest.TestCase):
                 )
             )
             session.add(Resource(id="R1", name="Alice", active=True))
+            identities = SqlUserIdentityRepository(session)
+            coordinator = identities.upsert(
+                issuer="urn:test:ownership",
+                subject="coordinator",
+                display_name="Coordonnateur",
+                email=None,
+                roles=(ROLE_COORDINATOR,),
+            )
+            marie = identities.upsert(
+                issuer="urn:test:ownership",
+                subject="marie",
+                display_name="Marie",
+                email=None,
+                roles=(ROLE_PROJECT_MANAGER,),
+            )
+            alex = identities.upsert(
+                issuer="urn:test:ownership",
+                subject="alex",
+                display_name="Alex",
+                email=None,
+                roles=(ROLE_PROJECT_MANAGER,),
+            )
+            self.coordinator_id = coordinator.user_id
+            self.marie_id = marie.user_id
+            self.alex_id = alex.user_id
         engine.dispose()
         return url
+
+    def _coordinator_auth(self):
+        return static_auth_resolver(
+            AuthPrincipal.from_roles(
+                local_user_id=self.coordinator_id,
+                issuer="urn:test:ownership",
+                subject="coordinator",
+                display_name="Coordonnateur",
+                email=None,
+                roles=(ROLE_COORDINATOR,),
+                auth_mode="test",
+            )
+        )
 
     def test_demand_commands_round_trip_explicit_requester(self) -> None:
         create = DemandCreateCommand.from_mapping(
@@ -81,14 +122,18 @@ class OwnershipProjectionTests(unittest.TestCase):
     def test_requester_is_editable_without_reapproving_planning_envelope(self) -> None:
         with TemporaryDirectory() as directory:
             database_url = self._database(directory)
-            app = create_api_app(database_url, actor_name="Coordonnateur")
+            app = create_api_app(
+                database_url,
+                actor_name="Coordonnateur",
+                auth_resolver=self._coordinator_auth(),
+            )
             with TestClient(app, raise_server_exceptions=False) as client:
                 created = client.post(
                     "/api/v1/demands",
                     json={
                         "project_number": "P-1",
                         "desired_start": DAY.isoformat(),
-                        "requester": "Marie",
+                        "requester_user_id": self.marie_id,
                     },
                 )
                 self.assertEqual(created.status_code, 201, created.text)
@@ -111,7 +156,10 @@ class OwnershipProjectionTests(unittest.TestCase):
             with TestClient(app, raise_server_exceptions=False) as client:
                 patched = client.patch(
                     f"/api/v1/demands/{number}",
-                    json={"requester": "Alex", "comment": "Transfert opérationnel"},
+                    json={
+                        "requester_user_id": self.alex_id,
+                        "comment": "Transfert opérationnel",
+                    },
                 )
                 fetched = client.get(f"/api/v1/demands/{number}")
 
@@ -119,20 +167,25 @@ class OwnershipProjectionTests(unittest.TestCase):
             self.assertFalse(patched.json()["reapproval_required"])
             self.assertEqual(fetched.status_code, 200, fetched.text)
             self.assertEqual(fetched.json()["status"], "En planification")
+            self.assertEqual(fetched.json()["requester_user_id"], self.alex_id)
             self.assertEqual(fetched.json()["requester"], "Alex")
             self.assertEqual(fetched.json()["project_manager"], "Responsable A")
 
     def test_sql_segment_and_shift_project_parent_ownership_read_only(self) -> None:
         with TemporaryDirectory() as directory:
             database_url = self._database(directory)
-            app = create_api_app(database_url, actor_name="Coordonnateur")
+            app = create_api_app(
+                database_url,
+                actor_name="Coordonnateur",
+                auth_resolver=self._coordinator_auth(),
+            )
             with TestClient(app) as client:
                 created = client.post(
                     "/api/v1/demands",
                     json={
                         "project_number": "P-1",
                         "desired_start": DAY.isoformat(),
-                        "requester": "Marie",
+                        "requester_user_id": self.marie_id,
                     },
                 )
                 number = created.json()["demand_number"]

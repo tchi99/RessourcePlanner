@@ -83,6 +83,7 @@ class DemandReadModel:
     project_name: str | None = None
     client: str | None = None
     project_manager: str | None = None
+    requester_user_id: str | None = None
     requester: str | None = None
     request_type: str | None = None
     priority: str | None = None
@@ -119,6 +120,7 @@ class DemandReadModel:
             project_name=_optional_text(row.get("NomProjet")),
             client=_optional_text(row.get("Client")),
             project_manager=_optional_text(row.get("ChargeProjet")),
+            requester_user_id=_optional_text(row.get("RequesterUserId")),
             requester=_optional_text(row.get("Demandeur")),
             request_type=_optional_text(row.get("TypeDemande")),
             priority=_optional_text(row.get("Priorite")),

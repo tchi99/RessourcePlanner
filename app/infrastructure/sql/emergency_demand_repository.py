@@ -67,6 +67,7 @@ class SqlEmergencyDemandRepository(SqlDemandRepository):
                     "Planification matérialisée en urgence sans modifier le statut "
                     "d'approbation régulier. Régularisation formelle requise."
                 ),
+                actor_user_id=self._actor_user_id,
                 actor_name=request.emergency_override_by_name,
                 occurred_at=occurred_at,
             )

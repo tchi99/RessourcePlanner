@@ -160,7 +160,7 @@ class DemandCreateRequest(StrictRequest):
     submit: bool = False
     project_name: str = ""
     client: str = ""
-    requester: str | None = None
+    requester_user_id: str | None = None
     work_package_ref: str | None = None
     task_code: str | None = None
     request_type: str = "Projet"
@@ -196,7 +196,7 @@ class DemandUpdateRequest(StrictRequest):
     project_number: str | None = None
     project_name: str | None = None
     client: str | None = None
-    requester: str | None = None
+    requester_user_id: str | None = None
     work_package_ref: str | None = None
     task_code: str | None = None
     request_type: str | None = None

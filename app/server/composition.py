@@ -9,6 +9,7 @@ from ..application import (
     ApplicationFacade,
     BusinessContactAdminService,
     CompetencyCatalogService,
+    DemandRequesterService,
     EmergencyApplicationFacade,
     EmergencyDemandService,
     IdempotentCommandExecutor,
@@ -68,14 +69,20 @@ def build_sql_facade(
     session: Session,
     *,
     actor_name: str = "api",
+    actor_user_id: str | None = None,
     permissions: Sequence[str] | None = None,
     roles: Sequence[str] | None = None,
 ) -> ApplicationFacade:
     """Compose one application facade inside the caller-owned SQL transaction."""
 
     actor = str(actor_name or "api").strip() or "api"
+    identities = SqlUserIdentityRepository(session)
     journal = SqlPlanningAuditJournal(session, actor_name=actor)
-    demands = SqlEmergencyDemandRepository(session, actor_name=actor)
+    demands = SqlEmergencyDemandRepository(
+        session,
+        actor_name=actor,
+        actor_user_id=actor_user_id,
+    )
     periods = SqlDemandPeriodRepository(session, actor_name=actor)
     base_segments = SqlSegmentRepositoryWithActiveDayMetrics(session, actor_name=actor)
     segments = OverallocationAuditedSegmentRepository(
@@ -122,7 +129,9 @@ def build_sql_facade(
                 session,
                 actor_name=actor,
             ),
+            requester_directory=identities,
             current_user=actor,
+            current_user_id=actor_user_id,
             permissions=permissions,
             roles=roles,
         ),
@@ -158,6 +167,12 @@ def build_user_admin_service(session: Session) -> UserAdminService:
     """Compose local identity administration inside the request transaction."""
 
     return UserAdminService(SqlUserIdentityRepository(session))
+
+
+def build_demand_requester_service(session: Session) -> DemandRequesterService:
+    """Compose the read-only directory used by demand requester selectors."""
+
+    return DemandRequesterService(SqlUserIdentityRepository(session))
 
 
 def build_user_view_context_repository(

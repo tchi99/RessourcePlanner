@@ -53,9 +53,16 @@ class SqlDemandRepository(DemandRepositoryPort):
     constraints fail inside the use case, but it never commits or rolls back itself.
     """
 
-    def __init__(self, session: Session, *, actor_name: str = "") -> None:
+    def __init__(
+        self,
+        session: Session,
+        *,
+        actor_name: str = "",
+        actor_user_id: str | None = None,
+    ) -> None:
         self._session = session
         self._actor_name = _text(actor_name)
+        self._actor_user_id = _optional_text(actor_user_id)
 
     def _read_model(
         self,
@@ -76,6 +83,7 @@ class SqlDemandRepository(DemandRepositoryPort):
             project_name=_optional_text(project.name),
             client=_optional_text(project.client),
             project_manager=_optional_text(project.project_manager_name),
+            requester_user_id=_optional_text(request.requester_user_id),
             requester=_optional_text(request.requester_name),
             priority=_optional_text(request.priority),
             confirmation=_optional_text(request.confirmation),
@@ -705,7 +713,9 @@ class SqlDemandRepository(DemandRepositoryPort):
             work_package_id=work_package.id if work_package is not None else None,
             erp_task_code=task.task_code if task is not None else None,
             erp_task_label=task.label if task is not None else None,
-            # An authorized caller may explicitly name the requester. When omitted,
+            requester_user_id=_optional_text(values.get("RequesterUserId")),
+            # Canonical Web callers provide RequesterUserId and a server-derived
+            # display snapshot. Legacy callers may still provide only Demandeur.
             # preserve the historical behavior and default to the authenticated actor.
             requester_name=_optional_text(values.get("Demandeur")) or self._actor_name or None,
             request_type=_text(values.get("TypeDemande")) or "Projet",
@@ -832,6 +842,8 @@ class SqlDemandRepository(DemandRepositoryPort):
             request.erp_task_code = None
             request.erp_task_label = None
 
+        if "RequesterUserId" in updates:
+            request.requester_user_id = _optional_text(updates.get("RequesterUserId"))
         if "Demandeur" in updates:
             request.requester_name = _optional_text(updates.get("Demandeur"))
         if "TypeDemande" in updates:
@@ -931,6 +943,7 @@ class SqlDemandRepository(DemandRepositoryPort):
                 status=request.status,
                 comment=comment or None,
                 details=details,
+                actor_user_id=self._actor_user_id,
                 actor_name=self._actor_name or None,
                 occurred_at=utc_now(),
             )
