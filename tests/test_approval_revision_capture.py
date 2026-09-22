@@ -103,7 +103,7 @@ class ApprovalRevisionCaptureTests(unittest.TestCase):
                                 "kind": "ALTERNATIVE",
                                 "alternative_group": "VISITE",
                                 "confirmation": "Confirmée",
-                                "resource_count": 2,
+                                "resource_count": 1,
                             },
                             {
                                 "period_id": "OPT-B",
@@ -173,7 +173,7 @@ class ApprovalRevisionCaptureTests(unittest.TestCase):
                     self.assertEqual(set(by_period), {"OPT-A", "OPT-B"})
                     self.assertTrue(by_period["OPT-A"]["selected"])
                     self.assertFalse(by_period["OPT-B"]["selected"])
-                    self.assertEqual(by_period["OPT-A"]["slot_count"], 2)
+                    self.assertEqual(by_period["OPT-A"]["slot_count"], 1)
                     self.assertEqual(by_period["OPT-B"]["slot_count"], 1)
                     self.assertEqual(
                         by_period["OPT-A"]["location"],
