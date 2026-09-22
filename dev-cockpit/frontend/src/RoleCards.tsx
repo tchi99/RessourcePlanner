@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import RoleDetailPanel from './RoleDetailPanel'
 import type {
   ChatConversationStatus,
   ChatStatusResponse,
@@ -168,6 +169,7 @@ export default function RoleCards({ dashboard }: { dashboard: Dashboard | null }
   const [error, setError] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
   const [chatStatuses, setChatStatuses] = useState<ChatStatusResponse | null>(null)
+  const [selectedRoleId, setSelectedRoleId] = useState<string | null>(null)
 
   async function loadRoles() {
     setLoading(true)
@@ -218,6 +220,12 @@ export default function RoleCards({ dashboard }: { dashboard: Dashboard | null }
     () => roles.filter((role) => role.enabled).sort((a, b) => a.order - b.order),
     [roles],
   )
+
+  const selectedRole =
+    roles.find((role) => role.id === selectedRoleId) ?? null
+  const selectedChatStatus = selectedRole
+    ? chatStatusForRole(selectedRole, chatStatuses)
+    : null
 
   function beginEditing() {
     setDraft(roles.map((role) => ({ ...role })))
@@ -354,6 +362,13 @@ export default function RoleCards({ dashboard }: { dashboard: Dashboard | null }
                     {roleBubble(role, dashboard, chatStatus)}
                   </div>
                   <div className="role-actions">
+                    <button
+                      className="role-details-button"
+                      type="button"
+                      onClick={() => setSelectedRoleId(role.id)}
+                    >
+                      Voir détails
+                    </button>
                     {role.chat_url ? (
                       <a
                         className="button role-chat-link"
@@ -378,6 +393,15 @@ export default function RoleCards({ dashboard }: { dashboard: Dashboard | null }
         <div className="roles-empty">
           Aucun rôle actif. Utilise « Gérer les rôles » pour en ajouter.
         </div>
+      )}
+
+      {selectedRole && (
+        <RoleDetailPanel
+          role={selectedRole}
+          dashboard={dashboard}
+          chatStatus={selectedChatStatus}
+          onClose={() => setSelectedRoleId(null)}
+        />
       )}
 
       {editing && (
