@@ -28,6 +28,7 @@ from .models import (
     ResourceRequirement,
     Shift,
     WorkforceRequest,
+    WorkforceRequestCompetency,
     WorkPackage,
 )
 
@@ -140,6 +141,20 @@ class SqlRequestPlanPreparer:
             ).all()
         )
 
+    def _request_competencies(
+        self,
+        request_id: str,
+    ) -> tuple[str, ...]:
+        return tuple(
+            self._session.scalars(
+                select(WorkforceRequestCompetency.competency_id)
+                .where(
+                    WorkforceRequestCompetency.workforce_request_id == request_id
+                )
+                .order_by(WorkforceRequestCompetency.competency_id)
+            ).all()
+        )
+
     def _line_competencies(
         self,
         line_ids: Sequence[str],
@@ -213,6 +228,7 @@ class SqlRequestPlanPreparer:
         competency_ids = self._line_competencies(tuple(line.id for line in lines))
         work_package_refs = self._line_work_package_refs(lines)
         specs: list[PreparedRequirementSpec] = []
+        request_competency_ids = self._request_competencies(request.id)
         unresolved = 0
 
         for line in lines:
@@ -412,7 +428,7 @@ class SqlRequestPlanPreparer:
                         required_competency=(
                             _text(request.required_competencies) or None
                         ),
-                        competency_ids=(),
+                        competency_ids=request_competency_ids,
                         slot_index=index,
                     )
                 )
@@ -449,6 +465,7 @@ class SqlRequestPlanPreparer:
                     "Les heures estimées sont requises pour matérialiser une nouvelle demande."
                 )
 
+        request_competency_ids = self._request_competencies(request.id)
         target_days = normalize_active_day_target(
             request.estimated_days,
             start=request.desired_start,
@@ -486,7 +503,7 @@ class SqlRequestPlanPreparer:
                 required_competency=(
                     _text(request.required_competencies) or None
                 ),
-                competency_ids=(),
+                competency_ids=request_competency_ids,
                 slot_index=index,
             )
             for index, hours in enumerate(split_hours)
