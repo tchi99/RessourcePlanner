@@ -8,6 +8,12 @@ from fastapi.staticfiles import StaticFiles
 
 from .chat_status import ChatHeartbeat, ChatStatusStore
 from .config import Settings
+from .details import (
+    build_architecture_detail,
+    build_commit_detail,
+    build_issue_detail,
+    build_roadmap_detail,
+)
 from .github import GitHubClient, GitHubError
 from .roles import RoleStore, RolesConfig
 from .service import build_dashboard
@@ -17,7 +23,7 @@ PROJECT_DIR = Path(__file__).resolve().parents[2]
 
 def create_app(app_settings: Settings | None = None) -> FastAPI:
     settings = app_settings or Settings.from_env()
-    app = FastAPI(title="RessourcePlanner Dev Cockpit", version="0.4.0")
+    app = FastAPI(title="RessourcePlanner Dev Cockpit", version="0.5.0")
     role_store = RoleStore(settings.data_dir)
     chat_status_store = ChatStatusStore()
 
@@ -61,6 +67,69 @@ def create_app(app_settings: Settings | None = None) -> FastAPI:
     @app.get("/api/chat-status")
     async def chat_status() -> dict[str, object]:
         return chat_status_store.snapshot()
+
+
+    async def github_detail(
+        builder,
+        target_repo: str,
+        *args,
+    ) -> dict:
+        if not settings.github_token:
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    "DEV_COCKPIT_GITHUB_TOKEN n'est pas configuré. "
+                    "Ajoute un token GitHub en lecture seule dans le .env racine puis redémarre le service dev-cockpit."
+                ),
+            )
+        try:
+            async with GitHubClient(settings) as client:
+                return await builder(client, target_repo, *args)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        except GitHubError as exc:
+            status = 502 if exc.status_code >= 500 else exc.status_code
+            raise HTTPException(status_code=status, detail=f"GitHub: {exc.message}") from exc
+
+    @app.get("/api/details/roadmap")
+    async def roadmap_detail(repo: str | None = Query(default=None)) -> dict:
+        target_repo = repo or settings.repository
+        if not settings.github_token:
+            raise HTTPException(
+                status_code=503,
+                detail="DEV_COCKPIT_GITHUB_TOKEN n'est pas configuré.",
+            )
+        try:
+            async with GitHubClient(settings) as client:
+                return await build_roadmap_detail(client, settings, target_repo)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        except GitHubError as exc:
+            status = 502 if exc.status_code >= 500 else exc.status_code
+            raise HTTPException(status_code=status, detail=f"GitHub: {exc.message}") from exc
+
+    @app.get("/api/details/issues/{number}")
+    async def issue_detail(number: int, repo: str | None = Query(default=None)) -> dict:
+        return await github_detail(
+            build_issue_detail,
+            repo or settings.repository,
+            number,
+        )
+
+    @app.get("/api/details/commits/{sha}")
+    async def commit_detail(sha: str, repo: str | None = Query(default=None)) -> dict:
+        return await github_detail(
+            build_commit_detail,
+            repo or settings.repository,
+            sha,
+        )
+
+    @app.get("/api/details/architecture")
+    async def architecture_detail(repo: str | None = Query(default=None)) -> dict:
+        return await github_detail(
+            build_architecture_detail,
+            repo or settings.repository,
+        )
 
     @app.get("/api/dashboard")
     async def dashboard(repo: str | None = Query(default=None)) -> dict:
