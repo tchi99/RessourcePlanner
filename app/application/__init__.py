@@ -15,6 +15,7 @@ from .business_contact_admin import (
 )
 from .commands import (
     DemandAlternativeSelectCommand,
+    DemandOperationalConfirmationCommand,
     DemandApproveCommand,
     DemandCancelCommand,
     DemandCorrectionCommand,
@@ -144,12 +145,14 @@ from .query_models import (
 from .query_ports import PlannerQueryPort
 from .read_models import (
     DemandLineReadModel,
+    DemandOperationalChoiceReadModel,
     DemandPeriodReadModel,
     DemandReadModel,
     SegmentMobilizedResourceReadModel,
     SegmentReadModel,
 )
 from .repository_ports import (
+    DemandOperationalChoiceRepositoryPort,
     DemandPeriodRepositoryPort,
     DemandRepositoryPort,
     PlanningReadRepositoryPort,
@@ -182,6 +185,7 @@ from .results import (
     ApplicationResult,
     DemandAlternativeSelectionResult,
     DemandMutationResult,
+    DemandOperationalConfirmationResult,
     DemandPeriodsMutationResult,
     PlanningResult,
     QuickShiftCreatedResult,
@@ -224,6 +228,10 @@ __all__ = [
     "ContactLinkRecord",
     "DemandAlternativeSelectCommand",
     "DemandAlternativeSelectionResult",
+    "DemandOperationalChoiceReadModel",
+    "DemandOperationalChoiceRepositoryPort",
+    "DemandOperationalConfirmationCommand",
+    "DemandOperationalConfirmationResult",
     "DemandApproveCommand",
     "DemandCancelCommand",
     "DemandCorrectionCommand",
