@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, time
 from decimal import Decimal
 import unittest
 
@@ -11,6 +11,7 @@ from app.infrastructure.sql import (
     Project,
     RequestLine,
     Resource,
+    ResourceAvailabilityRule,
     ResourceRequirement,
     Shift,
     WorkforceRequest,
@@ -20,6 +21,9 @@ from app.infrastructure.sql import (
 )
 from app.infrastructure.sql.period_approved_sync import (
     SqlPeriodAwareApprovedDemandSyncAdapter,
+)
+from app.infrastructure.sql.plan_delta_query_repository import (
+    SqlPlannerQueryRepositoryWithPlanDelta,
 )
 from app.infrastructure.sql.request_plan_preparation import (
     LOCKED_HOURS_EXCEED_BUDGET,
@@ -41,6 +45,20 @@ class SharedRequestPlanPreparationTests(unittest.TestCase):
         with transactional_session(self.factory) as session:
             session.add(Project(id="P1", number="P-1", name="Projet 13C"))
             session.add(Resource(id="R1", name="Alice", active=True))
+            session.flush()
+            session.add(
+                ResourceAvailabilityRule(
+                    id="SCH-R1",
+                    resource_id="R1",
+                    availability_type="Horaire standard",
+                    start_date=D1,
+                    end_date=D2,
+                    weekdays="Lun,Mar",
+                    start_time=time(8, 0),
+                    end_time=time(16, 0),
+                    active=True,
+                )
+            )
 
     def tearDown(self) -> None:
         self.engine.dispose()
@@ -291,6 +309,57 @@ class SharedRequestPlanPreparationTests(unittest.TestCase):
             self.assertEqual(obsolete, ())
             self.assertEqual(len(matches), 1)
             self.assertIs(matches[0].requirement, requirement)
+
+    def test_plan_delta_uses_same_locked_window_conflict(self) -> None:
+        with transactional_session(self.factory) as session:
+            request = WorkforceRequest(
+                id="D-PREVIEW",
+                legacy_demand_number="DEM-PREVIEW",
+                project_id="P1",
+                desired_start=D2,
+                desired_end=D2,
+                estimated_hours=Decimal("8"),
+                resource_count=1,
+                status="Soumise",
+            )
+            requirement = ResourceRequirement(
+                id="REQ-PREVIEW",
+                legacy_segment_id="SEG-PREVIEW",
+                project_id="P1",
+                workforce_request_id=request.id,
+                assigned_resource_id="R1",
+                start_date=D1,
+                end_date=D1,
+                planned_hours=Decimal("8"),
+                status="Planifié",
+                planning_type="Flexible",
+                origin="REQUEST",
+            )
+            session.add_all(
+                [
+                    request,
+                    requirement,
+                    self._locked_shift(
+                        shift_id="SHIFT-PREVIEW",
+                        requirement_id=requirement.id,
+                    ),
+                ]
+            )
+            session.flush()
+
+            result = SqlPlannerQueryRepositoryWithPlanDelta(
+                session
+            ).demand_plan_delta("DEM-PREVIEW")
+
+            self.assertIsNotNone(result)
+            assert result is not None
+            self.assertFalse(result.available)
+            self.assertEqual(result.reason, LOCKED_SHIFT_OUTSIDE_WINDOW)
+            self.assertTrue(session.get(Shift, "SHIFT-PREVIEW").locked)
+            self.assertEqual(
+                session.get(ResourceRequirement, requirement.id).start_date,
+                D1,
+            )
 
     def test_materialization_guard_blocks_same_locked_window_change_in_both_modes(self) -> None:
         with transactional_session(self.factory) as session:
