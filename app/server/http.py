@@ -22,6 +22,7 @@ from ..application import (
     ApplicationOperationError,
     ApplicationValidationError,
     IdempotentCommandExecutor,
+    OperationalContactService,
     PlannerQueryPort,
     ProjectSourcePort,
 )
@@ -49,6 +50,7 @@ from .composition import (
     build_smtp_configuration_service,
     build_competency_catalog_service,
     build_demand_requester_service,
+    build_operational_contact_service,
     build_sql_facade,
     build_sql_idempotency_executor,
     build_sql_query_port,
@@ -85,6 +87,7 @@ IdempotencyDependency = Callable[[], Iterator[IdempotentCommandExecutor]]
 QueryDependency = Callable[[], Iterator[PlannerQueryPort]]
 UserAdminDependency = Callable[..., Any]
 DemandRequesterDependency = Callable[[], Iterator[DemandRequesterService]]
+OperationalContactDependency = Callable[[], Iterator[OperationalContactService]]
 CommunicationDependency = Callable[..., Any]
 ProjectCommunicationDependency = Callable[..., Any]
 SmtpSettingsDependency = Callable[..., Any]
@@ -230,6 +233,21 @@ def make_demand_requester_dependency(
         session: Session = Depends(request_session),
     ) -> Iterator[DemandRequesterService]:
         yield build_demand_requester_service(session)
+
+    return dependency
+
+
+def make_operational_contact_dependency(
+    factory: SqlSessionFactory,
+    *,
+    session_dependency: SessionDependency | None = None,
+) -> OperationalContactDependency:
+    request_session = session_dependency or make_session_dependency(factory)
+
+    def dependency(
+        session: Session = Depends(request_session),
+    ) -> Iterator[OperationalContactService]:
+        yield build_operational_contact_service(session)
 
     return dependency
 
@@ -420,6 +438,10 @@ def create_api_app(
         factory,
         session_dependency=session_dependency,
     )
+    operational_contact_dependency = make_operational_contact_dependency(
+        factory,
+        session_dependency=session_dependency,
+    )
     communication_dependency = make_communication_dependency(
         factory,
         session_dependency=session_dependency,
@@ -468,6 +490,7 @@ def create_api_app(
     app.state.facade_dependency = facade_dependency
     app.state.idempotency_dependency = idempotency_dependency
     app.state.query_dependency = query_dependency
+    app.state.operational_contact_dependency = operational_contact_dependency
     app.state.user_admin_dependency = user_admin_dependency
     app.state.user_view_context_dependency = user_view_context_dependency
     app.state.communication_dependency = communication_dependency
@@ -568,6 +591,7 @@ def create_api_app(
             query_dependency,
             user_view_context_dependency,
             demand_requester_dependency,
+            operational_contact_dependency,
         )
     )
     app.include_router(build_competency_router(competency_dependency))

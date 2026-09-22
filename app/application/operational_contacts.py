@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -105,6 +106,11 @@ class OperationalContactRepositoryPort(Protocol):
         line_id: str,
     ) -> RequestLineContactContext | None: ...
 
+    def get_request_line_contact_contexts(
+        self,
+        line_ids: Sequence[str],
+    ) -> Sequence[RequestLineContactContext]: ...
+
     def get_resource_requirement_contact_context(
         self,
         requirement_id: str,
@@ -122,19 +128,10 @@ class OperationalContactService:
     def __init__(self, repository: OperationalContactRepositoryPort) -> None:
         self._repository = repository
 
-    def resolve_request_line(self, line_id: str) -> RequestLineContactResolution:
-        context = call_application_port(
-            lambda: self._repository.get_request_line_contact_context(line_id),
-            code_prefix="operational_contact_read",
-            context={"line_id": line_id},
-        )
-        if context is None:
-            raise ApplicationNotFoundError(
-                "La ligne de demande est introuvable.",
-                code="request_line_not_found",
-                context={"line_id": line_id},
-            )
-
+    @staticmethod
+    def _resolve_request_line_context(
+        context: RequestLineContactContext,
+    ) -> RequestLineContactResolution:
         responsible = resolve_operational_responsible(
             request_override=context.request_override,
             task_responsible=context.task_responsible,
@@ -157,6 +154,64 @@ class OperationalContactService:
             coordinator=coordinator,
             diagnostics=context.diagnostics,
         )
+
+    def resolve_request_lines(
+        self,
+        line_ids: Sequence[str],
+    ) -> tuple[RequestLineContactResolution, ...]:
+        wanted = tuple(
+            dict.fromkeys(
+                str(line_id or "").strip()
+                for line_id in line_ids
+                if str(line_id or "").strip()
+            )
+        )
+        if not wanted:
+            return ()
+
+        bulk_loader = getattr(
+            self._repository,
+            "get_request_line_contact_contexts",
+            None,
+        )
+        if callable(bulk_loader):
+            contexts = call_application_port(
+                lambda: bulk_loader(wanted),
+                code_prefix="operational_contact_read",
+                context={"line_ids": wanted},
+            )
+        else:
+            contexts = tuple(
+                call_application_port(
+                    lambda line_id=line_id: (
+                        self._repository.get_request_line_contact_context(line_id)
+                    ),
+                    code_prefix="operational_contact_read",
+                    context={"line_id": line_id},
+                )
+                for line_id in wanted
+            )
+        by_line = {
+            context.line_id: context
+            for context in contexts
+            if context is not None
+        }
+        return tuple(
+            self._resolve_request_line_context(by_line[line_id])
+            for line_id in wanted
+            if line_id in by_line
+        )
+
+    def resolve_request_line(self, line_id: str) -> RequestLineContactResolution:
+        wanted = str(line_id or "").strip()
+        resolved = self.resolve_request_lines((wanted,))
+        if not resolved:
+            raise ApplicationNotFoundError(
+                "La ligne de demande est introuvable.",
+                code="request_line_not_found",
+                context={"line_id": wanted},
+            )
+        return resolved[0]
 
     def resolve_resource_requirement(
         self,
