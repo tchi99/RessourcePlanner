@@ -93,8 +93,31 @@ class GitHubClient:
     async def get_commit(self, repo: str, sha: str) -> dict[str, Any]:
         return await self._get(f"/repos/{repo}/commits/{sha}")
 
-    async def list_branches(self, repo: str, per_page: int = 100) -> list[dict[str, Any]]:
-        return await self._get(f"/repos/{repo}/branches", {"per_page": per_page})
+    async def list_branches(
+        self,
+        repo: str,
+        per_page: int = 100,
+        page: int = 1,
+    ) -> list[dict[str, Any]]:
+        return await self._get(
+            f"/repos/{repo}/branches",
+            {"per_page": per_page, "page": page},
+        )
+
+    async def list_all_branches(
+        self,
+        repo: str,
+        *,
+        per_page: int = 100,
+        max_pages: int = 10,
+    ) -> list[dict[str, Any]]:
+        branches: list[dict[str, Any]] = []
+        for page in range(1, max_pages + 1):
+            batch = await self.list_branches(repo, per_page=per_page, page=page)
+            branches.extend(batch)
+            if len(batch) < per_page:
+                break
+        return branches
 
     async def get_text_file(self, repo: str, path: str, ref: str | None = None) -> str:
         params = {"ref": ref} if ref else None
