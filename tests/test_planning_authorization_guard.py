@@ -79,7 +79,7 @@ class PlanningAuthorizationGuardTests(unittest.TestCase):
                 "desired_start": DAY.isoformat(),
                 "desired_end": DAY.isoformat(),
                 "estimated_hours": hours,
-                "proposed_resource": "Alice",
+                "proposed_technician": "Alice",
                 "submit": True,
             },
         )
