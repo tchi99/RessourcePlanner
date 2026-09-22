@@ -429,7 +429,6 @@ export default function DemandsPage() {
     setSelectedNumber(null);
     setSelectedDemand(null);
     setSelectedDetail(null);
-    setSelectedDetail(null);
     setDemandContactLink(null);
     setLineContactResolutions({});
     setForm(emptyForm(firstProject, principal?.local_user_id ?? ""));
