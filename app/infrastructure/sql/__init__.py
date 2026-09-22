@@ -4,6 +4,7 @@ This package contains database infrastructure only. Application services and the
 planning engine must continue to depend on ports/read models rather than SQLAlchemy.
 """
 
+from .approval_envelope_policy_repository import SqlDemandApprovalEnvelopePolicyRepository
 from .approval_revision_models import (
     APPROVAL_REFERENCE_CAPTURED,
     APPROVAL_REFERENCE_LEGACY_UNKNOWN,
@@ -155,6 +156,7 @@ __all__ = [
     "SqlCommunicationRepository",
     "SqlSmtpConfigurationRepository",
     "SqlCompetencyCatalogRepository",
+    "SqlDemandApprovalEnvelopePolicyRepository",
     "SqlDemandPeriodRepository",
     "SqlDemandRepository",
     "SqlEmergencyDemandRepository",
