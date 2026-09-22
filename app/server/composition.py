@@ -47,6 +47,7 @@ from ..infrastructure.sql import (
     SqlProjectCommunicationRepository,
     SqlPlannerQueryRepositoryWithLoadProfiles,
     SqlPlanningCommandAdapter,
+    SqlPlanningMutationVersionRepository,
     SqlRequestPlanningAuthorizationRepository,
     SqlResourceAdminRepository,
     SqlSmtpConfigurationRepository,
@@ -94,7 +95,11 @@ def build_sql_facade(
     )
     work_packages = SqlWorkPackageRepository(session)
     resources = SqlResourceAdminRepository(session)
-    planning_commands = SqlPlanningCommandAdapter(session)
+    planning_versions = SqlPlanningMutationVersionRepository(session)
+    planning_commands = SqlPlanningCommandAdapter(
+        session,
+        versioning=planning_versions,
+    )
     planning_authorization = SqlRequestPlanningAuthorizationRepository(
         session,
         actor_name=actor,
@@ -105,9 +110,11 @@ def build_sql_facade(
             session,
             planning=planning_commands,
             authorization=planning_authorization,
+            versioning=planning_versions,
         ),
         journal,
         session,
+        versioning=planning_versions,
     )
     approved_sync = EmergencyAwareApprovedDemandSyncAdapter(
         SqlPeriodAwareApprovedDemandSyncAdapter(session),
@@ -141,6 +148,7 @@ def build_sql_facade(
         planning=PlanningService(planning_commands),
         work_packages=WorkPackageService(work_packages),
         resource_admin=ResourceAdminService(resources),
+        planning_versions=planning_versions,
     )
 
 
