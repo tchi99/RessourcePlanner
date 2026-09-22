@@ -34,6 +34,28 @@ class ChatStatusTests(unittest.TestCase):
         self.assertFalse(row["connected"])
         self.assertEqual(row["last_seen_seconds"], 31)
 
+    def test_working_to_idle_records_completion_time(self):
+        store = ChatStatusStore(stale_seconds=30)
+        start = datetime(2026, 9, 22, 20, 0, tzinfo=timezone.utc)
+        store.heartbeat(
+            ChatHeartbeat(
+                conversation_url="https://chatgpt.com/c/example",
+                state="working",
+                ui_signal="stop-control",
+            ),
+            now=start,
+        )
+        completed = store.heartbeat(
+            ChatHeartbeat(
+                conversation_url="https://chatgpt.com/c/example",
+                state="idle",
+            ),
+            now=start + timedelta(seconds=8),
+        )
+        self.assertEqual(completed["effective_state"], "idle")
+        self.assertEqual(completed["last_completed_seconds"], 0)
+        self.assertIsNotNone(completed["last_completed_at"])
+
     def test_idle_heartbeat_becomes_disconnected_when_stale(self):
         store = ChatStatusStore(stale_seconds=10)
         start = datetime(2026, 9, 22, 20, 0, tzinfo=timezone.utc)
