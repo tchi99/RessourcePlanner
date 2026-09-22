@@ -10,7 +10,8 @@ Le diff Git est calculé avec `--no-renames`. Un renommage est donc vu comme une
 | Backend / Python / tests / migrations | `app/**`, `tests/**`, `migrations/**`, `main.py`, `alembic.ini` | run | run | run | run |
 | Frontend | `frontend/**` | skip | skip | run | run |
 | Docker / déploiement / runtime partagé | Dockerfiles, Compose, scripts de lancement/installation, `deploy/**`, `.env.example`, `.dockerignore` | run | run | run | run |
-| CI / dépendances / outillage | `.github/workflows/**`, `requirements*.txt`, `constraints*.txt`, `tools/**`, `dev-cockpit/**` | run | run | run | run |
+| Dev Cockpit seulement | `dev-cockpit/**` | skip | skip | skip | skip |
+| CI / dépendances / outillage | `.github/workflows/**`, `requirements*.txt`, `constraints*.txt`, `tools/**` | run | run | run | run |
 | Chemin non reconnu | tout autre chemin qui déclenche le workflow | run | run | run | run |
 
 ## Règles fail-safe
@@ -34,6 +35,14 @@ Le diff Git est calculé avec `--no-renames`. Un renommage est donc vu comme une
 | `requirements-server.txt` | conservateur | les quatre validations |
 | `.github/workflows/syntax-check.yml` | conservateur | les quatre validations |
 | `tools/run_test_shard.py` | conservateur | les quatre validations |
+| `dev-cockpit/frontend/src/App.tsx` | Dev Cockpit | aucune validation lourde du workflow principal; workflow `Dev Cockpit` dédié |
+| `frontend/src/App.tsx` + `dev-cockpit/frontend/src/App.tsx` | frontend + Dev Cockpit | frontend-validation + docker-smoke dans CI, plus workflow `Dev Cockpit` |
 | chemin futur non reconnu | conservateur | les quatre validations |
 
-Le chantier #369 pourra affiner séparément le cas strictement `dev-cockpit/**`; #368 le garde volontairement conservateur afin de ne pas mélanger les deux optimisations.
+## Frontière Dev Cockpit
+
+Le workflow principal ne déclare plus `dev-cockpit/**` dans son filtre `pull_request.paths`. Une PR strictement limitée au cockpit déclenche donc seulement `.github/workflows/dev-cockpit.yml`.
+
+Les fichiers réellement partagés restent déclarés dans les deux workflows lorsque les deux surfaces doivent être validées, notamment `docker-compose.yml` et `.env.example`. Le workflow dédié lui-même reste couvert par le filtre global `.github/workflows/**` du workflow principal.
+
+Pour une PR mixte RessourcePlanner + Dev Cockpit, un chemin applicatif déclenche la CI principale et le classifieur ignore la partie `dev-cockpit/**` afin de conserver uniquement les validations RessourcePlanner pertinentes; le chemin cockpit déclenche en parallèle le workflow dédié.

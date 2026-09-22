@@ -42,17 +42,58 @@ class CiChangeClassifierTests(unittest.TestCase):
         self.assertTrue(result.runtime)
         self.assertFalse(result.conservative)
 
+    def test_dev_cockpit_changes_do_not_request_primary_application_jobs(self) -> None:
+        result = classify_changes(["dev-cockpit/frontend/src/App.tsx"])
+
+        self.assertFalse(result.documentation_only)
+        self.assertFalse(result.backend)
+        self.assertFalse(result.frontend)
+        self.assertFalse(result.runtime)
+        self.assertFalse(result.conservative)
+
+    def test_mixed_frontend_and_dev_cockpit_keeps_relevant_application_jobs(self) -> None:
+        result = classify_changes([
+            "frontend/src/App.tsx",
+            "dev-cockpit/frontend/src/App.tsx",
+        ])
+
+        self.assertFalse(result.documentation_only)
+        self.assertFalse(result.backend)
+        self.assertTrue(result.frontend)
+        self.assertFalse(result.runtime)
+        self.assertFalse(result.conservative)
+
     def test_ci_dependencies_and_tooling_are_conservative(self) -> None:
         for path in (
             ".github/workflows/syntax-check.yml",
+            ".github/workflows/dev-cockpit.yml",
             "requirements.txt",
             "constraints-ci.txt",
             "tools/run_test_shard.py",
-            "dev-cockpit/package.json",
         ):
             with self.subTest(path=path):
                 result = classify_changes([path])
                 self.assertTrue(result.conservative)
+
+    def test_shared_runtime_files_keep_primary_application_validation(self) -> None:
+        for path in ("docker-compose.yml", ".env.example"):
+            with self.subTest(path=path):
+                result = classify_changes([path])
+                self.assertTrue(result.runtime)
+                self.assertFalse(result.conservative)
+
+    def test_workflow_path_filters_keep_dev_cockpit_boundary_explicit(self) -> None:
+        from pathlib import Path
+
+        primary = Path(".github/workflows/syntax-check.yml").read_text(encoding="utf-8")
+        cockpit = Path(".github/workflows/dev-cockpit.yml").read_text(encoding="utf-8")
+
+        self.assertNotIn('      - "dev-cockpit/**"', primary)
+        self.assertIn('      - "dev-cockpit/**"', cockpit)
+        for shared_path in ("docker-compose.yml", ".env.example"):
+            marker = f'      - "{shared_path}"'
+            self.assertIn(marker, primary)
+            self.assertIn(marker, cockpit)
 
     def test_unknown_path_is_fail_safe(self) -> None:
         result = classify_changes(["unexpected/new-runtime-file.conf"])
