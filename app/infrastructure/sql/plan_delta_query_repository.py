@@ -2,12 +2,15 @@ from __future__ import annotations
 
 from collections import defaultdict
 from datetime import timedelta
+import json
 from decimal import Decimal
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ...application.plan_delta import (
+    DemandApprovalStateReadModel,
+    DemandPlanDeltaDiagnosticReadModel,
     DemandPlanDeltaItemReadModel,
     DemandPlanDeltaReadModel,
 )
@@ -22,12 +25,30 @@ from ...domain.plan_comparison import (
 from ...domain.planning_engine import build_allocation_plan
 from ...domain.planning_projection import project_planning_snapshot
 from ...domain.planning_snapshot import PlanningSnapshot
+from .approval_revision_models import (
+    APPROVAL_REFERENCE_CAPTURED,
+    RequestApprovalReference,
+    RequestApprovalRevision,
+)
+from .approval_revision_repository import SqlRequestApprovalRevisionRepository
+from .approval_envelope_policy_repository import (
+    SqlDemandApprovalEnvelopePolicyRepository,
+)
 from .demand_period_models import (
     WorkforceRequestPeriod,
     WorkforceRequestPeriodRequirement,
     WorkforceRequestPeriodSelection,
 )
-from .models import Project, RequestLine, Resource, ResourceRequirement, WorkforceRequest, WorkPackage
+from .models import (
+    ORIGIN_REQUEST,
+    Project,
+    RequestLine,
+    Resource,
+    ResourceRequirement,
+    WorkforceRequest,
+    WorkPackage,
+)
+from .operational_choice_models import RequestOperationalState
 from .planning_repository import SqlPlanningReadRepository
 from .request_plan_preparation import SqlRequestPlanPreparer
 from .web_query_repository import SqlPlannerQueryRepositoryWeb
@@ -637,21 +658,229 @@ class SqlPlannerQueryRepositoryWithPlanDelta(SqlPlannerQueryRepositoryWeb):
             )
         return proposed
 
+    @staticmethod
+    def _decoded_mapping(value: str) -> dict[str, str]:
+        decoded = json.loads(value or "{}")
+        if not isinstance(decoded, dict):
+            raise ValueError("L'état opérationnel sérialisé est invalide.")
+        return {
+            _text(key): _text(item)
+            for key, item in decoded.items()
+            if _text(key) and _text(item)
+        }
+
+    def demand_approval_state(
+        self,
+        number: str,
+    ) -> DemandApprovalStateReadModel | None:
+        request = self._request(number)
+        if request is None:
+            return None
+
+        demand_number = _text(request.legacy_demand_number) or request.id
+        diagnostics: list[str] = []
+        revisions = SqlRequestApprovalRevisionRepository(self._delta_session)
+
+        candidate_fingerprint: str | None = None
+        decision_name: str | None = None
+        decision_reason: str | None = None
+        decision_changes: tuple[dict[str, object], ...] = ()
+        try:
+            candidate = revisions.candidate_envelope(request)
+            candidate_fingerprint = candidate.authorization_fingerprint
+            decision = SqlDemandApprovalEnvelopePolicyRepository(
+                self._delta_session
+            ).evaluate_candidate(demand_number)
+            decision_name = decision.decision
+            decision_reason = decision.reason
+            decision_changes = tuple(
+                dict(row) for row in decision.to_dict()["changes"]
+            )
+        except ValueError as exc:
+            decision_name = "INVALID"
+            decision_reason = "INVALID"
+            decision_changes = ({"code": "INVALID", "detail": str(exc)},)
+            diagnostics.append(f"CANDIDATE_INVALID: {exc}")
+
+        reference = self._delta_session.get(RequestApprovalReference, request.id)
+        reference_status = reference.status if reference is not None else None
+        revision = (
+            self._delta_session.get(
+                RequestApprovalRevision,
+                reference.active_revision_id,
+            )
+            if reference is not None and reference.active_revision_id
+            else None
+        )
+        if (
+            reference is not None
+            and reference.active_revision_id
+            and revision is None
+        ):
+            diagnostics.append("ACTIVE_APPROVAL_REVISION_MISSING")
+
+        selections: dict[str, str] = {}
+        confirmations: dict[str, str] = {}
+        budget_overrides: dict[str, float] = {}
+        operational_version: int | None = None
+        if revision is not None:
+            state = self._delta_session.get(RequestOperationalState, request.id)
+            if state is None:
+                diagnostics.append("OPERATIONAL_STATE_MISSING")
+            elif state.approval_revision_id != revision.id:
+                diagnostics.append("OPERATIONAL_STATE_REVISION_MISMATCH")
+            else:
+                operational_version = max(int(state.version or 1), 1)
+                try:
+                    selections = self._decoded_mapping(state.selections_text)
+                    confirmations = self._decoded_mapping(
+                        state.confirmations_text
+                    )
+                    budget_overrides = {
+                        key: float(value)
+                        for key, value in self._decoded_mapping(
+                            state.budget_overrides_text
+                        ).items()
+                    }
+                except (TypeError, ValueError, json.JSONDecodeError) as exc:
+                    diagnostics.append(f"OPERATIONAL_STATE_INVALID: {exc}")
+
+        current = [
+            row
+            for row in self._current_requirements(request.id)
+            if row.origin == ORIGIN_REQUEST
+        ]
+        active_keys = tuple(
+            sorted(
+                {
+                    _text(row.approved_entry_key)
+                    for row in current
+                    if _text(row.approved_entry_key)
+                }
+            )
+        )
+        active_matches: bool | None = None
+        if revision is not None:
+            active_matches = bool(current) and all(
+                row.approval_revision_id == revision.id
+                and row.approval_reference_status == APPROVAL_REFERENCE_CAPTURED
+                and bool(_text(row.approved_entry_key))
+                for row in current
+            )
+
+        approved_fingerprint = (
+            revision.authorization_fingerprint
+            if revision is not None
+            else None
+        )
+        return DemandApprovalStateReadModel(
+            demand_number=demand_number,
+            candidate_request_version=max(
+                int(request.aggregate_version or 1),
+                1,
+            ),
+            approval_reference_status=reference_status,
+            active_revision_id=revision.id if revision is not None else None,
+            previous_revision_id=(
+                revision.previous_revision_id
+                if revision is not None
+                else None
+            ),
+            approved_request_version=(
+                revision.request_version
+                if revision is not None
+                else None
+            ),
+            approved_at=revision.approved_at if revision is not None else None,
+            approved_by_name=(
+                revision.approved_by_name
+                if revision is not None
+                else None
+            ),
+            authorization_fingerprint=approved_fingerprint,
+            candidate_authorization_fingerprint=candidate_fingerprint,
+            candidate_matches_approved=(
+                candidate_fingerprint == approved_fingerprint
+                if candidate_fingerprint is not None
+                and approved_fingerprint is not None
+                else None
+            ),
+            payload_format_version=(
+                revision.payload_format_version
+                if revision is not None
+                else None
+            ),
+            operational_version=operational_version,
+            envelope_decision=decision_name,
+            envelope_reason=decision_reason,
+            envelope_changes=decision_changes,
+            active_selections=selections,
+            active_confirmations=confirmations,
+            active_budget_overrides=budget_overrides,
+            active_requirement_count=len(current),
+            active_planned_hours=round(
+                sum(float(row.planned_hours) for row in current),
+                2,
+            ),
+            active_approved_entry_keys=active_keys,
+            active_matches_approved_revision=active_matches,
+            diagnostics=tuple(diagnostics),
+        )
+
     def demand_plan_delta(self, number: str) -> DemandPlanDeltaReadModel | None:
         request = self._request(number)
         if request is None:
             return None
         demand_number = _text(request.legacy_demand_number) or request.id
+        approval_state = self.demand_approval_state(demand_number)
+
+        def delta(**values: object) -> DemandPlanDeltaReadModel:
+            values.setdefault("demand_number", demand_number)
+            if approval_state is not None:
+                values.setdefault(
+                    "approval_reference_status",
+                    approval_state.approval_reference_status,
+                )
+                values.setdefault(
+                    "active_revision_id",
+                    approval_state.active_revision_id,
+                )
+                values.setdefault(
+                    "approved_request_version",
+                    approval_state.approved_request_version,
+                )
+                values.setdefault(
+                    "authorization_fingerprint",
+                    approval_state.authorization_fingerprint,
+                )
+                values.setdefault(
+                    "candidate_authorization_fingerprint",
+                    approval_state.candidate_authorization_fingerprint,
+                )
+                values.setdefault(
+                    "operational_version",
+                    approval_state.operational_version,
+                )
+                values.setdefault(
+                    "envelope_decision",
+                    approval_state.envelope_decision,
+                )
+                values.setdefault(
+                    "envelope_reason",
+                    approval_state.envelope_reason,
+                )
+            return delta(**values)
+
         current_requirements = self._current_requirements(request.id)
         if request.status != "Soumise":
-            return DemandPlanDeltaReadModel(
+            return delta(
                 demand_number=demand_number,
                 available=False,
                 reason="NOT_SUBMITTED",
                 has_changes=False,
             )
         if not current_requirements:
-            return DemandPlanDeltaReadModel(
+            return delta(
                 demand_number=demand_number,
                 available=False,
                 reason="NO_CURRENT_PLAN",
@@ -661,7 +890,7 @@ class SqlPlannerQueryRepositoryWithPlanDelta(SqlPlannerQueryRepositoryWeb):
         snapshot = SqlPlanningReadRepository(self._delta_session).capture()
         current_calculation = project_planning_snapshot(snapshot)
         if current_calculation.unsupported_segment_ids:
-            return DemandPlanDeltaReadModel(
+            return delta(
                 demand_number=demand_number,
                 available=False,
                 reason="CURRENT_PLAN_UNSUPPORTED",
@@ -682,16 +911,26 @@ class SqlPlannerQueryRepositoryWithPlanDelta(SqlPlannerQueryRepositoryWeb):
                 prepared.specs,
             )
             if locked_conflicts:
-                return DemandPlanDeltaReadModel(
+                return delta(
                     demand_number=demand_number,
                     available=False,
                     reason=locked_conflicts[0].code,
                     has_changes=False,
+                    diagnostics=tuple(
+                        DemandPlanDeltaDiagnosticReadModel(
+                            code=conflict.code,
+                            message=conflict.message,
+                            requirement_id=conflict.requirement_id,
+                            spec_key=conflict.spec_key,
+                            shift_ids=conflict.shift_ids,
+                        )
+                        for conflict in locked_conflicts
+                    ),
                 )
 
         proposed_rows = self._proposed_segments(request, current_requirements, snapshot)
         if proposed_rows is None:
-            return DemandPlanDeltaReadModel(
+            return delta(
                 demand_number=demand_number,
                 available=False,
                 reason="PROPOSAL_INCOMPLETE",
@@ -712,7 +951,7 @@ class SqlPlannerQueryRepositoryWithPlanDelta(SqlPlannerQueryRepositoryWeb):
         )
         proposed_calculation = project_planning_snapshot(proposed_snapshot)
         if proposed_calculation.unsupported_segment_ids:
-            return DemandPlanDeltaReadModel(
+            return delta(
                 demand_number=demand_number,
                 available=False,
                 reason="PROPOSED_PLAN_UNSUPPORTED",
@@ -746,7 +985,7 @@ class SqlPlannerQueryRepositoryWithPlanDelta(SqlPlannerQueryRepositoryWeb):
         }
         current_hours = round(sum(item.current_hours for item in items), 2)
         proposed_hours = round(sum(item.proposed_hours for item in items), 2)
-        return DemandPlanDeltaReadModel(
+        return delta(
             demand_number=demand_number,
             available=True,
             reason=None,
