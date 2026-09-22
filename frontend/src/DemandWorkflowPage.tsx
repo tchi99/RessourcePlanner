@@ -91,7 +91,17 @@ function unavailableDeltaMessage(reason: string | null): string {
   }
 }
 
-export default function DemandWorkflowPage() {
+type DemandWorkflowPageProps = {
+  demandNumber?: string;
+  embedded?: boolean;
+  onChanged?: () => void;
+};
+
+export default function DemandWorkflowPage({
+  demandNumber,
+  embedded = false,
+  onChanged,
+}: DemandWorkflowPageProps = {}) {
   const [demands, setDemands] = useState<DemandReadModel[]>([]);
   const [selectedNumber, setSelectedNumber] = useState("");
   const [selectedDemand, setSelectedDemand] = useState<DemandReadModel | null>(null);
@@ -109,9 +119,9 @@ export default function DemandWorkflowPage() {
   const [planDeltaError, setPlanDeltaError] = useState<string | null>(null);
 
   async function refresh(number?: string) {
-    const rows = await getDemands();
+    const rows = demandNumber ? [await getDemand(demandNumber)] : await getDemands();
     setDemands(rows);
-    const wanted = number || selectedNumber || rows[0]?.number || "";
+    const wanted = demandNumber || number || selectedNumber || rows[0]?.number || "";
     const nextNumber = rows.some((row) => row.number === wanted) ? wanted : rows[0]?.number || "";
     setSelectedNumber(nextNumber);
     if (!nextNumber) {
@@ -130,11 +140,14 @@ export default function DemandWorkflowPage() {
   useEffect(() => {
     let active = true;
     setLoading(true);
-    getDemands()
+    const demandRequest = demandNumber
+      ? getDemand(demandNumber).then((row) => [row])
+      : getDemands();
+    demandRequest
       .then(async (rows) => {
         if (!active) return;
         setDemands(rows);
-        const first = rows[0]?.number || "";
+        const first = demandNumber || rows[0]?.number || "";
         setSelectedNumber(first);
         if (first) {
           const [detail, workflow] = await Promise.all([
@@ -156,7 +169,7 @@ export default function DemandWorkflowPage() {
         if (active) setLoading(false);
       });
     return () => { active = false; };
-  }, []);
+  }, [demandNumber]);
 
   useEffect(() => {
     if (!selectedNumber || loading) return;
@@ -270,6 +283,7 @@ export default function DemandWorkflowPage() {
       }
 
       await refresh(result.demand_number);
+      onChanged?.();
       if (action === "approve") {
         const planning = result.planning;
         setNotice(
@@ -297,19 +311,21 @@ export default function DemandWorkflowPage() {
 
   return (
     <section className="demand-workflow-page">
-      <div className="page-heading">
-        <div>
-          <span className="eyebrow">Cycle de vie</span>
-          <h1>Workflow des demandes</h1>
-          <p>Soumission, approbation, retour pour correction et annulation via les règles autoritaires de FastAPI.</p>
+      {!embedded && (
+        <div className="page-heading">
+          <div>
+            <span className="eyebrow">Cycle de vie</span>
+            <h1>Workflow des demandes</h1>
+            <p>Soumission, approbation, retour pour correction et annulation via les règles autoritaires de FastAPI.</p>
+          </div>
         </div>
-      </div>
+      )}
 
       {error && <div className="error-panel"><strong>Action impossible.</strong><span>{error}</span></div>}
       {notice && <div className="demand-notice" role="status">{notice}</div>}
 
-      <div className="workflow-layout">
-        <aside className="workflow-list-panel">
+      <div className={`workflow-layout ${embedded ? "embedded" : ""}`}>
+        {!embedded && (        <aside className="workflow-list-panel">
           <label>
             <span>Demande</span>
             <select
@@ -337,7 +353,7 @@ export default function DemandWorkflowPage() {
               <span>{selectedDemand.requester ? `Demandeur : ${selectedDemand.requester}` : "Demandeur non défini"}</span>
             </div>
           )}
-        </aside>
+        </aside>)}
 
         <div className="workflow-detail-panel">
           {selectedDemand ? (
