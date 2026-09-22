@@ -28,8 +28,9 @@ class DemandHistoryFrontendContractTests(unittest.TestCase):
 
         self.assertNotIn('"history"', workspace)
         self.assertNotIn("<DemandHistoryPage />", workspace)
-        self.assertIn("<DemandHistoryPage demandNumber={demandNumber} embedded />", detail)
+        self.assertIn("<DemandHistoryPage demandNumber={demandNumber} embedded refreshToken={refreshKey} />", detail)
         self.assertIn("demandNumber?: string", history)
+        self.assertIn("refreshToken?: number", history)
 
 
 if __name__ == "__main__":
