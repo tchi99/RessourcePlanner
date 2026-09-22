@@ -71,6 +71,7 @@ class PreparedRequestPlan:
     approval_revision_id: str | None = None
     operational_version: int | None = None
     project_id: str | None = None
+    priority: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -675,7 +676,22 @@ class SqlRequestPlanPreparer:
                         )
                         or None,
                         description=description,
-                        source_effort_id=_text(row.get("work_package_ref")) or None,
+                        source_effort_id=(
+                (
+                    _text(work_package.legacy_effort_id) or work_package.id
+                )
+                if (
+                    (work_package_ref := _text(row.get("work_package_ref")))
+                    and (
+                        work_package := self._session.get(
+                            WorkPackage,
+                            work_package_ref,
+                        )
+                    )
+                    is not None
+                )
+                else (_text(row.get("work_package_ref")) or None)
+            ),
                         required_resource_class=(
                             _text(row.get("required_resource_class")) or None
                         ),
@@ -692,6 +708,7 @@ class SqlRequestPlanPreparer:
             approval_revision_id=revision.id,
             operational_version=choices.version,
             project_id=_text(request_snapshot.get("project_id")) or None,
+            priority=_text(request_snapshot.get("priority")) or None,
         )
 
     def _period_identity_by_requirement(
