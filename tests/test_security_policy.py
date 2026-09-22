@@ -77,6 +77,10 @@ class SecurityPolicyTests(unittest.TestCase):
     def test_http_permission_mapping_is_fail_closed_for_mutations(self) -> None:
         self.assertEqual(required_permission("GET", "/api/v1/projects"), PERMISSION_READ)
         self.assertEqual(
+            required_permission("GET", "/api/v1/demand-requesters"),
+            PERMISSION_MANAGE_DEMANDS,
+        )
+        self.assertEqual(
             required_permission("GET", "/api/v1/communications/contacts"),
             PERMISSION_MANAGE_COMMUNICATIONS,
         )
