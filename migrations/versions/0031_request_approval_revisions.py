@@ -224,7 +224,7 @@ def downgrade() -> None:
             type_="foreignkey",
         )
         batch_op.drop_constraint(
-            "ck_resource_requirements_resource_requirement_approval_reference_status",
+            "resource_requirement_approval_reference_status",
             type_="check",
         )
         batch_op.drop_column("approval_reference_status")
