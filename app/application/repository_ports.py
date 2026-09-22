@@ -183,6 +183,14 @@ class SegmentRepositoryPort(Protocol):
     def update(self, segment_id: str, updates: Mapping[str, Any]) -> None: ...
 
 
+class PlanningMutationVersionPort(Protocol):
+    """Persistent concurrency token for globally rebuilt planning mutations."""
+
+    def current_version(self) -> int: ...
+
+    def acquire(self, expected_version: int | None = None) -> int: ...
+
+
 class PlanningReadRepositoryPort(Protocol):
     """Atomic read contract for one pure-planning calculation cycle.
 
