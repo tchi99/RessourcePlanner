@@ -184,7 +184,7 @@ Contraintes :
 #329 ✅ projection backend de détail
 #330 ✅ détail React unifié — PR #379 / CI #752
   ↓
-#332 🟡 partage / duplication atomiques — prochaine tranche
+#332 🟡 partage / duplication atomiques — 332A concurrence commune READY → 332B commandes → 332C interface
   ↓
 #333 extension de fenêtre + dialogue DnD
   ↓
@@ -213,4 +213,5 @@ L'ordre autoritaire reste #55.
 - ADR-001 — cible du besoin vs affectation réelle;
 - ADR-002 — périodes par ligne;
 - ADR-003 — autorisation approuvée immuable;
-- ADR-004 — candidat / autorisation / plan actif.
+- ADR-004 — candidat / autorisation / plan actif;
+- ADR-005 — révision globale/CAS des mutations de planning.
