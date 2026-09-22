@@ -1,188 +1,447 @@
-# Planification MO — V1.8
+# RessourcePlanner
 
-Application locale Python pour piloter un classeur Excel de planification, y compris un classeur stocké dans un dossier **OneDrive synchronisé localement**.
+RessourcePlanner est une application Web de planification de main-d’œuvre et de capacité pour transformer des besoins projet en demandes, besoins planifiables et quarts réels, avec workflow d’approbation, capacité par ressource et audit.
+
+Le runtime cible est maintenant **React + FastAPI + SQLAlchemy/Alembic**. Le moteur métier Python reste autoritaire pour la planification et la capacité.
+
+> Le README décrit l’état supporté du produit. Le détail des priorités et travaux en cours vit dans le roadmap maître GitHub **#55**.
+
+---
+
+## État actuel
+
+Le socle V2 comprend notamment :
+
+- frontend **React + TypeScript + Vite**;
+- API **FastAPI**;
+- services métier et moteur de planification en Python;
+- persistance **SQLAlchemy 2.x + Alembic**;
+- **SQLite** pour le développement local et les tests;
+- **SQL Server** comme cible de production;
+- packaging **Docker / Docker Compose**, avec Synology Container Manager comme cible de déploiement privilégiée;
+- authentification locale de développement, sessions serveur, RBAC et préparation OIDC;
+- imports ERP temporaires depuis fichiers Excel/CSV derrière des outils dédiés;
+- communications projet avec préparation Microsoft Graph et envoi SMTP explicite;
+- CI couvrant backend, frontend, tests navigateur, isolation serveur, readiness SQL Server et smoke Docker.
+
+Le branchement réel à SQL Server reste suivi dans **#162**. Le cutover SQL autoritaire est suivi dans **#208**.
+
+---
+
+## Fonctions principales
+
+RessourcePlanner couvre aujourd’hui les parcours suivants :
+
+- gestion des projets et WorkPackages;
+- demandes de main-d’œuvre avec plusieurs lignes de besoins;
+- workflow Brouillon / Soumise / approbation / correction;
+- périodes, confirmations et règles de réapprobation;
+- ressources, classes, compétences et disponibilités;
+- transformation d’une demande approuvée en besoins planifiables;
+- planning opérationnel avec capacité par ressource et par jour;
+- création, déplacement, verrouillage et retour automatique des quarts;
+- drag-and-drop dans le Planning React;
+- Quick Shift / besoins ad hoc;
+- recommandations de ressources;
+- vues contextualisées selon l’utilisateur et son rôle;
+- contacts métier, responsable opérationnel et coordonnateur;
+- historique et audit des mutations métier;
+- comparaison du plan actuel avec le plan proposé avant réapprobation;
+- préparation et suivi des communications de confirmation de main-d’œuvre.
+
+Les fonctions et priorités détaillées évoluent dans les GitHub Issues; voir **#55** pour l’ordre de travail actuel.
+
+---
 
 ## Architecture
 
+### Vue logique
+
 ```text
-Liste_Effort
-Planification moyen terme / enveloppe de besoin
-        ↓
-DemandesMO
-Besoin de main-d'œuvre / approbation
-        ↓
-SegmentsMO
-Bloc de travail par ressource, assigné ou non
-        ↓
-AllocationsMO
-Heures réellement placées par journée
-        ↓
-Planning opérationnel
-Vue Shifts selon l'horaire, les décisions verrouillées et la capacité résiduelle
+React
+  ↓
+FastAPI
+  ↓
+Application / Domain
+  ↓
+Infrastructure
+  ↓
+SQLAlchemy / base de données / intégrations externes
 ```
 
-## Moteur de planification — V1.8B
+Principes importants :
 
-Le moteur `pure` est maintenant le **seul moteur de planification de production**. Les anciens modes `legacy` et `guarded_pure` ont été retirés du runtime après une période prolongée de validation terrain.
+- **FastAPI est la frontière de mutation et d’autorisation** du frontend;
+- le navigateur ne parle jamais directement à SQL Server, Acumatica ou Microsoft Graph;
+- le **backend Python reste autoritaire** pour les règles métier, la planification et la capacité;
+- React projette l’état et déclenche des commandes, mais ne duplique pas les règles métier critiques;
+- le runtime Web/SQL canonique reste indépendant de NiceGUI et Excel;
+- les migrations sont explicites avec Alembic.
 
-Le moteur construit un `PlanningSnapshot` unique, calcule le plan en Python pur puis persiste le résultat dans `AllocationsMO`. En cas d'échec d'écriture, le snapshot précédent des allocations est restauré sans recalcul historique.
+La documentation d’architecture et la convention ADR se trouvent dans [`docs/architecture/`](docs/architecture/).
 
-La clé locale `planning_engine_mode` n'est plus utilisée. Si elle existe encore dans un ancien `app_config.json`, elle est ignorée et retirée lors de la prochaine sauvegarde de la configuration.
+---
 
-## Planification moyen terme enrichie — V1.8
+## Modèle métier principal
 
-La V1.8 stabilise d'abord le lien entre la planification macro et le détail opérationnel :
+Le modèle actuel sépare l’entête de demande, les lignes planifiables, les besoins matérialisés et les quarts réels :
 
-- chaque ligne de `Liste_Effort` reçoit un identifiant stable `IDEffort`;
-- `DemandesMO` et `SegmentsMO` reçoivent `SourceEffortID`;
-- les anciens liens `SourceEffortRow` sont migrés automatiquement vers le nouvel identifiant stable;
-- `SourceEffortRow` est conservé temporairement pour compatibilité, mais n'est plus la référence principale;
-- une nouvelle ligne ajoutée directement dans `Liste_Effort` reçoit automatiquement un `IDEffort` lors de sa prochaine lecture par l'application.
+```text
+Project
+├── WorkPackage (optionnel selon le besoin)
+└── WorkforceRequest
+    └── RequestLine
+        └── ResourceRequirement
+            └── Shift
+```
 
-La vue **Planification moyen terme** affiche maintenant un mini-Gantt détaillé sur 16 semaines :
+Un chemin ad hoc existe également :
 
-- l'enveloppe macro de `Liste_Effort` reste visible en arrière-plan;
-- les segments liés sont superposés dans la même ligne;
-- les segments fixes, flexibles, tentatifs et non assignés sont visuellement distingués;
-- un segment qui dépasse l'enveloppe macro reçoit un avertissement et un contour rouge;
-- les heures macro sont comparées aux heures segmentées afin de voir immédiatement le reste à détailler ou un dépassement;
-- cliquer sur l'enveloppe ouvre l'effort macro; cliquer sur un segment ouvre directement le segment.
+```text
+Project
+  └── ResourceRequirement [QUICK_SHIFT / AD_HOC]
+      └── Shift
+```
 
-Des filtres sont disponibles par projet, chargé de projet, statut, classe de ressource, technicien et compétence. La vue peut être regroupée par **chargé de projet**.
+Quelques distinctions importantes :
 
-Une heatmap de capacité par classe compare, semaine par semaine, la charge détaillée confirmée + tentative avec la capacité standard des ressources. Cette capacité reste globale même lorsqu'un projet particulier est filtré afin de conserver le contexte réel de disponibilité.
+- `WorkforceRequest` porte le workflow de la demande;
+- `RequestLine` représente un besoin planifiable à l’intérieur de la demande;
+- `ResourceRequirement` matérialise le besoin/budget de planification;
+- `Shift` représente les heures réellement placées sur une ressource et une date;
+- `AppUser`, `Resource` et les contacts métier sont des concepts distincts.
 
-## Planning opérationnel interactif — V1.7
+---
 
-La V1.7 rend le Planning opérationnel manipulable directement :
+## Démarrage rapide avec Docker
 
-- glisser-déposer un quart sur une autre journée pour le déplacer et le verrouiller;
-- déplacer vers une autre ressource avec choix entre réaffecter le segment complet ou fractionner uniquement les heures du quart;
-- glisser un travail non assigné sur une ressource;
-- créer rapidement un quart depuis le bouton `+` d'une cellule Ressource × Jour;
-- ouvrir les demandes non approuvées directement depuis les cartes du planning ou la section d'attente d'approbation;
-- réduire la section **En attente d'approbation**;
-- conserver la position de la page et le défilement du calendrier après les rafraîchissements;
-- trier les ressources à l'intérieur de chaque classe par disponibilité, disponibilité inverse, ordre alphabétique A→Z / Z→A ou ordre manuel.
+Le chemin Docker est le moyen le plus reproductible de démarrer l’application complète en local.
 
-### Ordre manuel propre à chaque utilisateur
+Prérequis :
 
-À partir de la V1.7.1, le tri **Ordre manuel** n'est plus une donnée partagée du classeur Excel. Il est enregistré dans `user_preferences.json`, un fichier local ignoré par Git.
+- Docker Engine ou Docker Desktop;
+- Docker Compose v2.
 
-Chaque poste peut donc organiser les techniciens différemment tout en travaillant avec le même classeur partagé. Le fichier local sépare aussi les préférences par classeur à l'aide d'une empreinte du chemin; le chemin Windows réel n'est pas stocké dans ce fichier.
+Depuis la racine :
 
-Lors de la première utilisation après mise à niveau, un ancien ordre V1.7 présent dans `RessourcesMO` peut être copié une seule fois vers les préférences locales afin de conserver l'ordre existant. Les modifications suivantes ne réécrivent plus l'ordre manuel dans Excel.
+```bash
+docker compose up -d --build
+```
 
-## Performance Excel — V1.7.1
+Ouvrir :
 
-La V1.7.1 réduit le coût des échanges avec Excel tout en conservant le classeur comme source de vérité :
+```text
+http://127.0.0.1:8080/
+```
 
-- plusieurs appels `save()` d'une même action sont regroupés derrière une seule sauvegarde réelle;
-- l'affichage, les événements et le recalcul Excel sont suspendus temporairement pendant certains lots d'écritures lorsque possible;
-- les lectures répétitives de `Disponibilites` sont mises en cache très brièvement pendant le rendu/calcul;
-- les initialisations de structure déjà effectuées ne sont pas rejouées inutilement à chaque lecture;
-- la création/modification d'une demande et son historique sont regroupés;
-- l'initialisation de plusieurs horaires standards et certaines opérations composées utilisent également le mode batch;
-- des métriques locales indiquent le temps total et le temps consacré à la sauvegarde Excel pour les opérations lentes.
+Probes :
 
-## Ressources et compétences
+```text
+http://127.0.0.1:8080/health
+http://127.0.0.1:8080/ready
+```
 
-`RessourcesMO` contient les données partagées de ressource : `Technicien`, `Classe`, `Competences`, `Note` et, pour compatibilité avec la V1.7, éventuellement l'ancienne colonne `Ordre`.
+Arrêt :
 
-Les classes disponibles sont : `Programmation`, `Installation`, `Monteur de panneau`, `Dessinateur`, `Gestion de projet`.
+```bash
+docker compose down
+```
 
-Une nouvelle ressource peut être créée directement dans **Ressources & compétences**. Elle reste non planifiable tant qu'un horaire standard actif n'a pas été créé dans **Disponibilités**.
+Pour supprimer également les volumes locaux, dont la base SQLite de développement :
 
-Une ressource sans classe reste dans `Non classé`. Les compétences configurées sont utilisées par **Trouver une ressource** : une correspondance exacte de compétence est priorisée avant la classe et la capacité disponible. La décision finale demeure manuelle.
+```bash
+docker compose down -v
+```
 
-## Demandes, confirmation et réapprobation
+Cette dernière commande est destructive pour les données Docker locales.
 
-Une demande contient un niveau de confirmation `Confirmée` ou `Tentative`.
+Le Compose local charge des données et identités de démonstration et active le sélecteur d’identité de test. Ce mode est réservé au développement.
 
-Une demande tentative peut être approuvée et planifiée normalement, mais ses quarts sont affichés en **jaune pointillé** dans le Planning opérationnel afin de la distinguer visuellement.
+Voir [`docs/DOCKER_SYNOLOGY.md`](docs/DOCKER_SYNOLOGY.md) pour le détail du runtime Docker et de la cible Synology.
 
-Si une demande déjà approuvée est modifiée :
+---
 
-1. elle retourne automatiquement au statut **Soumise**;
-2. ses segments et allocations existants restent inchangés pendant l'attente de la nouvelle approbation;
-3. une fois la nouvelle version approuvée, les segments sont synchronisés avec les nouvelles dates, heures, compétence, priorité, description, localisation et nombre de ressources;
-4. les affectations de techniciens déjà faites sont conservées autant que possible.
+## Runtime Web Windows
 
-Les demandes `Soumise` visibles dans le Planning opérationnel comptent 0 h de charge tant qu'elles ne sont pas approuvées.
+Pour le développement ou un runtime local Windows hors Docker :
 
-## Nombre de ressources
+### Prérequis
 
-`NombreRessources` correspond réellement au nombre de segments à créer.
+- Python 3.12 recommandé;
+- Node.js 22 avec npm.
 
-Exemple : une demande de 80 h pour 2 ressources génère deux segments de 40 h. Si un technicien a été proposé, le premier segment lui est assigné et le second reste **À assigner**.
+Installation :
 
-## Segments
+```bat
+Installer_Web.bat
+```
 
-`SegmentsMO` représente le besoin opérationnel par ressource. Un segment contient notamment la demande, le projet, la fenêtre de dates, les heures prévues, la compétence requise, la priorité, le type `Flexible` ou `Fixe`, un technicien facultatif, un statut, `HorsHoraireAutorise`, `SiteClient` et `Lieu`.
+L’installateur crée `.venv-web`, installe le profil serveur Web/SQL et construit React.
 
-Un segment sans technicien apparaît dans **Travaux à planifier** uniquement lorsque sa fenêtre chevauche la semaine présentement affichée.
+Pour charger les données de démonstration SQLite :
 
-## Recommandation de ressources
+```bat
+Charger_Donnees_Demo.bat
+```
 
-Le bouton **Trouver une ressource** analyse toute la fenêtre du segment et classe les candidats selon :
+Pour lancer React + FastAPI en same-origin :
 
-1. la compétence explicitement attribuée au technicien;
-2. la classe de ressource;
-3. la capacité restante après travaux confirmés et tentatifs;
-4. les heures qui devraient être faites hors horaire.
+```bat
+Lancer_Web.bat
+```
 
-L'application suggère une ressource, mais ne fait aucune affectation automatique sans action de l'utilisateur.
+L’application est alors disponible par défaut sur :
 
-## Allocations et hors horaire
+```text
+http://127.0.0.1:8000/
+```
 
-`AllocationsMO` représente les heures réellement placées par journée. Chaque allocation porte aussi la localisation approuvée (`SiteClient` et `Lieu`) projetée depuis son segment.
+Voir [`docs/WEB_RUNTIME.md`](docs/WEB_RUNTIME.md) et [`docs/V2_RUNTIME_OPERATIONS.md`](docs/V2_RUNTIME_OPERATIONS.md).
 
-Une allocation manuelle ou déplacée devient verrouillée et consomme la capacité avant les allocations flexibles. Les allocations non verrouillées sont recalculées autour des décisions manuelles.
+---
 
-Un segment peut autoriser explicitement le travail hors horaire. Si sa fenêtre ne contient pas assez de capacité normale :
+## Développement React avec HMR
 
-- si le hors horaire est autorisé, les heures supplémentaires sont placées comme allocations hors horaire;
-- sinon, le Planning opérationnel affiche des quarts **Hors horaire requis** qui signalent le manque sans le compter dans la charge réelle.
+Pour travailler sur le frontend avec Vite :
 
-Les vacances restent exclues des propositions automatiques de hors horaire.
+Terminal 1 :
 
+```bat
+Lancer_Serveur.bat
+```
 
-## Import des projets ERP sous Docker
+Terminal 2 :
 
-L'importateur Excel est disponible comme service Docker one-shot `import-projects`. Il utilise le même volume `resourceplanner-data` que FastAPI, donc les projets importés deviennent immédiatement disponibles dans la base SQLite du stack Docker.
+```bash
+cd frontend
+npm run dev
+```
 
-Déposer l'export ERP dans le dossier `imports/`, puis prévisualiser l'import sans modifier la base :
+Ouvrir ensuite :
+
+```text
+http://127.0.0.1:5173/
+```
+
+Vite relaie les appels API vers FastAPI localement.
+
+Voir [`docs/REACT_V2_DEV.md`](docs/REACT_V2_DEV.md).
+
+---
+
+## Base de données
+
+### Développement local
+
+SQLite reste le dialecte principal pour :
+
+- développement local;
+- tests;
+- smoke Docker;
+- CI fonctionnelle.
+
+### Production cible
+
+SQL Server est la cible de production. Le dépôt valide déjà :
+
+- compilation SQLAlchemy avec le dialecte MSSQL;
+- génération DDL Alembic MSSQL;
+- migrations offline;
+- requêtes critiques;
+- contraintes de schéma compatibles SQL Server.
+
+La validation réelle ODBC / `pyodbc` / réseau / permissions / migrations sur le serveur cible reste suivie dans **#162**.
+
+Voir :
+
+- [`docs/V2_SQLSERVER_READINESS.md`](docs/V2_SQLSERVER_READINESS.md);
+- [`docs/SQL_CUTOVER_RUNBOOK.md`](docs/SQL_CUTOVER_RUNBOOK.md);
+- [`docs/SQL_SCHEMA_V1.md`](docs/SQL_SCHEMA_V1.md).
+
+---
+
+## Authentification et autorisation
+
+FastAPI est la frontière d’autorisation.
+
+Le projet supporte :
+
+- identités locales pour développement;
+- plusieurs rôles et permissions métier;
+- sessions serveur;
+- sélecteur d’identité dev pour les tests multi-utilisateurs;
+- préparation OIDC pour l’environnement réel.
+
+Le mode local ne constitue pas une configuration de production exposée sur le réseau.
+
+Les rôles métier sont conservés dans RessourcePlanner; l’identité externe ne décide pas à elle seule des autorisations.
+
+Voir [`docs/AUTH_RBAC.md`](docs/AUTH_RBAC.md) et [`docs/OIDC_ACUMATICA_VALIDATION.md`](docs/OIDC_ACUMATICA_VALIDATION.md).
+
+---
+
+## Imports ERP
+
+Les projets et tâches ERP peuvent être chargés temporairement à partir d’exports avant la synchronisation Acumatica réelle.
+
+### Projets
+
+Prévisualisation :
 
 ```bash
 docker compose run --rm import-projects /imports/Projets.xlsx
 ```
 
-Pour appliquer les changements :
+Application :
 
 ```bash
 docker compose run --rm import-projects /imports/Projets.xlsx --apply
 ```
 
-Le service dépend de `migrate`, ce qui garantit que les migrations Alembic sont appliquées avant l'import. Il appartient au profil `tools` et ne se lance donc pas pendant un simple `docker compose up`.
-
-Le catalogue de tâches ERP utilise le service one-shot `import-tasks` et accepte XLSX/XLSM ou CSV :
+### Tâches
 
 ```bash
 docker compose run --rm import-tasks "/imports/Tâches de projet.xlsx"
 docker compose run --rm import-tasks "/imports/Tâches de projet.xlsx" --apply
 ```
 
-La clé autoritaire d'une tâche est le couple `(ID projet, ID tâche)`. Le détail du mapping réel,
-des statuts et de l'API de recherche est documenté dans `docs/ERP_TASK_CATALOG.md`.
+Les fichiers d’import sont montés en lecture seule dans le conteneur.
 
-Un autre dossier hôte peut être utilisé en définissant `RESOURCEPLANNER_IMPORTS_PATH`. Les exports restent montés en lecture seule dans le conteneur.
+Voir [`docs/ERP_TASK_CATALOG.md`](docs/ERP_TASK_CATALOG.md) et [`docs/V2_ACUMATICA_READINESS.md`](docs/V2_ACUMATICA_READINESS.md).
 
-## Source Excel et fichiers locaux
+---
 
-Le chemin du classeur est configuré localement dans `app_config.json`, fichier ignoré par Git. Les fichiers `.xlsx` et `.xlsm` sont également ignorés par le dépôt.
+## Communications
 
-`user_preferences.json` est lui aussi local et ignoré par Git. Il contient les préférences propres au poste, notamment l'ordre manuel des ressources. Il peut contenir des noms de ressources et ne doit donc pas être partagé ou versionné.
+Le workflow de communications projet sépare explicitement préparation, approbation et envoi :
 
-`planning_pure_validation.json` est un journal technique local ignoré par Git. Il contient uniquement des compteurs et métriques du moteur pur, sans données métier.
+- Microsoft Graph peut créer des brouillons;
+- l’approbation métier ne déclenche pas d’envoi externe silencieux;
+- SMTP utilise une action d’envoi distincte et auditée;
+- les destinataires et ressources proviennent des données métier résolues côté backend.
 
-Le classeur peut être stocké dans un dossier OneDrive synchronisé localement. L'application utilise le chemin Windows local et communique avec Excel via `xlwings`.
+La validation sur environnement Microsoft 365 réel reste suivie séparément.
+
+Voir [`docs/M365_GRAPH_COMMUNICATIONS.md`](docs/M365_GRAPH_COMMUNICATIONS.md).
+
+---
+
+## Structure du dépôt
+
+```text
+frontend/                    React / TypeScript / Vite
+app/server/                  FastAPI, routes, auth et composition HTTP
+app/application/             services applicatifs et cas d’usage
+app/domain/                  règles métier et moteur de planification
+app/infrastructure/sql/      modèles et repositories SQLAlchemy
+app/infrastructure/acumatica/
+app/infrastructure/m365/
+app/infrastructure/smtp/
+migrations/                  migrations Alembic
+tests/                       tests Python
+tools/                       validations, imports, benchmarks et maintenance
+deploy/                      artefacts de déploiement
+docs/                        documentation technique et opérationnelle
+docs/architecture/           décisions d’architecture et convention ADR
+```
+
+---
+
+## Validation et CI
+
+La CI principale se trouve dans `.github/workflows/syntax-check.yml`.
+
+Elle couvre notamment :
+
+- isolation du runtime serveur;
+- tests Python en shards;
+- compilation Python;
+- build TypeScript/Vite;
+- tests Playwright;
+- smoke du runtime Web;
+- readiness SQL Server;
+- benchmark V2;
+- scan de confidentialité;
+- smoke Docker.
+
+Commandes utiles :
+
+```bash
+python -m compileall -q app tests tools migrations main.py
+python tools/check_server_dependency_isolation.py
+python tools/check_sqlserver_readiness.py
+python tools/privacy_scan.py
+```
+
+Frontend :
+
+```bash
+cd frontend
+npm install --prefer-offline --no-audit --no-fund
+npm run build
+npm run test:e2e
+```
+
+Les règles complètes de travail pour les agents et contributeurs automatisés sont dans [`AGENTS.md`](AGENTS.md).
+
+---
+
+## Sources de vérité du projet
+
+Pour éviter de dupliquer un roadmap ou des décisions dans plusieurs fichiers :
+
+- **code + tests sur `main`** : état réellement implémenté;
+- **GitHub Issues** : périmètre et état des travaux;
+- **issue #55** : roadmap maître et ordre des travaux;
+- [`AGENTS.md`](AGENTS.md) : règles permanentes de développement;
+- [`docs/architecture/`](docs/architecture/) : décisions d’architecture et ADR;
+- **`docs/`** : runbooks et documentation technique.
+
+Le README reste volontairement une vue d’ensemble stable plutôt qu’un journal de toutes les fonctionnalités ou issues.
+
+---
+
+## Transition depuis la V1 NiceGUI / Excel
+
+Le dépôt conserve encore temporairement des artefacts de l’ancienne architecture NiceGUI/Excel afin de permettre le cutover contrôlé.
+
+Le runtime V1 :
+
+- utilise `main.py`, NiceGUI et Excel;
+- n’est plus le runtime Web cible;
+- ne doit plus recevoir d’investissement structurant;
+- doit être retiré après validation du cutover SQL réel.
+
+Le retrait du runtime V1 et le nettoyage des artefacts legacy sont suivis dans **#208** et **#336**.
+
+Les dépendances Web/SQL canoniques restent séparées des dépendances legacy.
+
+---
+
+## Documentation utile
+
+- [`docs/architecture/README.md`](docs/architecture/README.md) — architecture et convention ADR;
+- [`docs/REACT_V2_DEV.md`](docs/REACT_V2_DEV.md) — développement React + FastAPI;
+- [`docs/WEB_RUNTIME.md`](docs/WEB_RUNTIME.md) — runtime Web same-origin;
+- [`docs/DOCKER_SYNOLOGY.md`](docs/DOCKER_SYNOLOGY.md) — Docker et cible Synology;
+- [`docs/V2_RUNTIME_OPERATIONS.md`](docs/V2_RUNTIME_OPERATIONS.md) — exploitation et diagnostic;
+- [`docs/ENVIRONMENT_VARIABLES.md`](docs/ENVIRONMENT_VARIABLES.md) — configuration;
+- [`docs/AUTH_RBAC.md`](docs/AUTH_RBAC.md) — authentification et RBAC;
+- [`docs/V2_SQLSERVER_READINESS.md`](docs/V2_SQLSERVER_READINESS.md) — préparation SQL Server;
+- [`docs/V2_PERFORMANCE_BASELINE.md`](docs/V2_PERFORMANCE_BASELINE.md) — performance;
+- [`docs/M365_GRAPH_COMMUNICATIONS.md`](docs/M365_GRAPH_COMMUNICATIONS.md) — communications M365;
+- [`docs/V1_SQL_CUTOVER_INVENTORY.md`](docs/V1_SQL_CUTOVER_INVENTORY.md) — inventaire de transition V1 → Web/SQL.
+
+---
+
+## Roadmap
+
+Le roadmap opérationnel n’est pas dupliqué dans ce fichier.
+
+Consulter **GitHub Issue #55 — Roadmap maître V2.x** pour :
+
+- l’ordre de travail;
+- les dépendances;
+- les décisions structurantes;
+- les travaux terminés;
+- les prochains blocs à développer.
