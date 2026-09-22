@@ -62,6 +62,32 @@ class ApiTests(unittest.TestCase):
                 "https://chatgpt.com/c/example",
             )
 
+    def test_chat_status_heartbeat_does_not_require_github_token(self):
+        client = TestClient(create_app(Settings(github_token=None)))
+        heartbeat = client.post(
+            "/api/chat-status/heartbeat",
+            json={
+                "conversation_url": "https://chatgpt.com/c/example?model=test",
+                "state": "working",
+                "page_visible": True,
+                "page_focused": False,
+                "ui_signal": "stop-control",
+            },
+        )
+        self.assertEqual(heartbeat.status_code, 200)
+        self.assertEqual(
+            heartbeat.json()["conversation_url"],
+            "https://chatgpt.com/c/example",
+        )
+        self.assertEqual(heartbeat.json()["effective_state"], "working")
+
+        status = client.get("/api/chat-status")
+        self.assertEqual(status.status_code, 200)
+        self.assertEqual(
+            status.json()["conversations"][0]["effective_state"],
+            "working",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

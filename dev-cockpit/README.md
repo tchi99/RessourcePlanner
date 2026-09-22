@@ -93,6 +93,50 @@ Les bulles affichées sur les cartes sont dérivées des données déjà connues
 
 Cette configuration est uniquement une **préférence locale de présentation**. Elle ne devient jamais une source de vérité sur l'état produit ou le roadmap.
 
+### Panneaux interactifs par rôle
+
+Les cartes de rôles servent aussi de points d'entrée vers un panneau latéral contextuel. Le panneau s'ouvre depuis l'avatar, le nom ou le bouton **Voir détails**.
+
+Les vues spécialisées du MVP sont :
+
+- **Product Owner** : roadmap maître, bloc actif, prochaines sous-tranches, prochaine action, warnings et issues liées;
+- **Developer** : travail actif, états dérivés, issue, branche, dernier commit, PR, CI/jobs, diagnostic de stall et prompt de reprise;
+- **Architecte** : architecture applicative de référence, bloc actif, ADR explicitement référencés et ensemble des ADR disponibles;
+- **Reviewer** : jobs CI en échec et PR ouvertes;
+- **Generic** : vue minimale et état de la conversation associée.
+
+Le panneau réutilise uniquement les données déjà présentes dans le `Dashboard`; il ne crée pas une nouvelle source de vérité et n'ajoute pas d'appel GitHub spécifique lors de l'ouverture.
+
+Le panneau peut être fermé avec le bouton ×, en cliquant à l'extérieur ou avec la touche `Escape`. Sur mobile, il occupe toute la largeur.
+
+### Firefox Companion — état réel des conversations
+
+Le sous-dossier [`firefox-companion/`](firefox-companion/) contient une WebExtension Firefox locale. Elle permet d'animer n'importe quel rôle à partir de l'état réel de la conversation associée, sans API OpenAI.
+
+Le matching se fait par l'URL de conversation configurée dans `chat_url` :
+
+```text
+rôle Product Owner
+chat_url = https://chatgpt.com/c/abc
+          ↓
+Firefox Companion heartbeat pour /c/abc
+          ↓
+Product Owner → ChatGPT · working
+```
+
+États navigateur exposés par le cockpit :
+
+- `working` : contrôle Stop de génération détecté;
+- `idle` : conversation ouverte sans génération;
+- `possible_stall` : la dernière trace était `working`, mais aucun heartbeat depuis 30 s;
+- `disconnected` : la dernière trace était `idle`, puis le heartbeat a disparu.
+
+Un passage `working → idle` conserve aussi brièvement un signal « réponse terminée ».
+
+Le navigateur et GitHub restent deux sources séparées : un rôle Developer peut être animé par GitHub, par ChatGPT, ou par les deux. Pour les autres rôles, l'état ChatGPT suffit à déclencher l'animation.
+
+Installation Firefox détaillée : [`firefox-companion/README.md`](firefox-companion/README.md).
+
 ### Persistance
 
 Le backend sauvegarde la configuration dans :

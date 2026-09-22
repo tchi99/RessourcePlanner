@@ -283,6 +283,95 @@ export type DemandReadModel = {
   lines: DemandLineReadModel[];
 };
 
+export type DemandDetailWorkflowActionReadModel = {
+  action: string;
+  allowed: boolean;
+  required_permission: string;
+  reason_code: string | null;
+  reason: string | null;
+};
+
+export type DemandDetailAlternativeGroupReadModel = {
+  line_id: string;
+  group_key: string;
+  period_ids: string[];
+  selected_period_id: string | null;
+};
+
+export type DemandDetailLineReadModel = {
+  line: DemandLineReadModel;
+  periods: DemandPeriodReadModel[];
+  alternative_groups: DemandDetailAlternativeGroupReadModel[];
+  contacts: RequestLineContactResolutionReadModel | null;
+};
+
+export type DemandDetailMaterializedResourceReadModel = {
+  resource_id: string;
+  resource_name: string;
+  allocated_hours: number;
+  locked_hours: number;
+};
+
+export type DemandDetailMaterializedRequirementReadModel = {
+  requirement_id: string;
+  segment_id: string;
+  source_request_line_id: string | null;
+  status: string;
+  start_date: string;
+  end_date: string;
+  planned_hours: number;
+  covered_hours: number;
+  locked_hours: number;
+  remaining_hours: number;
+  excess_hours: number;
+  automatic_target_resource_id: string | null;
+  automatic_target_resource_name: string | null;
+  mobilized_resources: DemandDetailMaterializedResourceReadModel[];
+  approval_revision_id: string | null;
+  approved_entry_key: string | null;
+  approval_reference_status: string | null;
+};
+
+export type DemandDetailReadModel = {
+  demand: DemandReadModel;
+  version: number;
+  lines: DemandDetailLineReadModel[];
+  periods: DemandPeriodReadModel[];
+  materialized_plan: {
+    requirement_count: number;
+    planned_hours: number;
+    covered_hours: number;
+    locked_hours: number;
+    requirements: DemandDetailMaterializedRequirementReadModel[];
+  };
+  workflow: {
+    demand_number: string;
+    status: string;
+    version: number;
+    available_actions: string[];
+    actions: DemandDetailWorkflowActionReadModel[];
+  };
+  approval_state: {
+    active_revision_id: string | null;
+    approved_request_version: number | null;
+    operational_version: number | null;
+    envelope_decision: string | null;
+    envelope_reason: string | null;
+    approval_reference_status: string | null;
+  } | null;
+  policy: {
+    can_modify_candidate: boolean;
+    can_edit_periods: boolean;
+    can_change_operational_choices: boolean;
+    editable_candidate_fields: string[];
+    expected_request_version: number;
+    expected_operational_version: number | null;
+    envelope_decision: string | null;
+    reapproval_required: boolean;
+  };
+  diagnostics: string[];
+};
+
 export type SegmentMobilizedResourceReadModel = {
   resource_id: string;
   resource_name: string;
@@ -1062,6 +1151,13 @@ export function getDemands(
 
 export function getDemand(number: string, signal?: AbortSignal) {
   return getJson<DemandReadModel>(`/api/v1/demands/${encodeURIComponent(number)}`, signal);
+}
+
+export function getDemandDetail(number: string, signal?: AbortSignal) {
+  return getJson<DemandDetailReadModel>(
+    `/api/v1/demands/${encodeURIComponent(number)}/detail`,
+    signal,
+  );
 }
 
 export function getDemandPeriods(number: string, signal?: AbortSignal) {

@@ -11,6 +11,7 @@ import "./shift-editor.css";
 import "./quick-shift.css";
 import "./demands.css";
 import "./demand-history.css";
+import "./demand-detail.css";
 import "./demand-periods.css";
 import "./demand-workflow.css";
 import "./medium-term.css";

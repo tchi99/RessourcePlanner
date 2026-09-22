@@ -56,6 +56,16 @@ class ReactContextualPlanningContractTests(unittest.TestCase):
             page,
         )
 
+    def test_planning_can_open_the_same_demand_detail_by_demand_number(self) -> None:
+        page = (FRONTEND / "PlanningPage.tsx").read_text(encoding="utf-8")
+        detail = (FRONTEND / "DemandDetail.tsx").read_text(encoding="utf-8")
+
+        self.assertIn('import DemandDetail from "./DemandDetail"', page)
+        self.assertIn("setDetailDemandNumber", page)
+        self.assertIn("demandNumber={detailDemandNumber}", page)
+        self.assertIn("Ouvrir le détail de la demande", page)
+        self.assertIn("getDemandDetail(demandNumber", detail)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -6,6 +6,7 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+from .chat_status import ChatHeartbeat, ChatStatusStore
 from .config import Settings
 from .github import GitHubClient, GitHubError
 from .roles import RoleStore, RolesConfig
@@ -16,8 +17,9 @@ PROJECT_DIR = Path(__file__).resolve().parents[2]
 
 def create_app(app_settings: Settings | None = None) -> FastAPI:
     settings = app_settings or Settings.from_env()
-    app = FastAPI(title="RessourcePlanner Dev Cockpit", version="0.3.0")
+    app = FastAPI(title="RessourcePlanner Dev Cockpit", version="0.4.0")
     role_store = RoleStore(settings.data_dir)
+    chat_status_store = ChatStatusStore()
 
     @app.get("/api/health")
     async def health() -> dict[str, object]:
@@ -51,6 +53,14 @@ def create_app(app_settings: Settings | None = None) -> FastAPI:
                 status_code=500,
                 detail="Impossible d'enregistrer la configuration locale des rôles.",
             ) from exc
+
+    @app.post("/api/chat-status/heartbeat")
+    async def chat_status_heartbeat(payload: ChatHeartbeat) -> dict[str, object]:
+        return chat_status_store.heartbeat(payload)
+
+    @app.get("/api/chat-status")
+    async def chat_status() -> dict[str, object]:
+        return chat_status_store.snapshot()
 
     @app.get("/api/dashboard")
     async def dashboard(repo: str | None = Query(default=None)) -> dict:

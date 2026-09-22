@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 
-import { DemandReadModel, getDemands } from "./api";
+import { DemandReadModel, getDemand, getDemands } from "./api";
 import { DemandHistoryReadModel, getDemandHistory } from "./demandHistoryApi";
 
 function formatDateTime(value: string) {
@@ -19,7 +19,17 @@ function statusTransition(event: DemandHistoryReadModel) {
   return event.status || event.previous_status || null;
 }
 
-export default function DemandHistoryPage() {
+type DemandHistoryPageProps = {
+  demandNumber?: string;
+  embedded?: boolean;
+  refreshToken?: number;
+};
+
+export default function DemandHistoryPage({
+  demandNumber,
+  embedded = false,
+  refreshToken = 0,
+}: DemandHistoryPageProps = {}) {
   const [demands, setDemands] = useState<DemandReadModel[]>([]);
   const [selectedNumber, setSelectedNumber] = useState("");
   const [history, setHistory] = useState<DemandHistoryReadModel[]>([]);
@@ -30,10 +40,14 @@ export default function DemandHistoryPage() {
   useEffect(() => {
     const controller = new AbortController();
     setLoadingDemands(true);
-    getDemands(controller.signal)
+    const request = demandNumber
+      ? getDemand(demandNumber, controller.signal).then((row) => [row])
+      : getDemands(controller.signal);
+    request
       .then((rows) => {
         setDemands(rows);
-        if (!selectedNumber && rows.length > 0) setSelectedNumber(rows[0].number);
+        const nextNumber = demandNumber || rows[0]?.number || "";
+        setSelectedNumber(nextNumber);
       })
       .catch((reason: unknown) => {
         if (!controller.signal.aborted) {
@@ -44,7 +58,7 @@ export default function DemandHistoryPage() {
         if (!controller.signal.aborted) setLoadingDemands(false);
       });
     return () => controller.abort();
-  }, []);
+  }, [demandNumber]);
 
   useEffect(() => {
     if (!selectedNumber) {
@@ -65,7 +79,7 @@ export default function DemandHistoryPage() {
         if (!controller.signal.aborted) setLoadingHistory(false);
       });
     return () => controller.abort();
-  }, [selectedNumber]);
+  }, [selectedNumber, refreshToken]);
 
   const selectedDemand = useMemo(
     () => demands.find((row) => row.number === selectedNumber) ?? null,
@@ -74,7 +88,7 @@ export default function DemandHistoryPage() {
 
   return (
     <section className="demand-history-page">
-      <header className="demand-history-header">
+      {!embedded && (      <header className="demand-history-header">
         <div>
           <span className="eyebrow">Audit</span>
           <h2>Historique des demandes</h2>
@@ -98,7 +112,7 @@ export default function DemandHistoryPage() {
             )}
           </select>
         </label>
-      </header>
+      </header>)}
 
       {selectedDemand && (
         <div className="demand-history-summary">

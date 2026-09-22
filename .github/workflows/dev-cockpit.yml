@@ -51,6 +51,26 @@ jobs:
         with:
           node-version: "22"
 
+      - name: Validate Firefox companion
+        run: |
+          python -m json.tool dev-cockpit/firefox-companion/manifest.json >/dev/null
+          node --check dev-cockpit/firefox-companion/background.js
+          node --check dev-cockpit/firefox-companion/content.js
+          node --check dev-cockpit/firefox-companion/options.js
+          python - <<'PY'
+          import json
+
+          manifest = json.load(open("dev-cockpit/firefox-companion/manifest.json", encoding="utf-8"))
+          assert manifest["manifest_version"] == 3
+          assert manifest["content_scripts"][0]["matches"] == ["https://chatgpt.com/*"]
+          hosts = set(manifest["host_permissions"])
+          assert hosts
+          assert all(
+              host.startswith(("http://127.0.0.1/", "http://localhost/", "https://127.0.0.1/", "https://localhost/"))
+              for host in hosts
+          )
+          PY
+
       - name: Install and build cockpit frontend
         working-directory: dev-cockpit/frontend
         run: |
@@ -143,6 +163,18 @@ jobs:
           done
           test "$role_ready" = "1"
           grep -q '"DEV CI"' /tmp/cockpit-roles-after-restart.json
+
+          cat >/tmp/cockpit-heartbeat.json <<'JSON'
+          {
+            "conversation_url": "https://chatgpt.com/c/ci-companion?model=test",
+            "state": "working",
+            "page_visible": true,
+            "page_focused": false,
+            "ui_signal": "stop-control"
+          }
+          JSON
+          curl -fsS -X POST             -H 'Content-Type: application/json'             --data-binary @/tmp/cockpit-heartbeat.json             http://127.0.0.1:18081/api/chat-status/heartbeat             | grep -q '"effective_state":"working"'
+          curl -fsS http://127.0.0.1:18081/api/chat-status             | grep -q '"conversation_url":"https://chatgpt.com/c/ci-companion"'
 
       - name: Show Docker diagnostics on failure
         if: failure()
