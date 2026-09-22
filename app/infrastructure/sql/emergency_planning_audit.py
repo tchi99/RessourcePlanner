@@ -61,6 +61,28 @@ class EmergencyAwareApprovedDemandSyncAdapter(ApprovedDemandSyncPort):
                 after=current[1] if current is not None else None,
             )
 
+    def sync_operational_choices(self, demand_number: str) -> None:
+        action = getattr(self._delegate, "sync_operational_choices", None)
+        if not callable(action):
+            raise RuntimeError(
+                "Le runtime ne supporte pas la synchronisation des choix opérationnels."
+            )
+        before = self._journal.request_requirements(demand_number)
+        action(demand_number)
+        after = self._journal.request_requirements(demand_number)
+        for entity_id in sorted(set(before) | set(after)):
+            previous = before.get(entity_id)
+            current = after.get(entity_id)
+            reference = (current or previous)[0]  # type: ignore[index]
+            self._journal.append(
+                entity_type=ENTITY_SEGMENT,
+                entity_id=entity_id,
+                entity_reference=reference,
+                action="Synchronisation segment depuis choix opérationnels",
+                before=previous[1] if previous is not None else None,
+                after=current[1] if current is not None else None,
+            )
+
     def sync_approved(self, demand_number: str) -> None:
         emergency = self._is_emergency_materialization(demand_number)
         before = self._journal.request_requirements(demand_number)
