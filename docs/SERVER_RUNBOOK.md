@@ -205,7 +205,7 @@ Lorsque l'environnement cible sera disponible :
 3. tester une URL SQLAlchemy SQL Server sans l'inscrire dans Git;
 4. exécuter `alembic upgrade head` sur une base de développement dédiée;
 5. exécuter `python tools\check_server_runtime.py`;
-6. démarrer le runtime Web avec `Lancer_Web.bat` ou la future supervision de service;
+6. démarrer le runtime Web dans la **VM Ubuntu cible via Docker Compose**; `Lancer_Web.bat` reste un chemin local Windows, pas le mode de production privilégié;
 7. valider `/`, `/health`, les lectures et au moins une mutation métier;
 8. épingler le driver retenu après validation.
 
@@ -223,7 +223,30 @@ Ordre de haut niveau le jour du cutover :
 6. exécuter les smokes lecture + mutation;
 7. seulement ensuite déclarer SQL autoritaire.
 
-## 11. Runtime V1 legacy
+## 11. Cible de déploiement production
+
+La cible de déploiement privilégiée est désormais une **VM Ubuntu dédiée hébergée sur le Synology**, et non Synology Container Manager exécutant directement les conteneurs.
+
+Le principe d'exploitation est :
+
+```text
+Synology
+└── VM Ubuntu
+    ├── Docker Engine
+    ├── Docker Compose
+    ├── frontend React / Nginx
+    └── backend FastAPI
+            ↓
+        SQL Server externe
+```
+
+Cette séparation permet de conserver un environnement Linux standard, de simplifier les mises à jour Docker et de découpler l'application du runtime DSM.
+
+Le NAS reste l'hôte de virtualisation et peut fournir les ressources de stockage/sauvegarde nécessaires, mais il ne constitue plus le runtime applicatif direct.
+
+Voir [`DEPLOYMENT_UBUNTU_VM.md`](DEPLOYMENT_UBUNTU_VM.md) pour la procédure détaillée.
+
+## 12. Runtime V1 legacy
 
 `Lancer_Application.bat` est conservé comme alias de compatibilité explicite vers `Lancer_Application_Legacy.bat`.
 
