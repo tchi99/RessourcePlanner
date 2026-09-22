@@ -14,7 +14,9 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONPATH=/app/backend
 
 RUN groupadd --gid 10002 devcockpit \
-    && useradd --create-home --uid 10002 --gid devcockpit devcockpit
+    && useradd --create-home --uid 10002 --gid devcockpit devcockpit \
+    && mkdir -p /data \
+    && chown devcockpit:devcockpit /data
 
 WORKDIR /app
 COPY backend/requirements.txt ./backend/requirements.txt
