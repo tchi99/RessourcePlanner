@@ -1,0 +1,218 @@
+.demand-detail-context {
+  display: grid;
+  gap: .8rem;
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
+}
+
+.demand-detail-context-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.demand-detail-context-header h3 {
+  margin: .12rem 0;
+  font-size: 1rem;
+}
+
+.demand-detail-context-header p {
+  margin: 0;
+  color: var(--muted);
+  font-size: .68rem;
+}
+
+.demand-detail-statuses {
+  display: flex;
+  gap: .4rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.demand-detail-statuses span,
+.demand-detail-statuses strong {
+  padding: .3rem .55rem;
+  border-radius: 999px;
+  background: #f2f5f9;
+  font-size: .65rem;
+}
+
+.demand-detail-statuses strong {
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+
+.demand-detail-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: .55rem;
+}
+
+.demand-detail-summary-grid article {
+  display: grid;
+  gap: .12rem;
+  padding: .7rem .8rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #f8fafc;
+}
+
+.demand-detail-summary-grid span,
+.demand-detail-summary-grid small {
+  color: var(--muted);
+  font-size: .61rem;
+}
+
+.demand-detail-summary-grid strong {
+  font-size: .78rem;
+}
+
+.demand-detail-diagnostics {
+  padding: .55rem .7rem;
+  border: 1px solid #e8d9ad;
+  border-radius: 9px;
+  background: #fffbef;
+  font-size: .68rem;
+}
+
+.demand-detail-diagnostics ul {
+  margin: .5rem 0 0;
+  padding-left: 1.2rem;
+}
+
+.demand-detail-section {
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  background: white;
+  overflow: hidden;
+}
+
+.demand-detail-section > summary {
+  display: flex;
+  flex-direction: column;
+  gap: .15rem;
+  padding: .72rem .85rem;
+  cursor: pointer;
+  background: #f8fafc;
+}
+
+.demand-detail-section > summary span {
+  font-size: .78rem;
+  font-weight: 800;
+}
+
+.demand-detail-section > summary small {
+  color: var(--muted);
+  font-size: .62rem;
+}
+
+.demand-detail-section[open] > summary {
+  border-bottom: 1px solid var(--border);
+}
+
+.demand-detail-section > .demand-periods-page,
+.demand-detail-section > .demand-workflow-page,
+.demand-detail-section > .demand-history-page {
+  padding: .8rem;
+}
+
+.demand-detail-loading {
+  margin-top: 1rem;
+  padding: .75rem;
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+  color: var(--muted);
+  font-size: .7rem;
+}
+
+.workflow-layout.embedded {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.demand-detail-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  display: grid;
+  place-items: center;
+  padding: 1.5rem;
+  background: rgba(15, 23, 42, .48);
+}
+
+.demand-detail-modal {
+  width: min(1120px, 96vw);
+  max-height: 92vh;
+  overflow: auto;
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 24px 70px rgba(15, 23, 42, .25);
+}
+
+.demand-detail-modal-header {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .8rem;
+  padding: .85rem 1rem;
+  border-bottom: 1px solid var(--border);
+  background: rgba(255, 255, 255, .97);
+}
+
+.demand-detail-modal-header strong,
+.demand-detail-modal-header span {
+  display: block;
+}
+
+.demand-detail-modal-header span {
+  color: var(--muted);
+  font-size: .64rem;
+}
+
+.demand-detail-modal-header button {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: white;
+  padding: .4rem .65rem;
+  font: inherit;
+  font-size: .7rem;
+  font-weight: 700;
+}
+
+.demand-detail-modal-body {
+  padding: 0 1rem 1rem;
+}
+
+.pending-detail-button {
+  margin-top: .55rem;
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  padding: 0;
+  font: inherit;
+  font-size: .65rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+@media (max-width: 760px) {
+  .demand-detail-context-header {
+    flex-direction: column;
+  }
+
+  .demand-detail-statuses {
+    justify-content: flex-start;
+  }
+
+  .demand-detail-summary-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .demand-detail-modal-backdrop {
+    padding: .5rem;
+  }
+}
