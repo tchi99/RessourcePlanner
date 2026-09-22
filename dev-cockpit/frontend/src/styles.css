@@ -1156,7 +1156,7 @@ footer a { color: #768aa6; }
 }
 
 .commit-detail-head span {
-  color: #a8b5c8;
+  color: rgb(168 181 200);
   font-size: 12px;
   line-height: 1.4;
 }
