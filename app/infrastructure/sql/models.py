@@ -429,6 +429,10 @@ class ResourceRequirement(TimestampMixin, Base):
             "approved_contact_context_status IN ('CAPTURED', 'LEGACY_UNKNOWN', 'NOT_APPLICABLE')",
             name="resource_requirement_approved_contact_context_status",
         ),
+        CheckConstraint(
+            "approval_reference_status IN ('CAPTURED', 'LEGACY_UNKNOWN', 'NOT_APPLICABLE')",
+            name="resource_requirement_approval_reference_status",
+        ),
         Index("ix_resource_requirements_project_window", "project_id", "start_date", "end_date"),
         Index("ix_resource_requirements_resource_window", "assigned_resource_id", "start_date", "end_date"),
         Index("ix_resource_requirements_request_status", "workforce_request_id", "status"),
@@ -454,6 +458,23 @@ class ResourceRequirement(TimestampMixin, Base):
     approved_request_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
     approved_contact_context_status: Mapped[str] = mapped_column(
         String(32), nullable=False, server_default=text("'LEGACY_UNKNOWN'"), index=True
+    )
+    approval_revision_id: Mapped[str | None] = mapped_column(
+        String(ID_LENGTH),
+        ForeignKey("request_approval_revisions.id"),
+        nullable=True,
+        index=True,
+    )
+    approved_entry_key: Mapped[str | None] = mapped_column(
+        String(512),
+        nullable=True,
+        index=True,
+    )
+    approval_reference_status: Mapped[str] = mapped_column(
+        String(32),
+        nullable=False,
+        server_default=text("'LEGACY_UNKNOWN'"),
+        index=True,
     )
     assigned_resource_id: Mapped[str | None] = mapped_column(
         String(ID_LENGTH), ForeignKey("resources.id"), nullable=True, index=True
