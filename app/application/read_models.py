@@ -168,6 +168,17 @@ class DemandPeriodReadModel:
 
 
 @dataclass(frozen=True, slots=True)
+class SegmentMobilizedResourceReadModel:
+    """Actual counted workload for one resource on a requirement."""
+
+    resource_id: str
+    resource_name: str
+    allocated_hours: float
+    locked_hours: float = 0.0
+    replaceable_hours: float = 0.0
+
+
+@dataclass(frozen=True, slots=True)
 class SegmentReadModel:
     """Storage-independent operational requirement/segment projection."""
 
@@ -192,7 +203,16 @@ class SegmentReadModel:
     confirmation_overridden: bool = False
     project_manager: str | None = None
     requester: str | None = None
+    requirement_id: str | None = None
+    automatic_target_resource_id: str | None = None
+    automatic_target_resource_name: str | None = None
+    mobilized_resources: tuple[SegmentMobilizedResourceReadModel, ...] = ()
     locked_hours: float = 0.0
+    replaceable_hours: float = 0.0
+    covered_hours: float = 0.0
+    automatic_rebuild_hours: float = 0.0
+    remaining_hours: float = 0.0
+    excess_hours: float = 0.0
     overallocated_hours: float = 0.0
     overallocated: bool = False
     desired_active_days: int | None = None
@@ -218,12 +238,20 @@ class SegmentReadModel:
             if desired_active_days is not None
             else None
         )
+        target_resource_name = _optional_text(row.get("Technicien"))
         return cls(
             segment_id=_text(row.get("IDSegment")),
             demand_number=_optional_text(row.get("NoDemande")),
             project_number=_optional_text(row.get("NumeroProjet")),
             project_name=_optional_text(row.get("NomProjet")),
-            resource_name=_optional_text(row.get("Technicien")),
+            resource_name=target_resource_name,
+            requirement_id=_optional_text(
+                row.get("ResourceRequirementID") or row.get("RequirementID")
+            ),
+            automatic_target_resource_id=_optional_text(
+                row.get("AutomaticTargetResourceID") or row.get("TechnicienID")
+            ),
+            automatic_target_resource_name=target_resource_name,
             start_date=_date(row.get("DateDebut")),
             end_date=_date(row.get("DateFin")),
             planned_hours=planned_hours,

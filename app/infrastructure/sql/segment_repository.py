@@ -97,6 +97,11 @@ class SqlSegmentRepository(SegmentRepositoryPort):
             project_number=_optional_text(project.number),
             project_name=_optional_text(project.name),
             resource_name=_optional_text(resource.name) if resource else None,
+            requirement_id=requirement.id,
+            automatic_target_resource_id=resource.id if resource else None,
+            automatic_target_resource_name=(
+                _optional_text(resource.name) if resource else None
+            ),
             start_date=requirement.start_date,
             end_date=requirement.end_date,
             planned_hours=float(requirement.planned_hours),

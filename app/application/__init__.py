@@ -146,6 +146,7 @@ from .read_models import (
     DemandLineReadModel,
     DemandPeriodReadModel,
     DemandReadModel,
+    SegmentMobilizedResourceReadModel,
     SegmentReadModel,
 )
 from .repository_ports import (
@@ -303,6 +304,7 @@ __all__ = [
     "SegmentCancelCommand",
     "SegmentCreateCommand",
     "SegmentMutationResult",
+    "SegmentMobilizedResourceReadModel",
     "SegmentReadModel",
     "SegmentRepositoryPort",
     "SegmentUpdateCommand",
