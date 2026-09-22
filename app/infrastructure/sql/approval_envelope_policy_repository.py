@@ -122,6 +122,24 @@ class SqlDemandApprovalEnvelopePolicyRepository:
             )
         )
 
+    def record_candidate_decision(
+        self,
+        demand_number: str,
+        decision: EnvelopeDecision,
+    ) -> None:
+        request = self._request(demand_number)
+        self._append_history(
+            request,
+            action="Comparaison enveloppe approuvée",
+            comment=(
+                "La proposition candidate a été comparée à la révision approuvée active "
+                f"({decision.decision} · {decision.reason})."
+            ),
+            decision=decision,
+            previous_status=request.status,
+        )
+        self._session.flush()
+
     def mark_reapproval_required(
         self,
         demand_number: str,
