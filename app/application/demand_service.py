@@ -10,6 +10,7 @@ from ..domain.request_lines import default_legacy_hours
 from .command_ports import ApprovedDemandSyncPort, PlanningCommandPort
 from .commands import (
     DemandAlternativeSelectCommand,
+    DemandOperationalConfirmationCommand,
     DemandApproveCommand,
     DemandCancelCommand,
     DemandCorrectionCommand,
@@ -37,8 +38,12 @@ from .demand_workflow_policy import (
     demand_workflow_state,
 )
 from .security import PERMISSION_APPROVE_DEMANDS, PERMISSION_MANAGE_DEMANDS
-from .read_models import DemandPeriodReadModel
-from .repository_ports import DemandPeriodRepositoryPort, DemandRepositoryPort
+from .read_models import DemandOperationalChoiceReadModel, DemandPeriodReadModel
+from .repository_ports import (
+    DemandOperationalChoiceRepositoryPort,
+    DemandPeriodRepositoryPort,
+    DemandRepositoryPort,
+)
 
 
 BUSINESS_DEMAND_FIELDS = frozenset(
@@ -77,6 +82,7 @@ class DemandService:
         approved_sync: ApprovedDemandSyncPort,
         *,
         periods: DemandPeriodRepositoryPort | None = None,
+        operational_choices: DemandOperationalChoiceRepositoryPort | None = None,
         current_user: str = "",
         permissions: Sequence[str] | None = None,
         batch: Callable[[str], ContextManager[Any]] | None = None,
@@ -85,6 +91,7 @@ class DemandService:
         self._planning = planning
         self._approved_sync = approved_sync
         self._periods = periods
+        self._operational_choices = operational_choices
         self._current_user = str(current_user or "")
         self._permissions = tuple(permissions) if permissions is not None else (
             PERMISSION_MANAGE_DEMANDS,
@@ -127,6 +134,29 @@ class DemandService:
                 code="demand_periods_unavailable",
             )
         return self._periods
+
+    def _operational_choice_repository(
+        self,
+    ) -> DemandOperationalChoiceRepositoryPort:
+        if self._operational_choices is None:
+            raise ApplicationOperationError(
+                "Les choix opérationnels versionnés ne sont pas disponibles dans ce runtime.",
+                code="operational_choices_unavailable",
+            )
+        return self._operational_choices
+
+    def operational_choice_state(
+        self,
+        number: str,
+    ) -> DemandOperationalChoiceReadModel | None:
+        identifier = self._required_identifier(number, entity="demand")
+        return call_application_port(
+            lambda: self._operational_choice_repository().state_for_demand(
+                identifier
+            ),
+            code_prefix="operational_choice_lookup",
+            context={"demand_number": identifier},
+        )
 
     @staticmethod
     def _period_line_scope(existing: Any, request_line_id: str | None) -> str | None:
@@ -490,8 +520,59 @@ class DemandService:
             existing,
             command.request_line_id,
         )
-        periods = self._period_repository()
 
+        use_operational = bool(command.operational) or (
+            existing.status == "En planification"
+            and self._operational_choices is not None
+            and self.operational_choice_state(number) is not None
+        )
+        if use_operational:
+            with self._context("select operational alternative"):
+                call_application_port(
+                    lambda: self._operational_choice_repository().select_alternative(
+                        number,
+                        group,
+                        period_id,
+                        request_line_id=request_line_id,
+                        expected_version=command.expected_operational_version,
+                    ),
+                    code_prefix="operational_alternative_select",
+                    context={
+                        "demand_number": number,
+                        "request_line_id": request_line_id,
+                        "alternative_group": group,
+                        "period_id": period_id,
+                    },
+                )
+                sync_operational = getattr(
+                    self._approved_sync,
+                    "sync_operational_choices",
+                    None,
+                )
+                if not callable(sync_operational):
+                    raise ApplicationOperationError(
+                        "La synchronisation des choix opérationnels n'est pas disponible.",
+                        code="operational_choice_sync_unavailable",
+                    )
+                call_application_port(
+                    lambda: sync_operational(number),
+                    code_prefix="operational_choice_sync",
+                    context={
+                        "demand_number": number,
+                        "alternative_group": group,
+                    },
+                )
+                summary = call_application_port(
+                    self._planning.rebuild,
+                    code_prefix="operational_choice_rebuild",
+                    context={
+                        "demand_number": number,
+                        "alternative_group": group,
+                    },
+                )
+            return dict(summary)
+
+        periods = self._period_repository()
         selections = call_application_port(
             lambda: (
                 periods.selections_for_demand(number)
@@ -531,17 +612,54 @@ class DemandService:
                     "period_id": period_id,
                 },
             )
-            if existing.status != "En planification":
-                return None
+        return None
+
+    def set_operational_confirmation_command(
+        self,
+        command: DemandOperationalConfirmationCommand,
+    ) -> Mapping[str, Any]:
+        number = self._required_identifier(command.number, entity="demand")
+        existing = self._demand_or_not_found(number)
+        self._assert_workflow_action(existing, ACTION_MODIFY)
+        request_line_id = self._period_line_scope(
+            existing,
+            command.request_line_id,
+        )
+        with self._context("set operational confirmation"):
             call_application_port(
-                lambda: self._approved_sync.sync_approved(number),
-                code_prefix="demand_period_selection_sync",
-                context={"demand_number": number, "alternative_group": group},
+                lambda: self._operational_choice_repository().set_confirmation(
+                    number,
+                    command.confirmation,
+                    request_line_id=request_line_id,
+                    period_id=command.period_id,
+                    expected_version=command.expected_operational_version,
+                ),
+                code_prefix="operational_confirmation",
+                context={
+                    "demand_number": number,
+                    "request_line_id": request_line_id,
+                    "period_id": command.period_id,
+                },
+            )
+            sync_operational = getattr(
+                self._approved_sync,
+                "sync_operational_choices",
+                None,
+            )
+            if not callable(sync_operational):
+                raise ApplicationOperationError(
+                    "La synchronisation des choix opérationnels n'est pas disponible.",
+                    code="operational_choice_sync_unavailable",
+                )
+            call_application_port(
+                lambda: sync_operational(number),
+                code_prefix="operational_confirmation_sync",
+                context={"demand_number": number},
             )
             summary = call_application_port(
                 self._planning.rebuild,
-                code_prefix="demand_period_selection_rebuild",
-                context={"demand_number": number, "alternative_group": group},
+                code_prefix="operational_confirmation_rebuild",
+                context={"demand_number": number},
             )
         return dict(summary)
 
