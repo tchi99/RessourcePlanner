@@ -149,3 +149,23 @@ export type CockpitConfig = {
   stalled_after_minutes: number
   token_configured: boolean
 }
+
+export type AvatarPreset =
+  | 'product-owner'
+  | 'developer'
+  | 'architect'
+  | 'reviewer'
+  | 'generic'
+
+export type RoleConfig = {
+  id: string
+  name: string
+  avatar: AvatarPreset
+  chat_url: string
+  enabled: boolean
+  order: number
+}
+
+export type RolesConfig = {
+  roles: RoleConfig[]
+}

@@ -1,0 +1,407 @@
+import { useEffect, useMemo, useState } from 'react'
+import type { Dashboard, RoleConfig, RolesConfig } from './types'
+
+const AVATAR_LABELS: Record<RoleConfig['avatar'], string> = {
+  'product-owner': '🧑‍💼',
+  developer: '🤖',
+  architect: '🧠',
+  reviewer: '🔎',
+  generic: '💬',
+}
+
+const AVATAR_OPTIONS: Array<{ value: RoleConfig['avatar']; label: string }> = [
+  { value: 'product-owner', label: 'Product Owner' },
+  { value: 'developer', label: 'Developer / chatbot' },
+  { value: 'architect', label: 'Architecte' },
+  { value: 'reviewer', label: 'Reviewer' },
+  { value: 'generic', label: 'Générique' },
+]
+
+function minutesLabel(value: number | null | undefined): string {
+  if (value == null) return 'un moment'
+  if (value < 60) return `${value} min`
+  const hours = Math.floor(value / 60)
+  const minutes = value % 60
+  return minutes ? `${hours} h ${minutes} min` : `${hours} h`
+}
+
+function developerBubble(dashboard: Dashboard | null): string {
+  if (!dashboard) return 'En attente des données GitHub.'
+  const active = dashboard.active_work
+  const states = new Set(active.states)
+  const key = active.subitem_key || `#${active.issue_number}`
+  const silence = minutesLabel(active.stalled_details?.last_activity_minutes)
+
+  if (states.has('STALLED_CONFIRMED')) {
+    return `CI rouge abandonnée · aucune reprise visible depuis ${silence}.`
+  }
+  if (states.has('STALLED')) {
+    return `Aucune activité GitHub pertinente depuis ${silence}.`
+  }
+  if (states.has('POSSIBLE_STALL')) {
+    return `Travail possiblement interrompu · silence depuis ${silence}.`
+  }
+  if (states.has('CI_RUNNING')) return `CI en cours pour ${key}.`
+  if (states.has('CI_RED')) return `CI rouge sur ${key}.`
+  if (states.has('MERGEABLE')) return `PR verte et mergeable pour ${key}.`
+  if (states.has('DONE')) return `Le bloc ${key} semble terminé.`
+  if (states.has('IN_PROGRESS')) {
+    const branch = active.active_branch?.name
+    return branch ? `${key} en cours sur ${branch}.` : `${key} est en cours.`
+  }
+  return `${key} est READY.`
+}
+
+function roleBubble(role: RoleConfig, dashboard: Dashboard | null): string {
+  if (role.avatar === 'developer') return developerBubble(dashboard)
+  if (!dashboard) {
+    return role.chat_url
+      ? 'Conversation associée prête à ouvrir.'
+      : 'Aucune conversation associée.'
+  }
+
+  if (role.avatar === 'product-owner') {
+    return `Roadmap #${dashboard.roadmap.number} · actif: ${dashboard.roadmap.effective_active}.`
+  }
+  if (role.avatar === 'architect') {
+    const referenced = dashboard.architecture.referenced_adrs.length
+    return referenced
+      ? `${referenced} ADR référencé(s) par le bloc actif.`
+      : 'Consulter les ADR applicables au besoin.'
+  }
+  if (role.avatar === 'reviewer') {
+    const failed = dashboard.active_work.failed_jobs.length
+    return failed
+      ? `${failed} job(s) CI en échec à examiner.`
+      : 'Aucun job CI en échec sur le travail actif.'
+  }
+  return role.chat_url
+    ? 'Conversation associée prête à ouvrir.'
+    : 'Aucune conversation associée.'
+}
+
+function isDeveloperWorking(role: RoleConfig, dashboard: Dashboard | null): boolean {
+  if (role.avatar !== 'developer' || !dashboard) return false
+  const states = new Set(dashboard.active_work.states)
+  if (
+    states.has('STALLED') ||
+    states.has('STALLED_CONFIRMED') ||
+    states.has('POSSIBLE_STALL')
+  ) {
+    return false
+  }
+  return states.has('IN_PROGRESS') || states.has('CI_RUNNING')
+}
+
+function normalizeOrder(roles: RoleConfig[]): RoleConfig[] {
+  return roles.map((role, index) => ({ ...role, order: (index + 1) * 10 }))
+}
+
+export default function RoleCards({ dashboard }: { dashboard: Dashboard | null }) {
+  const [roles, setRoles] = useState<RoleConfig[]>([])
+  const [draft, setDraft] = useState<RoleConfig[]>([])
+  const [editing, setEditing] = useState(false)
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [saved, setSaved] = useState(false)
+
+  async function loadRoles() {
+    setLoading(true)
+    setError(null)
+    try {
+      const response = await fetch('/api/roles')
+      const payload = (await response.json()) as RolesConfig & { detail?: string }
+      if (!response.ok) {
+        throw new Error(payload.detail || `Erreur HTTP ${response.status}`)
+      }
+      const ordered = [...payload.roles].sort((a, b) => a.order - b.order)
+      setRoles(ordered)
+      setDraft(ordered.map((role) => ({ ...role })))
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Erreur inconnue')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    void loadRoles()
+  }, [])
+
+  const enabledRoles = useMemo(
+    () => roles.filter((role) => role.enabled).sort((a, b) => a.order - b.order),
+    [roles],
+  )
+
+  function beginEditing() {
+    setDraft(roles.map((role) => ({ ...role })))
+    setError(null)
+    setEditing(true)
+  }
+
+  function updateRole(index: number, patch: Partial<RoleConfig>) {
+    setDraft((current) =>
+      current.map((role, roleIndex) =>
+        roleIndex === index ? { ...role, ...patch } : role,
+      ),
+    )
+  }
+
+  function addRole() {
+    setDraft((current) => [
+      ...current,
+      {
+        id: `role-${Date.now()}`,
+        name: 'Nouveau rôle',
+        avatar: 'generic',
+        chat_url: '',
+        enabled: true,
+        order: (current.length + 1) * 10,
+      },
+    ])
+  }
+
+  function removeRole(index: number) {
+    setDraft((current) =>
+      normalizeOrder(current.filter((_, roleIndex) => roleIndex !== index)),
+    )
+  }
+
+  function moveRole(index: number, direction: -1 | 1) {
+    setDraft((current) => {
+      const target = index + direction
+      if (target < 0 || target >= current.length) return current
+      const next = [...current]
+      ;[next[index], next[target]] = [next[target], next[index]]
+      return normalizeOrder(next)
+    })
+  }
+
+  async function saveRoles() {
+    setSaving(true)
+    setError(null)
+    setSaved(false)
+    try {
+      const normalized = normalizeOrder(draft)
+      const response = await fetch('/api/roles', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ roles: normalized }),
+      })
+      const payload = (await response.json()) as RolesConfig & { detail?: string }
+      if (!response.ok) {
+        throw new Error(payload.detail || `Erreur HTTP ${response.status}`)
+      }
+      const ordered = [...payload.roles].sort((a, b) => a.order - b.order)
+      setRoles(ordered)
+      setDraft(ordered.map((role) => ({ ...role })))
+      setEditing(false)
+      setSaved(true)
+      window.setTimeout(() => setSaved(false), 1600)
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Erreur inconnue')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <section className="roles-section">
+      <div className="roles-heading">
+        <div>
+          <span className="panel-kicker">ÉQUIPE DEV</span>
+          <h2>Rôles et conversations</h2>
+        </div>
+        <div className="roles-heading-actions">
+          {saved && <span className="roles-saved">✓ Enregistré</span>}
+          <button type="button" onClick={editing ? () => setEditing(false) : beginEditing}>
+            {editing ? 'Fermer' : '⚙ Gérer les rôles'}
+          </button>
+        </div>
+      </div>
+
+      {error && <div className="roles-error">{error}</div>}
+
+      {loading ? (
+        <div className="roles-empty">Chargement des rôles…</div>
+      ) : enabledRoles.length ? (
+        <div className="role-cards">
+          {enabledRoles.map((role) => {
+            const working = isDeveloperWorking(role, dashboard)
+            const stalled =
+              role.avatar === 'developer' && Boolean(dashboard?.active_work.stalled)
+            return (
+              <article
+                className={`role-card ${working ? 'is-working' : ''} ${stalled ? 'is-stalled' : ''}`}
+                key={role.id}
+              >
+                <div className="role-avatar-wrap">
+                  <div className="role-avatar" aria-hidden="true">
+                    {AVATAR_LABELS[role.avatar]}
+                  </div>
+                  {working && <span className="role-working-dot" title="Activité détectée" />}
+                </div>
+                <div className="role-card-body">
+                  <div className="role-name-row">
+                    <strong>{role.name}</strong>
+                    {working && <span className="role-status">travaille</span>}
+                    {stalled && <span className="role-status stalled">silencieux</span>}
+                  </div>
+                  <div className="role-bubble">{roleBubble(role, dashboard)}</div>
+                  <div className="role-actions">
+                    {role.chat_url ? (
+                      <a
+                        className="button role-chat-link"
+                        href={role.chat_url}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        Ouvrir ChatGPT ↗
+                      </a>
+                    ) : (
+                      <button className="role-chat-link" type="button" onClick={beginEditing}>
+                        Associer une discussion
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </article>
+            )
+          })}
+        </div>
+      ) : (
+        <div className="roles-empty">
+          Aucun rôle actif. Utilise « Gérer les rôles » pour en ajouter.
+        </div>
+      )}
+
+      {editing && (
+        <div className="roles-editor">
+          <div className="roles-editor-header">
+            <div>
+              <strong>Configuration locale</strong>
+              <span>
+                Cette configuration sert uniquement à l’affichage et aux liens ChatGPT.
+                GitHub reste la source de vérité du développement.
+              </span>
+            </div>
+            <button type="button" onClick={addRole}>+ Ajouter un rôle</button>
+          </div>
+
+          <div className="roles-editor-list">
+            {draft.map((role, index) => (
+              <div className="role-editor-row" key={role.id}>
+                <div className="role-editor-order">
+                  <button
+                    type="button"
+                    onClick={() => moveRole(index, -1)}
+                    disabled={index === 0}
+                    aria-label="Monter le rôle"
+                  >
+                    ↑
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => moveRole(index, 1)}
+                    disabled={index === draft.length - 1}
+                    aria-label="Descendre le rôle"
+                  >
+                    ↓
+                  </button>
+                </div>
+
+                <label>
+                  Nom
+                  <input
+                    value={role.name}
+                    onChange={(event) => updateRole(index, { name: event.target.value })}
+                  />
+                </label>
+
+                <label>
+                  Identifiant
+                  <input
+                    value={role.id}
+                    onChange={(event) =>
+                      updateRole(index, {
+                        id: event.target.value
+                          .toLowerCase()
+                          .replace(/[^a-z0-9_-]+/g, '-')
+                          .replace(/^-+/, ''),
+                      })
+                    }
+                    spellCheck={false}
+                  />
+                </label>
+
+                <label>
+                  Avatar
+                  <select
+                    value={role.avatar}
+                    onChange={(event) =>
+                      updateRole(index, {
+                        avatar: event.target.value as RoleConfig['avatar'],
+                      })
+                    }
+                  >
+                    {AVATAR_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {AVATAR_LABELS[option.value]} {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label className="role-url-field">
+                  Discussion ChatGPT
+                  <input
+                    type="url"
+                    placeholder="https://chatgpt.com/c/..."
+                    value={role.chat_url}
+                    onChange={(event) =>
+                      updateRole(index, { chat_url: event.target.value })
+                    }
+                  />
+                </label>
+
+                <label className="role-enabled">
+                  <input
+                    type="checkbox"
+                    checked={role.enabled}
+                    onChange={(event) =>
+                      updateRole(index, { enabled: event.target.checked })
+                    }
+                  />
+                  Affiché
+                </label>
+
+                <button
+                  className="role-delete"
+                  type="button"
+                  onClick={() => removeRole(index)}
+                >
+                  Supprimer
+                </button>
+              </div>
+            ))}
+          </div>
+
+          <div className="roles-editor-footer">
+            <button type="button" onClick={() => setEditing(false)}>
+              Annuler
+            </button>
+            <button
+              className="primary"
+              type="button"
+              onClick={() => void saveRoles()}
+              disabled={saving}
+            >
+              {saving ? 'Enregistrement…' : 'Enregistrer les rôles'}
+            </button>
+          </div>
+        </div>
+      )}
+    </section>
+  )
+}

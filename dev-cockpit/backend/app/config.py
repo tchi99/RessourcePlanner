@@ -21,6 +21,7 @@ class Settings:
     roadmap_issue: int = 55
     stalled_after_minutes: int = 30
     github_api_url: str = "https://api.github.com"
+    data_dir: str = "./dev-cockpit-data"
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -33,4 +34,5 @@ class Settings:
             roadmap_issue=_int_env("DEV_COCKPIT_ROADMAP_ISSUE", 55),
             stalled_after_minutes=_int_env("DEV_COCKPIT_STALLED_AFTER_MINUTES", 30),
             github_api_url=os.getenv("DEV_COCKPIT_GITHUB_API_URL", "https://api.github.com").rstrip("/"),
+            data_dir=os.getenv("DEV_COCKPIT_DATA_DIR", "./dev-cockpit-data").strip() or "./dev-cockpit-data",
         )

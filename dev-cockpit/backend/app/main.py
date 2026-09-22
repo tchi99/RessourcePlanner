@@ -8,6 +8,7 @@ from fastapi.staticfiles import StaticFiles
 
 from .config import Settings
 from .github import GitHubClient, GitHubError
+from .roles import RoleStore, RolesConfig
 from .service import build_dashboard
 
 PROJECT_DIR = Path(__file__).resolve().parents[2]
@@ -15,7 +16,8 @@ PROJECT_DIR = Path(__file__).resolve().parents[2]
 
 def create_app(app_settings: Settings | None = None) -> FastAPI:
     settings = app_settings or Settings.from_env()
-    app = FastAPI(title="RessourcePlanner Dev Cockpit", version="0.2.0")
+    app = FastAPI(title="RessourcePlanner Dev Cockpit", version="0.3.0")
+    role_store = RoleStore(settings.data_dir)
 
     @app.get("/api/health")
     async def health() -> dict[str, object]:
@@ -32,6 +34,23 @@ def create_app(app_settings: Settings | None = None) -> FastAPI:
             "stalled_after_minutes": settings.stalled_after_minutes,
             "token_configured": bool(settings.github_token),
         }
+
+    @app.get("/api/roles", response_model=RolesConfig)
+    async def get_roles() -> RolesConfig:
+        try:
+            return role_store.load()
+        except RuntimeError as exc:
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    @app.put("/api/roles", response_model=RolesConfig)
+    async def put_roles(payload: RolesConfig) -> RolesConfig:
+        try:
+            return role_store.save(payload)
+        except OSError as exc:
+            raise HTTPException(
+                status_code=500,
+                detail="Impossible d'enregistrer la configuration locale des rôles.",
+            ) from exc
 
     @app.get("/api/dashboard")
     async def dashboard(repo: str | None = Query(default=None)) -> dict:

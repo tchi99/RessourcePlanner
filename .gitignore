@@ -64,3 +64,6 @@ imports/*.csv
 dev-cockpit/.venv/
 dev-cockpit/frontend/node_modules/
 dev-cockpit/frontend/dist/
+
+# Dev Cockpit local settings when running outside Docker
+dev-cockpit/**/dev-cockpit-data/

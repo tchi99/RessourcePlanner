@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
+import RoleCards from './RoleCards'
 import type { CockpitConfig, Dashboard, Job, PullRequest, Run } from './types'
 
 function latestRun(pr: PullRequest | null): Run | null {
@@ -194,6 +195,8 @@ export default function App() {
       {loading && !data && (
         <section className="loading-panel">Lecture de GitHub…</section>
       )}
+
+      <RoleCards dashboard={data} />
 
       {data && (
         <>

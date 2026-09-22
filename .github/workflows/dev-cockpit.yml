@@ -80,6 +80,10 @@ jobs:
               and int(port.get("target")) == 8000
               for port in cockpit.get("ports", [])
           )
+          assert any(
+              volume.get("target") == "/data"
+              for volume in cockpit.get("volumes", [])
+          )
           PY
 
       - name: Smoke RessourcePlanner plus Dev Cockpit
@@ -109,6 +113,36 @@ jobs:
           status="$(curl -sS -o /tmp/cockpit-dashboard.json -w '%{http_code}' http://127.0.0.1:18081/api/dashboard)"
           test "$status" = "503"
           grep -q 'DEV_COCKPIT_GITHUB_TOKEN' /tmp/cockpit-dashboard.json
+
+          curl -fsS http://127.0.0.1:18081/api/roles | grep -q '"developer"'
+          cat >/tmp/cockpit-roles.json <<'JSON'
+          {
+            "roles": [
+              {
+                "id": "developer",
+                "name": "DEV CI",
+                "avatar": "developer",
+                "chat_url": "https://chatgpt.com/c/example",
+                "enabled": true,
+                "order": 10
+              }
+            ]
+          }
+          JSON
+          curl -fsS -X PUT             -H 'Content-Type: application/json'             --data-binary @/tmp/cockpit-roles.json             http://127.0.0.1:18081/api/roles | grep -q '"DEV CI"'
+
+          docker compose --profile dev-tools stop dev-cockpit
+          docker compose --profile dev-tools up -d dev-cockpit
+          role_ready=0
+          for attempt in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:18081/api/roles >/tmp/cockpit-roles-after-restart.json; then
+              role_ready=1
+              break
+            fi
+            sleep 1
+          done
+          test "$role_ready" = "1"
+          grep -q '"DEV CI"' /tmp/cockpit-roles-after-restart.json
 
       - name: Show Docker diagnostics on failure
         if: failure()
