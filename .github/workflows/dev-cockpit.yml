@@ -8,6 +8,7 @@ on:
       - ".env.example"
       - ".gitignore"
       - "README.md"
+      - "docs/DEPLOYMENT_UBUNTU_VM.md"
       - ".github/workflows/dev-cockpit.yml"
 
 concurrency:
@@ -20,8 +21,9 @@ permissions:
 jobs:
   validate:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     env:
+      RESOURCEPLANNER_HTTP_PORT: "18080"
       DEV_COCKPIT_HTTP_PORT: "18081"
     steps:
       - name: Checkout
@@ -55,24 +57,53 @@ jobs:
           npm install --no-audit --no-fund
           npm run build
 
-      - name: Validate Compose with and without dev-tools profile
+      - name: Validate Compose profile isolation
         run: |
           docker compose config >/tmp/resourceplanner-compose.yml
           docker compose --profile dev-tools config >/tmp/resourceplanner-dev-tools-compose.yml
+          docker compose config --format json >/tmp/resourceplanner-compose.json
+          docker compose --profile dev-tools config --format json >/tmp/resourceplanner-dev-tools-compose.json
+          python - <<'PY'
+          import json
 
-      - name: Smoke Dev Cockpit container
+          default = json.load(open("/tmp/resourceplanner-compose.json", encoding="utf-8"))
+          dev = json.load(open("/tmp/resourceplanner-dev-tools-compose.json", encoding="utf-8"))
+
+          assert "dev-cockpit" not in default["services"]
+          assert {"backend", "frontend", "dev-cockpit"} <= set(dev["services"])
+
+          cockpit = dev["services"]["dev-cockpit"]
+          assert cockpit.get("restart") == "no"
+          assert any(
+              str(port.get("published")) == "18081"
+              and port.get("host_ip") == "127.0.0.1"
+              and int(port.get("target")) == 8000
+              for port in cockpit.get("ports", [])
+          )
+          PY
+
+      - name: Smoke RessourcePlanner plus Dev Cockpit
         run: |
-          docker compose --profile dev-tools up -d --build dev-cockpit
-          ready=0
-          for attempt in $(seq 1 45); do
+          docker compose --profile dev-tools up -d --build
+          app_ready=0
+          cockpit_ready=0
+          for attempt in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:18080/ready | grep -q '"status":"ready"'; then
+              app_ready=1
+            fi
             if curl -fsS http://127.0.0.1:18081/api/health >/tmp/cockpit-health.json; then
-              ready=1
+              cockpit_ready=1
+            fi
+            if [ "$app_ready" = "1" ] && [ "$cockpit_ready" = "1" ]; then
               break
             fi
             sleep 2
           done
-          test "$ready" = "1"
+          test "$app_ready" = "1"
+          test "$cockpit_ready" = "1"
           grep -q '"token_configured":false' /tmp/cockpit-health.json
+          curl -fsS http://127.0.0.1:18080/health | grep -q '"status":"ok"'
+          curl -fsS http://127.0.0.1:18080/ | grep -qi '<html'
           curl -fsS http://127.0.0.1:18081/api/config | grep -q 'tchi99/RessourcePlanner'
           curl -fsS http://127.0.0.1:18081/ | grep -qi '<html'
           status="$(curl -sS -o /tmp/cockpit-dashboard.json -w '%{http_code}' http://127.0.0.1:18081/api/dashboard)"
@@ -83,7 +114,7 @@ jobs:
         if: failure()
         run: |
           docker compose --profile dev-tools ps -a
-          docker compose --profile dev-tools logs --no-color --tail=250 dev-cockpit
+          docker compose --profile dev-tools logs --no-color --tail=250
 
       - name: Stop cockpit smoke
         if: always()

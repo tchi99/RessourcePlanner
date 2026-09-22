@@ -179,7 +179,7 @@ Pour démarrer RessourcePlanner et le Dev Cockpit :
 docker compose --profile dev-tools up -d --build
 ```
 
-Le cockpit est alors disponible sur `http://127.0.0.1:8081` et n'est publié que sur loopback par défaut.
+Le cockpit est alors disponible sur `http://127.0.0.1:8081` et n'est publié que sur loopback par défaut. Son service utilise `restart: "no"` afin de rester explicitement opt-in.
 
 Configurer le token GitHub local dans le `.env` racine :
 
@@ -192,6 +192,8 @@ DEV_COCKPIT_HTTP_PORT=8081
 ```
 
 Le token doit rester local, en lecture seule, et n'est transmis qu'au backend du cockpit. Sans token, le cockpit affiche une erreur de configuration explicite.
+
+Sur la VM Ubuntu de production, ne pas activer le profil `dev-tools` et ne pas provisionner les variables `DEV_COCKPIT_*`. Les workflows GitHub Actions valident ce chemin Docker, mais ne déploient pas automatiquement la VM.
 
 Voir [`dev-cockpit/README.md`](dev-cockpit/README.md) pour l'architecture, la logique `STALLED`, les tests et le développement hors Docker.
 
