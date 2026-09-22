@@ -216,3 +216,32 @@
     padding: .5rem;
   }
 }
+
+
+.demand-advanced-options {
+  margin-top: .8rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.demand-advanced-options > summary {
+  display: flex;
+  align-items: baseline;
+  gap: .5rem;
+  padding: .7rem .8rem;
+  cursor: pointer;
+  background: #f8fafc;
+}
+
+.demand-advanced-options > summary span {
+  color: var(--muted);
+  font-size: .62rem;
+}
+
+.demand-advanced-options .demand-contact-card {
+  margin: 0;
+  border: 0;
+  border-top: 1px solid var(--border);
+  border-radius: 0;
+}
