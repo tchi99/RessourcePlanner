@@ -142,9 +142,9 @@ La résolution de contacts par ligne est chargée en lot afin d'éviter un N+1 s
 
 Le delta détaillé et l'historique complet peuvent rester chargés séparément lorsque nécessaire.
 
-## 8. Frontend : tranche active #330
+## 8. Frontend : détail unifié livré par #330
 
-#330 doit remplacer la fragmentation `Demandes / Workflow / Périodes` par un détail réutilisable.
+#330 a remplacé la fragmentation `Demandes / Workflow / Périodes` par un détail réutilisable (PR #379, CI #752 verte).
 
 Architecture indicative :
 
@@ -172,7 +172,7 @@ Contraintes :
 - protéger les modifications non sauvegardées;
 - delta et historique restent accessibles dans le même espace fonctionnel.
 
-#330 est une consolidation frontend. Une nouvelle persistance, un nouveau cache/snapshot autoritaire ou une nouvelle frontière frontend/backend nécessiterait une revue architecturale avant d'élargir la tranche.
+#330 reste une consolidation frontend : elle n'introduit ni nouvelle persistance ni nouveau cache/snapshot autoritaire. Toute évolution future qui modifierait cette frontière frontend/backend nécessite une revue architecturale.
 
 ## 9. Séquence produit
 
@@ -182,9 +182,9 @@ Contraintes :
 #13  ✅ enveloppe approuvée commune
 #328 ✅ identité canonique du demandeur
 #329 ✅ projection backend de détail
-#330 🟡 détail React unifié
+#330 ✅ détail React unifié — PR #379 / CI #752
   ↓
-#332 partage / duplication atomiques
+#332 🟡 partage / duplication atomiques — prochaine tranche
   ↓
 #333 extension de fenêtre + dialogue DnD
   ↓
