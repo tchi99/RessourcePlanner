@@ -456,13 +456,14 @@ class DemandService:
                 end if isinstance(end, date) else None,
             )
 
-        reapproval_required = (
-            existing.status == "En planification"
-            and bool(BUSINESS_DEMAND_FIELDS.intersection(data))
+        was_approved = existing.status == "En planification"
+        legacy_reapproval_required = (
+            was_approved
+            and bool(LEGACY_UNKNOWN_REAPPROVAL_FIELDS.intersection(data))
         )
 
         audit_comment = str(command.comment or "").strip()
-        if reapproval_required:
+        if self._approval_envelope_policy is None and legacy_reapproval_required:
             data["Statut"] = "Soumise"
             data["ApprouvePar"] = None
             data["DateApprobation"] = None
@@ -483,7 +484,21 @@ class DemandService:
                 code_prefix="demand_update",
                 context={"demand_number": number},
             )
-        return reapproval_required
+            if was_approved and self._approval_envelope_policy is not None:
+                decision = call_application_port(
+                    lambda: self._approval_envelope_policy.evaluate_candidate(
+                        number,
+                        actor_role=self._envelope_actor_role(),
+                    ),
+                    code_prefix="approval_envelope_compare",
+                    context={"demand_number": number},
+                )
+                return self._handle_candidate_envelope_decision(
+                    number,
+                    decision,
+                    legacy_unknown_requires_reapproval=legacy_reapproval_required,
+                )
+        return legacy_reapproval_required
 
     def replace_periods_command(
         self,
@@ -547,14 +562,15 @@ class DemandService:
         if old_signature == new_signature:
             return tuple(current), False
 
-        reapproval_required = existing.status == "En planification"
+        was_approved = existing.status == "En planification"
+        reapproval_required = was_approved
         status_update: dict[str, Any] = {}
         comment = (
             f"Périodes détaillées de la ligne {request_line_id} modifiées"
             if request_line_id is not None
             else "Périodes détaillées de la demande modifiées"
         )
-        if reapproval_required:
+        if self._approval_envelope_policy is None and reapproval_required:
             status_update = {
                 "Statut": "Soumise",
                 "ApprouvePar": None,
@@ -595,6 +611,23 @@ class DemandService:
                     "request_line_id": request_line_id,
                 },
             )
+            if was_approved and self._approval_envelope_policy is not None:
+                decision = call_application_port(
+                    lambda: self._approval_envelope_policy.evaluate_candidate(
+                        number,
+                        actor_role=self._envelope_actor_role(),
+                    ),
+                    code_prefix="approval_envelope_period_compare",
+                    context={
+                        "demand_number": number,
+                        "request_line_id": request_line_id,
+                    },
+                )
+                reapproval_required = self._handle_candidate_envelope_decision(
+                    number,
+                    decision,
+                    legacy_unknown_requires_reapproval=True,
+                )
         return tuple(updated), reapproval_required
 
     def select_alternative_command(
