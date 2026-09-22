@@ -32,6 +32,7 @@ from app.application.security import (
 from app.infrastructure.sql import (
     Base,
     Project,
+    SqlUserIdentityRepository,
     create_session_factory,
     create_sql_engine,
 )
@@ -58,11 +59,12 @@ class FakeCommunicationTransport:
 def _principal(
     role: str,
     *,
+    local_user_id: str,
     display_name: str,
     employee_external_id: str | None = None,
 ) -> AuthPrincipal:
     return AuthPrincipal.from_roles(
-        local_user_id=f"acceptance-{role.lower()}",
+        local_user_id=local_user_id,
         issuer="urn:resourceplanner:acceptance",
         subject=f"acceptance-{role.lower()}",
         display_name=display_name,
@@ -94,6 +96,24 @@ class V2LocalAcceptanceTests(unittest.TestCase):
                     status="Actif",
                 )
             )
+            identities = SqlUserIdentityRepository(session)
+            self.user_ids = {}
+            for role, display_name, employee_external_id in (
+                (ROLE_ADMIN, "Administrateur E2E", None),
+                (ROLE_PROJECT_MANAGER, "Chargé E2E", None),
+                (ROLE_COORDINATOR, "Coordonnateur E2E", None),
+                (ROLE_TECHNICIAN, "Technicien Alice", "EMP-ALICE"),
+            ):
+                record = identities.upsert(
+                    issuer="urn:resourceplanner:acceptance",
+                    subject=f"acceptance-{role.lower()}",
+                    display_name=display_name,
+                    email=None,
+                    employee_external_id=employee_external_id,
+                    roles=(role,),
+                    active=True,
+                )
+                self.user_ids[role] = record.user_id
         engine.dispose()
 
         next_week = date.today() - timedelta(days=date.today().weekday()) + timedelta(days=7)
@@ -114,6 +134,7 @@ class V2LocalAcceptanceTests(unittest.TestCase):
             auth_resolver=static_auth_resolver(
                 _principal(
                     role,
+                    local_user_id=self.user_ids[role],
                     display_name=display_name,
                     employee_external_id=employee_external_id,
                 )
