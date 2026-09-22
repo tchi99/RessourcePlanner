@@ -12,7 +12,12 @@ from .availability_rules import (
 )
 from .load_profiles import normalize_load_profile
 from .plan_comparison import AllocationProjection
-from .planning_engine import CapacityKey, LockedAllocationInput, SegmentInput
+from .planning_engine import (
+    MISSING_ALLOCATION_TYPE,
+    CapacityKey,
+    LockedAllocationInput,
+    SegmentInput,
+)
 from .planning_snapshot import PlanningSnapshot
 from .value_coercion import date_from_value
 
@@ -239,6 +244,8 @@ def _persisted_projection(
     for row in allocation_rows:
         segment_id = str(row.get("IDSegment") or "").strip()
         if segment_id not in included_segment_ids:
+            continue
+        if str(row.get("TypeAllocation") or "").strip() == MISSING_ALLOCATION_TYPE:
             continue
         day = date_from_value(row.get("Date"))
         resource_id = str(row.get("Technicien") or "").strip()
