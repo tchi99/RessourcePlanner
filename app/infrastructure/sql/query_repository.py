@@ -1317,6 +1317,8 @@ class SqlPlannerQueryRepository(PlannerQueryPort):
 
         totals = WorkloadTotals()
         for shift in shifts:
+            if shift.allocation_type == MISSING_ALLOCATION_TYPE:
+                continue
             totals = totals.add(shift.hours, shift.confirmation)
         additive_pending = round(
             sum(
