@@ -111,6 +111,21 @@ Quelques distinctions importantes :
 - `Shift` représente les heures réellement placées sur une ressource et une date;
 - `AppUser`, `Resource` et les contacts métier sont des concepts distincts.
 
+### Vision long terme
+
+Après stabilisation de la planification main-d’œuvre et des actifs, la vision produit prévoit des domaines supplémentaires reliés au `WorkPackage` sans confondre leurs sources de vérité :
+
+```text
+WorkPackage
+├── Planning      → besoins, capacité, quarts, actifs
+├── Delivery      → Epics, Stories, Kanban/Sprints, forecast
+└── Verification  → FAT, SAT, commissioning, résultats et preuves
+```
+
+Le but n’est pas de reproduire Jira : le module Delivery doit relier l’exécution technique au budget, aux échéances et à la capacité du WorkPackage. Le module Verification doit permettre de capturer les tests requis pendant le développement puis de générer les checklists et rapports FAT/SAT/commissioning à partir des données structurées.
+
+Voir [`docs/FUTURE_DELIVERY_VERIFICATION.md`](docs/FUTURE_DELIVERY_VERIFICATION.md). Cette vision n’est pas encore le runtime implémenté; l’ordre réel reste défini par #55.
+
 ---
 
 ## Démarrage rapide avec Docker
@@ -457,6 +472,7 @@ Les dépendances Web/SQL canoniques restent séparées des dépendances legacy.
 ## Documentation utile
 
 - [`docs/architecture/README.md`](docs/architecture/README.md) — architecture et convention ADR;
+- [`docs/FUTURE_DELIVERY_VERIFICATION.md`](docs/FUTURE_DELIVERY_VERIFICATION.md) — vision long terme WorkPackage → Delivery → Verification/commissioning;
 - [`docs/REACT_V2_DEV.md`](docs/REACT_V2_DEV.md) — développement React + FastAPI;
 - [`docs/WEB_RUNTIME.md`](docs/WEB_RUNTIME.md) — runtime Web same-origin;
 - [`docs/DEPLOYMENT_UBUNTU_VM.md`](docs/DEPLOYMENT_UBUNTU_VM.md) — déploiement Docker cible sur VM Ubuntu hébergée par le Synology;
