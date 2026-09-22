@@ -4,7 +4,7 @@ from collections.abc import Sequence
 from datetime import date
 from typing import Protocol
 
-from .plan_delta import DemandPlanDeltaReadModel
+from .plan_delta import DemandApprovalStateReadModel, DemandPlanDeltaReadModel
 from .query_models import (
     DemandHistoryReadModel,
     MediumTermUnlinkedSegmentReadModel,
@@ -74,6 +74,11 @@ class PlannerQueryPort(Protocol):
         *,
         request_line_id: str | None = None,
     ) -> Sequence[DemandPeriodReadModel]: ...
+
+    def demand_approval_state(
+        self,
+        number: str,
+    ) -> DemandApprovalStateReadModel | None: ...
 
     def demand_plan_delta(self, number: str) -> DemandPlanDeltaReadModel | None: ...
 

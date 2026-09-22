@@ -112,7 +112,12 @@ from .operational_contacts import (
     RequestLineContactContext,
     RequestLineContactResolution,
 )
-from .plan_delta import DemandPlanDeltaItemReadModel, DemandPlanDeltaReadModel
+from .plan_delta import (
+    DemandApprovalStateReadModel,
+    DemandPlanDeltaDiagnosticReadModel,
+    DemandPlanDeltaItemReadModel,
+    DemandPlanDeltaReadModel,
+)
 from .project_communications import (
     ProjectCommunicationRepositoryPort,
     ProjectCommunicationService,
@@ -247,6 +252,8 @@ __all__ = [
     "DemandPeriodRepositoryPort",
     "DemandPeriodsMutationResult",
     "DemandPeriodsReplaceCommand",
+    "DemandApprovalStateReadModel",
+    "DemandPlanDeltaDiagnosticReadModel",
     "DemandPlanDeltaItemReadModel",
     "DemandPlanDeltaReadModel",
     "DemandReadModel",
