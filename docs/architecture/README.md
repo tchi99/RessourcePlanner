@@ -49,6 +49,7 @@ Voir :
 - `ADR-002-request-line-periods-and-identities.md`
 - `ADR-003-immutable-approved-authorization.md`
 - `ADR-004-candidate-approval-and-active-plan.md`
+- `ADR-005-global-planning-mutation-version.md`
 
 Chaîne métier actuelle :
 
@@ -63,6 +64,14 @@ Project
 `WorkPackage` est une référence de contexte/portée optionnelle, notamment portée par `RequestLine` pour les demandes multi-lignes. Les périodes appartiennent métier à la ligne. Le besoin/budget, la cible automatique et les ressources réellement affectées restent des concepts distincts.
 
 Depuis #13, la demande candidate, la révision approuvée immuable et le plan actif sont également séparés. Depuis #328, le demandeur canonique est distinct de l'acteur authentifié, de la ressource planifiable et des contacts métier. #329 compose ces éléments dans une projection de détail backend sans nouvel agrégat persistant.
+
+### Concurrence des mutations de planning
+
+Voir :
+
+- `ADR-005-global-planning-mutation-version.md`
+
+Tant que `rebuild()` reste global, les mutations concurrentes pertinentes du planning participent à une révision persistante globale acquise par CAS SQL **avant** leurs lectures décisionnelles. Cette garde protège la cohérence transactionnelle des opérations composites comme #332; elle ne remplace pas les versions métier plus locales lorsqu'elles portent une sémantique distincte.
 
 ### Authentification et autorisation
 
@@ -143,8 +152,9 @@ Exemples qui ne nécessitent normalement pas d'ADR :
 | ADR-002 | périodes métier par `RequestLine` et identités stables |
 | ADR-003 | révision approuvée immuable comme preuve d'autorisation |
 | ADR-004 | séparer demande candidate, autorisation approuvée et plan actif |
+| ADR-005 | sérialiser les mutations concurrentes du planning par une révision globale persistante/CAS SQL tant que le rebuild reste global |
 
-Ces quatre ADR sont en statut `Accepted` et guident notamment #330, #332 et #333.
+Ces cinq ADR sont en statut `Accepted`. ADR-005 est le préalable architectural de #332A et complète, sans les remplacer, les versions/CAS plus locaux existants.
 
 ---
 
