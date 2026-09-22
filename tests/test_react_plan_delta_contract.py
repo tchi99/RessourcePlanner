@@ -14,6 +14,10 @@ class ReactPlanDeltaContractTests(unittest.TestCase):
         )
 
         self.assertIn("/api/v1/demands/${encodeURIComponent(number)}/plan-delta", source)
+        self.assertIn("/api/v1/demands/${encodeURIComponent(number)}/approval-state", source)
+        self.assertIn("getDemandApprovalState", source)
+        self.assertIn("envelope_decision", source)
+        self.assertIn("diagnostics", source)
         self.assertIn("fetch(", source)
         self.assertNotIn('method: "POST"', source)
         self.assertNotIn('method: "PUT"', source)
@@ -28,6 +32,9 @@ class ReactPlanDeltaContractTests(unittest.TestCase):
         self.assertIn('normalStatus(selectedDemand.status) === "soumise"', source)
         self.assertIn("getDemandPlanDelta(selectedDemand.number)", source)
         self.assertIn('data-testid="plan-delta-preview"', source)
+        self.assertIn('data-testid="approval-state"', source)
+        self.assertIn('data-testid="envelope-decision"', source)
+        self.assertIn("getDemandApprovalState(selectedDemand.number)", source)
 
     def test_workflow_explains_current_to_proposed_changes_before_approval(self) -> None:
         source = (ROOT / "frontend" / "src" / "DemandWorkflowPage.tsx").read_text(
@@ -44,6 +51,9 @@ class ReactPlanDeltaContractTests(unittest.TestCase):
         self.assertIn("planDelta.move_count", source)
         self.assertIn("planDelta.modify_count", source)
         self.assertIn("planDelta.cancel_count", source)
+        self.assertIn("Réapprobation requise", source)
+        self.assertIn("planDelta.diagnostics", source)
+        self.assertIn("Blocages du plan proposé", source)
 
 
 if __name__ == "__main__":

@@ -12,7 +12,9 @@ import {
   type WorkflowAction,
 } from "./demandWorkflowApi";
 import {
+  getDemandApprovalState,
   getDemandPlanDelta,
+  type DemandApprovalState,
   type DemandPlanDelta,
   type DemandPlanDeltaItem,
 } from "./planDeltaApi";
@@ -64,6 +66,17 @@ function deltaSide(
   return `${day} · ${resource} · ${hours} h${allocationType ? ` · ${allocationType}` : ""}${suffix}`;
 }
 
+function envelopeDecisionLabel(decision: string | null): string {
+  switch (decision) {
+    case "WITHIN_ENVELOPE": return "Dans l’enveloppe approuvée";
+    case "REAPPROVAL_REQUIRED": return "Réapprobation requise";
+    case "EXPLICIT_EXCEPTION_REQUIRED": return "Dérogation explicite requise";
+    case "APPROVAL_REFERENCE_UNKNOWN": return "Référence d’approbation inconnue";
+    case "INVALID": return "Proposition invalide";
+    default: return "Décision d’enveloppe non disponible";
+  }
+}
+
 function unavailableDeltaMessage(reason: string | null): string {
   switch (reason) {
     case "NO_CURRENT_PLAN":
@@ -89,6 +102,8 @@ export default function DemandWorkflowPage() {
   const [pendingAction, setPendingAction] = useState<WorkflowButtonAction | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [approvalState, setApprovalState] = useState<DemandApprovalState | null>(null);
+  const [approvalStateError, setApprovalStateError] = useState<string | null>(null);
   const [planDelta, setPlanDelta] = useState<DemandPlanDelta | null>(null);
   const [planDeltaLoading, setPlanDeltaLoading] = useState(false);
   const [planDeltaError, setPlanDeltaError] = useState<string | null>(null);
@@ -162,6 +177,27 @@ export default function DemandWorkflowPage() {
       });
     return () => { active = false; };
   }, [selectedNumber, loading]);
+
+  useEffect(() => {
+    if (!selectedDemand) {
+      setApprovalState(null);
+      setApprovalStateError(null);
+      return;
+    }
+    let active = true;
+    setApprovalStateError(null);
+    getDemandApprovalState(selectedDemand.number)
+      .then((state) => {
+        if (active) setApprovalState(state);
+      })
+      .catch((reason: unknown) => {
+        if (active) {
+          setApprovalState(null);
+          setApprovalStateError(errorMessage(reason));
+        }
+      });
+    return () => { active = false; };
+  }, [selectedDemand?.number, selectedDemand?.version, selectedDemand?.status]);
 
   useEffect(() => {
     if (!selectedDemand || normalStatus(selectedDemand.status) !== "soumise") {
@@ -317,12 +353,47 @@ export default function DemandWorkflowPage() {
                   <strong>{selectedDemand.confirmation || "Confirmée"}</strong>
                   <small>La confirmation décrit la certitude du besoin, indépendamment de son approbation.</small>
                 </div>
+                {approvalState && (
+                  <div className="workflow-state-card" data-testid="approval-state">
+                    <span>Autorisation active</span>
+                    <strong>{approvalState.approval_reference_status || "Aucune référence"}</strong>
+                    <small>
+                      {approvalState.active_revision_id
+                        ? `Révision ${approvalState.active_revision_id.slice(0, 8)} · demande approuvée v${approvalState.approved_request_version ?? "—"} · opérationnel v${approvalState.operational_version ?? "—"}`
+                        : "Aucune révision approuvée active."}
+                    </small>
+                    {approvalState.authorization_fingerprint && (
+                      <small title={approvalState.authorization_fingerprint}>
+                        Empreinte {approvalState.authorization_fingerprint.slice(0, 12)}…
+                      </small>
+                    )}
+                  </div>
+                )}
               </div>
 
               <div className="workflow-separation-note">
                 <strong>Approbation ≠ confirmation.</strong>
                 <span>Une demande peut être approuvée tout en restant Tentative; les deux concepts ne sont jamais fusionnés par l’interface.</span>
               </div>
+
+              {approvalStateError && (
+                <div className="plan-delta-unavailable">{approvalStateError}</div>
+              )}
+
+              {approvalState && (
+                <div
+                  className={`workflow-envelope-decision ${approvalState.envelope_decision === "REAPPROVAL_REQUIRED" ? "requires-approval" : ""}`}
+                  data-testid="envelope-decision"
+                >
+                  <strong>{envelopeDecisionLabel(approvalState.envelope_decision)}</strong>
+                  <span>
+                    Décision backend : {approvalState.envelope_reason || "aucune raison"}.
+                    {approvalState.candidate_matches_approved === false
+                      ? " La proposition candidate diffère de l’autorisation active; l’ancien plan reste la référence tant qu’elle n’est pas approuvée."
+                      : " La candidate correspond à l’autorisation approuvée active."}
+                  </span>
+                </div>
+              )}
 
               {normalStatus(selectedDemand.status) === "soumise" && (
                 <div className="plan-delta-panel" data-testid="plan-delta-preview">
@@ -341,7 +412,18 @@ export default function DemandWorkflowPage() {
                   {planDeltaError && <div className="plan-delta-unavailable">{planDeltaError}</div>}
 
                   {!planDeltaLoading && planDelta && !planDelta.available && (
-                    <div className="plan-delta-unavailable">{unavailableDeltaMessage(planDelta.reason)}</div>
+                    <div className="plan-delta-unavailable">
+                      <span>{unavailableDeltaMessage(planDelta.reason)}</span>
+                      {planDelta.diagnostics.length > 0 && (
+                        <ul className="plan-delta-diagnostics" aria-label="Blocages du plan proposé">
+                          {planDelta.diagnostics.map((diagnostic) => (
+                            <li key={`${diagnostic.code}-${diagnostic.requirement_id ?? "global"}`}>
+                              <strong>{diagnostic.code}</strong> — {diagnostic.message}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
                   )}
 
                   {!planDeltaLoading && planDelta?.available && (
