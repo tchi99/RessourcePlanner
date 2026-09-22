@@ -19,6 +19,8 @@ EXPECTED_TABLES = {
     "business_contacts",
     "command_idempotency_receipts",
     "projects",
+    "request_approval_references",
+    "request_approval_revisions",
     "request_lines",
     "request_line_competencies",
     "resource_requirement_competencies",
@@ -185,6 +187,113 @@ class SqlMigrationTests(unittest.TestCase):
             self.assertIn("ENCRYPTED_PASSWORD", ddl, url)
             self.assertIn("PROVIDER_MESSAGE_ID", ddl, url)
             self.assertIn("UX_COMMUNICATION_DELIVERIES_MESSAGE_PROVIDER", ddl, url)
+
+    def test_approval_revision_migration_preserves_existing_plan_as_legacy_unknown(self) -> None:
+        with TemporaryDirectory() as directory:
+            database_path = Path(directory) / "approval-revision-backfill.db"
+            config = alembic_config(database_path)
+            command.upgrade(config, "0030_smtp_delivery")
+            engine = create_engine(f"sqlite:///{database_path.as_posix()}")
+
+            with engine.begin() as connection:
+                connection.exec_driver_sql(
+                    "INSERT INTO projects (id, number, name) "
+                    "VALUES ('P1', 'P-1', 'Projet existant')"
+                )
+                connection.exec_driver_sql(
+                    "INSERT INTO workforce_requests (id, project_id, status) "
+                    "VALUES ('D1', 'P1', 'En planification')"
+                )
+                connection.exec_driver_sql(
+                    """
+                    INSERT INTO resource_requirements (
+                        id, project_id, workforce_request_id, start_date, end_date,
+                        planned_hours, status, origin
+                    ) VALUES (
+                        'REQ-REQUEST', 'P1', 'D1', '2026-09-21', '2026-09-21',
+                        8, 'Planifié', 'REQUEST'
+                    )
+                    """
+                )
+                connection.exec_driver_sql(
+                    """
+                    INSERT INTO resource_requirements (
+                        id, project_id, start_date, end_date, planned_hours,
+                        status, origin
+                    ) VALUES (
+                        'REQ-ADHOC', 'P1', '2026-09-22', '2026-09-22',
+                        4, 'À assigner', 'AD_HOC'
+                    )
+                    """
+                )
+                connection.exec_driver_sql(
+                    """
+                    INSERT INTO resources (id, name, active)
+                    VALUES ('R1', 'Alice', 1)
+                    """
+                )
+                connection.exec_driver_sql(
+                    """
+                    INSERT INTO shifts (
+                        id, resource_requirement_id, resource_id, work_date, hours,
+                        allocation_type, locked, outside_standard_hours
+                    ) VALUES (
+                        'S1', 'REQ-REQUEST', 'R1', '2026-09-21', 8,
+                        'Planifié', 1, 0
+                    )
+                    """
+                )
+            engine.dispose()
+
+            command.upgrade(config, "head")
+            engine = create_engine(f"sqlite:///{database_path.as_posix()}")
+            try:
+                with engine.connect() as connection:
+                    requirement = connection.exec_driver_sql(
+                        """
+                        SELECT planned_hours, status, approval_revision_id,
+                               approved_entry_key, approval_reference_status
+                        FROM resource_requirements
+                        WHERE id = 'REQ-REQUEST'
+                        """
+                    ).fetchone()
+                    self.assertEqual(
+                        requirement,
+                        (8, "Planifié", None, None, "LEGACY_UNKNOWN"),
+                    )
+                    adhoc = connection.exec_driver_sql(
+                        """
+                        SELECT approval_reference_status
+                        FROM resource_requirements
+                        WHERE id = 'REQ-ADHOC'
+                        """
+                    ).fetchone()
+                    self.assertEqual(adhoc, ("NOT_APPLICABLE",))
+                    shift = connection.exec_driver_sql(
+                        """
+                        SELECT resource_requirement_id, resource_id, work_date,
+                               hours, locked
+                        FROM shifts WHERE id = 'S1'
+                        """
+                    ).fetchone()
+                    self.assertEqual(
+                        shift,
+                        ("REQ-REQUEST", "R1", "2026-09-21", 8, 1),
+                    )
+                    reference = connection.exec_driver_sql(
+                        """
+                        SELECT active_revision_id, status
+                        FROM request_approval_references
+                        WHERE workforce_request_id = 'D1'
+                        """
+                    ).fetchone()
+                    self.assertEqual(reference, (None, "LEGACY_UNKNOWN"))
+                    revisions = connection.exec_driver_sql(
+                        "SELECT COUNT(*) FROM request_approval_revisions"
+                    ).scalar_one()
+                    self.assertEqual(revisions, 0)
+            finally:
+                engine.dispose()
 
     def test_smtp_migration_backfills_existing_project_messages(self) -> None:
         with TemporaryDirectory() as directory:

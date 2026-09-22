@@ -47,7 +47,27 @@ class SqlEstimatedDaysApprovedDemandSyncAdapter(SqlApprovedDemandSyncAdapter):
             "Les heures estimées sont requises pour matérialiser une nouvelle demande."
         )
 
+    def prevalidate_approved(self, demand_number: str) -> None:
+        """Validate legacy effort semantics without mutating materialized planning."""
+
+        request = self._request(demand_number)
+        if request.estimated_hours is not None and request.estimated_hours > 0:
+            return
+        current = self._active_requirements(request)
+        existing_total = sum(
+            (row.planned_hours for row in current if row.planned_hours > 0),
+            Decimal("0"),
+        )
+        if existing_total > 0:
+            return
+        self._hours_per_resource(
+            request,
+            max(int(request.resource_count or 1), 1),
+            current,
+        )
+
     def sync_approved(self, demand_number: str) -> None:
+        self.prevalidate_approved(demand_number)
         request = self._request(demand_number)
         current_before = self._active_requirements(request)
         if request.estimated_hours is not None and request.estimated_hours > 0:

@@ -4,6 +4,14 @@ This package contains database infrastructure only. Application services and the
 planning engine must continue to depend on ports/read models rather than SQLAlchemy.
 """
 
+from .approval_revision_models import (
+    APPROVAL_REFERENCE_CAPTURED,
+    APPROVAL_REFERENCE_LEGACY_UNKNOWN,
+    APPROVAL_REFERENCE_NOT_APPLICABLE,
+    RequestApprovalReference,
+    RequestApprovalRevision,
+)
+from .approval_revision_repository import SqlRequestApprovalRevisionRepository
 from .active_days_query_repository import (
     SqlPlannerQueryRepositoryWithEstimatedDays,
     SqlSegmentRepositoryWithActiveDayMetrics,
@@ -96,6 +104,9 @@ from .session import (
 from .work_package_repository import SqlWorkPackageRepository
 
 __all__ = [
+    "APPROVAL_REFERENCE_CAPTURED",
+    "APPROVAL_REFERENCE_LEGACY_UNKNOWN",
+    "APPROVAL_REFERENCE_NOT_APPLICABLE",
     "AppUser",
     "AuthLoginTransaction",
     "AuthSession",
@@ -121,6 +132,8 @@ __all__ = [
     "PlanningChangeHistory",
     "Project",
     "RequestLine",
+    "RequestApprovalReference",
+    "RequestApprovalRevision",
     "RequestLineCompetency",
     "RESOURCE_EXTERNAL_ID_INDEX",
     "RESOURCE_REQUIREMENT_NUMBER_INDEX",
@@ -157,6 +170,7 @@ __all__ = [
     "SqlPlanningReadRepository",
     "SqlProjectSyncRepository",
     "SqlTaskCatalogRepository",
+    "SqlRequestApprovalRevisionRepository",
     "SqlResourceAdminRepository",
     "SqlSegmentRepository",
     "SqlSegmentRepositoryWithActiveDayMetrics",
