@@ -34,12 +34,41 @@ class ReactPlanningDragDropContractTests(unittest.TestCase):
         page = (ROOT / "frontend" / "src" / "PlanningPage.tsx").read_text(encoding="utf-8")
 
         self.assertIn("writeSegmentDrag", panel)
-        self.assertIn("Glisser vers une ressource", panel)
+        self.assertIn("Glisser pour définir la cible automatique", panel)
         self.assertIn("Trouver une ressource", panel)
         self.assertIn("Modifier le segment", panel)
         self.assertIn("assignSegment(payload.segment_id", page)
         self.assertIn("planning-drop-resource", page)
         self.assertIn("alternative clavier", page)
+
+    def test_331e_frontend_keeps_actual_shift_resource_distinct_from_automatic_target(self) -> None:
+        page = (ROOT / "frontend" / "src" / "PlanningPage.tsx").read_text(encoding="utf-8")
+        panel = (ROOT / "frontend" / "src" / "PlanningActionPanel.tsx").read_text(encoding="utf-8")
+        segments_api = (ROOT / "frontend" / "src" / "segments-api.ts").read_text(encoding="utf-8")
+        shift_editor = (ROOT / "frontend" / "src" / "ShiftEditor.tsx").read_text(encoding="utf-8")
+        manual_editor = (ROOT / "frontend" / "src" / "ManualAllocationEditor.tsx").read_text(encoding="utf-8")
+        segment_editor = (ROOT / "frontend" / "src" / "SegmentEditor.tsx").read_text(encoding="utf-8")
+        segment_page = (ROOT / "frontend" / "src" / "DemandSegmentsPage.tsx").read_text(encoding="utf-8")
+
+        self.assertIn("resource_id: targetResource.id", page)
+        self.assertNotIn("technician: targetResource.name", page)
+        self.assertIn("assignSegment(payload.segment_id, targetResource.id)", page)
+        self.assertIn("assignSegment(selectedAction.segment_id, candidate.resource_id)", panel)
+        self.assertIn("{ resource_id: resourceId }", segments_api)
+
+        self.assertIn("Ressource du quart", shift_editor)
+        self.assertIn("resource_id: resourceId", shift_editor)
+        self.assertIn("modifie seulement ce quart", shift_editor)
+
+        self.assertIn("automatic_target_resource_id", manual_editor)
+        self.assertIn("resource_id: resourceId", manual_editor)
+        self.assertIn("s’applique uniquement au quart manuel", manual_editor)
+
+        self.assertIn("Cible automatique du reliquat", segment_editor)
+        self.assertIn("automatic_target_resource_id", segment_editor)
+        self.assertIn("Cible automatique :", segment_page)
+        self.assertIn("Ressources mobilisées :", segment_page)
+        self.assertIn("reliquat non couvert", segment_page)
 
     def test_drag_drop_is_permission_gated_and_backend_rules_are_not_reimplemented(self) -> None:
         page = (ROOT / "frontend" / "src" / "PlanningPage.tsx").read_text(encoding="utf-8")
