@@ -822,6 +822,12 @@ class SqlPlannerQueryRepository(PlannerQueryPort):
                     outside_standard_hours=outside,
                     unplaced_hours=unplaced,
                     requires_outside_standard_hours=unplaced > 0.01,
+                    automatic_target_resource_id=(
+                        resource.id if resource is not None else None
+                    ),
+                    automatic_target_resource_name=(
+                        resource.name if resource is not None else None
+                    ),
                 )
             )
 
