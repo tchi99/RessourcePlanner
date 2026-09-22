@@ -22,18 +22,31 @@ class OwnershipHttpContractTests(unittest.TestCase):
                 {"project_manager": "Do not copy this value"}
             )
 
-    def test_requester_remains_an_explicit_writable_operational_field(self) -> None:
+    def test_requester_http_contract_uses_stable_identity_not_free_text(self) -> None:
         created = DemandCreateRequest.model_validate(
             {
                 "project_number": "P-1",
                 "desired_start": "2026-08-24",
-                "requester": "Marie",
+                "requester_user_id": "USER-MARIE",
             }
         )
-        updated = DemandUpdateRequest.model_validate({"requester": "Alex"})
+        updated = DemandUpdateRequest.model_validate(
+            {"requester_user_id": "USER-ALEX"}
+        )
 
-        self.assertEqual(created.requester, "Marie")
-        self.assertEqual(updated.requester, "Alex")
+        self.assertEqual(created.requester_user_id, "USER-MARIE")
+        self.assertEqual(updated.requester_user_id, "USER-ALEX")
+
+        with self.assertRaises(ValidationError):
+            DemandCreateRequest.model_validate(
+                {
+                    "project_number": "P-1",
+                    "desired_start": "2026-08-24",
+                    "requester": "Marie",
+                }
+            )
+        with self.assertRaises(ValidationError):
+            DemandUpdateRequest.model_validate({"requester": "Alex"})
 
 
 if __name__ == "__main__":
