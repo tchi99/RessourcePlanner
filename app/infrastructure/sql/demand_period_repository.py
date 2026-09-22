@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from ...application.read_models import DemandPeriodReadModel
 from ...application.repository_ports import DemandPeriodRepositoryPort
 from ...domain.active_days import normalize_active_day_target
+from ...domain.approval_envelope import EnvelopeEntryIdentity, EnvelopeGroupIdentity
 from ...domain.confirmation import normalize_confirmation
 from ...domain.demand_periods import DemandPeriodDefinition, validate_period_definitions
 from .base import utc_now
@@ -17,6 +18,7 @@ from .demand_period_models import (
     WorkforceRequestPeriodSelection,
 )
 from .models import RequestLine, Resource, WorkforceRequest, WorkforceRequestHistory
+from .operational_choice_repository import SqlRequestOperationalChoiceRepository
 
 
 def _text(value: object) -> str:
