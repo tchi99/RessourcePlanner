@@ -638,7 +638,7 @@ export default function PlanningPage({ onOpenDemands }: { onOpenDemands?: () => 
     setDragFeedback(null);
     try {
       await moveAllocation(payload.allocation_id, {
-        technician: targetResource.name,
+        resource_id: targetResource.id,
         day: targetDay,
       });
       setDragFeedback({
@@ -671,10 +671,10 @@ export default function PlanningPage({ onOpenDemands }: { onOpenDemands?: () => 
     setDropBusy(`segment:${payload.segment_id}`);
     setDragFeedback(null);
     try {
-      await assignSegment(payload.segment_id, targetResource.name);
+      await assignSegment(payload.segment_id, targetResource.id);
       setDragFeedback({
         tone: "success",
-        message: `Besoin ${payload.segment_id} attribué à ${targetResource.name}; le moteur a recalculé son placement.`,
+        message: `Cible automatique de ${payload.segment_id} définie à ${targetResource.name}; le reliquat a été recalculé.`,
       });
       setRefreshKey((value) => value + 1);
     } catch (reason: unknown) {
