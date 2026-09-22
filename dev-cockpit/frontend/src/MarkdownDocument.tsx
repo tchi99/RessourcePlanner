@@ -2,7 +2,7 @@ import type { ReactNode } from 'react'
 
 function inlineText(value: string): ReactNode {
   const parts: ReactNode[] = []
-  const pattern = /(`[^`]+`|**[^*]+**|[[^]]+]([^)]+))/g
+  const pattern = /(`[^`]+`|\*\*[^*]+\*\*|\[[^\]]+\]\([^)]+\))/g
   let last = 0
   let match: RegExpExecArray | null
 
