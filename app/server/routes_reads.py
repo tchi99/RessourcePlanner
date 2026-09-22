@@ -14,6 +14,8 @@ from ..application import (
     DemandPeriodReadModel,
     DemandPlanDeltaReadModel,
     DemandReadModel,
+    DemandRequesterReadModel,
+    DemandRequesterService,
     MediumTermUnlinkedSegmentReadModel,
     PlannerQueryPort,
     PlanningActionReadModel,
@@ -88,6 +90,7 @@ def _window(start: date | None, end: date | None) -> None:
 def build_read_router(
     query_dependency: QueryProvider,
     user_view_context_dependency: QueryProvider | None = None,
+    demand_requester_dependency: QueryProvider | None = None,
 ) -> APIRouter:
     router = APIRouter(prefix="/api/v1", tags=["reads"])
 
@@ -160,6 +163,14 @@ def build_read_router(
                 active_only=active_only,
             )
         )
+
+    if demand_requester_dependency is not None:
+
+        @router.get("/demand-requesters")
+        def list_demand_requesters(
+            service: DemandRequesterService = Depends(demand_requester_dependency),
+        ) -> list[DemandRequesterReadModel]:
+            return list(service.list_admissible())
 
     @router.get("/demands")
     def list_demands(
