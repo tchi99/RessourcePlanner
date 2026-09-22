@@ -70,6 +70,7 @@ class DemandHistoryReadModel:
     status: str | None = None
     comment: str | None = None
     details: str | None = None
+    actor_user_id: str | None = None
     actor_name: str | None = None
 
 
