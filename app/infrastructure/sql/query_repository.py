@@ -54,6 +54,7 @@ from .models import (
     WorkPackage,
 )
 from .segment_repository import SqlSegmentRepository
+from .planning_version import SqlPlanningMutationVersionRepository
 
 
 INACTIVE_PROJECT_STATUSES = {
@@ -1493,6 +1494,9 @@ class SqlPlannerQueryRepository(PlannerQueryPort):
             demands=demands,
             segments=segments,
             shifts=shifts,
+            planning_version=SqlPlanningMutationVersionRepository(
+                self._session
+            ).current_version(),
             pending_loads=pending_loads,
             firm_hours=totals.firm_hours,
             potential_hours=round(totals.potential_hours + additive_pending, 2),
