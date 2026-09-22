@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Mapping
+from decimal import Decimal
 
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
@@ -115,6 +116,12 @@ class SqlRequestOperationalChoiceRepository(DemandOperationalChoiceRepositoryPor
             confirmations=SqlRequestOperationalChoiceRepository._decode_mapping(
                 row.confirmations_text
             ),
+            budget_overrides={
+                key: float(value)
+                for key, value in SqlRequestOperationalChoiceRepository._decode_mapping(
+                    row.budget_overrides_text
+                ).items()
+            },
         )
 
     def initialize_for_revision(
@@ -143,6 +150,7 @@ class SqlRequestOperationalChoiceRepository(DemandOperationalChoiceRepositoryPor
                     sort_keys=True,
                     separators=(",", ":"),
                 ),
+                budget_overrides_text="{}",
                 updated_by_name=_text(actor_name) or self._actor_name or None,
             )
             self._session.add(current)
@@ -161,6 +169,7 @@ class SqlRequestOperationalChoiceRepository(DemandOperationalChoiceRepositoryPor
                 sort_keys=True,
                 separators=(",", ":"),
             )
+            current.budget_overrides_text = "{}"
             current.updated_by_name = _text(actor_name) or self._actor_name or None
         self._session.flush()
         return self._read_model(current)
@@ -239,6 +248,7 @@ class SqlRequestOperationalChoiceRepository(DemandOperationalChoiceRepositoryPor
         *,
         selections: Mapping[str, str],
         confirmations: Mapping[str, str],
+        budget_overrides: Mapping[str, str],
         demand_number: str,
     ) -> RequestOperationalState:
         previous_version = max(int(state.version or 1), 1)
@@ -262,6 +272,12 @@ class SqlRequestOperationalChoiceRepository(DemandOperationalChoiceRepositoryPor
                 ),
                 confirmations_text=json.dumps(
                     dict(confirmations),
+                    ensure_ascii=False,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                ),
+                budget_overrides_text=json.dumps(
+                    dict(budget_overrides),
                     ensure_ascii=False,
                     sort_keys=True,
                     separators=(",", ":"),
@@ -331,6 +347,7 @@ class SqlRequestOperationalChoiceRepository(DemandOperationalChoiceRepositoryPor
 
         selections = self._decode_mapping(state.selections_text)
         confirmations = self._decode_mapping(state.confirmations_text)
+        budget_overrides = self._decode_mapping(state.budget_overrides_text)
         previous = selections.get(group_key)
         if previous == entry_key:
             return self._read_model(state)
@@ -339,6 +356,7 @@ class SqlRequestOperationalChoiceRepository(DemandOperationalChoiceRepositoryPor
             state,
             selections=selections,
             confirmations=confirmations,
+            budget_overrides=budget_overrides,
             demand_number=business_number,
         )
         self._session.add(
@@ -390,6 +408,7 @@ class SqlRequestOperationalChoiceRepository(DemandOperationalChoiceRepositoryPor
         normalized = normalize_confirmation(confirmation)
         selections = self._decode_mapping(state.selections_text)
         confirmations = self._decode_mapping(state.confirmations_text)
+        budget_overrides = self._decode_mapping(state.budget_overrides_text)
         previous = confirmations.get(entry_key)
         if previous == normalized:
             return self._read_model(state)
@@ -398,6 +417,7 @@ class SqlRequestOperationalChoiceRepository(DemandOperationalChoiceRepositoryPor
             state,
             selections=selections,
             confirmations=confirmations,
+            budget_overrides=budget_overrides,
             demand_number=business_number,
         )
         self._session.add(
@@ -406,6 +426,85 @@ class SqlRequestOperationalChoiceRepository(DemandOperationalChoiceRepositoryPor
                 action="Confirmation opérationnelle",
                 status=request.status,
                 comment=f"{entry_key}: {previous or 'héritée'} -> {normalized}",
+                actor_name=self._actor_name or None,
+                occurred_at=utc_now(),
+            )
+        )
+        self._session.flush()
+        return self._read_model(updated)
+
+
+    def set_budget_override(
+        self,
+        demand_number: str,
+        entry_key: str,
+        hours: float,
+        *,
+        expected_version: int | None = None,
+    ) -> DemandOperationalChoiceReadModel:
+        request = self._request(demand_number)
+        revision, state = self._ensure_state(request)
+        business_number = _text(request.legacy_demand_number) or request.id
+        self._assert_expected_version(
+            state,
+            expected_version,
+            demand_number=business_number,
+        )
+        identity = _text(entry_key)
+        entries = {
+            _text(row.get("identity")): row
+            for row in self._snapshot_entries(revision)
+        }
+        target = entries.get(identity)
+        if target is None:
+            raise ValueError(
+                "Le besoin demandé ne fait pas partie de la révision approuvée active."
+            )
+
+        proposed = Decimal(str(hours)).quantize(Decimal("0.01"))
+        if proposed <= 0:
+            raise ValueError("Les heures opérationnelles doivent être supérieures à zéro.")
+        approved = Decimal(_text(target.get("hours"))).quantize(Decimal("0.01"))
+
+        selections = self._decode_mapping(state.selections_text)
+        confirmations = self._decode_mapping(state.confirmations_text)
+        budget_overrides = self._decode_mapping(state.budget_overrides_text)
+        previous = budget_overrides.get(identity)
+        if proposed == approved:
+            budget_overrides.pop(identity, None)
+        else:
+            budget_overrides[identity] = format(proposed, "f")
+        current_value = budget_overrides.get(identity)
+        if previous == current_value:
+            return self._read_model(state)
+
+        updated = self._cas_write(
+            state,
+            selections=selections,
+            confirmations=confirmations,
+            budget_overrides=budget_overrides,
+            demand_number=business_number,
+        )
+        self._session.add(
+            WorkforceRequestHistory(
+                workforce_request_id=request.id,
+                action="Budget opérationnel",
+                status=request.status,
+                comment=(
+                    f"{identity}: {previous or format(approved, 'f')} -> "
+                    f"{current_value or format(approved, 'f')}"
+                ),
+                details=json.dumps(
+                    {
+                        "approval_revision_id": revision.id,
+                        "approved_entry_key": identity,
+                        "approved_hours": format(approved, "f"),
+                        "operational_hours": format(proposed, "f"),
+                        "operational_version": updated.version,
+                    },
+                    sort_keys=True,
+                    separators=(",", ":"),
+                ),
                 actor_name=self._actor_name or None,
                 occurred_at=utc_now(),
             )
