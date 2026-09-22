@@ -533,7 +533,7 @@ export default function App() {
 
           <footer>
             <span>
-              Dernier commit du dépôt :{' '}
+              Dernier commit de main (référence) :{' '}
               {data.latest_commit ? (
                 <a
                   href={data.latest_commit.url}
