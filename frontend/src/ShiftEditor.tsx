@@ -48,7 +48,7 @@ export default function ShiftEditor({
 }) {
   const { can } = useAuth();
   const canManagePlanning = can("manage_planning");
-  const [technician, setTechnician] = useState(shift.resource_name);
+  const [resourceId, setResourceId] = useState(shift.resource_id);
   const [day, setDay] = useState(shift.work_date);
   const [hours, setHours] = useState(String(shift.hours));
   const [outsideStandardHours, setOutsideStandardHours] = useState(shift.outside_standard_hours);
@@ -83,8 +83,8 @@ export default function ShiftEditor({
   async function save(policy: OverallocationPolicy | null = null) {
     if (saving || !canManagePlanning) return;
     const parsedHours = Number(hours);
-    if (!technician.trim() || !day || !Number.isFinite(parsedHours) || parsedHours <= 0) {
-      setError("Choisis un technicien, une date et un nombre d'heures supérieur à zéro.");
+    if (!resourceId.trim() || !day || !Number.isFinite(parsedHours) || parsedHours <= 0) {
+      setError("Choisis une ressource du quart, une date et un nombre d'heures supérieur à zéro.");
       return;
     }
 
@@ -94,7 +94,7 @@ export default function ShiftEditor({
       await updateAllocationWithOverallocation(
         shift.allocation_id,
         {
-          technician,
+          resource_id: resourceId,
           day,
           hours: parsedHours,
           outside_standard_hours: outsideStandardHours,
@@ -269,7 +269,7 @@ export default function ShiftEditor({
           </div>
 
           <div className="dialog-form-grid">
-            <label><span>Technicien</span><select value={technician} onChange={(event) => setTechnician(event.target.value)} required>{sortedResources.map((resource) => <option value={resource.name} key={resource.id}>{resource.name}{resource.resource_class ? ` — ${resource.resource_class}` : ""}</option>)}</select></label>
+            <label><span>Ressource du quart</span><select value={resourceId} onChange={(event) => setResourceId(event.target.value)} required>{sortedResources.map((resource) => <option value={resource.id} key={resource.id}>{resource.name}{resource.resource_class ? ` — ${resource.resource_class}` : ""}</option>)}</select></label>
             <label><span>Date</span><input type="date" value={day} onChange={(event) => setDay(event.target.value)} required /></label>
             <label><span>Heures</span><input type="number" min="0.25" step="0.25" value={hours} onChange={(event) => { setHours(event.target.value); setOverallocationChoice(null); }} required /></label>
             <label><span>Confirmation</span><select value={confirmation} onChange={(event) => setConfirmation(event.target.value as ConfirmationChoice)}><option value="inherit">Héritée du segment</option><option value="Tentative">Tentative</option><option value="Confirmée">Confirmée</option></select></label>
@@ -278,6 +278,8 @@ export default function ShiftEditor({
           </div>
 
           <div className="confirmation-help">
+            <strong>Ressource réelle de ce quart : {sortedResources.find((resource) => resource.id === resourceId)?.name || shift.resource_name}</strong>
+            <span>Changer cette ressource modifie seulement ce quart; la cible automatique du besoin parent reste distincte.</span>
             <strong>Confirmation effective : {shift.confirmation || "—"}</strong>
             <span>« Héritée » supprime l'override du quart. Tentative ou Confirmée crée un choix explicite au niveau du quart.</span>
           </div>
