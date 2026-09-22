@@ -17,6 +17,7 @@ from ..application import (
     ApplicationFacade,
     BusinessContactAdminService,
     CompetencyCatalogService,
+    DemandRequesterService,
     ApplicationNotFoundError,
     ApplicationOperationError,
     ApplicationValidationError,
@@ -47,6 +48,7 @@ from .composition import (
     build_project_communication_service,
     build_smtp_configuration_service,
     build_competency_catalog_service,
+    build_demand_requester_service,
     build_sql_facade,
     build_sql_idempotency_executor,
     build_sql_query_port,
@@ -82,6 +84,7 @@ FacadeDependency = Callable[[], Iterator[ApplicationFacade]]
 IdempotencyDependency = Callable[[], Iterator[IdempotentCommandExecutor]]
 QueryDependency = Callable[[], Iterator[PlannerQueryPort]]
 UserAdminDependency = Callable[..., Any]
+DemandRequesterDependency = Callable[[], Iterator[DemandRequesterService]]
 CommunicationDependency = Callable[..., Any]
 ProjectCommunicationDependency = Callable[..., Any]
 SmtpSettingsDependency = Callable[..., Any]
@@ -126,6 +129,13 @@ def _request_actor(request: Request, fallback: str) -> str:
     return principal.display_name if principal is not None else fallback
 
 
+def _request_actor_user_id(request: Request) -> str | None:
+    principal: AuthPrincipal | None = getattr(request.state, "auth_principal", None)
+    if principal is None:
+        return None
+    return str(principal.local_user_id or "").strip() or None
+
+
 def _request_permissions(request: Request) -> tuple[str, ...]:
     principal: AuthPrincipal | None = getattr(request.state, "auth_principal", None)
     return tuple(principal.permissions) if principal is not None else ()
@@ -151,6 +161,7 @@ def make_facade_dependency(
         yield build_sql_facade(
             session,
             actor_name=_request_actor(request, actor_name),
+            actor_user_id=_request_actor_user_id(request),
             permissions=_request_permissions(request),
             roles=_request_roles(request),
         )
@@ -204,6 +215,21 @@ def make_user_view_context_dependency(
         session: Session = Depends(request_session),
     ) -> Iterator[UserViewContextRepositoryPort]:
         yield build_user_view_context_repository(session)
+
+    return dependency
+
+
+def make_demand_requester_dependency(
+    factory: SqlSessionFactory,
+    *,
+    session_dependency: SessionDependency | None = None,
+) -> DemandRequesterDependency:
+    request_session = session_dependency or make_session_dependency(factory)
+
+    def dependency(
+        session: Session = Depends(request_session),
+    ) -> Iterator[DemandRequesterService]:
+        yield build_demand_requester_service(session)
 
     return dependency
 
@@ -390,6 +416,10 @@ def create_api_app(
         factory,
         session_dependency=session_dependency,
     )
+    demand_requester_dependency = make_demand_requester_dependency(
+        factory,
+        session_dependency=session_dependency,
+    )
     communication_dependency = make_communication_dependency(
         factory,
         session_dependency=session_dependency,
@@ -537,6 +567,7 @@ def create_api_app(
         build_read_router(
             query_dependency,
             user_view_context_dependency,
+            demand_requester_dependency,
         )
     )
     app.include_router(build_competency_router(competency_dependency))
