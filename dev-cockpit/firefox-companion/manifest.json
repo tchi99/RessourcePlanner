@@ -8,7 +8,9 @@
   ],
   "host_permissions": [
     "http://127.0.0.1/*",
-    "http://localhost/*"
+    "http://localhost/*",
+    "https://127.0.0.1/*",
+    "https://localhost/*"
   ],
   "content_scripts": [
     {
