@@ -157,7 +157,7 @@ class ApprovalRevisionCaptureTests(unittest.TestCase):
                         revision.request_version,
                         request.aggregate_version,
                     )
-                    self.assertEqual(revision.approved_by_name, "coord-13b")
+                    self.assertEqual(revision.approved_by_name, "Administrateur de test explicite")
                     payload = json.loads(revision.payload_text)
                     self.assertEqual(payload["format_version"], 1)
                     self.assertEqual(
