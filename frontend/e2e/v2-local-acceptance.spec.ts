@@ -498,9 +498,7 @@ test("V2 local acceptance path runs through React, Chromium, FastAPI and SQLite"
     await expect(coordinator.page.getByTestId("emergency-override-active")).toContainText("Dérogation d’approbation active");
     await expect(coordinator.page.getByTestId("emergency-override-active")).toContainText("Coordonnateur E2E");
 
-    await coordinator.page.getByRole("button", { name: "Workflow", exact: true }).click();
-    const workflowPanel = coordinator.page.locator(".workflow-list-panel");
-    await labelled(workflowPanel, "Demande", "select").selectOption(urgentNumber);
+    await workflowSelect(coordinator.page, urgentNumber);
     await coordinator.page.getByLabel(/Commentaire d’approbation/).fill("Régularisation après urgence");
     await coordinator.page.getByRole("button", { name: "Approuver", exact: true }).click();
     await expect(coordinator.page.locator(".demand-notice").filter({ hasText: "Demande approuvée" })).toContainText("Demande approuvée");
