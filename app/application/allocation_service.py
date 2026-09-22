@@ -28,6 +28,23 @@ class AllocationService:
             raise ApplicationValidationError(message, code=code)
         return normalized
 
+    @classmethod
+    def _resource_reference(
+        cls,
+        resource_id: object,
+        technician: object,
+        *,
+        message: str,
+    ) -> str:
+        canonical = str(resource_id or "").strip()
+        if canonical:
+            return canonical
+        return cls._required(
+            technician,
+            code="allocation_resource_required",
+            message=message,
+        )
+
     @staticmethod
     def _positive_hours(value: object) -> float:
         try:
@@ -62,10 +79,10 @@ class AllocationService:
             code="allocation_segment_required",
             message="Un segment est requis pour le quart manuel.",
         )
-        tech = self._required(
+        tech = self._resource_reference(
+            command.resource_id,
             command.technician,
-            code="allocation_resource_required",
-            message="Un technicien est requis pour le quart manuel.",
+            message="Une ressource est requise pour le quart manuel.",
         )
         day = self._day(command.day)
         hours = self._positive_hours(command.hours)
@@ -102,10 +119,10 @@ class AllocationService:
             code="allocation_id_required",
             message="Un identifiant d'allocation est requis.",
         )
-        tech = self._required(
+        tech = self._resource_reference(
+            command.resource_id,
             command.technician,
-            code="allocation_resource_required",
-            message="Un technicien est requis pour le quart manuel.",
+            message="Une ressource est requise pour le quart manuel.",
         )
         day = self._day(command.day)
         hours = self._positive_hours(command.hours)
@@ -149,10 +166,10 @@ class AllocationService:
             code="allocation_id_required",
             message="Un identifiant d'allocation est requis.",
         )
-        tech = self._required(
+        tech = self._resource_reference(
+            command.resource_id,
             command.technician,
-            code="allocation_resource_required",
-            message="Un technicien est requis pour déplacer le quart.",
+            message="Une ressource est requise pour déplacer le quart.",
         )
         day = self._day(command.day)
         call_application_port(
@@ -191,10 +208,10 @@ class AllocationService:
             code="allocation_segment_required",
             message="Un segment est requis pour l'affectation.",
         )
-        tech = self._required(
+        tech = self._resource_reference(
+            command.resource_id,
             command.technician,
-            code="allocation_resource_required",
-            message="Un technicien est requis pour l'affectation.",
+            message="Une ressource est requise pour l'affectation.",
         )
         return dict(
             call_application_port(
