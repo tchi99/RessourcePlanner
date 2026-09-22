@@ -17,7 +17,9 @@ class ReactBusinessContactContractTests(unittest.TestCase):
         self.assertIn("setTaskBusinessContacts", source)
         self.assertIn("setResourceCoordinatorContact", source)
         self.assertIn("setDemandOperationalResponsible", source)
-        self.assertIn("getRequestLineContactResolution", source)
+        self.assertIn("getDemandDetail", source)
+        self.assertIn("row.contacts", source)
+        self.assertNotIn("getRequestLineContactResolution", source)
         self.assertIn("/api/v1/request-lines/", source)
         self.assertIn("RequestLineContactResolutionReadModel", source)
 
