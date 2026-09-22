@@ -137,7 +137,7 @@ export default function MediumTermUnlinkedSegmentsPanel({
                   {row.demand_number && <span>Demande {row.demand_number}</span>}
                   {task && <span>{task}</span>}
                   <span>{row.start_date} → {row.end_date}</span>
-                  {row.resource_name && <span>{row.resource_name}</span>}
+                  {row.resource_name && <span>Cible automatique : {row.resource_name}</span>}
                   <span>{row.status}</span>
                 </div>
 
