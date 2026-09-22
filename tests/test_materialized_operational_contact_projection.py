@@ -11,7 +11,6 @@ from fastapi.testclient import TestClient
 from app.application.operational_contacts import OperationalContactService
 from app.domain.operational_contacts import (
     DIAGNOSTIC_APPROVED_CONTACT_CONTEXT_LEGACY_UNKNOWN,
-    DIAGNOSTIC_SHIFT_RESOURCE_DIFFERS_FROM_REQUIREMENT,
     SOURCE_REQUEST_OVERRIDE,
     SOURCE_RESOURCE_COORDINATOR,
     SOURCE_TASK_RESPONSIBLE,
@@ -263,8 +262,8 @@ class MaterializedOperationalContactProjectionTests(unittest.TestCase):
                 self.assertEqual(result.requirement_id, "REQ-CAPTURED")
                 self.assertEqual(result.resource_id, "R-SHIFT")
                 self.assertEqual(result.coordinator.contact_id, "C-RSHIFT")
-                self.assertIn(
-                    DIAGNOSTIC_SHIFT_RESOURCE_DIFFERS_FROM_REQUIREMENT,
+                self.assertNotIn(
+                    "SHIFT_RESOURCE_DIFFERS_FROM_REQUIREMENT",
                     result.diagnostics,
                 )
             finally:
