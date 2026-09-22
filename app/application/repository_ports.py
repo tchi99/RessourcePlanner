@@ -107,6 +107,15 @@ class DemandOperationalChoiceRepositoryPort(Protocol):
         expected_version: int | None = None,
     ) -> DemandOperationalChoiceReadModel: ...
 
+    def set_budget_override(
+        self,
+        demand_number: str,
+        entry_key: str,
+        hours: float,
+        *,
+        expected_version: int | None = None,
+    ) -> DemandOperationalChoiceReadModel: ...
+
 
 class DemandApprovalEnvelopePolicyPort(Protocol):
     """Common candidate-versus-approved authorization policy boundary."""
