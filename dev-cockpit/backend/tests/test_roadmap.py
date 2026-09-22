@@ -63,6 +63,13 @@ class RoadmapTests(unittest.TestCase):
         self.assertFalse(items[1].done)
         self.assertEqual(first_unfinished(items).key, "13B")
 
+    def test_merge_preserves_secondary_in_progress_marker(self):
+        primary = subitems_from_text("### #13G — contrats de lecture", 13)
+        secondary = subitems_from_text("- 🟡 13G — contrats de lecture", 13)
+        merged = merge_subitems(primary, secondary)
+        self.assertEqual(merged[0].marker, "🟡")
+        self.assertFalse(merged[0].done)
+
     def test_chain_permission_requires_documented_order_and_agents_rule(self):
         items = subitems_from_text(ISSUE, 13)
         agents = "## 20. Chained execution\nAutomatic chaining is allowed only when the next item belongs to the same approved work block."
