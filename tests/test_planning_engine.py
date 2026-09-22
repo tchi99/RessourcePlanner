@@ -176,6 +176,30 @@ class PlanningEngineTests(unittest.TestCase):
         self.assertEqual(result.allocated_hours, 16)
         self.assertEqual(result.unallocated_hours, 4)
 
+    def test_locked_allocation_without_generable_segment_still_consumes_capacity(self) -> None:
+        result = build_allocation_plan(
+            [SegmentInput("S-TARGET", "R1", D1, D1, 8, "Flexible")],
+            [LockedAllocationInput("S-LOCKED-ONLY", "R1", D1, 8)],
+            {("R1", D1): 8},
+            preserve_locked_segment_ids={"S-LOCKED-ONLY", "S-TARGET"},
+        )
+
+        locked = [row for row in result.allocations if row.locked]
+        self.assertEqual(len(locked), 1)
+        self.assertEqual(locked[0].segment_id, "S-LOCKED-ONLY")
+        self.assertEqual(locked[0].resource_id, "R1")
+        self.assertEqual(locked[0].hours, 8)
+
+        counted_target = [
+            row
+            for row in result.allocations
+            if row.segment_id == "S-TARGET" and row.counts_as_allocated
+        ]
+        self.assertEqual(counted_target, [])
+        self.assertEqual(result.locked_allocation_count, 1)
+        self.assertEqual(result.allocated_hours, 0.0)
+        self.assertEqual(result.unallocated_hours, 8.0)
+
     def test_invalid_window_remains_unallocated(self) -> None:
         result = build_allocation_plan(
             [SegmentInput("S1", "R1", D2, D1, 8, "Flexible")],
