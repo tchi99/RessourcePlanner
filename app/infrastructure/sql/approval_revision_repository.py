@@ -292,6 +292,7 @@ class SqlRequestApprovalRevisionRepository:
                 "request_id": request.id,
                 "request_version": max(int(request.aggregate_version or 1), 1),
                 "project_id": request.project_id,
+                "priority": _optional_text(request.priority),
                 "site_client": _optional_text(request.site_client),
                 "location": _optional_text(request.location),
                 "line_mode": bool(request.line_mode),
