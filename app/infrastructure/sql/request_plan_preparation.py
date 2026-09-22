@@ -708,7 +708,18 @@ class SqlRequestPlanPreparer:
             approval_revision_id=revision.id,
             operational_version=choices.version,
             project_id=_text(request_snapshot.get("project_id")) or None,
-            priority=_text(request_snapshot.get("priority")) or None,
+            priority=(
+                _text(request_snapshot.get("priority"))
+                or next(
+                    (
+                        _text(requirement.priority)
+                        for requirement in current
+                        if _text(requirement.priority)
+                    ),
+                    "",
+                )
+                or None
+            ),
         )
 
     def _period_identity_by_requirement(
