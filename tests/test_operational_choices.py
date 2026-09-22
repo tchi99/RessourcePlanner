@@ -187,6 +187,16 @@ class VersionedOperationalChoicesApiTests(unittest.TestCase):
                 engine.dispose()
 
             with TestClient(app, raise_server_exceptions=False) as client:
+                missing_version = client.put(
+                    f"/api/v1/demands/{number}/lines/{line_id}/operational-alternative-groups/VISITE/selection",
+                    json={"period_id": "OPT-B"},
+                )
+                self.assertEqual(missing_version.status_code, 422, missing_version.text)
+                self.assertEqual(
+                    missing_version.json()["error"]["code"],
+                    "operational_choice_expected_version_required",
+                )
+
                 operational = client.put(
                     f"/api/v1/demands/{number}/lines/{line_id}/operational-alternative-groups/VISITE/selection",
                     json={
