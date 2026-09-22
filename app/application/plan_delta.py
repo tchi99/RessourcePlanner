@@ -10,6 +10,8 @@ class DemandPlanDeltaItemReadModel:
     segment_id: str
     current_resource_name: str | None = None
     proposed_resource_name: str | None = None
+    current_resource_id: str | None = None
+    proposed_resource_id: str | None = None
     current_date: date | None = None
     proposed_date: date | None = None
     current_hours: float = 0.0
