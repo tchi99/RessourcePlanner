@@ -107,19 +107,28 @@ jobs:
 
   python-tests:
     needs: changes
-    if: ${{ always() && (needs.changes.result != 'success' || needs.changes.outputs.backend == 'true' || needs.changes.outputs.runtime == 'true' || needs.changes.outputs.conservative == 'true') }}
+    # Keep both matrix check contexts materialized because branch rules require
+    # "Python verification (shard 0)" and "(shard 1)" even for cockpit/docs-only PRs.
+    if: ${{ always() }}
     name: Python verification (shard ${{ matrix.shard_index }})
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      RUN_PYTHON_VALIDATION: ${{ needs.changes.result != 'success' || needs.changes.outputs.backend == 'true' || needs.changes.outputs.runtime == 'true' || needs.changes.outputs.conservative == 'true' }}
     strategy:
       fail-fast: false
       matrix:
         # #370: 3-shard pilot not retained; measured gain was unstable and costlier.
         shard_index: [0, 1]
     steps:
+      - name: Record lightweight required check
+        if: ${{ env.RUN_PYTHON_VALIDATION != 'true' }}
+        run: echo "Python suite not required for this change set; materializing required shard check only."
       - name: Checkout
+        if: ${{ env.RUN_PYTHON_VALIDATION == 'true' }}
         uses: actions/checkout@v4
       - name: Set up Python
+        if: ${{ env.RUN_PYTHON_VALIDATION == 'true' }}
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -128,24 +137,27 @@ jobs:
             requirements.txt
             requirements-server.txt
       - name: Install validated dependencies
+        if: ${{ env.RUN_PYTHON_VALIDATION == 'true' }}
         run: python -m pip install -r requirements.txt
       - name: Compile Python sources
+        if: ${{ env.RUN_PYTHON_VALIDATION == 'true' }}
         run: python -m compileall -q app tests tools migrations main.py
       - name: Run verification suite shard
+        if: ${{ env.RUN_PYTHON_VALIDATION == 'true' }}
         run: >-
           python tools/run_test_shard.py
           --shard-index "${{ matrix.shard_index }}"
           --shard-count 2
           --top-slowest 25
       - name: Enforce V2 SQLite performance budgets
-        if: matrix.shard_index == 0
+        if: ${{ env.RUN_PYTHON_VALIDATION == 'true' && matrix.shard_index == 0 }}
         run: >-
           python tools/benchmark_v2_api.py
           --iterations 3
           --ci
           --output /tmp/v2-performance-baseline.json
       - name: Scan current repository tree for common PII and secrets
-        if: matrix.shard_index == 1
+        if: ${{ env.RUN_PYTHON_VALIDATION == 'true' && matrix.shard_index == 1 }}
         run: python tools/privacy_scan.py
 
   frontend-validation:
