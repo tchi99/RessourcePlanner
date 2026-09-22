@@ -104,15 +104,15 @@ class SharedRequestPlanPreparationTests(unittest.TestCase):
                 status="Planifié",
                 origin="REQUEST",
             )
-            session.add_all(
-                [
-                    request,
-                    requirement,
-                    self._locked_shift(
-                        shift_id="SHIFT-LEG",
-                        requirement_id="REQ-LEG",
-                    ),
-                ]
+            session.add(request)
+            session.flush()
+            session.add(requirement)
+            session.flush()
+            session.add(
+                self._locked_shift(
+                    shift_id="SHIFT-LEG",
+                    requirement_id="REQ-LEG",
+                )
             )
             session.flush()
             preparer = SqlRequestPlanPreparer(session)
@@ -158,16 +158,17 @@ class SharedRequestPlanPreparationTests(unittest.TestCase):
                 status="Planifié",
                 origin="REQUEST",
             )
-            session.add_all(
-                [
-                    request,
-                    line,
-                    requirement,
-                    self._locked_shift(
-                        shift_id="SHIFT-LINE",
-                        requirement_id="REQ-LINE",
-                    ),
-                ]
+            session.add(request)
+            session.flush()
+            session.add(line)
+            session.flush()
+            session.add(requirement)
+            session.flush()
+            session.add(
+                self._locked_shift(
+                    shift_id="SHIFT-LINE",
+                    requirement_id="REQ-LINE",
+                )
             )
             session.flush()
             preparer = SqlRequestPlanPreparer(session)
@@ -233,17 +234,16 @@ class SharedRequestPlanPreparationTests(unittest.TestCase):
                 status="À assigner",
                 origin="REQUEST",
             )
-            session.add_all(
-                [
-                    request,
-                    keep,
-                    remove,
-                    self._locked_shift(
-                        shift_id="SHIFT-REMOVE",
-                        requirement_id="REQ-REMOVE",
-                        hours="4",
-                    ),
-                ]
+            session.add(request)
+            session.flush()
+            session.add_all([keep, remove])
+            session.flush()
+            session.add(
+                self._locked_shift(
+                    shift_id="SHIFT-REMOVE",
+                    requirement_id="REQ-REMOVE",
+                    hours="4",
+                )
             )
             session.flush()
             preparer = SqlRequestPlanPreparer(session)
@@ -290,7 +290,11 @@ class SharedRequestPlanPreparationTests(unittest.TestCase):
                 status="À assigner",
                 origin="REQUEST",
             )
-            session.add_all([request, line, requirement])
+            session.add(request)
+            session.flush()
+            session.add(line)
+            session.flush()
+            session.add(requirement)
             session.flush()
 
             preparer = SqlRequestPlanPreparer(session)
@@ -335,15 +339,15 @@ class SharedRequestPlanPreparationTests(unittest.TestCase):
                 planning_type="Flexible",
                 origin="REQUEST",
             )
-            session.add_all(
-                [
-                    request,
-                    requirement,
-                    self._locked_shift(
-                        shift_id="SHIFT-PREVIEW",
-                        requirement_id=requirement.id,
-                    ),
-                ]
+            session.add(request)
+            session.flush()
+            session.add(requirement)
+            session.flush()
+            session.add(
+                self._locked_shift(
+                    shift_id="SHIFT-PREVIEW",
+                    requirement_id=requirement.id,
+                )
             )
             session.flush()
 
@@ -415,13 +419,14 @@ class SharedRequestPlanPreparationTests(unittest.TestCase):
                 status="Planifié",
                 origin="REQUEST",
             )
+            session.add_all([legacy, line_request])
+            session.flush()
+            session.add(line)
+            session.flush()
+            session.add_all([legacy_req, line_req])
+            session.flush()
             session.add_all(
                 [
-                    legacy,
-                    legacy_req,
-                    line_request,
-                    line,
-                    line_req,
                     self._locked_shift(
                         shift_id="SHIFT-GUARD-LEG",
                         requirement_id=legacy_req.id,
