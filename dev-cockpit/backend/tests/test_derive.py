@@ -55,6 +55,97 @@ class DeriveTests(unittest.TestCase):
         self.assertNotIn("STALLED", result["states"])
         self.assertFalse(result["stalled"])
 
+    def test_branch_without_pr_becomes_stalled_when_silent(self):
+        result = derive_states(
+            block_done=False,
+            primary_pr=None,
+            active_branch={"name": "issue-13g", "sha": "abc"},
+            active_commit_date="2026-09-22T14:20:00Z",
+            stalled_after_minutes=30,
+            active_runs=[],
+            now=datetime(2026, 9, 22, 15, 0, tzinfo=timezone.utc),
+        )
+        self.assertIn("STALLED", result["states"])
+        self.assertEqual(result["stall_level"], "stalled")
+        self.assertEqual(result["stalled_details"]["last_activity_minutes"], 40)
+        self.assertTrue(result["stalled_details"]["branch_present"])
+        self.assertFalse(result["stalled_details"]["pr_present"])
+
+    def test_explicit_in_progress_without_branch_or_pr_becomes_possible_stall(self):
+        result = derive_states(
+            block_done=False,
+            primary_pr=None,
+            active_branch=None,
+            active_commit_date=None,
+            stalled_after_minutes=30,
+            active_runs=[],
+            explicit_in_progress=True,
+            issue_updated_at="2026-09-22T14:20:00Z",
+            roadmap_updated_at="2026-09-22T14:10:00Z",
+            now=datetime(2026, 9, 22, 15, 0, tzinfo=timezone.utc),
+        )
+        self.assertIn("POSSIBLE_STALL", result["states"])
+        self.assertEqual(result["stall_level"], "possible")
+        self.assertEqual(result["stalled_details"]["last_activity_source"], "issue")
+        self.assertTrue(result["stalled_details"]["explicit_in_progress"])
+
+    def test_recent_commit_prevents_silent_stall(self):
+        result = derive_states(
+            block_done=False,
+            primary_pr=None,
+            active_branch={"name": "issue-13g", "sha": "abc"},
+            active_commit_date="2026-09-22T14:50:00Z",
+            stalled_after_minutes=30,
+            active_runs=[],
+            now=datetime(2026, 9, 22, 15, 0, tzinfo=timezone.utc),
+        )
+        self.assertFalse(result["stalled"])
+        self.assertNotIn("STALLED", result["states"])
+
+    def test_active_workflow_prevents_stall_even_when_commit_is_old(self):
+        result = derive_states(
+            block_done=False,
+            primary_pr=None,
+            active_branch={"name": "issue-13g", "sha": "abc"},
+            active_commit_date="2026-09-22T13:00:00Z",
+            stalled_after_minutes=30,
+            active_runs=[
+                {
+                    "status": "in_progress",
+                    "conclusion": None,
+                    "updated_at": "2026-09-22T14:58:00Z",
+                    "jobs": [],
+                }
+            ],
+            now=datetime(2026, 9, 22, 15, 0, tzinfo=timezone.utc),
+        )
+        self.assertIn("CI_RUNNING", result["states"])
+        self.assertFalse(result["stalled"])
+        self.assertFalse(result["stalled_details"]["no_active_workflow"])
+
+    def test_silent_branch_prompt_reuses_existing_branch(self):
+        derived = {
+            "stalled": True,
+            "stall_level": "stalled",
+            "ci_red": False,
+            "ci_running": False,
+            "failed_jobs": [],
+            "states": ["IN_PROGRESS", "STALLED"],
+            "stalled_details": {"last_activity_minutes": 42},
+        }
+        _, prompt = build_next_action_and_prompt(
+            parent_issue=13,
+            active_key="13G",
+            block_done=False,
+            can_chain_block=True,
+            primary_pr=None,
+            active_branch={"name": "issue-13g"},
+            derived=derived,
+            roadmap_issue=55,
+        )
+        self.assertIn("Reprends 13G depuis la branche issue-13g", prompt)
+        self.assertIn("aucun workflow n'est actif", prompt)
+
     def test_ready_prompt_includes_issue_adrs_and_authorized_chaining(self):
         derived = {"stalled": False, "ci_red": False, "ci_running": False, "failed_jobs": [], "states": ["READY"]}
         _, prompt = build_next_action_and_prompt(
