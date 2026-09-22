@@ -334,15 +334,26 @@ export default function RoleCards({ dashboard }: { dashboard: Dashboard | null }
                 className={`role-card ${working ? 'is-working' : ''} ${stalled ? 'is-stalled' : ''}`}
                 key={role.id}
               >
-                <div className="role-avatar-wrap">
+                <button
+                  className="role-avatar-wrap role-avatar-button"
+                  type="button"
+                  onClick={() => setSelectedRoleId(role.id)}
+                  aria-label={`Voir les détails de ${role.name}`}
+                >
                   <div className="role-avatar" aria-hidden="true">
                     {AVATAR_LABELS[role.avatar]}
                   </div>
                   {working && <span className="role-working-dot" title="Activité détectée" />}
-                </div>
+                </button>
                 <div className="role-card-body">
                   <div className="role-name-row">
-                    <strong>{role.name}</strong>
+                    <button
+                      className="role-name-button"
+                      type="button"
+                      onClick={() => setSelectedRoleId(role.id)}
+                    >
+                      {role.name}
+                    </button>
                     {working && <span className="role-status">travaille</span>}
                     {stalled && <span className="role-status stalled">silencieux</span>}
                     {role.chat_url && (
