@@ -287,7 +287,9 @@ function ResourceRow({
   onDropShift: (payload: ShiftDragPayload, resource: ResourceReadModel, day: string) => void;
   onDropSegment: (payload: SegmentDragPayload, resource: ResourceReadModel) => void;
 }) {
-  const total = shifts.reduce((sum, shift) => sum + Number(shift.hours || 0), 0);
+  const total = shifts
+    .filter((shift) => shift.allocation_type !== "Hors horaire requis")
+    .reduce((sum, shift) => sum + Number(shift.hours || 0), 0);
   const dayCapacity = new Map((capacity?.days ?? []).map((row) => [row.day, row]));
 
   return (
@@ -295,7 +297,7 @@ function ResourceRow({
       <div
         className={`resource-cell resource-identity planning-drop-resource ${capacity?.overloaded ? "resource-overloaded" : ""}`}
         data-resource-id={resource.id}
-        title={dragEnabled ? "Déposer ici un besoin non attribué pour l’affecter à cette ressource" : undefined}
+        title={dragEnabled ? "Déposer ici un besoin pour définir cette ressource comme cible automatique" : undefined}
         onDragOver={(event) => {
           if (!dragEnabled || !hasSegmentDrag(event.dataTransfer)) return;
           event.preventDefault();
@@ -592,6 +594,7 @@ export default function PlanningPage({ onOpenDemands }: { onOpenDemands?: () => 
   ]);
 
   const visibleShiftHours = shiftsPassingGlobalFilters
+    .filter((shift) => shift.allocation_type !== "Hors horaire requis")
     .filter((shift) => !query || shiftText(shift).includes(query) || snapshot?.resources.some(
       (resource) => resource.id === shift.resource_id && normalize(`${resource.name} ${resource.resource_class ?? ""}`).includes(query),
     ))
@@ -615,7 +618,7 @@ export default function PlanningPage({ onOpenDemands }: { onOpenDemands?: () => 
           segment.project_name,
           segment.demand_number,
           segment.description,
-          diagnostic.resource_name,
+          diagnostic.automatic_target_resource_name,
         ].filter(Boolean).join(" ")).includes(query)) return false;
         return true;
       });
@@ -829,7 +832,9 @@ export default function PlanningPage({ onOpenDemands }: { onOpenDemands?: () => 
                   <div>
                     <strong>{segment.project_number || "Projet"} — {segment.description || diagnostic.segment_id}</strong>
                     <span>
-                      {diagnostic.resource_name || "Ressource"} · {hours(diagnostic.allocated_hours)}/{hours(diagnostic.planned_hours)} h placées
+                      {diagnostic.automatic_target_resource_name
+                        ? `Cible automatique : ${diagnostic.automatic_target_resource_name}`
+                        : "Aucune cible automatique"} · {hours(diagnostic.allocated_hours)}/{hours(diagnostic.planned_hours)} h placées
                     </span>
                   </div>
                   <strong className="unplaced-hours">{hours(diagnostic.unplaced_hours)} h non placées</strong>
