@@ -258,10 +258,18 @@ class ContextualPlanningScopeTests(unittest.TestCase):
         self.assertEqual(alice["confirmed_hours"], 5.0)
         self.assertEqual(alice["prudent_free"], 3.0)
 
-        diagnostics = payload["segment_diagnostics"]
-        self.assertEqual([row["segment_id"] for row in diagnostics], ["SEG-MINE"])
-        self.assertEqual(diagnostics[0]["allocated_hours"], 2.0)
-        self.assertEqual(diagnostics[0]["unplaced_hours"], 6.0)
+        diagnostics = {
+            row["segment_id"]: row for row in payload["segment_diagnostics"]
+        }
+        self.assertEqual(set(diagnostics), {"SEG-MINE", "SEG-MINE-OPEN"})
+        self.assertEqual(diagnostics["SEG-MINE"]["allocated_hours"], 2.0)
+        self.assertEqual(diagnostics["SEG-MINE"]["unplaced_hours"], 6.0)
+        self.assertEqual(diagnostics["SEG-MINE"]["automatic_target_resource_id"], "R-ALICE")
+
+        unassigned = diagnostics["SEG-MINE-OPEN"]
+        self.assertIsNone(unassigned["automatic_target_resource_id"])
+        self.assertEqual(unassigned["allocated_hours"], 0.0)
+        self.assertEqual(unassigned["unplaced_hours"], 4.0)
 
     def test_runtime_composition_supplies_global_medium_term_capacity_reference(self) -> None:
         params = {
