@@ -71,6 +71,12 @@ class DemandAlternativeSelectCommand:
             message="Le groupe alternatif est requis.",
         )
         _required(self.period_id, field="period_id", message="La période sélectionnée est requise.")
+        if self.operational and self.expected_operational_version is None:
+            raise ApplicationValidationError(
+                "La version opérationnelle attendue est requise.",
+                code="operational_choice_expected_version_required",
+                context={"field": "expected_operational_version"},
+            )
 
 
 @dataclass(frozen=True, slots=True)
@@ -92,3 +98,9 @@ class DemandOperationalConfirmationCommand:
             field="confirmation",
             message="La confirmation est requise.",
         )
+        if self.expected_operational_version is None:
+            raise ApplicationValidationError(
+                "La version opérationnelle attendue est requise.",
+                code="operational_choice_expected_version_required",
+                context={"field": "expected_operational_version"},
+            )
