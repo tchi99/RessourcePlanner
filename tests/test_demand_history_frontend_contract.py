@@ -21,11 +21,15 @@ class DemandHistoryFrontendContractTests(unittest.TestCase):
         self.assertIn("Acteur non enregistré", source)
         self.assertNotIn("updated_at", source)
 
-    def test_workspace_exposes_history_as_read_only_section(self) -> None:
-        source = (ROOT / "frontend/src/DemandsWorkspace.tsx").read_text(encoding="utf-8")
-        self.assertIn('"history"', source)
-        self.assertIn("Historique", source)
-        self.assertIn("<DemandHistoryPage />", source)
+    def test_unified_detail_exposes_history_without_an_independent_selector(self) -> None:
+        workspace = (ROOT / "frontend/src/DemandsWorkspace.tsx").read_text(encoding="utf-8")
+        detail = (ROOT / "frontend/src/DemandDetail.tsx").read_text(encoding="utf-8")
+        history = (ROOT / "frontend/src/DemandHistoryPage.tsx").read_text(encoding="utf-8")
+
+        self.assertNotIn('"history"', workspace)
+        self.assertNotIn("<DemandHistoryPage />", workspace)
+        self.assertIn("<DemandHistoryPage demandNumber={demandNumber} embedded />", detail)
+        self.assertIn("demandNumber?: string", history)
 
 
 if __name__ == "__main__":
