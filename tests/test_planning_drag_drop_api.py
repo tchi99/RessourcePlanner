@@ -130,7 +130,7 @@ class PlanningDragDropApiTests(unittest.TestCase):
             with TestClient(app) as client:
                 response = client.post(
                     "/api/v1/allocations/SHIFT-275/move",
-                    json={"technician": "Bob DnD", "day": "2026-09-22"},
+                    json={"resource_id": "R-BOB-275", "day": "2026-09-22"},
                 )
                 self.assertEqual(response.status_code, 200, response.text)
                 self.assertEqual(response.json()["action"], "moved")
@@ -140,6 +140,7 @@ class PlanningDragDropApiTests(unittest.TestCase):
                     params={"start": "2026-09-21", "end": "2026-09-27"},
                 ).json()
                 history = client.get("/api/v1/shifts/SHIFT-275/history").json()
+                segment = client.get("/api/v1/segments/SEG-275").json()
 
             moved = next(row for row in shifts if row["allocation_id"] == "SHIFT-275")
             self.assertEqual(moved["resource_name"], "Bob DnD")
@@ -149,7 +150,25 @@ class PlanningDragDropApiTests(unittest.TestCase):
             self.assertTrue(moved["locked"])
             self.assertFalse(moved["outside_standard_hours"])
             self.assertEqual(moved["note"], "Quart généré")
+            self.assertEqual(segment["automatic_target_resource_id"], "R-ALICE-275")
+            self.assertEqual(segment["automatic_target_resource_name"], "Alice DnD")
+            self.assertEqual(segment["resource_name"], "Alice DnD")
             self.assertTrue(any(row["action"] == "Déplacement quart" for row in history))
+
+    def test_explicit_segment_assignment_changes_only_automatic_target_by_id(self) -> None:
+        with TemporaryDirectory() as directory:
+            app = create_api_app(self._database(directory), actor_name="Coordonnateur DnD")
+            with TestClient(app) as client:
+                response = client.post(
+                    "/api/v1/segments/SEG-275/assign",
+                    json={"resource_id": "R-BOB-275"},
+                )
+                self.assertEqual(response.status_code, 200, response.text)
+                segment = client.get("/api/v1/segments/SEG-275").json()
+
+            self.assertEqual(segment["automatic_target_resource_id"], "R-BOB-275")
+            self.assertEqual(segment["automatic_target_resource_name"], "Bob DnD")
+            self.assertEqual(segment["resource_name"], "Bob DnD")
 
     def test_quick_shift_move_cannot_leave_its_single_day_segment(self) -> None:
         with TemporaryDirectory() as directory:
