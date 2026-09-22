@@ -1,0 +1,300 @@
+from __future__ import annotations
+
+import asyncio
+from datetime import datetime, timezone
+from typing import Any
+from urllib.parse import quote
+
+from .config import Settings
+from .derive import build_next_action_and_prompt, commit_summary, derive_states, matches_work_key
+from .github import GitHubClient
+from .roadmap import (
+    active_block,
+    agents_allow_chaining,
+    extract_declared_active,
+    first_unfinished,
+    focus_items,
+    has_explicit_block_order,
+    merge_subitems,
+    numeric_issue,
+    referenced_adrs,
+    referenced_issue_numbers,
+    subitems_from_text,
+    top_level_items,
+)
+
+
+def _issue_summary(issue: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "number": issue.get("number"),
+        "title": issue.get("title"),
+        "state": issue.get("state"),
+        "url": issue.get("html_url"),
+        "updated_at": issue.get("updated_at"),
+    }
+
+
+def _job_summary(job: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "id": job.get("id"),
+        "name": job.get("name"),
+        "status": job.get("status"),
+        "conclusion": job.get("conclusion"),
+        "url": job.get("html_url"),
+        "started_at": job.get("started_at"),
+        "completed_at": job.get("completed_at"),
+    }
+
+
+def _run_summary(run: dict[str, Any], jobs: list[dict[str, Any]]) -> dict[str, Any]:
+    return {
+        "id": run.get("id"),
+        "name": run.get("name"),
+        "status": run.get("status"),
+        "conclusion": run.get("conclusion"),
+        "url": run.get("html_url"),
+        "run_number": run.get("run_number"),
+        "created_at": run.get("created_at"),
+        "updated_at": run.get("updated_at"),
+        "jobs": [_job_summary(job) for job in jobs],
+    }
+
+
+async def _pr_summary(client: GitHubClient, repo: str, pr: dict[str, Any]) -> dict[str, Any]:
+    details = await client.get_pull(repo, int(pr["number"]))
+    head = details.get("head") or {}
+    sha = head.get("sha")
+    runs_raw = await client.workflow_runs_for_sha(repo, sha, per_page=5) if sha else []
+    jobs_by_run = await asyncio.gather(
+        *[client.run_jobs(repo, int(run["id"])) for run in runs_raw[:5]],
+        return_exceptions=True,
+    )
+    runs: list[dict[str, Any]] = []
+    for run, jobs in zip(runs_raw[:5], jobs_by_run):
+        runs.append(_run_summary(run, jobs if isinstance(jobs, list) else []))
+    return {
+        "number": details.get("number"),
+        "title": details.get("title"),
+        "body": details.get("body") or "",
+        "state": details.get("state"),
+        "merged": bool(details.get("merged")),
+        "draft": bool(details.get("draft")),
+        "mergeable": details.get("mergeable"),
+        "mergeable_state": details.get("mergeable_state"),
+        "url": details.get("html_url"),
+        "head": head.get("ref"),
+        "head_sha": sha,
+        "base": (details.get("base") or {}).get("ref"),
+        "updated_at": details.get("updated_at"),
+        "merged_at": details.get("merged_at"),
+        "runs": runs,
+    }
+
+
+def _branch_summary(repo: str, branch: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not branch:
+        return None
+    name = branch.get("name")
+    commit = branch.get("commit") or {}
+    if not name:
+        return None
+    return {
+        "name": name,
+        "sha": commit.get("sha"),
+        "url": f"https://github.com/{repo}/tree/{quote(name, safe='/')}",
+    }
+
+
+def _merged_pr_summary(pr: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not pr:
+        return None
+    return {
+        "number": pr.get("number"),
+        "title": pr.get("title"),
+        "url": pr.get("html_url"),
+        "merged_at": pr.get("merged_at"),
+    }
+
+
+async def build_dashboard(client: GitHubClient, settings: Settings, repo: str) -> dict[str, Any]:
+    repo = client.validate_repo(repo)
+    roadmap_raw, open_raw, closed_raw, latest_repo_commit, agents_text, architecture_raw, branches_raw = await asyncio.gather(
+        client.get_issue(repo, settings.roadmap_issue),
+        client.list_pulls(repo, "open", 30),
+        client.list_pulls(repo, "closed", 50),
+        client.latest_commit(repo),
+        client.get_text_file(repo, "AGENTS.md"),
+        client.list_directory(repo, "docs/architecture"),
+        client.list_branches(repo, 100),
+    )
+
+    roadmap_body = roadmap_raw.get("body") or ""
+    top_items = top_level_items(roadmap_body)
+    declared_key = extract_declared_active(roadmap_body)
+    declared_parent = numeric_issue(declared_key or "")
+    if declared_parent is None:
+        first_top = first_unfinished(top_items)
+        declared_parent = numeric_issue(first_top.key) if first_top else settings.roadmap_issue
+    parent_issue = declared_parent or settings.roadmap_issue
+
+    active_issue_raw = await client.get_issue(repo, parent_issue)
+    issue_body = active_issue_raw.get("body") or ""
+    roadmap_block = active_block(roadmap_body, parent_issue)
+    issue_subitems = subitems_from_text(issue_body, parent_issue)
+    roadmap_subitems = subitems_from_text(roadmap_block, parent_issue)
+    subitems = merge_subitems(issue_subitems, roadmap_subitems)
+
+    parent_item = next((item for item in top_items if item.key == str(parent_issue)), None)
+    block_done = bool(
+        active_issue_raw.get("state") == "closed"
+        or (subitems and all(item.done for item in subitems))
+        or (parent_item and parent_item.done)
+    )
+    active_subitem = None if block_done else first_unfinished(subitems)
+    active_key = active_subitem.key if active_subitem else str(parent_issue)
+
+    open_prs = await asyncio.gather(*[_pr_summary(client, repo, pr) for pr in open_raw[:12]]) if open_raw else []
+    primary_pr = next((pr for pr in open_prs if matches_work_key(pr, active_key)), None)
+    if not primary_pr and active_subitem is None:
+        primary_pr = next((pr for pr in open_prs if matches_work_key(pr, str(parent_issue))), None)
+
+    merged_but_unmarked_raw = None
+    if not block_done and active_subitem and not primary_pr:
+        merged_but_unmarked_raw = next(
+            (pr for pr in closed_raw if pr.get("merged_at") and matches_work_key(pr, active_key)),
+            None,
+        )
+    merged_but_unmarked = _merged_pr_summary(merged_but_unmarked_raw)
+
+    branch_raw = None
+    if primary_pr:
+        branch_raw = next((branch for branch in branches_raw if branch.get("name") == primary_pr.get("head")), None)
+    if not branch_raw and not block_done:
+        branch_raw = next(
+            (
+                branch
+                for branch in branches_raw
+                if branch.get("name") != "main" and matches_work_key(str(branch.get("name") or ""), active_key)
+            ),
+            None,
+        )
+    active_branch = _branch_summary(repo, branch_raw)
+    if not active_branch and primary_pr and primary_pr.get("head"):
+        active_branch = {
+            "name": primary_pr.get("head"),
+            "sha": primary_pr.get("head_sha"),
+            "url": f"https://github.com/{repo}/tree/{quote(str(primary_pr.get('head')), safe='/')}",
+        }
+
+    active_sha = (primary_pr or {}).get("head_sha") or (active_branch or {}).get("sha")
+    active_commit = await client.get_commit(repo, active_sha) if active_sha else None
+    active_commit_info = commit_summary(active_commit)
+
+    blocked_by_roadmap = bool(
+        (active_subitem and (active_subitem.marker == "⏳" or "bloqu" in active_subitem.title.lower()))
+        or (parent_item and parent_item.marker == "⏳")
+    )
+    derived = derive_states(
+        block_done=block_done,
+        primary_pr=primary_pr,
+        active_branch=active_branch,
+        active_commit_date=(active_commit_info or {}).get("date"),
+        stalled_after_minutes=settings.stalled_after_minutes,
+        blocked_by_roadmap=blocked_by_roadmap,
+    )
+
+    can_chain_block = bool(
+        not block_done
+        and has_explicit_block_order(issue_body, roadmap_block, subitems)
+        and agents_allow_chaining(agents_text)
+    )
+    next_action, dev_prompt = build_next_action_and_prompt(
+        parent_issue=parent_issue,
+        active_key=active_key,
+        block_done=block_done,
+        can_chain_block=can_chain_block,
+        primary_pr=primary_pr,
+        active_branch=active_branch,
+        derived=derived,
+        roadmap_issue=settings.roadmap_issue,
+        merged_but_unmarked_pr=merged_but_unmarked,
+    )
+
+    issue_refs = referenced_issue_numbers(roadmap_body, parent_issue)
+    related_raw = await asyncio.gather(
+        *[client.get_issue(repo, number) for number in issue_refs if number not in {settings.roadmap_issue, parent_issue}],
+        return_exceptions=True,
+    )
+    related_issues = [
+        _issue_summary(issue)
+        for issue in related_raw
+        if isinstance(issue, dict) and "pull_request" not in issue
+    ]
+
+    adr_entries = [
+        {
+            "name": entry.get("name"),
+            "url": entry.get("html_url"),
+        }
+        for entry in architecture_raw
+        if str(entry.get("name") or "").startswith("ADR-") and str(entry.get("name") or "").endswith(".md")
+    ]
+    adr_names = [str(entry["name"]) for entry in adr_entries if entry.get("name")]
+    referenced = referenced_adrs(issue_body + "\n" + roadmap_block, adr_names)
+
+    warnings: list[str] = []
+    if merged_but_unmarked:
+        warnings.append(
+            f"La PR #{merged_but_unmarked['number']} correspond à {active_key} et est fusionnée, "
+            f"mais {active_key} n'est pas explicitement terminée dans GitHub."
+        )
+
+    return {
+        "repo": repo,
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "config": {
+            "roadmap_issue": settings.roadmap_issue,
+            "stalled_after_minutes": settings.stalled_after_minutes,
+            "token_configured": bool(settings.github_token),
+        },
+        "roadmap": {
+            "number": roadmap_raw.get("number"),
+            "title": roadmap_raw.get("title"),
+            "url": roadmap_raw.get("html_url"),
+            "updated_at": roadmap_raw.get("updated_at"),
+            "declared_active": declared_key,
+            "active_issue": parent_issue,
+            "effective_active": active_key,
+            "items": [item.to_dict() for item in focus_items(top_items, subitems, parent_issue)],
+        },
+        "active_work": {
+            "key": active_key,
+            "issue_number": parent_issue,
+            "title": active_subitem.title if active_subitem else active_issue_raw.get("title"),
+            "issue": _issue_summary(active_issue_raw),
+            "subitem_key": active_subitem.key if active_subitem else None,
+            "block_done": block_done,
+            "can_chain_block": can_chain_block,
+            "remaining_subitems": [item.key for item in subitems if not item.done],
+            "primary_pr": primary_pr,
+            "active_branch": active_branch,
+            "last_commit": active_commit_info,
+            "states": derived["states"],
+            "stalled": derived["stalled"],
+            "stalled_details": derived["stalled_details"],
+            "failed_jobs": derived["failed_jobs"],
+            "merged_but_unmarked_pr": merged_but_unmarked,
+        },
+        "architecture": {
+            "path": "docs/architecture/",
+            "url": f"https://github.com/{repo}/tree/main/docs/architecture",
+            "adrs": adr_entries,
+            "referenced_adrs": referenced,
+        },
+        "open_prs": open_prs,
+        "related_issues": related_issues,
+        "latest_commit": commit_summary(latest_repo_commit),
+        "next_action": next_action,
+        "dev_prompt": dev_prompt,
+        "warnings": warnings,
+    }
