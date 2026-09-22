@@ -128,6 +128,7 @@ export default function DemandDetail({
           embedded
           onChanged={changed}
           onDirtyChange={onDirtyChange}
+          canEdit={detail.policy.can_edit_periods}
         />
       </details>
 
