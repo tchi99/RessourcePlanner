@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import date
+import json
 from decimal import Decimal
 from typing import Sequence
 
@@ -18,7 +19,10 @@ from .demand_period_models import (
     WorkforceRequestPeriodRequirement,
     WorkforceRequestPeriodSelection,
 )
+from .operational_choice_repository import SqlRequestOperationalChoiceRepository
+from .approval_revision_models import RequestApprovalRevision
 from .models import (
+    Competency,
     RequestLine,
     RequestLineCompetency,
     ResourceRequirement,
@@ -64,6 +68,8 @@ class PreparedRequirementSpec:
 class PreparedRequestPlan:
     specs: tuple[PreparedRequirementSpec, ...]
     unresolved_groups: int = 0
+    approval_revision_id: str | None = None
+    operational_version: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -502,6 +508,189 @@ class SqlRequestPlanPreparer:
                 selections,
             )
         return self._prepare_legacy_simple(request, current)
+
+    def prepare_active(
+        self,
+        request: WorkforceRequest,
+        *,
+        current: Sequence[ResourceRequirement] = (),
+    ) -> PreparedRequestPlan:
+        """Prepare the active plan from immutable approval plus operational choices."""
+
+        choices = SqlRequestOperationalChoiceRepository(
+            self._session
+        ).state_for_request_id(request.id)
+        if choices is None:
+            raise ValueError(
+                "Aucune révision approuvée active ne permet de préparer le plan opérationnel."
+            )
+        revision = self._session.get(
+            RequestApprovalRevision,
+            choices.approval_revision_id,
+        )
+        if revision is None:
+            raise ValueError("La révision approuvée active est introuvable.")
+        payload = json.loads(revision.payload_text)
+        authorization = payload.get("authorization", {})
+        entries = authorization.get("entries", [])
+        if not isinstance(entries, list):
+            raise ValueError("Le snapshot approuvé est invalide.")
+        request_snapshot = payload.get("request", {})
+        line_mode = bool(request_snapshot.get("line_mode"))
+
+        competency_ids = {
+            _text(value)
+            for row in entries
+            for value in (row.get("competency_ids") or [])
+            if _text(value)
+        }
+        competencies = (
+            self._session.scalars(
+                select(Competency).where(Competency.id.in_(competency_ids))
+            ).all()
+            if competency_ids
+            else []
+        )
+        competency_names = {row.id: row.name for row in competencies}
+
+        current_by_entry: dict[str, list[ResourceRequirement]] = defaultdict(list)
+        for requirement in current:
+            if _text(requirement.approved_entry_key):
+                current_by_entry[_text(requirement.approved_entry_key)].append(requirement)
+        for rows in current_by_entry.values():
+            rows.sort(key=lambda row: (row.created_at, row.id))
+
+        specs: list[PreparedRequirementSpec] = []
+        unresolved_groups = 0
+        groups_seen: set[str] = set()
+        groups_selected: set[str] = set()
+
+        for row in entries:
+            identity_key = _text(row.get("identity"))
+            if not identity_key:
+                continue
+            identity_parts = json.loads(identity_key)
+            if not isinstance(identity_parts, list) or len(identity_parts) != 3:
+                raise ValueError("Une identité approuvée est invalide.")
+            identity_kind, line_id, period_key = identity_parts
+            line_id = _text(line_id)
+            period_key = _text(period_key) or None
+            kind = _text(row.get("kind")).upper()
+            group = _text(row.get("group")) or None
+            if group:
+                groups_seen.add(group)
+            if kind == "ALTERNATIVE":
+                selected = choices.selections.get(group or "")
+                if selected != identity_key:
+                    continue
+                if group:
+                    groups_selected.add(group)
+
+            source_period_id = _text(row.get("source_period_id")) or None
+            source_period = (
+                self._session.get(WorkforceRequestPeriod, source_period_id)
+                if source_period_id
+                else None
+            )
+            source_line = (
+                self._session.get(RequestLine, line_id)
+                if line_id
+                else None
+            )
+            previous_rows = current_by_entry.get(identity_key, [])
+            previous_description = next(
+                (
+                    _text(item.description)
+                    for item in previous_rows
+                    if _text(item.description)
+                ),
+                "",
+            )
+            description = (
+                _text(source_period.note if source_period is not None else None)
+                or _text(source_line.description if source_line is not None else None)
+                or previous_description
+                or _text(request.description)
+                or "Besoin approuvé"
+            )
+            ids = tuple(
+                sorted(
+                    {
+                        _text(value)
+                        for value in (row.get("competency_ids") or [])
+                        if _text(value)
+                    }
+                )
+            )
+            required_text = ", ".join(
+                competency_names[value]
+                for value in ids
+                if value in competency_names
+            ) or None
+            start_date = date.fromisoformat(_text(row.get("start_date")))
+            end_date = date.fromisoformat(_text(row.get("end_date")))
+            total_hours = Decimal(_text(row.get("hours"))).quantize(
+                Decimal("0.01")
+            )
+            slot_count = 1 if line_mode else max(int(row.get("slot_count") or 1), 1)
+            split_hours = split_total_workforce_hours(total_hours, slot_count)
+            base_key = (
+                ("PERIOD", line_id, period_key)
+                if period_key is not None
+                else ("LINE", line_id)
+            )
+            confirmation = normalize_confirmation(
+                choices.confirmations.get(identity_key, row.get("confirmation")),
+                default=CONFIRMATION_CONFIRMED,
+            )
+            for index, hours in enumerate(split_hours):
+                spec_key = (
+                    base_key
+                    if line_mode
+                    else (*base_key, str(index))
+                )
+                specs.append(
+                    PreparedRequirementSpec(
+                        key=spec_key,
+                        base_key=base_key,
+                        approved_entry_key=identity_key,
+                        source_request_line_id=line_id,
+                        source_period_id=source_period_id,
+                        start_date=start_date,
+                        end_date=end_date,
+                        planned_hours=Decimal(str(hours)).quantize(
+                            Decimal("0.01")
+                        ),
+                        desired_active_days=(
+                            int(row["desired_active_days"])
+                            if row.get("desired_active_days") is not None
+                            else None
+                        ),
+                        confirmation=confirmation,
+                        proposed_resource_id=(
+                            _text(row.get("proposed_resource_id"))
+                            if index == 0
+                            else None
+                        )
+                        or None,
+                        description=description,
+                        source_effort_id=_text(row.get("work_package_ref")) or None,
+                        required_resource_class=(
+                            _text(row.get("required_resource_class")) or None
+                        ),
+                        required_competency=required_text,
+                        competency_ids=ids,
+                        slot_index=index,
+                    )
+                )
+
+        unresolved_groups = len(groups_seen - groups_selected)
+        return PreparedRequestPlan(
+            specs=tuple(specs),
+            unresolved_groups=unresolved_groups,
+            approval_revision_id=revision.id,
+            operational_version=choices.version,
+        )
 
     def _period_identity_by_requirement(
         self,
