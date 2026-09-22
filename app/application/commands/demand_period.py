@@ -60,6 +60,7 @@ class DemandAlternativeSelectCommand:
     alternative_group: str
     period_id: str
     request_line_id: str | None = None
+    expected_operational_version: int | None = None
 
     def __post_init__(self) -> None:
         _required(self.number, field="demand_number", message="Le numéro de demande est requis.")
@@ -69,3 +70,24 @@ class DemandAlternativeSelectCommand:
             message="Le groupe alternatif est requis.",
         )
         _required(self.period_id, field="period_id", message="La période sélectionnée est requise.")
+
+
+@dataclass(frozen=True, slots=True)
+class DemandOperationalConfirmationCommand:
+    number: str
+    confirmation: str
+    request_line_id: str | None = None
+    period_id: str | None = None
+    expected_operational_version: int | None = None
+
+    def __post_init__(self) -> None:
+        _required(
+            self.number,
+            field="demand_number",
+            message="Le numéro de demande est requis.",
+        )
+        _required(
+            self.confirmation,
+            field="confirmation",
+            message="La confirmation est requise.",
+        )
