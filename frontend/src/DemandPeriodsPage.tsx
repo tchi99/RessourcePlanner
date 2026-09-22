@@ -7,6 +7,7 @@ import {
   type DemandReadModel,
   type DemandLineReadModel,
   type ResourceReadModel,
+  getDemand,
   getDemandLinePeriods,
   getDemandPeriods,
   getDemands,
@@ -216,7 +217,19 @@ function PeriodFields({
   );
 }
 
-export default function DemandPeriodsPage() {
+type DemandPeriodsPageProps = {
+  demandNumber?: string;
+  embedded?: boolean;
+  onChanged?: () => void;
+  onDirtyChange?: (dirty: boolean) => void;
+};
+
+export default function DemandPeriodsPage({
+  demandNumber,
+  embedded = false,
+  onChanged,
+  onDirtyChange,
+}: DemandPeriodsPageProps = {}) {
   const [demands, setDemands] = useState<DemandReadModel[]>([]);
   const [resources, setResources] = useState<ResourceReadModel[]>([]);
   const [selectedNumber, setSelectedNumber] = useState("");
@@ -257,11 +270,16 @@ export default function DemandPeriodsPage() {
 
   useEffect(() => {
     const controller = new AbortController();
-    Promise.all([getDemands(controller.signal), getResources(true, controller.signal)])
+    const demandRequest = demandNumber
+      ? getDemand(demandNumber, controller.signal).then((row) => [row])
+      : getDemands(controller.signal);
+    Promise.all([demandRequest, getResources(true, controller.signal)])
       .then(([demandRows, resourceRows]) => {
         setDemands(demandRows);
         setResources(resourceRows);
-        setSelectedNumber((current) => current || demandRows[0]?.number || "");
+        setSelectedNumber((current) =>
+          demandNumber || current || demandRows[0]?.number || "",
+        );
       })
       .catch((reason: unknown) => {
         if (!controller.signal.aborted) setError(errorMessage(reason));
@@ -270,7 +288,18 @@ export default function DemandPeriodsPage() {
         if (!controller.signal.aborted) setLoading(false);
       });
     return () => controller.abort();
-  }, []);
+  }, [demandNumber]);
+
+  useEffect(() => {
+    onDirtyChange?.(dirty);
+    if (!dirty) return;
+    const warnBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", warnBeforeUnload);
+    return () => window.removeEventListener("beforeunload", warnBeforeUnload);
+  }, [dirty, onDirtyChange]);
 
   useEffect(() => {
     if (!selectedNumber || (selectedDemand?.line_mode && !selectedLineId)) {
@@ -425,8 +454,11 @@ export default function DemandPeriodsPage() {
           ? "Périodes enregistrées. L'enveloppe ayant changé, la demande doit être approuvée de nouveau; le plan approuvé précédent reste inchangé jusque-là."
           : "Périodes enregistrées.",
       );
-      const demandRows = await getDemands();
+      const demandRows = demandNumber
+        ? [await getDemand(demandNumber)]
+        : await getDemands();
       setDemands(demandRows);
+      onChanged?.();
     } catch (reason: unknown) {
       setError(errorMessage(reason));
     } finally {
@@ -464,18 +496,20 @@ export default function DemandPeriodsPage() {
 
   return (
     <section className="demand-periods-page">
-      <div className="page-heading periods-heading">
-        <div>
-          <span className="eyebrow">Demandes · 3B</span>
-          <h1>Périodes & alternatives</h1>
-          <p>Décompose une demande en périodes cumulatives ou en options mutuellement exclusives avant l'approbation.</p>
+      {!embedded && (
+        <div className="page-heading periods-heading">
+          <div>
+            <span className="eyebrow">Demandes</span>
+            <h1>Périodes de travail</h1>
+            <p>Répartis un besoin sur plusieurs périodes ou définis plusieurs fenêtres possibles sans dupliquer le budget.</p>
+          </div>
         </div>
-      </div>
+      )}
 
       {error && <div className="error-panel"><strong>Action impossible.</strong><span>{error}</span></div>}
       {notice && <div className="demand-notice" role="status">{notice}</div>}
 
-      <div className="period-demand-picker">
+      {!embedded && <div className="period-demand-picker">
         <label>
           <span>Demande</span>
           <select
@@ -510,7 +544,7 @@ export default function DemandPeriodsPage() {
           </label>
         )}
         {dirty && <span className="period-dirty-warning">Enregistre ou recharge avant de changer de demande.</span>}
-      </div>
+      </div>}
 
       {selectedDemand && (
         <div className="period-demand-summary">
@@ -549,7 +583,7 @@ export default function DemandPeriodsPage() {
       {!periodLoading && cumulative.length > 0 && (
         <section className="period-section">
           <div className="period-section-heading">
-            <div><span className="eyebrow">Additionnées</span><h2>Périodes cumulatives</h2></div>
+            <div><span className="eyebrow">Additionnées</span><h2>Travail en plusieurs périodes</h2></div>
             <p>Ces périodes représentent du travail distinct et peuvent donc toutes contribuer au besoin.</p>
           </div>
           <div className="period-card-grid">
@@ -574,8 +608,8 @@ export default function DemandPeriodsPage() {
       {!periodLoading && alternativeGroups.length > 0 && (
         <section className="period-section">
           <div className="period-section-heading">
-            <div><span className="eyebrow">Exclusives</span><h2>Groupes alternatifs</h2></div>
-            <p>Une seule option d'un même groupe est retenue. Elles ne sont jamais additionnées ni matérialisées en parallèle.</p>
+            <div><span className="eyebrow">Une seule fenêtre retenue</span><h2>Travail possible dans l’une de ces fenêtres</h2></div>
+            <p>Une seule fenêtre d’un même groupe est retenue. Les possibilités restent exclusives et ne sont jamais additionnées.</p>
           </div>
           <div className="alternative-groups">
             {alternativeGroups.map(([group, rows]) => (
