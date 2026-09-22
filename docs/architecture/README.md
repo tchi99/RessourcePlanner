@@ -71,6 +71,14 @@ Voir :
 - les modules sous `app/infrastructure/m365/`
 - les modules sous `app/infrastructure/smtp/`
 
+### Vision produit / domaines futurs
+
+Voir :
+
+- `../FUTURE_DELIVERY_VERIFICATION.md`
+
+Ce document décrit une direction future autour de `WorkPackage → Delivery → Verification` et de l’intégration éventuelle Microsoft Planner/Teams. Il s’agit d’une **vision stratégique**, pas d’un ADR accepté ni d’un état déjà implémenté. Toute décision structurante nécessaire à son implémentation devra être formalisée au moment où la tranche devient active.
+
 ---
 
 ## 2. Architecture Decision Records (ADR)
