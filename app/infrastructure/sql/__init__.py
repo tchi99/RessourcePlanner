@@ -85,6 +85,7 @@ from .operational_contact_repository import SqlOperationalContactRepository
 from .project_communication_repository import SqlProjectCommunicationRepository
 from .period_approved_sync import SqlPeriodAwareApprovedDemandSyncAdapter
 from .planning_audit import PlanningChangeHistory
+from .planning_authorization_repository import SqlRequestPlanningAuthorizationRepository
 from .planning_repository import SqlPlanningReadRepository
 from .capacity_query_repository import SqlPlannerQueryRepository
 from .project_sync_repository import SqlProjectSyncRepository
@@ -173,6 +174,7 @@ __all__ = [
     "SqlPlannerQueryRepositoryWithLoadProfiles",
     "SqlPlannerQueryRepositoryWithOverallocation",
     "SqlPlanningCommandAdapter",
+    "SqlRequestPlanningAuthorizationRepository",
     "SqlPlanningReadRepository",
     "SqlProjectSyncRepository",
     "SqlTaskCatalogRepository",
