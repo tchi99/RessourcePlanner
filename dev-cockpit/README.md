@@ -74,18 +74,29 @@ DEV_COCKPIT_HTTP_PORT=8081
 
 Sans token, `/api/dashboard` retourne une erreur de configuration explicite plutôt que d'essayer silencieusement un accès non authentifié.
 
-## Détection STALLED
+## Détection du travail interrompu
 
-`STALLED` est dérivé lorsque :
+Le cockpit ne considère pas le dernier commit global du dépôt comme un signal de stall. Il observe uniquement l'activité GitHub pertinente pour la tranche active.
+
+Le même seuil `DEV_COCKPIT_STALLED_AFTER_MINUTES` alimente trois niveaux :
 
 ```text
-CI rouge
-AND aucun workflow associé actuellement en cours
-AND aucun nouveau commit depuis l'échec
-AND dernier commit plus ancien que DEV_COCKPIT_STALLED_AFTER_MINUTES
+STALLED_CONFIRMED
+CI rouge + aucun workflow actif + aucune reprise/commit depuis le seuil
+
+STALLED
+branche ou PR de la tranche active + aucune activité pertinente depuis le seuil
++ aucun workflow actif
+
+POSSIBLE_STALL
+tranche explicitement marquée 🟡 / en cours dans GitHub
++ aucune branche/PR/workflow associé visible
++ aucun changement pertinent depuis le seuil
 ```
 
-L'UI affiche alors le temps écoulé depuis l'échec CI, l'absence de nouveau commit et l'absence de workflow actif.
+L'activité pertinente est dérivée du commit de la branche active, de la PR, des workflows du SHA actif et, lorsqu'aucun artefact de travail n'existe encore, de la mise à jour explicite de l'issue active. Un workflow en cours empêche toujours l'état de stall.
+
+Cette logique est volontairement prudente : elle peut signaler qu'un Dev ChatGPT semble arrêté, mais elle ne prétend pas connaître l'état de l'interface ChatGPT ni un travail non publié qui n'existe pas dans GitHub.
 
 ## Développement local hors Docker
 

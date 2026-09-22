@@ -108,6 +108,58 @@ class ServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("Continue #13 à partir de 13A", dashboard["dev_prompt"])
         self.assertNotIn("secret-that-must-not-leak", json.dumps(dashboard))
 
+    async def test_branch_without_pr_is_observed_for_silent_stall(self):
+        issue_body = ISSUE_BODY.replace(
+            "### #13A — contrat et politique pure",
+            "### 🟡 #13A — contrat et politique pure",
+        )
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            path = request.url.path
+            query = dict(request.url.params)
+            if path == "/repos/tchi99/RessourcePlanner/issues/55":
+                return response({"number": 55, "title": "Roadmap maître", "body": ROADMAP_BODY, "html_url": "https://github.test/issues/55", "updated_at": "2026-09-22T14:00:00Z", "state": "open"})
+            if path == "/repos/tchi99/RessourcePlanner/issues/13":
+                return response({"number": 13, "title": "Périodes + enveloppe", "body": issue_body, "state": "open", "html_url": "https://github.test/issues/13", "updated_at": "2026-09-22T14:00:00Z"})
+            if path == "/repos/tchi99/RessourcePlanner/pulls":
+                return response([])
+            if path == "/repos/tchi99/RessourcePlanner/commits":
+                return response([{"sha": "main456", "html_url": "https://github.test/commit/main456", "commit": {"message": "main", "author": {"date": "2026-09-22T14:05:00Z"}}}])
+            if path == "/repos/tchi99/RessourcePlanner/commits/abc":
+                return response({"sha": "abc", "html_url": "https://github.test/commit/abc", "commit": {"message": "13A work", "author": {"date": "2026-09-22T14:00:00Z"}}})
+            if path == "/repos/tchi99/RessourcePlanner/actions/runs":
+                self.assertEqual(query.get("head_sha"), "abc")
+                return response({"workflow_runs": []})
+            if path == "/repos/tchi99/RessourcePlanner/contents/AGENTS.md":
+                return response(encoded_file(AGENTS))
+            if path == "/repos/tchi99/RessourcePlanner/contents/docs/architecture":
+                return response([])
+            if path == "/repos/tchi99/RessourcePlanner/branches":
+                return response([
+                    {"name": "main", "commit": {"sha": "main456"}},
+                    {"name": "issue-13a", "commit": {"sha": "abc"}},
+                ])
+            raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+        settings = Settings(
+            github_token="test",
+            repository="tchi99/RessourcePlanner",
+            roadmap_issue=55,
+            stalled_after_minutes=20,
+            github_api_url="https://api.github.test",
+        )
+        client = GitHubClient(settings, transport=httpx.MockTransport(handler))
+        try:
+            dashboard = await build_dashboard(client, settings, "tchi99/RessourcePlanner")
+        finally:
+            await client.close()
+
+        self.assertTrue(dashboard["active_work"]["explicit_in_progress"])
+        self.assertEqual(dashboard["active_work"]["active_branch"]["name"], "issue-13a")
+        self.assertIsNone(dashboard["active_work"]["primary_pr"])
+        self.assertIn("STALLED", dashboard["active_work"]["states"])
+        self.assertIn("branche issue-13a", dashboard["dev_prompt"])
+
     async def test_merged_pr_does_not_mark_unupdated_subitem_done(self):
         dashboard = await self._dashboard([
             {
