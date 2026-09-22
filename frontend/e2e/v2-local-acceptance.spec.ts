@@ -140,6 +140,13 @@ async function createDemand(
 
 async function openDemandDetail(page: Page, demandNumber: string) {
   await navigateMain(page, "Demandes");
+  const demandSubnav = page.locator(".demands-subnav");
+  if (await demandSubnav.isVisible()) {
+    const requestsButton = demandSubnav.getByRole("button", { name: "Demandes", exact: true });
+    if (await requestsButton.count()) {
+      await requestsButton.click();
+    }
+  }
   const card = page.locator(".demand-card").filter({ hasText: demandNumber }).first();
   await expect(card).toBeVisible();
   await card.click();
