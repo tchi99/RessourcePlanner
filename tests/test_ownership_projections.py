@@ -174,13 +174,18 @@ class OwnershipProjectionTests(unittest.TestCase):
     def test_sql_segment_and_shift_project_parent_ownership_read_only(self) -> None:
         with TemporaryDirectory() as directory:
             database_url = self._database(directory)
-            app = create_api_app(database_url, actor_name="Coordonnateur")
+            app = create_api_app(
+                database_url,
+                actor_name="Coordonnateur",
+                auth_resolver=self._coordinator_auth(),
+            )
             with TestClient(app) as client:
                 created = client.post(
                     "/api/v1/demands",
                     json={
                         "project_number": "P-1",
                         "desired_start": DAY.isoformat(),
+                        "requester_user_id": self.marie_id,
                     },
                 )
                 number = created.json()["demand_number"]
