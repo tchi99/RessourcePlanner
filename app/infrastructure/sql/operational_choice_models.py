@@ -50,6 +50,11 @@ class RequestOperationalState(TimestampMixin, Base):
         nullable=False,
         server_default=text("'{}'"),
     )
+    budget_overrides_text: Mapped[str] = mapped_column(
+        Text,
+        nullable=False,
+        server_default=text("'{}'"),
+    )
     updated_by_name: Mapped[str | None] = mapped_column(
         String(255),
         nullable=True,
