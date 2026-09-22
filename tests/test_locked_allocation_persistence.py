@@ -50,7 +50,10 @@ class LockedAllocationPersistenceTests(unittest.TestCase):
 
         report = build_shadow_report_from_snapshot(snapshot)
         self.assertEqual(report.shadow_result.segment_count, 0)
-        self.assertEqual(report.shadow_result.locked_allocation_count, 0)
+        self.assertEqual(report.shadow_result.locked_allocation_count, 1)
+        self.assertEqual(len(report.shadow_result.allocations), 1)
+        self.assertTrue(report.shadow_result.allocations[0].locked)
+        self.assertEqual(report.shadow_result.allocations[0].segment_id, "S-LOCK")
 
         rows = _pure_persistence_rows(snapshot, report)
 
