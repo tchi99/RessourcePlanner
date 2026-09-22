@@ -455,13 +455,14 @@ test("V2 local acceptance path runs through React, Chromium, FastAPI and SQLite"
 
   await test.step("demand history exposes backend audit actors", async () => {
     const { context, page } = await openAs(browser, "COORDINATOR");
-    await navigateMain(page, "Demandes");
-    await page.getByRole("button", { name: "Historique", exact: true }).click();
-    const selector = page.locator("label.demand-history-selector select");
-    await selector.selectOption(demandNumber);
-    await expect(selector).toHaveValue(demandNumber);
-    await expect(page.locator(".demand-history-timeline")).toContainText("Coordonnateur E2E");
-    await expect(page.locator(".demand-history-timeline li").first()).toBeVisible();
+    await openDemandDetail(page, demandNumber);
+    const historySection = page.locator(".demand-detail-section").filter({ hasText: "Historique" }).first();
+    const isOpen = await historySection.evaluate((node) => (node as HTMLDetailsElement).open);
+    if (!isOpen) {
+      await historySection.locator("summary").click();
+    }
+    await expect(historySection.locator(".demand-history-timeline")).toContainText("Coordonnateur E2E");
+    await expect(historySection.locator(".demand-history-timeline li").first()).toBeVisible();
     await closeContext(context);
   });
 
