@@ -194,10 +194,11 @@ function DeveloperDetails({ dashboard }: { dashboard: Dashboard | null }) {
 
   const work = dashboard.active_work
   const run = latestRun(dashboard)
+  const prompt = dashboard.dev_prompt
 
   async function copyPrompt() {
-    if (!dashboard.dev_prompt) return
-    await navigator.clipboard.writeText(dashboard.dev_prompt)
+    if (!prompt) return
+    await navigator.clipboard.writeText(prompt)
     setCopied(true)
     window.setTimeout(() => setCopied(false), 1500)
   }
@@ -320,7 +321,7 @@ function DeveloperDetails({ dashboard }: { dashboard: Dashboard | null }) {
 
       <section className="role-detail-section">
         <div className="role-detail-section-title">Prompt de reprise</div>
-        <pre className="role-detail-prompt">{dashboard.dev_prompt}</pre>
+        <pre className="role-detail-prompt">{prompt}</pre>
         <button className="primary" type="button" onClick={() => void copyPrompt()}>
           {copied ? '✓ Copié' : 'Copier le prompt Dev'}
         </button>
