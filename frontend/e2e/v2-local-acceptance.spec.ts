@@ -149,7 +149,8 @@ async function openDemandDetail(page: Page, demandNumber: string) {
 async function workflowSelect(page: Page, demandNumber: string) {
   await openDemandDetail(page, demandNumber);
   const section = page.locator(".demand-detail-section").filter({ hasText: "Workflow et impact" }).first();
-  if (!(await section.getAttribute("open"))) {
+  const isOpen = await section.evaluate((node) => (node as HTMLDetailsElement).open);
+  if (!isOpen) {
     await section.locator("summary").click();
   }
   await expect(section.locator(".workflow-detail-panel")).toBeVisible();
@@ -158,7 +159,8 @@ async function workflowSelect(page: Page, demandNumber: string) {
 async function periodsSelect(page: Page, demandNumber: string) {
   await openDemandDetail(page, demandNumber);
   const section = page.locator(".demand-detail-section").filter({ hasText: "Périodes de travail" }).first();
-  if (!(await section.getAttribute("open"))) {
+  const isOpen = await section.evaluate((node) => (node as HTMLDetailsElement).open);
+  if (!isOpen) {
     await section.locator("summary").click();
   }
   await expect(section.locator(".period-demand-summary")).toBeVisible();
