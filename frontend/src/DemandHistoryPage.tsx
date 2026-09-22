@@ -22,11 +22,13 @@ function statusTransition(event: DemandHistoryReadModel) {
 type DemandHistoryPageProps = {
   demandNumber?: string;
   embedded?: boolean;
+  refreshToken?: number;
 };
 
 export default function DemandHistoryPage({
   demandNumber,
   embedded = false,
+  refreshToken = 0,
 }: DemandHistoryPageProps = {}) {
   const [demands, setDemands] = useState<DemandReadModel[]>([]);
   const [selectedNumber, setSelectedNumber] = useState("");
@@ -77,7 +79,7 @@ export default function DemandHistoryPage({
         if (!controller.signal.aborted) setLoadingHistory(false);
       });
     return () => controller.abort();
-  }, [selectedNumber]);
+  }, [selectedNumber, refreshToken]);
 
   const selectedDemand = useMemo(
     () => demands.find((row) => row.number === selectedNumber) ?? null,
