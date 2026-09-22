@@ -195,3 +195,57 @@ export type ChatStatusResponse = {
   stale_after_seconds: number
   conversations: ChatConversationStatus[]
 }
+
+export type MarkdownSection = {
+  title: string
+  level: number
+  work_key: string | null
+  content: string
+}
+
+export type DetailDocument = {
+  name: string
+  path: string
+  url: string
+  title: string
+  status: string | null
+  content: string
+}
+
+export type IssueDetail = Issue & {
+  body: string
+  sections: MarkdownSection[]
+  referenced_issues: number[]
+  documents: DetailDocument[]
+}
+
+export type RoadmapDetail = Issue & {
+  body: string
+  items: RoadmapItem[]
+}
+
+export type CommitFileDetail = {
+  filename: string
+  status: string | null
+  additions: number | null
+  deletions: number | null
+  changes: number | null
+  url: string | null
+}
+
+export type CommitDetail = Commit & {
+  author: string | null
+  stats: {
+    additions: number | null
+    deletions: number | null
+    total: number | null
+  }
+  files: CommitFileDetail[]
+  documentation: DetailDocument[]
+}
+
+export type ArchitectureDetail = {
+  path: string
+  url: string
+  documents: DetailDocument[]
+}
