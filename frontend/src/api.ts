@@ -245,6 +245,12 @@ export type DemandLineReadModel = {
   active: boolean;
 };
 
+export type DemandRequesterReadModel = {
+  user_id: string;
+  display_name: string;
+  roles: string[];
+};
+
 export type DemandReadModel = {
   number: string;
   status: string;
@@ -252,6 +258,7 @@ export type DemandReadModel = {
   project_name: string | null;
   client: string | null;
   project_manager: string | null;
+  requester_user_id: string | null;
   requester: string | null;
   request_type: string | null;
   priority: string | null;
@@ -574,7 +581,7 @@ export type DemandWrite = {
   project_number: string;
   project_name?: string;
   client?: string;
-  requester: string | null;
+  requester_user_id?: string | null;
   request_type?: string;
   priority: string;
   description: string;
@@ -1039,6 +1046,10 @@ export function deactivateAvailabilityRule(ruleId: string) {
   return postJson<AvailabilityRuleMutationResult>(
     `/api/v1/availability-rules/${encodeURIComponent(ruleId)}/deactivate`,
   );
+}
+
+export function getDemandRequesters(signal?: AbortSignal) {
+  return getJson<DemandRequesterReadModel[]>("/api/v1/demand-requesters", signal);
 }
 
 export function getDemands(
