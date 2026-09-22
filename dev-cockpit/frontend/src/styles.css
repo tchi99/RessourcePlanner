@@ -933,3 +933,425 @@ footer a { color: #768aa6; }
   border-color: #3a7bd5;
   font-weight: 750;
 }
+
+
+.role-detail-drawer.rich {
+  width: min(820px, 96vw);
+}
+
+.role-detail-loading {
+  border: 1px dashed #34465f;
+  border-radius: 10px;
+  padding: 12px;
+  color: #8495ad;
+  background: #0d151f;
+  font-size: 12px;
+}
+
+.role-detail-error {
+  border: 1px solid #683843;
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: #26131a;
+  color: #f0aab5;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.role-detail-subtitle {
+  margin: 2px 0 10px;
+  color: #d8e4f5;
+  font-size: 14px;
+  font-weight: 750;
+  line-height: 1.35;
+}
+
+.roadmap-detail-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  margin-bottom: 10px;
+  color: #788ba4;
+  font-size: 11px;
+}
+
+.roadmap-issue-accordions,
+.role-document-stack {
+  display: grid;
+  gap: 8px;
+}
+
+.roadmap-issue-accordion,
+.role-document-accordion {
+  border: 1px solid #29394d;
+  border-radius: 11px;
+  background: #0d151f;
+  overflow: clip;
+}
+
+.roadmap-issue-accordion.active {
+  border-color: #507bb0;
+  box-shadow: inset 3px 0 #6598dc;
+}
+
+.roadmap-issue-accordion > summary,
+.role-document-accordion > summary {
+  list-style: none;
+  display: grid;
+  align-items: center;
+  cursor: pointer;
+  user-select: none;
+}
+
+.roadmap-issue-accordion > summary::-webkit-details-marker,
+.role-document-accordion > summary::-webkit-details-marker {
+  display: none;
+}
+
+.roadmap-issue-accordion > summary {
+  grid-template-columns: 28px minmax(0, 1fr);
+  gap: 8px;
+  padding: 11px 12px;
+}
+
+.roadmap-issue-accordion > summary::after,
+.role-document-accordion > summary::after {
+  content: "›";
+  color: #61738b;
+  font-size: 18px;
+  transform: rotate(90deg);
+  transition: transform .14s ease;
+}
+
+.roadmap-issue-accordion > summary {
+  grid-template-columns: 28px minmax(0, 1fr) auto;
+}
+
+.roadmap-issue-accordion[open] > summary::after,
+.role-document-accordion[open] > summary::after {
+  transform: rotate(270deg);
+}
+
+.roadmap-issue-accordion > summary strong,
+.roadmap-issue-accordion > summary small,
+.role-document-accordion > summary strong,
+.role-document-accordion > summary small {
+  display: block;
+}
+
+.roadmap-issue-accordion > summary strong,
+.role-document-accordion > summary strong {
+  color: #c6d3e5;
+  font-size: 12px;
+}
+
+.roadmap-issue-accordion > summary small,
+.role-document-accordion > summary small {
+  margin-top: 2px;
+  color: #697b93;
+  font-size: 10px;
+}
+
+.roadmap-issue-mark {
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border: 1px solid #34455d;
+  border-radius: 999px;
+  color: #778ba6;
+  background: #111b28;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.roadmap-issue-mark.done {
+  border-color: #315a43;
+  color: #81d8a0;
+  background: #102219;
+}
+
+.roadmap-issue-mark.active {
+  border-color: #4878ad;
+  color: #9cc7ff;
+  background: #102239;
+}
+
+.roadmap-issue-content {
+  border-top: 1px solid #243244;
+  padding: 13px 14px 16px;
+  background: #101821;
+}
+
+.roadmap-issue-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  margin-bottom: 14px;
+  color: #708299;
+  font-size: 10px;
+}
+
+.roadmap-source,
+.parent-issue-source {
+  margin-top: 12px;
+}
+
+.role-document-accordion > summary {
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 10px;
+  padding: 11px 12px;
+}
+
+.role-document-summary-meta {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 5px;
+  color: #7387a1;
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.role-document-badge {
+  border: 1px solid #466994;
+  border-radius: 999px;
+  padding: 3px 6px;
+  color: #a9cdfb;
+  background: #122238;
+}
+
+.role-document-body {
+  border-top: 1px solid #253346;
+  padding: 14px;
+  background: #111923;
+}
+
+.role-inline-documents {
+  margin-top: 16px;
+}
+
+.commit-detail-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 14px;
+  margin-bottom: 10px;
+  border: 1px solid #293b51;
+  border-radius: 10px;
+  padding: 11px;
+  background: #0c141e;
+}
+
+.commit-detail-head > div:first-child {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.commit-detail-head strong {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  color: #a9c9f2;
+}
+
+.commit-detail-head span {
+  color: #a8b5c8;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.commit-detail-stats {
+  flex: 0 0 auto;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 5px;
+}
+
+.commit-detail-stats span {
+  border: 1px solid #344359;
+  border-radius: 999px;
+  padding: 3px 6px;
+  color: #8092aa;
+  font-size: 9px;
+}
+
+.commit-file-list {
+  display: grid;
+  gap: 4px;
+  margin-top: 10px;
+  max-height: 360px;
+  overflow-y: auto;
+}
+
+.commit-file-row {
+  display: grid;
+  grid-template-columns: 76px minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  border: 1px solid #253448;
+  border-radius: 8px;
+  padding: 7px 8px;
+  background: #0d151f;
+  color: #aab9cd;
+  font-size: 10px;
+}
+
+.commit-file-status {
+  color: #8092aa;
+  text-transform: uppercase;
+  font-size: 8px;
+  font-weight: 800;
+}
+
+.commit-file-status.added {
+  color: #7fd09c;
+}
+
+.commit-file-status.removed {
+  color: #ed98a6;
+}
+
+.commit-file-status.modified {
+  color: #9abce8;
+}
+
+.commit-file-name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.commit-file-delta {
+  color: #73859c;
+  white-space: nowrap;
+}
+
+.cockpit-markdown {
+  color: #abb9cb;
+  font-size: 12px;
+  line-height: 1.58;
+  overflow-wrap: anywhere;
+}
+
+.cockpit-markdown h3,
+.cockpit-markdown h4,
+.cockpit-markdown h5 {
+  color: #d3deec;
+  line-height: 1.35;
+}
+
+.cockpit-markdown h3 {
+  margin: 18px 0 8px;
+  font-size: 16px;
+}
+
+.cockpit-markdown h4 {
+  margin: 15px 0 7px;
+  font-size: 14px;
+}
+
+.cockpit-markdown h5 {
+  margin: 13px 0 6px;
+  font-size: 12px;
+}
+
+.cockpit-markdown > :first-child {
+  margin-top: 0;
+}
+
+.cockpit-markdown p {
+  margin: 7px 0;
+}
+
+.cockpit-markdown ul,
+.cockpit-markdown ol {
+  margin: 8px 0;
+  padding-left: 24px;
+}
+
+.cockpit-markdown li {
+  margin: 4px 0;
+}
+
+.cockpit-markdown code {
+  border: 1px solid #303e52;
+  border-radius: 5px;
+  background: #0a1119;
+  padding: 1px 4px;
+  color: #b7c9df;
+  font-size: .92em;
+}
+
+.cockpit-markdown blockquote {
+  margin: 10px 0;
+  border-left: 3px solid #405c7d;
+  padding: 4px 10px;
+  background: #101b29;
+  color: #8fa2ba;
+}
+
+.cockpit-markdown-code,
+.cockpit-markdown-table {
+  max-width: 100%;
+  overflow-x: auto;
+  border: 1px solid #28384c;
+  border-radius: 9px;
+  background: #091018;
+  padding: 10px;
+  color: #a9bbd1;
+  font: 11px/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  white-space: pre;
+}
+
+.cockpit-markdown-table {
+  color: #93a8c2;
+}
+
+.markdown-check {
+  display: inline-block;
+  width: 14px;
+  color: #71859f;
+  font-weight: 800;
+}
+
+.markdown-check.done {
+  color: #77cd97;
+}
+
+.task-specification {
+  border-color: #334b68;
+  background: linear-gradient(180deg, rgba(25, 39, 57, .75), #101721);
+}
+
+@media (max-width: 720px) {
+  .role-detail-drawer.rich {
+    width: 100%;
+  }
+
+  .commit-detail-head {
+    flex-direction: column;
+  }
+
+  .commit-detail-stats {
+    justify-content: flex-start;
+  }
+
+  .commit-file-row {
+    grid-template-columns: 64px minmax(0, 1fr);
+  }
+
+  .commit-file-delta {
+    grid-column: 2;
+  }
+
+  .role-document-accordion > summary {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .role-document-summary-meta {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
+  }
+}
