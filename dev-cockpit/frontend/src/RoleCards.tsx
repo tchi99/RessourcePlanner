@@ -1,5 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
-import type { Dashboard, RoleConfig, RolesConfig } from './types'
+import type {
+  ChatConversationStatus,
+  ChatStatusResponse,
+  Dashboard,
+  RoleConfig,
+  RolesConfig,
+} from './types'
 
 const AVATAR_LABELS: Record<RoleConfig['avatar'], string> = {
   'product-owner': '🧑‍💼',
@@ -23,6 +29,56 @@ function minutesLabel(value: number | null | undefined): string {
   const hours = Math.floor(value / 60)
   const minutes = value % 60
   return minutes ? `${hours} h ${minutes} min` : `${hours} h`
+}
+
+function normalizeChatUrl(value: string): string | null {
+  if (!value.trim()) return null
+  try {
+    const parsed = new URL(value.trim())
+    if (
+      parsed.protocol !== 'https:' ||
+      !['chatgpt.com', 'www.chatgpt.com'].includes(parsed.hostname)
+    ) {
+      return null
+    }
+    const path = parsed.pathname.replace(/\/$/, '') || '/'
+    return `https://chatgpt.com${path}`
+  } catch {
+    return null
+  }
+}
+
+function chatStatusForRole(
+  role: RoleConfig,
+  statuses: ChatStatusResponse | null,
+): ChatConversationStatus | null {
+  const key = normalizeChatUrl(role.chat_url)
+  if (!key || !statuses) return null
+  return statuses.conversations.find((row) => row.conversation_url === key) ?? null
+}
+
+function secondsLabel(value: number | null | undefined): string {
+  if (value == null) return 'un moment'
+  if (value < 60) return `${value} s`
+  return minutesLabel(Math.floor(value / 60))
+}
+
+function companionBubble(status: ChatConversationStatus | null): string | null {
+  if (!status) return null
+  if (status.effective_state === 'working') {
+    return 'ChatGPT répond présentement…'
+  }
+  if (status.effective_state === 'possible_stall') {
+    return `Conversation possiblement interrompue · aucun heartbeat depuis ${secondsLabel(status.last_seen_seconds)}.`
+  }
+  if (
+    status.effective_state === 'idle' &&
+    status.last_completed_seconds != null &&
+    status.last_completed_seconds <= 30
+  ) {
+    return `Réponse ChatGPT terminée il y a ${secondsLabel(status.last_completed_seconds)}.`
+  }
+  return null
 }
 
 function developerBubble(dashboard: Dashboard | null): string {
@@ -52,7 +108,13 @@ function developerBubble(dashboard: Dashboard | null): string {
   return `${key} est READY.`
 }
 
-function roleBubble(role: RoleConfig, dashboard: Dashboard | null): string {
+function roleBubble(
+  role: RoleConfig,
+  dashboard: Dashboard | null,
+  chatStatus: ChatConversationStatus | null,
+): string {
+  const companion = companionBubble(chatStatus)
+  if (companion) return companion
   if (role.avatar === 'developer') return developerBubble(dashboard)
   if (!dashboard) {
     return role.chat_url
@@ -105,6 +167,7 @@ export default function RoleCards({ dashboard }: { dashboard: Dashboard | null }
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
+  const [chatStatuses, setChatStatuses] = useState<ChatStatusResponse | null>(null)
 
   async function loadRoles() {
     setLoading(true)
@@ -127,6 +190,28 @@ export default function RoleCards({ dashboard }: { dashboard: Dashboard | null }
 
   useEffect(() => {
     void loadRoles()
+  }, [])
+
+  useEffect(() => {
+    let cancelled = false
+
+    async function loadChatStatuses() {
+      try {
+        const response = await fetch('/api/chat-status')
+        if (!response.ok) return
+        const payload = (await response.json()) as ChatStatusResponse
+        if (!cancelled) setChatStatuses(payload)
+      } catch {
+        if (!cancelled) setChatStatuses(null)
+      }
+    }
+
+    void loadChatStatuses()
+    const timer = window.setInterval(() => void loadChatStatuses(), 3_000)
+    return () => {
+      cancelled = true
+      window.clearInterval(timer)
+    }
   }, [])
 
   const enabledRoles = useMemo(
@@ -228,9 +313,14 @@ export default function RoleCards({ dashboard }: { dashboard: Dashboard | null }
       ) : enabledRoles.length ? (
         <div className="role-cards">
           {enabledRoles.map((role) => {
-            const working = isDeveloperWorking(role, dashboard)
-            const stalled =
-              role.avatar === 'developer' && Boolean(dashboard?.active_work.stalled)
+            const chatStatus = chatStatusForRole(role, chatStatuses)
+            const chatWorking = chatStatus?.effective_state === 'working'
+            const githubWorking = isDeveloperWorking(role, dashboard)
+            const working = Boolean(chatWorking || githubWorking)
+            const stalled = Boolean(
+              chatStatus?.effective_state === 'possible_stall' ||
+                (role.avatar === 'developer' && dashboard?.active_work.stalled),
+            )
             return (
               <article
                 className={`role-card ${working ? 'is-working' : ''} ${stalled ? 'is-stalled' : ''}`}
@@ -247,8 +337,22 @@ export default function RoleCards({ dashboard }: { dashboard: Dashboard | null }
                     <strong>{role.name}</strong>
                     {working && <span className="role-status">travaille</span>}
                     {stalled && <span className="role-status stalled">silencieux</span>}
+                    {role.chat_url && (
+                      <span
+                        className={`chat-state ${chatStatus?.effective_state ?? 'unknown'}`}
+                        title={
+                          chatStatus
+                            ? `Heartbeat il y a ${secondsLabel(chatStatus.last_seen_seconds)}`
+                            : 'Aucun heartbeat du Firefox Companion'
+                        }
+                      >
+                        ChatGPT · {chatStatus?.effective_state ?? 'offline'}
+                      </span>
+                    )}
                   </div>
-                  <div className="role-bubble">{roleBubble(role, dashboard)}</div>
+                  <div className="role-bubble">
+                    {roleBubble(role, dashboard, chatStatus)}
+                  </div>
                   <div className="role-actions">
                     {role.chat_url ? (
                       <a
