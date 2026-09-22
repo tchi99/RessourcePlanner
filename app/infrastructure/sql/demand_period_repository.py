@@ -157,6 +157,14 @@ class SqlDemandPeriodRepository(DemandPeriodRepositoryPort):
             request.id,
             request_line_id=scoped_line_id,
         )
+        operational = (
+            SqlRequestOperationalChoiceRepository(
+                self._session,
+                actor_name=self._actor_name,
+            ).state_for_request_id(request.id)
+            if request.status == "En planification"
+            else None
+        )
         resource_ids = {row.proposed_resource_id for row in periods if row.proposed_resource_id}
         resources = (
             self._session.scalars(select(Resource).where(Resource.id.in_(resource_ids))).all()
@@ -182,12 +190,30 @@ class SqlDemandPeriodRepository(DemandPeriodRepositoryPort):
                 desired_active_days=row.desired_active_days,
                 note=row.note,
                 selected=(
-                    bool(row.alternative_group)
-                    and bool(row.request_line_id)
-                    and selections.get(
-                        (row.request_line_id, _text(row.alternative_group))
+                    (
+                        bool(row.alternative_group)
+                        and bool(row.request_line_id)
+                        and operational is not None
+                        and operational.selections.get(
+                            EnvelopeGroupIdentity(
+                                line_id=row.request_line_id,
+                                group_key=_text(row.alternative_group),
+                            ).stable_key
+                        )
+                        == EnvelopeEntryIdentity(
+                            line_id=row.request_line_id,
+                            period_key=row.period_key,
+                        ).stable_key
                     )
-                    == row.id
+                    if operational is not None
+                    else (
+                        bool(row.alternative_group)
+                        and bool(row.request_line_id)
+                        and selections.get(
+                            (row.request_line_id, _text(row.alternative_group))
+                        )
+                        == row.id
+                    )
                 ),
             )
             for row in periods
