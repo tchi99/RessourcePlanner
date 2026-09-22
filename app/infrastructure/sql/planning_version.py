@@ -52,7 +52,8 @@ class SqlPlanningMutationVersionRepository(PlanningMutationVersionPort):
         return state
 
     def current_version(self) -> int:
-        return int(self._ensure_state().version)
+        state = self._session.get(PlanningMutationState, PLANNING_STATE_ID)
+        return int(state.version) if state is not None else 1
 
     def acquire(self, expected_version: int | None = None) -> int:
         current_transaction = self._session.get_transaction()
@@ -77,7 +78,8 @@ class SqlPlanningMutationVersionRepository(PlanningMutationVersionPort):
                 )
             return acquired
 
-        current = self.current_version()
+        state = self._ensure_state()
+        current = int(state.version)
         expected = current if expected_version is None else int(expected_version)
         if expected < 1:
             raise ApplicationValidationError(
