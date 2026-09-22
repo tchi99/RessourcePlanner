@@ -385,6 +385,7 @@ class SqlRequestPlanPreparer:
             1 for group in groups if (line_id, group) not in selections
         )
 
+        request_competency_ids = self._request_competencies(request.id)
         specs: list[PreparedRequirementSpec] = []
         for period in effective:
             desired = max(int(period.resource_count or 1), 1)
