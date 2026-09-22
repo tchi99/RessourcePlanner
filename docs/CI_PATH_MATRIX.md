@@ -46,3 +46,22 @@ Le workflow principal ne déclare plus `dev-cockpit/**` dans son filtre `pull_re
 Les fichiers réellement partagés restent déclarés dans les deux workflows lorsque les deux surfaces doivent être validées, notamment `docker-compose.yml` et `.env.example`. Le workflow dédié lui-même reste couvert par le filtre global `.github/workflows/**` du workflow principal.
 
 Pour une PR mixte RessourcePlanner + Dev Cockpit, un chemin applicatif déclenche la CI principale et le classifieur ignore la partie `dev-cockpit/**` afin de conserver uniquement les validations RessourcePlanner pertinentes; le chemin cockpit déclenche en parallèle le workflow dédié.
+
+
+## Pilote trois shards Python — #370
+
+Le pilote du 22 septembre 2026 a comparé la configuration actuelle à deux shards avec trois exécutions complètes à trois shards, sans modifier la couverture ni les poids historiques.
+
+Baseline récente à deux shards (8 CI réussies) :
+- chemin critique Python : médiane **114 s**; échantillons 104, 110, 111, 111, 117, 124, 125 et 266 s;
+- consommation cumulée : médiane **219,5 runner-s**.
+
+Pilote à trois shards :
+- 1 127 tests exécutés à chaque run, répartis 372 / 405 / 350;
+- poids prédits identiques à **30,175** par shard sur les trois runs;
+- chemins critiques : **98 s**, **92 s**, **135 s**; médiane **98 s**;
+- consommation cumulée : **255**, **240**, **267 runner-s**; médiane **255 runner-s**;
+- installation des dépendances : **7 à 18 s** par shard selon le run;
+- aucune exécution n'a atteint la cible indicative de **60–75 s**.
+
+Le passage à trois shards réduit la médiane du chemin critique d'environ **14 %**, mais augmente la consommation médiane de runners d'environ **16 %** et présente une variabilité importante (un shard à 135 s malgré des poids historiques équilibrés). La configuration à **deux shards est donc conservée**. Les poids historiques n'ont pas été recalibrés, car leur distribution prédite restait parfaitement équilibrée et n'expliquait pas la variabilité observée.
