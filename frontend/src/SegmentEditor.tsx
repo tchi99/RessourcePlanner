@@ -74,7 +74,7 @@ function hoursLabel(value: number | null | undefined) {
   return new Intl.NumberFormat("fr-CA", { maximumFractionDigits: 2 }).format(Number(value ?? 0));
 }
 
-function formFromDemand(demand: DemandReadModel): FormState {
+function formFromDemand(demand: DemandReadModel, resources: ResourceReadModel[]): FormState {
   const start = demand.desired_start ?? "";
   return {
     start_date: start,
@@ -89,7 +89,7 @@ function formFromDemand(demand: DemandReadModel): FormState {
     priority: demand.priority ?? "Normale",
     outside_standard_hours: false,
     confirmation: "inherit",
-    technician: demand.proposed_resource ?? "",
+    technician: resources.find((resource) => resource.name === demand.proposed_resource)?.id ?? "",
     load_profile: "UNIFORM",
   };
 }
@@ -107,7 +107,7 @@ function formFromSegment(segment: SegmentReadModel): FormState {
     priority: segment.priority ?? "Normale",
     outside_standard_hours: segment.outside_standard_hours,
     confirmation: confirmationChoice(segment),
-    technician: segment.resource_name ?? "",
+    technician: segment.automatic_target_resource_id ?? "",
     load_profile: planning.load_profile ?? "UNIFORM",
   };
 }
@@ -147,7 +147,7 @@ export default function SegmentEditor({
     if (!segmentId) {
       setLoading(false);
       setSegment(null);
-      setForm(demand ? formFromDemand(demand) : null);
+      setForm(demand ? formFromDemand(demand, resources) : null);
       return;
     }
 
@@ -168,7 +168,7 @@ export default function SegmentEditor({
         if (!controller.signal.aborted) setLoading(false);
       });
     return () => controller.abort();
-  }, [open, segmentId, demand]);
+  }, [open, segmentId, demand, resources]);
 
   useEffect(() => {
     if (!open) return;
@@ -237,10 +237,10 @@ export default function SegmentEditor({
       return;
     }
 
-    const selectedTechnician = form.technician.trim();
+    const selectedTargetResourceId = form.technician.trim();
     const editablePayload: SegmentUpdateWrite = {
       technician: segmentId
-        ? selectedTechnician
+        ? selectedTargetResourceId
           ? segment?.resource_name ?? null
           : null
         : null,
@@ -294,10 +294,10 @@ export default function SegmentEditor({
         createRetry.current = null;
       }
 
-      const technicianChanged = Boolean(selectedTechnician)
-        && selectedTechnician !== (segment?.resource_name ?? "");
-      if (savedSegmentId && technicianChanged) {
-        await assignSegment(savedSegmentId, selectedTechnician);
+      const targetChanged = Boolean(selectedTargetResourceId)
+        && selectedTargetResourceId !== (segment?.automatic_target_resource_id ?? "");
+      if (savedSegmentId && targetChanged) {
+        await assignSegment(savedSegmentId, selectedTargetResourceId);
       }
       setAllowLockedOverallocation(false);
       setOverallocationChoice(null);
@@ -486,14 +486,16 @@ export default function SegmentEditor({
                 </select>
               </label>
               <label className="segment-assignment-field">
-                <span>Ressource assignée</span>
+                <span>Cible automatique du reliquat</span>
                 <select value={form.technician} onChange={(event) => setField("technician", event.target.value)}>
-                  <option value="">Non assignée</option>
-                  {segment?.resource_name && !resources.some((resource) => resource.name === segment.resource_name) && (
-                    <option value={segment.resource_name}>{segment.resource_name} — inactive/inconnue</option>
+                  <option value="">Aucune cible automatique</option>
+                  {segment?.automatic_target_resource_id && !resources.some((resource) => resource.id === segment.automatic_target_resource_id) && (
+                    <option value={segment.automatic_target_resource_id}>
+                      {segment.automatic_target_resource_name || segment.resource_name || segment.automatic_target_resource_id} — inactive/inconnue
+                    </option>
                   )}
                   {sortedResources.map((resource) => (
-                    <option value={resource.name} key={resource.id}>
+                    <option value={resource.id} key={resource.id}>
                       {resource.name}{resource.resource_class ? ` — ${resource.resource_class}` : ""}
                     </option>
                   ))}
@@ -512,7 +514,7 @@ export default function SegmentEditor({
             <div className="segment-help">
               <strong>Segment = besoin ressource; quart = affectation opérationnelle datée.</strong>
               <span>Le profil de charge influence seulement le reliquat automatique : les quarts manuels/verrouillés restent prioritaires, et la capacité/disponibilité demeure autoritaire.</span>
-              <span>Les règles de validation et le recalcul du planning restent dans FastAPI. Une affectation choisie ici utilise la commande backend d'assignation du segment.</span>
+              <span>La cible automatique choisie ici reçoit le reliquat régénéré. Elle ne remplace pas les ressources réelles déjà portées par les quarts verrouillés.</span>
             </div>
 
             {segmentId && <PlanningHistoryPanel entityType="SEGMENT" reference={segmentId} />}
