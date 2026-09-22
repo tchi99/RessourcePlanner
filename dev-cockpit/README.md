@@ -93,6 +93,34 @@ Les bulles affichées sur les cartes sont dérivées des données déjà connues
 
 Cette configuration est uniquement une **préférence locale de présentation**. Elle ne devient jamais une source de vérité sur l'état produit ou le roadmap.
 
+### Firefox Companion — état réel des conversations
+
+Le sous-dossier [`firefox-companion/`](firefox-companion/) contient une WebExtension Firefox locale. Elle permet d'animer n'importe quel rôle à partir de l'état réel de la conversation associée, sans API OpenAI.
+
+Le matching se fait par l'URL de conversation configurée dans `chat_url` :
+
+```text
+rôle Product Owner
+chat_url = https://chatgpt.com/c/abc
+          ↓
+Firefox Companion heartbeat pour /c/abc
+          ↓
+Product Owner → ChatGPT · working
+```
+
+États navigateur exposés par le cockpit :
+
+- `working` : contrôle Stop de génération détecté;
+- `idle` : conversation ouverte sans génération;
+- `possible_stall` : la dernière trace était `working`, mais aucun heartbeat depuis 30 s;
+- `disconnected` : la dernière trace était `idle`, puis le heartbeat a disparu.
+
+Un passage `working → idle` conserve aussi brièvement un signal « réponse terminée ».
+
+Le navigateur et GitHub restent deux sources séparées : un rôle Developer peut être animé par GitHub, par ChatGPT, ou par les deux. Pour les autres rôles, l'état ChatGPT suffit à déclencher l'animation.
+
+Installation Firefox détaillée : [`firefox-companion/README.md`](firefox-companion/README.md).
+
 ### Persistance
 
 Le backend sauvegarde la configuration dans :
