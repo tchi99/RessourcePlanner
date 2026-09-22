@@ -51,10 +51,13 @@ class ChatStatusStore:
         with self._lock:
             existing = self._entries.get(payload.conversation_url)
             working_since = None
+            last_completed_at = existing.get("last_completed_at") if existing else None
             if payload.state == "working":
                 if existing and existing.get("state") == "working":
                     working_since = existing.get("working_since")
                 working_since = working_since or current
+            elif existing and existing.get("state") == "working":
+                last_completed_at = current
             self._entries[payload.conversation_url] = {
                 "conversation_url": payload.conversation_url,
                 "state": payload.state,
@@ -63,6 +66,7 @@ class ChatStatusStore:
                 "ui_signal": payload.ui_signal,
                 "last_seen": current,
                 "working_since": working_since,
+                "last_completed_at": last_completed_at,
             }
         return self._serialize(payload.conversation_url, current)
 
@@ -93,6 +97,12 @@ class ChatStatusStore:
             effective_state = "disconnected"
 
         working_since = entry.get("working_since")
+        last_completed_at = entry.get("last_completed_at")
+        last_completed_seconds = (
+            max(0, int((now - last_completed_at).total_seconds()))
+            if isinstance(last_completed_at, datetime)
+            else None
+        )
         return {
             "conversation_url": url,
             "state": raw_state,
@@ -108,4 +118,10 @@ class ChatStatusStore:
                 if isinstance(working_since, datetime)
                 else None
             ),
+            "last_completed_at": (
+                last_completed_at.isoformat()
+                if isinstance(last_completed_at, datetime)
+                else None
+            ),
+            "last_completed_seconds": last_completed_seconds,
         }
