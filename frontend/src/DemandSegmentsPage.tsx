@@ -49,7 +49,8 @@ function segmentSearchText(segment: SegmentReadModel) {
     segment.demand_number,
     segment.project_number,
     segment.project_name,
-    segment.resource_name,
+    segment.automatic_target_resource_name,
+    ...segment.mobilized_resources.map((resource) => resource.resource_name),
     segment.status,
     segment.description,
     segment.required_competency,
@@ -71,6 +72,9 @@ function SegmentCard({ segment, onOpen }: { segment: SegmentReadModel; onOpen: (
   const activeDayTarget = planning.desired_active_days ?? null;
   const plannedDays = Number(planning.planned_active_days ?? 0);
   const activeDayWarning = activeDayTarget != null && planning.active_day_target_met === false;
+  const mobilized = segment.mobilized_resources
+    .map((resource) => `${resource.resource_name} ${hours(resource.allocated_hours)} h`)
+    .join(" · ");
   return (
     <button type="button" className={`segment-card ${cancelled ? "segment-card-cancelled" : ""} ${excess > 0 ? "segment-card-overallocated" : ""}`} onClick={onOpen}>
       <div className="segment-card-heading">
@@ -85,6 +89,10 @@ function SegmentCard({ segment, onOpen }: { segment: SegmentReadModel; onOpen: (
           ⚠ Surallocation manuelle +{hours(excess)} h · {hours(planning.locked_hours)} h verrouillées / {hours(segment.planned_hours)} h prévues
         </div>
       )}
+      <div className="segment-active-days">
+        Couverture {hours(segment.covered_hours)} / {hours(segment.planned_hours)} h · reliquat non couvert {hours(segment.remaining_hours)} h
+      </div>
+      {mobilized && <div className="segment-active-days">Ressources mobilisées : {mobilized}</div>}
       {activeDayTarget != null && (
         <div className={activeDayWarning ? "overallocation-inline-warning" : "segment-active-days"}>
           {activeDayWarning ? "⚠ " : ""}Cible {activeDayTarget} jour(s) actif(s) · planifié {plannedDays}
@@ -99,7 +107,11 @@ function SegmentCard({ segment, onOpen }: { segment: SegmentReadModel; onOpen: (
         {segment.outside_standard_hours && <span>Hors horaire</span>}
       </div>
       <div className="segment-card-footer">
-        <span>{segment.resource_name ? `Assigné : ${segment.resource_name}` : "Non assigné"}</span>
+        <span>
+          {segment.automatic_target_resource_name
+            ? `Cible automatique : ${segment.automatic_target_resource_name}`
+            : "Aucune cible automatique"}
+        </span>
         <span>{segment.confirmation || "Confirmation héritée"}</span>
       </div>
     </button>
