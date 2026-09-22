@@ -796,7 +796,7 @@ class SqlPeriodAwareApprovedDemandSyncAdapter(ApprovedDemandSyncPort):
         elif requirement.status not in {"Terminé", "Annulé"}:
             requirement.status = "À assigner"
 
-        requirement.project_id = request.project_id
+        requirement.project_id = project.id
         requirement.workforce_request_id = request.id
         requirement.source_request_line_id = spec.source_request_line_id
         requirement.start_date = spec.start_date
@@ -810,7 +810,11 @@ class SqlPeriodAwareApprovedDemandSyncAdapter(ApprovedDemandSyncPort):
         requirement.required_competency_id = (
             spec.competency_ids[0] if len(spec.competency_ids) == 1 else None
         )
-        requirement.priority = request.priority or "Normale"
+        requirement.priority = (
+            priority
+            if priority is not None
+            else request.priority or "Normale"
+        )
         requirement.origin = ORIGIN_REQUEST
         source_line = (
             self._session.get(RequestLine, spec.source_request_line_id)
