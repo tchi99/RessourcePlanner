@@ -240,8 +240,7 @@ async def build_dashboard(client: GitHubClient, settings: Settings, repo: str) -
         if str(entry.get("name") or "").startswith("ADR-") and str(entry.get("name") or "").endswith(".md")
     ]
     adr_names = [str(entry["name"]) for entry in adr_entries if entry.get("name")]
-    referenced = referenced_adrs(f"{issue_body}
-{roadmap_block}", adr_names)
+    referenced = referenced_adrs(issue_body + "\n" + roadmap_block, adr_names)
 
     warnings: list[str] = []
     if merged_but_unmarked:
