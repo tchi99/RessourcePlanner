@@ -138,20 +138,30 @@ async function createDemand(
   return editor;
 }
 
+async function openDemandDetail(page: Page, demandNumber: string) {
+  await navigateMain(page, "Demandes");
+  const card = page.locator(".demand-card").filter({ hasText: demandNumber }).first();
+  await expect(card).toBeVisible();
+  await card.click();
+  await expect(page.locator(`.demand-detail-context[data-demand-number="${demandNumber}"]`)).toBeVisible();
+}
+
 async function workflowSelect(page: Page, demandNumber: string) {
-  await page.getByRole("button", { name: "Workflow", exact: true }).click();
-  const panel = page.locator(".workflow-list-panel");
-  await labelled(panel, "Demande", "select").selectOption(demandNumber);
-  await expect(page.locator(".workflow-summary-card")).toContainText(demandNumber);
+  await openDemandDetail(page, demandNumber);
+  const section = page.locator(".demand-detail-section").filter({ hasText: "Workflow et impact" }).first();
+  if (!(await section.getAttribute("open"))) {
+    await section.locator("summary").click();
+  }
+  await expect(section.locator(".workflow-detail-panel")).toBeVisible();
 }
 
 async function periodsSelect(page: Page, demandNumber: string) {
-  await page.getByRole("button", { name: /Périodes & alternatives/ }).click();
-  const picker = page.locator(".period-demand-picker");
-  const select = labelled(picker, "Demande", "select");
-  await select.selectOption(demandNumber);
-  await expect(select).toHaveValue(demandNumber);
-  await expect(page.locator(".period-demand-summary")).toBeVisible();
+  await openDemandDetail(page, demandNumber);
+  const section = page.locator(".demand-detail-section").filter({ hasText: "Périodes de travail" }).first();
+  if (!(await section.getAttribute("open"))) {
+    await section.locator("summary").click();
+  }
+  await expect(section.locator(".period-demand-summary")).toBeVisible();
 }
 
 test("V2 local acceptance path runs through React, Chromium, FastAPI and SQLite", async ({ browser }) => {
