@@ -347,7 +347,7 @@ export default function DemandPeriodsPage() {
   }
 
   function addAlternativeGroup() {
-    const { start, end } = baseDates(selectedDemand);
+    const { start, end } = baseDates(selectedDemand, selectedLine);
     const group = nextAlternativeGroup(periods);
     const base: Omit<PeriodDraft, "period_id"> = {
       start_date: start,
@@ -373,7 +373,7 @@ export default function DemandPeriodsPage() {
 
   function addAlternativeOption(group: string) {
     const existing = periods.find((row) => row.kind === "ALTERNATIVE" && row.alternative_group === group);
-    const { start, end } = baseDates(selectedDemand);
+    const { start, end } = baseDates(selectedDemand, selectedLine);
     setPeriods((current) => [
       ...current,
       {
@@ -597,6 +597,7 @@ export default function DemandPeriodsPage() {
                           period={period}
                           resources={resources}
                           disabled={saving}
+                          singleSlot={Boolean(selectedLine)}
                           onChange={(next) => replacePeriod(index, next)}
                           onRemove={() => removePeriod(period.period_id)}
                         />
