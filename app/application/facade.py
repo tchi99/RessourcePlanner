@@ -29,6 +29,7 @@ from .demand_service import DemandService
 from .demand_workflow_policy import DemandWorkflowReadModel
 from .errors import ApplicationOperationError
 from .planning_service import PlanningService
+from .repository_ports import PlanningMutationVersionPort
 from .quick_shift_service import QuickShiftService
 from .resource_admin import (
     AvailabilityRuleCreateCommand,
@@ -71,6 +72,7 @@ class ApplicationFacade:
         planning: PlanningService,
         work_packages: WorkPackageService | None = None,
         resource_admin: ResourceAdminService | None = None,
+        planning_versions: PlanningMutationVersionPort | None = None,
     ) -> None:
         self._demands = demands
         self._segments = segments
@@ -79,6 +81,12 @@ class ApplicationFacade:
         self._planning = planning
         self._work_packages = work_packages
         self._resource_admin = resource_admin
+        self._planning_versions = planning_versions
+
+    def _acquire_planning_version(self, expected_version: int | None = None) -> int | None:
+        if self._planning_versions is None:
+            return None
+        return self._planning_versions.acquire(expected_version)
 
     def _work_package_service(self) -> WorkPackageService:
         if self._work_packages is None:
@@ -109,24 +117,29 @@ class ApplicationFacade:
         return self._work_package_service().update_command(command)
 
     def create_resource(self, command: ResourceCreateCommand) -> ResourceMutationResult:
+        self._acquire_planning_version()
         return self._resource_admin_service().create_resource(command)
 
     def update_resource(self, command: ResourceUpdateCommand) -> ResourceMutationResult:
+        self._acquire_planning_version()
         return self._resource_admin_service().update_resource(command)
 
     def create_availability_rule(
         self,
         command: AvailabilityRuleCreateCommand,
     ) -> AvailabilityRuleMutationResult:
+        self._acquire_planning_version()
         return self._resource_admin_service().create_availability_rule(command)
 
     def update_availability_rule(
         self,
         command: AvailabilityRuleUpdateCommand,
     ) -> AvailabilityRuleMutationResult:
+        self._acquire_planning_version()
         return self._resource_admin_service().update_availability_rule(command)
 
     def deactivate_availability_rule(self, rule_id: str) -> AvailabilityRuleMutationResult:
+        self._acquire_planning_version()
         return self._resource_admin_service().deactivate_availability_rule(rule_id)
 
     def create_demand(self, command: DemandCreateCommand) -> DemandMutationResult:
@@ -215,6 +228,7 @@ class ApplicationFacade:
         return DemandMutationResult(_identifier(command.number), status="Annulée")
 
     def create_segment(self, command: SegmentCreateCommand) -> SegmentMutationResult:
+        self._acquire_planning_version()
         identifier, summary = self._segments.create_command(command)
         return SegmentMutationResult(
             segment_id=_identifier(identifier),
@@ -223,6 +237,7 @@ class ApplicationFacade:
         )
 
     def update_segment(self, command: SegmentUpdateCommand) -> SegmentMutationResult:
+        self._acquire_planning_version()
         summary = self._segments.update_command(command)
         return SegmentMutationResult(
             segment_id=_identifier(command.segment_id),
@@ -231,6 +246,7 @@ class ApplicationFacade:
         )
 
     def cancel_segment(self, command: SegmentCancelCommand) -> SegmentMutationResult:
+        self._acquire_planning_version()
         summary = self._segments.cancel_command(command)
         return SegmentMutationResult(
             segment_id=_identifier(command.segment_id),
@@ -239,6 +255,7 @@ class ApplicationFacade:
         )
 
     def assign_segment(self, command: SegmentAssignCommand) -> SegmentMutationResult:
+        self._acquire_planning_version()
         summary = self._allocations.assign_segment_command(command)
         return SegmentMutationResult(
             segment_id=_identifier(command.segment_id),
@@ -251,6 +268,7 @@ class ApplicationFacade:
         self,
         command: ManualAllocationCreateCommand,
     ) -> AllocationMutationResult:
+        self._acquire_planning_version()
         identifier = self._allocations.create_manual_command(command)
         return AllocationMutationResult(_identifier(identifier), action="created")
 
@@ -258,6 +276,7 @@ class ApplicationFacade:
         self,
         command: ManualAllocationUpdateCommand,
     ) -> AllocationMutationResult:
+        self._acquire_planning_version()
         self._allocations.update_manual_command(command)
         return AllocationMutationResult(_identifier(command.allocation_id), action="updated")
 
@@ -265,6 +284,7 @@ class ApplicationFacade:
         self,
         command: ManualAllocationMoveCommand,
     ) -> AllocationMutationResult:
+        self._acquire_planning_version()
         self._allocations.move_manual_command(command)
         return AllocationMutationResult(_identifier(command.allocation_id), action="moved")
 
@@ -272,6 +292,7 @@ class ApplicationFacade:
         self,
         command: ManualAllocationReleaseCommand,
     ) -> AllocationMutationResult:
+        self._acquire_planning_version()
         self._allocations.release_manual_command(command)
         return AllocationMutationResult(_identifier(command.allocation_id), action="released")
 
@@ -279,6 +300,7 @@ class ApplicationFacade:
         self,
         command: ManualAllocationDeleteCommand,
     ) -> AllocationMutationResult:
+        self._acquire_planning_version()
         self._allocations.delete_manual_command(command)
         return AllocationMutationResult(_identifier(command.allocation_id), action="deleted")
 
@@ -286,6 +308,7 @@ class ApplicationFacade:
         self,
         command: QuickShiftCreateCommand,
     ) -> QuickShiftCreatedResult:
+        self._acquire_planning_version()
         result = self._quick_shifts.create_command(command)
         return QuickShiftCreatedResult(
             segment_id=_identifier(result.segment_id),
@@ -293,4 +316,5 @@ class ApplicationFacade:
         )
 
     def rebuild_planning(self, command: PlanningRebuildCommand) -> PlanningResult:
+        self._acquire_planning_version()
         return PlanningResult.from_mapping(self._planning.rebuild_command(command))
