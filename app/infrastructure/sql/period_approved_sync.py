@@ -12,6 +12,7 @@ from ...application.command_ports import ApprovedDemandSyncPort
 from ...domain.active_days import split_total_workforce_hours
 from ...domain.confirmation import CONFIRMATION_CONFIRMED, normalize_confirmation
 from ...domain.demand_periods import PERIOD_KIND_CUMULATIVE
+from .approval_revision_repository import SqlRequestApprovalRevisionRepository
 from .base import utc_now
 from .demand_period_models import (
     WorkforceRequestPeriod,
@@ -65,6 +66,7 @@ class SqlPeriodAwareApprovedDemandSyncAdapter(ApprovedDemandSyncPort):
         self._session = session
         self._segments = SqlSegmentRepository(session)
         self._legacy = SqlEstimatedDaysApprovedDemandSyncAdapter(session)
+        self._approval_revisions = SqlRequestApprovalRevisionRepository(session)
 
     def _request(self, number: str) -> WorkforceRequest:
         wanted = _text(number)
@@ -917,10 +919,18 @@ class SqlPeriodAwareApprovedDemandSyncAdapter(ApprovedDemandSyncPort):
     def sync_approved(self, demand_number: str) -> None:
         request = self._request(demand_number)
         periods = self._active_periods(request.id)
+        if not bool(request.line_mode) and not periods:
+            self._legacy.prevalidate_approved(demand_number)
+        emergency = self._emergency_materialization(request)
+        revision = (
+            None
+            if emergency
+            else self._approval_revisions.create_revision(request)
+        )
+
         if bool(request.line_mode):
             self._sync_request_lines(request, periods)
-            return
-        if not periods:
+        elif not periods:
             self._legacy.sync_approved(demand_number)
             legacy_line = self._session.get(RequestLine, request.id)
             materialized = self._active_requirements(request.id)
@@ -944,5 +954,37 @@ class SqlPeriodAwareApprovedDemandSyncAdapter(ApprovedDemandSyncPort):
                 )
             )
             self._session.flush()
-            return
-        self._sync_legacy_periods(request, periods)
+        else:
+            self._sync_legacy_periods(request, periods)
+
+        if revision is not None:
+            self._approval_revisions.bind_materialized_requirements(
+                request,
+                revision,
+            )
+            self._approval_revisions.activate_revision(request, revision)
+            self._session.add(
+                WorkforceRequestHistory(
+                    workforce_request_id=request.id,
+                    action="Capture révision approuvée",
+                    status=request.status,
+                    comment="Autorisation approuvée immuable capturée et activée.",
+                    details=json.dumps(
+                        {
+                            "approval_revision_id": revision.id,
+                            "request_version": revision.request_version,
+                            "authorization_fingerprint": (
+                                revision.authorization_fingerprint
+                            ),
+                            "payload_format_version": (
+                                revision.payload_format_version
+                            ),
+                        },
+                        sort_keys=True,
+                        separators=(",", ":"),
+                    ),
+                    actor_name=request.approved_by_name,
+                    occurred_at=utc_now(),
+                )
+            )
+            self._session.flush()
