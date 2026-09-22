@@ -27,6 +27,8 @@ class ReactDemandsContractTests(unittest.TestCase):
         self.assertIn('"/api/v1/demands"', source)
         self.assertIn('/api/v1/demands/${encodeURIComponent(number)}', source)
         self.assertIn("/api/v1/work-packages?", source)
+        self.assertIn("/detail", source)
+        self.assertIn("DemandDetailReadModel", source)
         self.assertIn('"Idempotency-Key"', source)
         self.assertIn("work_package_ref", source)
 
@@ -51,6 +53,9 @@ class ReactDemandsContractTests(unittest.TestCase):
         self.assertIn('value="Tentative"', source)
         self.assertIn('value="Confirmée"', source)
         self.assertIn("Approbation ≠ confirmation", source)
+        self.assertIn("getDemandDetail", source)
+        self.assertIn("<DemandDetail", source)
+        self.assertIn("confirmDiscardChanges", source)
         self.assertNotIn('name="project_manager"', source)
 
 
