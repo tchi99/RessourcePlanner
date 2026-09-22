@@ -62,12 +62,12 @@ function ActionCard({
           segment_id: action.segment_id,
         });
       }}
-      title={draggable ? "Glisser ce besoin sur une ressource pour l’attribuer" : undefined}
+      title={draggable ? "Glisser ce besoin sur une ressource pour définir sa cible automatique" : undefined}
     >
       <div className="planning-action-card-heading">
         <div>
           <span className="planning-action-kicker">
-            {assignment ? "Ressource à attribuer" : "Approbation requise"}
+            {assignment ? "Cible automatique à définir" : "Approbation requise"}
           </span>
           <strong>
             {action.project_number || "Projet"}
@@ -86,7 +86,7 @@ function ActionCard({
         {action.priority && <span>Priorité : {action.priority}</span>}
         {action.confirmation && <span>{action.confirmation}</span>}
         {action.emergency_override_active && <span>⚠ Dérogation urgente</span>}
-        {draggable && <span className="drag-hint">↕ Glisser vers une ressource</span>}
+        {draggable && <span className="drag-hint">↕ Glisser pour définir la cible automatique</span>}
       </div>
 
       <div className="planning-action-buttons">
@@ -166,7 +166,7 @@ export default function PlanningActionPanel({
     setAssigningResource(candidate.resource_id);
     setRecommendationError(null);
     try {
-      await assignSegment(selectedAction.segment_id, candidate.resource_name);
+      await assignSegment(selectedAction.segment_id, candidate.resource_id);
       setSelectedAction(null);
       setRecommendations([]);
       setRecommendationError(null);
@@ -240,7 +240,7 @@ export default function PlanningActionPanel({
                       canDragAssignment={canAssign}
                     />
                   ))
-                  : <div className="planning-action-empty compact">Tous les besoins sont attribués.</div>}
+                  : <div className="planning-action-empty compact">Tous les reliquats automatiques ont une cible.</div>}
               </div>
             </div>
           </div>
@@ -339,7 +339,7 @@ export default function PlanningActionPanel({
                       onClick={() => void assign(candidate)}
                       title={!canAssign ? "Permission manage_planning requise" : undefined}
                     >
-                      {assigningResource === candidate.resource_id ? "Assignation…" : "Assigner"}
+                      {assigningResource === candidate.resource_id ? "Définition…" : "Utiliser comme cible"}
                     </button>
                   </article>
                 ))}
