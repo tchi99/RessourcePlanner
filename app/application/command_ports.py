@@ -52,6 +52,8 @@ class AllocationCommandPort(Protocol):
 
 
 class ApprovedDemandSyncPort(Protocol):
-    """Synchronize the approved demand version to operational requirements."""
+    """Synchronize approved authorization and its active operational choices."""
 
     def sync_approved(self, demand_number: str) -> None: ...
+
+    def sync_operational_choices(self, demand_number: str) -> None: ...
