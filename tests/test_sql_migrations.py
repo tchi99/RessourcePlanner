@@ -21,6 +21,7 @@ EXPECTED_TABLES = {
     "projects",
     "request_approval_references",
     "request_approval_revisions",
+    "request_operational_states",
     "request_lines",
     "request_line_competencies",
     "resource_requirement_competencies",
