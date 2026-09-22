@@ -7,6 +7,7 @@ import {
   type DemandReadModel,
   type DemandLineReadModel,
   type ResourceReadModel,
+  getDemand,
   getDemandLinePeriods,
   getDemandPeriods,
   getDemands,
@@ -216,7 +217,21 @@ function PeriodFields({
   );
 }
 
-export default function DemandPeriodsPage() {
+type DemandPeriodsPageProps = {
+  demandNumber?: string;
+  embedded?: boolean;
+  onChanged?: () => void;
+  onDirtyChange?: (dirty: boolean) => void;
+  canEdit?: boolean;
+};
+
+export default function DemandPeriodsPage({
+  demandNumber,
+  embedded = false,
+  onChanged,
+  onDirtyChange,
+  canEdit = true,
+}: DemandPeriodsPageProps = {}) {
   const [demands, setDemands] = useState<DemandReadModel[]>([]);
   const [resources, setResources] = useState<ResourceReadModel[]>([]);
   const [selectedNumber, setSelectedNumber] = useState("");
@@ -257,11 +272,16 @@ export default function DemandPeriodsPage() {
 
   useEffect(() => {
     const controller = new AbortController();
-    Promise.all([getDemands(controller.signal), getResources(true, controller.signal)])
+    const demandRequest = demandNumber
+      ? getDemand(demandNumber, controller.signal).then((row) => [row])
+      : getDemands(controller.signal);
+    Promise.all([demandRequest, getResources(true, controller.signal)])
       .then(([demandRows, resourceRows]) => {
         setDemands(demandRows);
         setResources(resourceRows);
-        setSelectedNumber((current) => current || demandRows[0]?.number || "");
+        setSelectedNumber((current) =>
+          demandNumber || current || demandRows[0]?.number || "",
+        );
       })
       .catch((reason: unknown) => {
         if (!controller.signal.aborted) setError(errorMessage(reason));
@@ -270,7 +290,18 @@ export default function DemandPeriodsPage() {
         if (!controller.signal.aborted) setLoading(false);
       });
     return () => controller.abort();
-  }, []);
+  }, [demandNumber]);
+
+  useEffect(() => {
+    onDirtyChange?.(dirty);
+    if (!dirty) return;
+    const warnBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", warnBeforeUnload);
+    return () => window.removeEventListener("beforeunload", warnBeforeUnload);
+  }, [dirty, onDirtyChange]);
 
   useEffect(() => {
     if (!selectedNumber || (selectedDemand?.line_mode && !selectedLineId)) {
@@ -425,8 +456,11 @@ export default function DemandPeriodsPage() {
           ? "Périodes enregistrées. L'enveloppe ayant changé, la demande doit être approuvée de nouveau; le plan approuvé précédent reste inchangé jusque-là."
           : "Périodes enregistrées.",
       );
-      const demandRows = await getDemands();
+      const demandRows = demandNumber
+        ? [await getDemand(demandNumber)]
+        : await getDemands();
       setDemands(demandRows);
+      onChanged?.();
     } catch (reason: unknown) {
       setError(errorMessage(reason));
     } finally {
@@ -464,18 +498,20 @@ export default function DemandPeriodsPage() {
 
   return (
     <section className="demand-periods-page">
-      <div className="page-heading periods-heading">
-        <div>
-          <span className="eyebrow">Demandes · 3B</span>
-          <h1>Périodes & alternatives</h1>
-          <p>Décompose une demande en périodes cumulatives ou en options mutuellement exclusives avant l'approbation.</p>
+      {!embedded && (
+        <div className="page-heading periods-heading">
+          <div>
+            <span className="eyebrow">Demandes</span>
+            <h1>Périodes de travail</h1>
+            <p>Répartis un besoin sur plusieurs périodes ou définis plusieurs fenêtres possibles sans dupliquer le budget.</p>
+          </div>
         </div>
-      </div>
+      )}
 
       {error && <div className="error-panel"><strong>Action impossible.</strong><span>{error}</span></div>}
       {notice && <div className="demand-notice" role="status">{notice}</div>}
 
-      <div className="period-demand-picker">
+      {!embedded && <div className="period-demand-picker">
         <label>
           <span>Demande</span>
           <select
@@ -510,7 +546,28 @@ export default function DemandPeriodsPage() {
           </label>
         )}
         {dirty && <span className="period-dirty-warning">Enregistre ou recharge avant de changer de demande.</span>}
-      </div>
+      </div>}
+
+      {embedded && selectedDemand?.line_mode && (
+        <div className="period-demand-picker embedded-line-picker">
+          <label>
+            <span>Besoin / ligne</span>
+            <select
+              aria-label="Ligne de demande"
+              value={selectedLineId}
+              disabled={loading || saving || dirty}
+              onChange={(event) => setSelectedLineId(event.target.value)}
+            >
+              {selectedDemand.lines.filter((line) => line.active).map((line) => (
+                <option value={line.line_id} key={line.line_id}>
+                  Ligne {line.position + 1} — {line.description || line.required_resource_class || line.task_code || "Besoin"}
+                </option>
+              ))}
+            </select>
+          </label>
+          {dirty && <span className="period-dirty-warning">Enregistre les périodes avant de changer de besoin.</span>}
+        </div>
+      )}
 
       {selectedDemand && (
         <div className="period-demand-summary">
@@ -528,10 +585,10 @@ export default function DemandPeriodsPage() {
       {selectedDemand && (
         <div className="period-toolbar">
           <div>
-            <button type="button" className="secondary-button" onClick={addCumulative} disabled={saving || periodLoading || (selectedDemand.line_mode && !selectedLine)}>+ Période cumulative</button>
-            <button type="button" className="secondary-button" onClick={addAlternativeGroup} disabled={saving || periodLoading || (selectedDemand.line_mode && !selectedLine)}>+ Groupe alternatif</button>
+            <button type="button" className="secondary-button" onClick={addCumulative} disabled={!canEdit || saving || periodLoading || (selectedDemand.line_mode && !selectedLine)}>+ Période cumulative</button>
+            <button type="button" className="secondary-button" onClick={addAlternativeGroup} disabled={!canEdit || saving || periodLoading || (selectedDemand.line_mode && !selectedLine)}>+ Groupe alternatif</button>
           </div>
-          <button type="button" className="primary-button" onClick={savePeriods} disabled={saving || periodLoading || !dirty}>
+          <button type="button" className="primary-button" onClick={savePeriods} disabled={!canEdit || saving || periodLoading || !dirty}>
             {saving ? "Enregistrement…" : "Enregistrer les périodes"}
           </button>
         </div>
@@ -549,7 +606,7 @@ export default function DemandPeriodsPage() {
       {!periodLoading && cumulative.length > 0 && (
         <section className="period-section">
           <div className="period-section-heading">
-            <div><span className="eyebrow">Additionnées</span><h2>Périodes cumulatives</h2></div>
+            <div><span className="eyebrow">Additionnées</span><h2>Travail en plusieurs périodes</h2></div>
             <p>Ces périodes représentent du travail distinct et peuvent donc toutes contribuer au besoin.</p>
           </div>
           <div className="period-card-grid">
@@ -560,7 +617,7 @@ export default function DemandPeriodsPage() {
                   key={period.period_id}
                   period={period}
                   resources={resources}
-                  disabled={saving}
+                  disabled={!canEdit || saving}
                   singleSlot={Boolean(selectedLine)}
                   onChange={(next) => replacePeriod(index, next)}
                   onRemove={() => removePeriod(period.period_id)}
@@ -574,8 +631,8 @@ export default function DemandPeriodsPage() {
       {!periodLoading && alternativeGroups.length > 0 && (
         <section className="period-section">
           <div className="period-section-heading">
-            <div><span className="eyebrow">Exclusives</span><h2>Groupes alternatifs</h2></div>
-            <p>Une seule option d'un même groupe est retenue. Elles ne sont jamais additionnées ni matérialisées en parallèle.</p>
+            <div><span className="eyebrow">Une seule fenêtre retenue</span><h2>Travail possible dans l’une de ces fenêtres</h2></div>
+            <p>Une seule fenêtre d’un même groupe est retenue. Les possibilités restent exclusives et ne sont jamais additionnées.</p>
           </div>
           <div className="alternative-groups">
             {alternativeGroups.map(([group, rows]) => (
@@ -585,7 +642,7 @@ export default function DemandPeriodsPage() {
                     <strong>{group}</strong>
                     <span>{rows.length} option(s) · {rows.some((row) => row.selected) ? "option sélectionnée" : "aucune option sélectionnée"}</span>
                   </div>
-                  <button type="button" className="secondary-button" onClick={() => addAlternativeOption(group)} disabled={saving}>+ Option</button>
+                  <button type="button" className="secondary-button" onClick={() => addAlternativeOption(group)} disabled={!canEdit || saving}>+ Option</button>
                 </div>
                 {dirty && <div className="alternative-selection-note">Enregistre les définitions avant de sélectionner l'option à matérialiser.</div>}
                 <div className="period-card-grid">
@@ -596,7 +653,7 @@ export default function DemandPeriodsPage() {
                         <PeriodFields
                           period={period}
                           resources={resources}
-                          disabled={saving}
+                          disabled={!canEdit || saving}
                           singleSlot={Boolean(selectedLine)}
                           onChange={(next) => replacePeriod(index, next)}
                           onRemove={() => removePeriod(period.period_id)}
@@ -604,7 +661,7 @@ export default function DemandPeriodsPage() {
                         <button
                           type="button"
                           className={period.selected ? "selected-option-button" : "secondary-button"}
-                          disabled={saving || dirty || period.selected}
+                          disabled={!canEdit || saving || dirty || period.selected}
                           onClick={() => chooseAlternative(group, period.period_id)}
                         >
                           {period.selected ? "Option retenue" : "Retenir cette option"}

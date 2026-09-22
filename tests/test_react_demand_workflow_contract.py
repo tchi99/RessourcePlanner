@@ -8,16 +8,19 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class ReactDemandWorkflowContractTests(unittest.TestCase):
-    def test_workspace_exposes_workflow_without_replacing_existing_sections(self) -> None:
+    def test_workflow_is_contextual_inside_unified_demand_detail(self) -> None:
         workspace = (ROOT / "frontend" / "src" / "DemandsWorkspace.tsx").read_text(
+            encoding="utf-8"
+        )
+        detail = (ROOT / "frontend" / "src" / "DemandDetail.tsx").read_text(
             encoding="utf-8"
         )
         main = (ROOT / "frontend" / "src" / "main.tsx").read_text(encoding="utf-8")
 
         self.assertIn("<DemandsPage />", workspace)
-        self.assertIn("<DemandPeriodsPage />", workspace)
-        self.assertIn("<DemandWorkflowPage />", workspace)
-        self.assertIn("Workflow", workspace)
+        self.assertNotIn("<DemandWorkflowPage />", workspace)
+        self.assertIn("<DemandWorkflowPage", detail)
+        self.assertIn("embedded", detail)
         self.assertIn('import "./demand-workflow.css"', main)
 
     def test_workflow_client_uses_authoritative_backend_policy(self) -> None:

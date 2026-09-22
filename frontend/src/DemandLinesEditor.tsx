@@ -267,84 +267,6 @@ export default function DemandLinesEditor({
 
             <div className="request-line-fields">
               <label>
-                <span>Classe de ressource</span>
-                <select
-                  value={line.required_resource_class}
-                  onChange={(event) => updateLine(index, { required_resource_class: event.target.value })}
-                  disabled={disabled}
-                >
-                  <option value="">Aucune classe imposée</option>
-                  {line.required_resource_class && !resourceClasses.includes(line.required_resource_class) && (
-                    <option value={line.required_resource_class}>{line.required_resource_class} — historique</option>
-                  )}
-                  {resourceClasses.map((resourceClass) => (
-                    <option value={resourceClass} key={resourceClass}>{resourceClass}</option>
-                  ))}
-                </select>
-              </label>
-
-              <CompetencyPicker
-                competencies={competencies}
-                selectedIds={line.required_competency_ids}
-                onChange={(ids) => updateLine(index, { required_competency_ids: ids })}
-                disabled={disabled}
-                label={`Compétences requises — ligne ${index + 1}`}
-                placeholder="Rechercher une compétence…"
-              />
-
-              <label>
-                <span>Début</span>
-                <input
-                  type="date"
-                  value={line.desired_start}
-                  onChange={(event) => updateLine(index, { desired_start: event.target.value })}
-                  disabled={disabled}
-                />
-              </label>
-
-              <label>
-                <span>Fin</span>
-                <input
-                  type="date"
-                  min={line.desired_start || undefined}
-                  value={line.desired_end}
-                  onChange={(event) => updateLine(index, { desired_end: event.target.value })}
-                  disabled={disabled}
-                />
-              </label>
-
-              <label>
-                <span>Jours actifs</span>
-                <input
-                  type="number"
-                  min="1"
-                  step="1"
-                  value={line.desired_active_days}
-                  onChange={(event) => updateLine(index, { desired_active_days: event.target.value })}
-                  disabled={disabled}
-                  placeholder="Ex. 3"
-                />
-              </label>
-
-              <label>
-                <span>Heures</span>
-                <input
-                  type="number"
-                  min="0.25"
-                  step="0.25"
-                  value={line.estimated_hours}
-                  onChange={(event) => updateLine(index, { estimated_hours: event.target.value, estimated_hours_source: event.target.value ? "EXPLICIT" : null })}
-                  disabled={disabled}
-                  placeholder="8 h/j si vide"
-                />
-                <small>
-                  {line.estimated_hours
-                    ? "Heures explicites."
-                    : "Vide : le backend applique et persiste 8 h par jour actif."}
-                </small>
-              </label>
-
-              <label>
                 <span>WorkPackage</span>
                 <select
                   value={line.work_package_ref}
@@ -383,6 +305,65 @@ export default function DemandLinesEditor({
               </label>
 
               <label>
+                <span>Début</span>
+                <input
+                  type="date"
+                  value={line.desired_start}
+                  onChange={(event) => updateLine(index, { desired_start: event.target.value })}
+                  disabled={disabled}
+                />
+              </label>
+
+              <label>
+                <span>Fin</span>
+                <input
+                  type="date"
+                  min={line.desired_start || undefined}
+                  value={line.desired_end}
+                  onChange={(event) => updateLine(index, { desired_end: event.target.value })}
+                  disabled={disabled}
+                />
+              </label>
+
+              <label>
+                <span>Confirmation</span>
+                <select
+                  value={line.confirmation}
+                  onChange={(event) => updateLine(index, { confirmation: event.target.value === "Tentative" ? "Tentative" : "Confirmée" })}
+                  disabled={disabled}
+                >
+                  <option value="Confirmée">Confirmée</option>
+                  <option value="Tentative">Tentative</option>
+                </select>
+              </label>
+
+              <label>
+                <span>Classe de ressource</span>
+                <select
+                  value={line.required_resource_class}
+                  onChange={(event) => updateLine(index, { required_resource_class: event.target.value })}
+                  disabled={disabled}
+                >
+                  <option value="">Aucune classe imposée</option>
+                  {line.required_resource_class && !resourceClasses.includes(line.required_resource_class) && (
+                    <option value={line.required_resource_class}>{line.required_resource_class} — historique</option>
+                  )}
+                  {resourceClasses.map((resourceClass) => (
+                    <option value={resourceClass} key={resourceClass}>{resourceClass}</option>
+                  ))}
+                </select>
+              </label>
+
+              <CompetencyPicker
+                competencies={competencies}
+                selectedIds={line.required_competency_ids}
+                onChange={(ids) => updateLine(index, { required_competency_ids: ids })}
+                disabled={disabled}
+                label={`Compétences requises — ligne ${index + 1}`}
+                placeholder="Rechercher une compétence…"
+              />
+
+              <label>
                 <span>Ressource proposée</span>
                 <select
                   value={line.proposed_resource_id}
@@ -402,15 +383,34 @@ export default function DemandLinesEditor({
               </label>
 
               <label>
-                <span>Confirmation</span>
-                <select
-                  value={line.confirmation}
-                  onChange={(event) => updateLine(index, { confirmation: event.target.value === "Tentative" ? "Tentative" : "Confirmée" })}
+                <span>Jours actifs</span>
+                <input
+                  type="number"
+                  min="1"
+                  step="1"
+                  value={line.desired_active_days}
+                  onChange={(event) => updateLine(index, { desired_active_days: event.target.value })}
                   disabled={disabled}
-                >
-                  <option value="Confirmée">Confirmée</option>
-                  <option value="Tentative">Tentative</option>
-                </select>
+                  placeholder="Ex. 3"
+                />
+              </label>
+
+              <label>
+                <span>Heures</span>
+                <input
+                  type="number"
+                  min="0.25"
+                  step="0.25"
+                  value={line.estimated_hours}
+                  onChange={(event) => updateLine(index, { estimated_hours: event.target.value, estimated_hours_source: event.target.value ? "EXPLICIT" : null })}
+                  disabled={disabled}
+                  placeholder="8 h/j si vide"
+                />
+                <small>
+                  {line.estimated_hours
+                    ? "Heures explicites."
+                    : "Vide : le backend applique et persiste 8 h par jour actif."}
+                </small>
               </label>
 
               <label className="span-2">

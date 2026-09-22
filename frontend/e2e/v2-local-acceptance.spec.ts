@@ -138,20 +138,39 @@ async function createDemand(
   return editor;
 }
 
+async function openDemandDetail(page: Page, demandNumber: string) {
+  await navigateMain(page, "Demandes");
+  const demandSubnav = page.locator(".demands-subnav");
+  if (await demandSubnav.isVisible()) {
+    const requestsButton = demandSubnav.getByRole("button", { name: "Demandes", exact: true });
+    if (await requestsButton.count()) {
+      await requestsButton.click();
+    }
+  }
+  const card = page.locator(".demand-card").filter({ hasText: demandNumber }).first();
+  await expect(card).toBeVisible();
+  await card.click();
+  await expect(page.locator(`.demand-detail-context[data-demand-number="${demandNumber}"]`)).toBeVisible();
+}
+
 async function workflowSelect(page: Page, demandNumber: string) {
-  await page.getByRole("button", { name: "Workflow", exact: true }).click();
-  const panel = page.locator(".workflow-list-panel");
-  await labelled(panel, "Demande", "select").selectOption(demandNumber);
-  await expect(page.locator(".workflow-summary-card")).toContainText(demandNumber);
+  await openDemandDetail(page, demandNumber);
+  const section = page.locator(".demand-detail-section").filter({ hasText: "Workflow et impact" }).first();
+  const isOpen = await section.evaluate((node) => (node as HTMLDetailsElement).open);
+  if (!isOpen) {
+    await section.locator("summary").click();
+  }
+  await expect(section.locator(".workflow-detail-panel")).toBeVisible();
 }
 
 async function periodsSelect(page: Page, demandNumber: string) {
-  await page.getByRole("button", { name: /Périodes & alternatives/ }).click();
-  const picker = page.locator(".period-demand-picker");
-  const select = labelled(picker, "Demande", "select");
-  await select.selectOption(demandNumber);
-  await expect(select).toHaveValue(demandNumber);
-  await expect(page.locator(".period-demand-summary")).toBeVisible();
+  await openDemandDetail(page, demandNumber);
+  const section = page.locator(".demand-detail-section").filter({ hasText: "Périodes de travail" }).first();
+  const isOpen = await section.evaluate((node) => (node as HTMLDetailsElement).open);
+  if (!isOpen) {
+    await section.locator("summary").click();
+  }
+  await expect(section.locator(".period-demand-summary")).toBeVisible();
 }
 
 test("V2 local acceptance path runs through React, Chromium, FastAPI and SQLite", async ({ browser }) => {
@@ -258,13 +277,13 @@ test("V2 local acceptance path runs through React, Chromium, FastAPI and SQLite"
     }
 
     await page.getByRole("button", { name: "Enregistrer les périodes" }).click();
-    await expect(page.locator(".demand-notice")).toHaveText("Périodes enregistrées.");
+    await expect(page.locator(".demand-notice").filter({ hasText: "Périodes enregistrées." })).toHaveText("Périodes enregistrées.");
     await alternatives.nth(0).getByRole("button", { name: "Retenir cette option" }).click();
     await expect(alternatives.nth(0).getByRole("button", { name: "Option retenue" })).toBeVisible();
 
     await workflowSelect(page, demandNumber);
     await page.getByRole("button", { name: "Soumettre", exact: true }).click();
-    await expect(page.locator(".demand-notice")).toContainText("soumise pour approbation");
+    await expect(page.locator(".demand-notice").filter({ hasText: "soumise pour approbation" })).toContainText("soumise pour approbation");
     await expect(page.getByTestId("plan-delta-preview")).toBeVisible();
 
     await expect(
@@ -283,7 +302,7 @@ test("V2 local acceptance path runs through React, Chromium, FastAPI and SQLite"
     await expect(page.getByTestId("plan-delta-preview")).toContainText("Plan actuel → plan proposé");
     await page.getByLabel(/Commentaire d’approbation/).fill("Acceptation initiale Playwright");
     await page.getByRole("button", { name: "Approuver", exact: true }).click();
-    await expect(page.locator(".demand-notice")).toContainText("Demande approuvée");
+    await expect(page.locator(".demand-notice").filter({ hasText: "Demande approuvée" })).toContainText("Demande approuvée");
 
     await page.getByRole("button", { name: "Segments", exact: true }).click();
     await page.locator(".segment-demand-card").filter({ hasText: demandNumber }).click();
@@ -314,7 +333,7 @@ test("V2 local acceptance path runs through React, Chromium, FastAPI and SQLite"
     const cumulative = projectManager.page.locator(".period-card.cumulative").first();
     await labelled(cumulative, "Heures totales", "input").fill("16");
     await projectManager.page.getByRole("button", { name: "Enregistrer les périodes" }).click();
-    await expect(projectManager.page.locator(".demand-notice")).toContainText("doit être approuvée de nouveau");
+    await expect(projectManager.page.locator(".demand-notice").filter({ hasText: "doit être approuvée de nouveau" })).toContainText("doit être approuvée de nouveau");
 
     const firstAlternative = projectManager.page.locator(".alternative-option").nth(0);
     await firstAlternative.getByRole("button", { name: "Retenir cette option" }).click();
@@ -339,7 +358,7 @@ test("V2 local acceptance path runs through React, Chromium, FastAPI and SQLite"
     await expect(coordinator.page.getByTestId("plan-delta-preview").locator(".plan-delta-row").first()).toBeVisible();
     await coordinator.page.getByLabel(/Commentaire d’approbation/).fill("Réapprobation après delta Playwright");
     await coordinator.page.getByRole("button", { name: "Approuver", exact: true }).click();
-    await expect(coordinator.page.locator(".demand-notice")).toContainText("Demande approuvée");
+    await expect(coordinator.page.locator(".demand-notice").filter({ hasText: "Demande approuvée" })).toContainText("Demande approuvée");
     await closeContext(coordinator.context);
   });
 
@@ -443,13 +462,14 @@ test("V2 local acceptance path runs through React, Chromium, FastAPI and SQLite"
 
   await test.step("demand history exposes backend audit actors", async () => {
     const { context, page } = await openAs(browser, "COORDINATOR");
-    await navigateMain(page, "Demandes");
-    await page.getByRole("button", { name: "Historique", exact: true }).click();
-    const selector = page.locator("label.demand-history-selector select");
-    await selector.selectOption(demandNumber);
-    await expect(selector).toHaveValue(demandNumber);
-    await expect(page.locator(".demand-history-timeline")).toContainText("Coordonnateur E2E");
-    await expect(page.locator(".demand-history-timeline li").first()).toBeVisible();
+    await openDemandDetail(page, demandNumber);
+    const historySection = page.locator(".demand-detail-section").filter({ hasText: "Historique" }).first();
+    const isOpen = await historySection.evaluate((node) => (node as HTMLDetailsElement).open);
+    if (!isOpen) {
+      await historySection.locator("summary").click();
+    }
+    await expect(historySection.locator(".demand-history-timeline")).toContainText("Coordonnateur E2E");
+    await expect(historySection.locator(".demand-history-timeline li").first()).toBeVisible();
     await closeContext(context);
   });
 
@@ -470,7 +490,7 @@ test("V2 local acceptance path runs through React, Chromium, FastAPI and SQLite"
     urgentNumber = demandNumberFrom(await urgentNotice.textContent());
     await workflowSelect(projectManager.page, urgentNumber);
     await projectManager.page.getByRole("button", { name: "Soumettre", exact: true }).click();
-    await expect(projectManager.page.locator(".demand-notice")).toContainText("soumise pour approbation");
+    await expect(projectManager.page.locator(".demand-notice").filter({ hasText: "soumise pour approbation" })).toContainText("soumise pour approbation");
     await closeContext(projectManager.context);
 
     const coordinator = await openAs(browser, "COORDINATOR");
@@ -485,12 +505,10 @@ test("V2 local acceptance path runs through React, Chromium, FastAPI and SQLite"
     await expect(coordinator.page.getByTestId("emergency-override-active")).toContainText("Dérogation d’approbation active");
     await expect(coordinator.page.getByTestId("emergency-override-active")).toContainText("Coordonnateur E2E");
 
-    await coordinator.page.getByRole("button", { name: "Workflow", exact: true }).click();
-    const workflowPanel = coordinator.page.locator(".workflow-list-panel");
-    await labelled(workflowPanel, "Demande", "select").selectOption(urgentNumber);
+    await workflowSelect(coordinator.page, urgentNumber);
     await coordinator.page.getByLabel(/Commentaire d’approbation/).fill("Régularisation après urgence");
     await coordinator.page.getByRole("button", { name: "Approuver", exact: true }).click();
-    await expect(coordinator.page.locator(".demand-notice")).toContainText("Demande approuvée");
+    await expect(coordinator.page.locator(".demand-notice").filter({ hasText: "Demande approuvée" })).toContainText("Demande approuvée");
     await closeContext(coordinator.context);
   });
 
@@ -722,7 +740,7 @@ test("multi-line demand editor generates independent RequestLines and materializ
   await expect(labelled(linePeriod, "Ressources simultanées", "input")).toBeDisabled();
   await expect(labelled(linePeriod, "Ressources simultanées", "input")).toHaveValue("1");
   await projectManager.page.getByRole("button", { name: "Enregistrer les périodes" }).click();
-  await expect(projectManager.page.locator(".demand-notice")).toHaveText("Périodes enregistrées.");
+  await expect(projectManager.page.locator(".demand-notice").filter({ hasText: "Périodes enregistrées." })).toHaveText("Périodes enregistrées.");
 
   await lineSelector.selectOption(activeLines[1].line_id);
   await expect(projectManager.page.locator(".period-demand-summary")).toContainText("Ligne 2");
@@ -734,7 +752,7 @@ test("multi-line demand editor generates independent RequestLines and materializ
   await labelled(linePeriod, "Heures totales", "input").fill("8");
   await expect(labelled(linePeriod, "Ressources simultanées", "input")).toBeDisabled();
   await projectManager.page.getByRole("button", { name: "Enregistrer les périodes" }).click();
-  await expect(projectManager.page.locator(".demand-notice")).toHaveText("Périodes enregistrées.");
+  await expect(projectManager.page.locator(".demand-notice").filter({ hasText: "Périodes enregistrées." })).toHaveText("Périodes enregistrées.");
 
   const firstLinePeriods = await projectManager.page.request.get(
     `/api/v1/demands/${encodeURIComponent(number)}/lines/${encodeURIComponent(activeLines[0].line_id)}/periods`,
@@ -749,7 +767,7 @@ test("multi-line demand editor generates independent RequestLines and materializ
 
   await workflowSelect(projectManager.page, number);
   await projectManager.page.getByRole("button", { name: "Soumettre", exact: true }).click();
-  await expect(projectManager.page.locator(".demand-notice")).toContainText("soumise pour approbation");
+  await expect(projectManager.page.locator(".demand-notice").filter({ hasText: "soumise pour approbation" })).toContainText("soumise pour approbation");
   await closeContext(projectManager.context);
 
   const coordinator = await openAs(browser, "COORDINATOR");
@@ -757,7 +775,7 @@ test("multi-line demand editor generates independent RequestLines and materializ
   await workflowSelect(coordinator.page, number);
   await coordinator.page.getByLabel(/Commentaire d’approbation/).fill("Approbation multi-lignes #288");
   await coordinator.page.getByRole("button", { name: "Approuver", exact: true }).click();
-  await expect(coordinator.page.locator(".demand-notice")).toContainText("Demande approuvée");
+  await expect(coordinator.page.locator(".demand-notice").filter({ hasText: "Demande approuvée" })).toContainText("Demande approuvée");
 
   const segmentsResponse = await coordinator.page.request.get("/api/v1/segments?include_cancelled=false");
   expect(segmentsResponse.ok()).toBeTruthy();

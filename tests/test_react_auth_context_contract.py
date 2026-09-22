@@ -48,17 +48,18 @@ class ReactAuthContextContractTests(unittest.TestCase):
     def test_mutating_surfaces_consume_backend_permissions(self) -> None:
         projects = (FRONTEND / "ProjectsPage.tsx").read_text(encoding="utf-8")
         workspace = (FRONTEND / "DemandsWorkspace.tsx").read_text(encoding="utf-8")
+        demands = (FRONTEND / "DemandsPage.tsx").read_text(encoding="utf-8")
         quick_shift = (FRONTEND / "QuickShiftEditor.tsx").read_text(encoding="utf-8")
         shift = (FRONTEND / "ShiftEditor.tsx").read_text(encoding="utf-8")
 
         self.assertIn('can("sync_projects")', projects)
-        self.assertIn('can("manage_demands")', workspace)
+        self.assertIn('can("manage_demands")', demands)
         self.assertIn('can("approve_demands")', workspace)
         self.assertIn('can("manage_planning")', workspace)
         self.assertIn('can("manage_planning")', quick_shift)
         self.assertIn('can("manage_planning")', shift)
 
-        combined = "\n".join((projects, workspace, quick_shift, shift))
+        combined = "\n".join((projects, workspace, demands, quick_shift, shift))
         self.assertNotIn('roles.includes("ADMIN")', combined)
         self.assertNotIn('roles.includes("COORDINATOR")', combined)
 
