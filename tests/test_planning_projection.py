@@ -87,6 +87,26 @@ class PlanningProjectionTests(unittest.TestCase):
                     "TypeAllocation": "Flexible",
                 },
                 {
+                    "IDAllocation": "A-LOCK-NO-SCHEDULE",
+                    "IDSegment": "S-NO-SCHEDULE",
+                    "Technicien": "R1",
+                    "Date": D1,
+                    "Heures": 3,
+                    "Verrouillee": "Oui",
+                    "HorsHoraire": "Non",
+                    "TypeAllocation": "Flexible",
+                },
+                {
+                    "IDAllocation": "A-LOCK-CANCELLED",
+                    "IDSegment": "S-CANCELLED",
+                    "Technicien": "R1",
+                    "Date": D1,
+                    "Heures": 4,
+                    "Verrouillee": "Oui",
+                    "HorsHoraire": "Non",
+                    "TypeAllocation": "Flexible",
+                },
+                {
                     "IDAllocation": "A-IGNORED",
                     "IDSegment": "S-CANCELLED",
                     "Technicien": "R1",
@@ -140,16 +160,27 @@ class PlanningProjectionTests(unittest.TestCase):
                     hours=2.0,
                     outside_schedule=False,
                 ),
+                LockedAllocationInput(
+                    segment_id="S-NO-SCHEDULE",
+                    resource_id="R1",
+                    day=D1,
+                    hours=3.0,
+                    outside_schedule=False,
+                ),
             ),
+        )
+        self.assertEqual(
+            calculation.preserved_segment_ids,
+            frozenset({"S1", "S-BAD", "S-NO-SCHEDULE"}),
         )
         self.assertEqual(calculation.unsupported_segment_ids, ("S-BAD",))
         self.assertEqual(calculation.capacity_by_resource_day[("R1", D1)], 8.0)
         self.assertEqual(calculation.capacity_by_resource_day[("R1", D2)], 8.0)
         self.assertTrue(calculation.outside_schedule_eligible_by_resource_day[("R1", D1)])
-        self.assertEqual(len(calculation.persisted_allocations), 2)
+        self.assertEqual(len(calculation.persisted_allocations), 3)
         self.assertEqual(
             [row.segment_id for row in calculation.persisted_allocations],
-            ["S1", "S1"],
+            ["S1", "S1", "S-NO-SCHEDULE"],
         )
         self.assertTrue(calculation.persisted_allocations[0].locked)
         self.assertEqual(calculation.persisted_allocations[0].allocation_type, "Locked")
@@ -170,7 +201,7 @@ class PlanningProjectionTests(unittest.TestCase):
         report = build_shadow_report_from_calculation(calculation)
 
         self.assertEqual(report.shadow_result.segment_count, 1)
-        self.assertEqual(report.shadow_result.locked_allocation_count, 1)
+        self.assertEqual(report.shadow_result.locked_allocation_count, 2)
         self.assertEqual(report.shadow_result.requested_hours, 12.0)
         self.assertEqual(report.shadow_result.allocated_hours, 12.0)
         self.assertEqual(report.shadow_result.unallocated_hours, 0.0)
