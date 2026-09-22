@@ -176,6 +176,19 @@ supprime les volumes locaux, **incluant la configuration des rôles du cockpit**
 
 Les endpoints locaux correspondants sont `GET /api/roles` et `PUT /api/roles`. Ils restent servis uniquement par le backend cockpit sur l'interface loopback exposée par Compose.
 
+### Résolution de la branche de travail active
+
+Le cockpit ne doit pas utiliser le dernier commit de `main` pour déterminer l'activité du Developer.
+
+Pour la tranche active, la résolution suit cet ordre :
+
+1. branche `head` de la PR correspondante, si une PR existe;
+2. sinon, recherche d'une branche dont le nom correspond à la clé de travail active (`332A`, `13C`, etc.);
+3. la recherche parcourt **toutes les pages de branches GitHub**, et non seulement les 100 premières;
+4. si plusieurs branches correspondent, celle dont le HEAD a le commit le plus récent est retenue.
+
+Le commit de `main` affiché dans le footer est uniquement une référence sur l'état du dépôt. Les états `IN_PROGRESS`, `STALLED`, la dernière activité, les workflows associés et le détail Developer utilisent le HEAD de la branche active ou de la PR active.
+
 ## Détection du travail interrompu
 
 Le cockpit ne considère pas le dernier commit global du dépôt comme un signal de stall. Il observe uniquement l'activité GitHub pertinente pour la tranche active.
