@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from ...application.errors import ApplicationValidationError
 from ...application.read_models import SegmentMobilizedResourceReadModel, SegmentReadModel
-from ...application.repository_ports import SegmentRepositoryPort
+from ...application.repository_ports import PlanningAuthorizationPort, SegmentRepositoryPort
 from ...domain.availability_rules import availability_hours_for_day
 from ...domain.planning_engine import MISSING_ALLOCATION_TYPE
 from ...domain.manual_overallocation import (
@@ -268,9 +268,16 @@ class SqlSegmentRepositoryWithAllocationMetrics(SqlSegmentRepository):
 class SqlOverallocationAllocationCommandAdapter(SqlAllocationCommandAdapter):
     """Manual allocation adapter that requires an explicit decision to increase excess."""
 
-    def __init__(self, session: Session, *, planning=None) -> None:
+    def __init__(
+        self,
+        session: Session,
+        *,
+        planning=None,
+        authorization: PlanningAuthorizationPort | None = None,
+    ) -> None:
         super().__init__(session, planning=planning)
         self._overallocation_session = session
+        self._authorization = authorization
         self._active_policy: str | None = None
 
     @staticmethod
@@ -347,6 +354,12 @@ class SqlOverallocationAllocationCommandAdapter(SqlAllocationCommandAdapter):
             )
 
         if policy == INCREASE_PLANNED and impact.projected_excess_hours > TOLERANCE_HOURS:
+            if self._authorization is not None:
+                self._authorization.authorize_planned_hours(
+                    _text(requirement.legacy_segment_id) or requirement.id,
+                    impact.projected_locked_hours,
+                    explicit_increase=True,
+                )
             requirement.planned_hours = _decimal(impact.projected_locked_hours)
             self._overallocation_session.flush()
         elif impact.increases_exception and policy != KEEP_EXCEPTION:
