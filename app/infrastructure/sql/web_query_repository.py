@@ -180,6 +180,7 @@ class SqlPlannerQueryRepositoryWeb(SqlPlannerQueryRepository):
                 status=_optional_text(history.status),
                 comment=_optional_text(history.comment),
                 details=_optional_text(history.details),
+                actor_user_id=_optional_text(history.actor_user_id),
                 actor_name=_optional_text(history.actor_name),
             )
             for history, request in rows
