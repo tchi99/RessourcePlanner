@@ -284,7 +284,7 @@ function ResourceRow({
   pendingLoads,
   diagnostics,
   onEditShift,
-  onOpenDemands,
+  onOpenDemand,
   dragEnabled,
   onDropShift,
   onDropSegment,
