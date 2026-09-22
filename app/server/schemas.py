@@ -325,17 +325,26 @@ class SegmentUpdateRequest(StrictRequest):
         return value
 
 
-class SegmentAssignRequest(StrictRequest):
-    technician: str
+class ResourceReferenceRequest(StrictRequest):
+    resource_id: str | None = Field(default=None, min_length=1)
+    technician: str | None = Field(default=None, min_length=1)
+
+    @model_validator(mode="after")
+    def require_resource_reference(self) -> "ResourceReferenceRequest":
+        if not str(self.resource_id or "").strip() and not str(self.technician or "").strip():
+            raise ValueError("Une ressource est requise.")
+        return self
 
 
-class AllocationMoveRequest(StrictRequest):
-    technician: str = Field(min_length=1)
+class SegmentAssignRequest(ResourceReferenceRequest):
+    pass
+
+
+class AllocationMoveRequest(ResourceReferenceRequest):
     day: date
 
 
-class ManualAllocationRequest(StrictRequest):
-    technician: str
+class ManualAllocationRequest(ResourceReferenceRequest):
     day: date
     hours: float = Field(gt=0)
     outside_standard_hours: bool = False
