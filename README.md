@@ -476,6 +476,7 @@ Les dépendances Web/SQL canoniques restent séparées des dépendances legacy.
 ## Documentation utile
 
 - [`docs/architecture/README.md`](docs/architecture/README.md) — architecture et convention ADR;
+- [`docs/DEMANDS_V2_ARCHITECTURE.md`](docs/DEMANDS_V2_ARCHITECTURE.md) — architecture actuelle des demandes après #13/#328/#329 et frontière de la tranche React #330;
 - [`docs/FUTURE_DELIVERY_VERIFICATION.md`](docs/FUTURE_DELIVERY_VERIFICATION.md) — vision long terme WorkPackage → Delivery → Verification/commissioning;
 - [`docs/REACT_V2_DEV.md`](docs/REACT_V2_DEV.md) — développement React + FastAPI;
 - [`docs/WEB_RUNTIME.md`](docs/WEB_RUNTIME.md) — runtime Web same-origin;
