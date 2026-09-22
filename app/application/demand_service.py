@@ -28,11 +28,16 @@ from ..domain.approval_envelope import (
     EnvelopeDecision,
 )
 from .errors import (
+    ApplicationAuthorizationError,
     ApplicationConflictError,
     ApplicationNotFoundError,
     ApplicationOperationError,
     ApplicationValidationError,
     call_application_port,
+)
+from .demand_requesters import (
+    DemandRequesterDirectoryPort,
+    is_admissible_requester,
 )
 from .demand_workflow_policy import (
     ACTION_APPROVE,
@@ -105,7 +110,9 @@ class DemandService:
         periods: DemandPeriodRepositoryPort | None = None,
         operational_choices: DemandOperationalChoiceRepositoryPort | None = None,
         approval_envelope_policy: DemandApprovalEnvelopePolicyPort | None = None,
+        requester_directory: DemandRequesterDirectoryPort | None = None,
         current_user: str = "",
+        current_user_id: str | None = None,
         permissions: Sequence[str] | None = None,
         roles: Sequence[str] | None = None,
         batch: Callable[[str], ContextManager[Any]] | None = None,
@@ -116,7 +123,9 @@ class DemandService:
         self._periods = periods
         self._operational_choices = operational_choices
         self._approval_envelope_policy = approval_envelope_policy
+        self._requester_directory = requester_directory
         self._current_user = str(current_user or "")
+        self._current_user_id = str(current_user_id or "").strip() or None
         self._permissions = tuple(permissions) if permissions is not None else (
             PERMISSION_MANAGE_DEMANDS,
             PERMISSION_APPROVE_DEMANDS,
@@ -323,6 +332,44 @@ class DemandService:
                 return role
         return None
 
+    def _canonical_requester(self, requested_user_id: object):
+        """Resolve and authorize a stable requester for canonical Web callers."""
+
+        if self._requester_directory is None or self._current_user_id is None:
+            return None
+
+        current = self._requester_directory.get_by_id(self._current_user_id)
+        if current is None or not current.active:
+            raise ApplicationAuthorizationError(
+                "L'identité applicative courante ne peut pas porter une demande.",
+                code="demand_requester_actor_unavailable",
+            )
+
+        requested = str(requested_user_id or "").strip() or None
+        can_delegate = ROLE_ADMIN in self._roles or ROLE_COORDINATOR in self._roles
+        if can_delegate:
+            target_id = requested or self._current_user_id
+        else:
+            if requested is not None and requested != self._current_user_id:
+                raise ApplicationAuthorizationError(
+                    "Un chargé de projet ne peut pas créer ou modifier une demande au nom d'un autre demandeur.",
+                    code="demand_requester_impersonation_forbidden",
+                    context={
+                        "actor_user_id": self._current_user_id,
+                        "requested_user_id": requested,
+                    },
+                )
+            target_id = self._current_user_id
+
+        target = self._requester_directory.get_by_id(target_id)
+        if target is None or not is_admissible_requester(target):
+            raise ApplicationValidationError(
+                "Le demandeur sélectionné n'est pas admissible.",
+                code="demand_requester_not_admissible",
+                context={"requester_user_id": target_id},
+            )
+        return target
+
     def _apply_delegated_budget_changes(
         self,
         number: str,
@@ -454,6 +501,12 @@ class DemandService:
 
     def create_command(self, command: DemandCreateCommand) -> str:
         values = command.to_repository_values()
+        canonical_requester = self._canonical_requester(
+            values.get("RequesterUserId")
+        )
+        if canonical_requester is not None:
+            values["RequesterUserId"] = canonical_requester.user_id
+            values["Demandeur"] = canonical_requester.display_name
         with self._context("create demand"):
             number = call_application_port(
                 lambda: self._demands.create(values, submit=bool(command.submit)),
@@ -476,6 +529,20 @@ class DemandService:
 
         data = command.to_repository_values()
         expected_version = data.pop("ExpectedVersion", None)
+        if self._requester_directory is not None and self._current_user_id is not None:
+            if "RequesterUserId" in data:
+                canonical_requester = self._canonical_requester(
+                    data.get("RequesterUserId")
+                )
+                if canonical_requester is not None:
+                    data["RequesterUserId"] = canonical_requester.user_id
+                    data["Demandeur"] = canonical_requester.display_name
+            elif "Demandeur" in data:
+                raise ApplicationValidationError(
+                    "Utilise requester_user_id pour modifier le demandeur.",
+                    code="demand_requester_id_required",
+                    context={"demand_number": number},
+                )
         self._assert_workflow_action(
             existing,
             ACTION_MODIFY,
