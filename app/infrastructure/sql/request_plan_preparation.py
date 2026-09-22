@@ -70,6 +70,7 @@ class PreparedRequestPlan:
     unresolved_groups: int = 0
     approval_revision_id: str | None = None
     operational_version: int | None = None
+    project_id: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -690,6 +691,7 @@ class SqlRequestPlanPreparer:
             unresolved_groups=unresolved_groups,
             approval_revision_id=revision.id,
             operational_version=choices.version,
+            project_id=_text(request_snapshot.get("project_id")) or None,
         )
 
     def _period_identity_by_requirement(
