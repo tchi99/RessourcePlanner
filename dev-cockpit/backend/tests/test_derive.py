@@ -31,7 +31,8 @@ class DeriveTests(unittest.TestCase):
             now=datetime(2026, 9, 22, 15, 0, tzinfo=timezone.utc),
         )
         self.assertIn("CI_RED", result["states"])
-        self.assertIn("STALLED", result["states"])
+        self.assertIn("STALLED_CONFIRMED", result["states"])
+        self.assertEqual(result["stall_level"], "confirmed")
         self.assertEqual(result["failed_jobs"], ["Python verification (shard 1)"])
         self.assertEqual(result["stalled_details"]["ci_failed_minutes"], 18)
         self.assertTrue(result["stalled_details"]["no_new_commit"])
@@ -48,7 +49,7 @@ class DeriveTests(unittest.TestCase):
             primary_pr=pr,
             active_branch={"name": "issue-13c", "sha": "abc"},
             active_commit_date="2026-09-22T14:45:00Z",
-            stalled_after_minutes=10,
+            stalled_after_minutes=20,
             now=datetime(2026, 9, 22, 15, 0, tzinfo=timezone.utc),
         )
         self.assertNotIn("STALLED", result["states"])
