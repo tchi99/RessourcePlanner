@@ -113,6 +113,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        # #370: 3-shard pilot not retained; measured gain was unstable and costlier.
         shard_index: [0, 1]
     steps:
       - name: Checkout
