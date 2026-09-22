@@ -1,19 +1,18 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import MarkdownDocument from './MarkdownDocument'
 import type {
+  ArchitectureDetail,
   ChatConversationStatus,
+  CommitDetail,
   Dashboard,
+  DetailDocument,
+  IssueDetail,
   Job,
+  RoadmapDetail,
+  RoadmapItem,
   RoleConfig,
   Run,
 } from './types'
-
-const APP_ARCHITECTURE = [
-  'React',
-  'FastAPI',
-  'Application / Domain',
-  'Infrastructure',
-  'SQLAlchemy / DB / intégrations',
-]
 
 function formatDate(value: string | null | undefined): string {
   if (!value) return '—'
@@ -39,6 +38,27 @@ function latestRun(dashboard: Dashboard): Run | null {
     dashboard.active_work.active_runs?.[0] ??
     null
   )
+}
+
+async function fetchDetail<T>(url: string): Promise<T> {
+  const response = await fetch(url)
+  const payload = await response.json()
+  if (!response.ok) {
+    throw new Error(payload.detail || `Erreur HTTP ${response.status}`)
+  }
+  return payload as T
+}
+
+function detailUrl(path: string, repo: string): string {
+  return `${path}?repo=${encodeURIComponent(repo)}`
+}
+
+function LoadingDetail({ label = 'Lecture de GitHub…' }: { label?: string }) {
+  return <div className="role-detail-loading">{label}</div>
+}
+
+function DetailError({ value }: { value: string }) {
+  return <div className="role-detail-error">⚠ {value}</div>
 }
 
 function JobSummary({ job }: { job: Job }) {
@@ -105,7 +125,143 @@ function ChatStatusBlock({
   )
 }
 
+function DocumentAccordion({
+  document,
+  open = false,
+  badge,
+}: {
+  document: DetailDocument
+  open?: boolean
+  badge?: string
+}) {
+  return (
+    <details className="role-document-accordion" open={open}>
+      <summary>
+        <div>
+          <strong>{document.title}</strong>
+          <small>{document.path}</small>
+        </div>
+        <div className="role-document-summary-meta">
+          {badge && <span className="role-document-badge">{badge}</span>}
+          {document.status && <span>{document.status}</span>}
+        </div>
+      </summary>
+      <div className="role-document-body">
+        <MarkdownDocument markdown={document.content} />
+        <a
+          className="role-detail-inline-link"
+          href={document.url}
+          target="_blank"
+          rel="noreferrer"
+        >
+          Ouvrir sur GitHub ↗
+        </a>
+      </div>
+    </details>
+  )
+}
+
+function RoadmapIssueAccordion({
+  item,
+  repo,
+  active,
+}: {
+  item: RoadmapItem
+  repo: string
+  active: boolean
+}) {
+  const [detail, setDetail] = useState<IssueDetail | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function load() {
+    if (detail || loading || !item.issue_number) return
+    setLoading(true)
+    setError(null)
+    try {
+      setDetail(
+        await fetchDetail<IssueDetail>(
+          detailUrl(`/api/details/issues/${item.issue_number}`, repo),
+        ),
+      )
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Erreur inconnue')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <details
+      className={`roadmap-issue-accordion ${active ? 'active' : ''}`}
+      onToggle={(event) => {
+        if (event.currentTarget.open) void load()
+      }}
+    >
+      <summary>
+        <span className={`roadmap-issue-mark ${item.done ? 'done' : active ? 'active' : ''}`}>
+          {item.done ? '✓' : active ? '→' : '·'}
+        </span>
+        <div>
+          <strong>#{item.key} · {item.title}</strong>
+          <small>
+            {item.done ? 'terminée' : active ? 'active' : item.marker || 'à venir'}
+          </small>
+        </div>
+      </summary>
+      <div className="roadmap-issue-content">
+        {loading && <LoadingDetail label="Chargement de l'issue…" />}
+        {error && <DetailError value={error} />}
+        {detail && (
+          <>
+            <div className="roadmap-issue-meta">
+              <span>État GitHub : {detail.state}</span>
+              <span>Mis à jour : {formatDate(detail.updated_at)}</span>
+              <a href={detail.url} target="_blank" rel="noreferrer">Issue #{detail.number} ↗</a>
+            </div>
+            <MarkdownDocument markdown={detail.body} />
+            {detail.documents.length > 0 && (
+              <div className="role-inline-documents">
+                <div className="role-detail-subtitle">
+                  Documentation référencée · {detail.documents.length}
+                </div>
+                {detail.documents.map((document) => (
+                  <DocumentAccordion key={document.path} document={document} />
+                ))}
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </details>
+  )
+}
+
 function ProductOwnerDetails({ dashboard }: { dashboard: Dashboard | null }) {
+  const [roadmap, setRoadmap] = useState<RoadmapDetail | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!dashboard) return
+    let cancelled = false
+    setRoadmap(null)
+    setError(null)
+    void fetchDetail<RoadmapDetail>(
+      detailUrl('/api/details/roadmap', dashboard.repo),
+    )
+      .then((value) => {
+        if (!cancelled) setRoadmap(value)
+      })
+      .catch((caught) => {
+        if (!cancelled) {
+          setError(caught instanceof Error ? caught.message : 'Erreur inconnue')
+        }
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [dashboard?.repo])
+
   if (!dashboard) {
     return <p className="role-detail-muted">Données GitHub indisponibles.</p>
   }
@@ -113,49 +269,46 @@ function ProductOwnerDetails({ dashboard }: { dashboard: Dashboard | null }) {
   return (
     <>
       <section className="role-detail-hero">
-        <span>Bloc actif</span>
+        <span>Décision produit actuelle</span>
         <strong>{dashboard.roadmap.effective_active}</strong>
         <p>{dashboard.active_work.title || dashboard.active_work.issue.title}</p>
-      </section>
-
-      <section className="role-detail-section">
-        <div className="role-detail-section-title">Roadmap maître</div>
-        <div className="role-detail-roadmap">
-          {dashboard.roadmap.items.map((item) => {
-            const active = item.key === dashboard.roadmap.effective_active
-            return (
-              <div
-                className={`role-detail-roadmap-row ${active ? 'active' : ''}`}
-                key={item.key}
-              >
-                <span>{item.done ? '✓' : active ? '→' : '·'}</span>
-                <div>
-                  <strong>{/^\d+$/.test(item.key) ? `#${item.key}` : item.key}</strong>
-                  <small>{item.title}</small>
-                </div>
-              </div>
-            )
-          })}
-        </div>
-        <a
-          className="role-detail-inline-link"
-          href={dashboard.roadmap.url}
-          target="_blank"
-          rel="noreferrer"
-        >
-          Ouvrir le roadmap GitHub ↗
-        </a>
-      </section>
-
-      <section className="role-detail-section">
-        <div className="role-detail-section-title">Prochaines étapes</div>
         <div className="role-detail-next-action">{dashboard.next_action}</div>
-        {dashboard.active_work.remaining_subitems.length > 0 && (
-          <div className="role-detail-chips">
-            {dashboard.active_work.remaining_subitems.map((item) => (
-              <span key={item}>{item}</span>
-            ))}
-          </div>
+      </section>
+
+      <section className="role-detail-section">
+        <div className="role-detail-section-title">
+          Roadmap complet · ouvrir une issue pour lire sa spécification
+        </div>
+        {!roadmap && !error && <LoadingDetail label="Chargement du roadmap complet…" />}
+        {error && <DetailError value={error} />}
+        {roadmap && (
+          <>
+            <div className="roadmap-detail-meta">
+              <span>#{roadmap.number} · {roadmap.title}</span>
+              <span>Mis à jour {formatDate(roadmap.updated_at)}</span>
+            </div>
+            <div className="roadmap-issue-accordions">
+              {roadmap.items.map((item) => (
+                <RoadmapIssueAccordion
+                  key={item.key}
+                  item={item}
+                  repo={dashboard.repo}
+                  active={String(item.issue_number) === String(dashboard.roadmap.active_issue)}
+                />
+              ))}
+            </div>
+            <details className="role-document-accordion roadmap-source">
+              <summary>
+                <div>
+                  <strong>Document maître #55</strong>
+                  <small>Contenu complet du roadmap GitHub</small>
+                </div>
+              </summary>
+              <div className="role-document-body">
+                <MarkdownDocument markdown={roadmap.body} />
+              </div>
+            </details>
+          </>
         )}
       </section>
 
@@ -169,25 +322,64 @@ function ProductOwnerDetails({ dashboard }: { dashboard: Dashboard | null }) {
           </div>
         </section>
       )}
-
-      {dashboard.related_issues.length > 0 && (
-        <section className="role-detail-section">
-          <div className="role-detail-section-title">Issues liées</div>
-          <div className="role-detail-link-list">
-            {dashboard.related_issues.map((issue) => (
-              <a key={issue.number} href={issue.url} target="_blank" rel="noreferrer">
-                #{issue.number} · {issue.title}
-              </a>
-            ))}
-          </div>
-        </section>
-      )}
     </>
   )
 }
 
 function DeveloperDetails({ dashboard }: { dashboard: Dashboard | null }) {
   const [copied, setCopied] = useState(false)
+  const [issue, setIssue] = useState<IssueDetail | null>(null)
+  const [commit, setCommit] = useState<CommitDetail | null>(null)
+  const [issueError, setIssueError] = useState<string | null>(null)
+  const [commitError, setCommitError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!dashboard) return
+    let cancelled = false
+    setIssue(null)
+    setCommit(null)
+    setIssueError(null)
+    setCommitError(null)
+
+    void fetchDetail<IssueDetail>(
+      detailUrl(
+        `/api/details/issues/${dashboard.active_work.issue_number}`,
+        dashboard.repo,
+      ),
+    )
+      .then((value) => {
+        if (!cancelled) setIssue(value)
+      })
+      .catch((caught) => {
+        if (!cancelled) {
+          setIssueError(caught instanceof Error ? caught.message : 'Erreur inconnue')
+        }
+      })
+
+    const sha = dashboard.active_work.last_commit?.sha
+    if (sha) {
+      void fetchDetail<CommitDetail>(
+        detailUrl(`/api/details/commits/${sha}`, dashboard.repo),
+      )
+        .then((value) => {
+          if (!cancelled) setCommit(value)
+        })
+        .catch((caught) => {
+          if (!cancelled) {
+            setCommitError(caught instanceof Error ? caught.message : 'Erreur inconnue')
+          }
+        })
+    }
+
+    return () => {
+      cancelled = true
+    }
+  }, [
+    dashboard?.repo,
+    dashboard?.active_work.issue_number,
+    dashboard?.active_work.last_commit?.sha,
+  ])
+
   if (!dashboard) {
     return <p className="role-detail-muted">Données GitHub indisponibles.</p>
   }
@@ -195,6 +387,20 @@ function DeveloperDetails({ dashboard }: { dashboard: Dashboard | null }) {
   const work = dashboard.active_work
   const run = latestRun(dashboard)
   const prompt = dashboard.dev_prompt
+  const activeSection = work.subitem_key
+    ? issue?.sections.find((section) => section.work_key === work.subitem_key) ?? null
+    : null
+
+  const documents = useMemo(() => {
+    const byPath = new Map<string, DetailDocument>()
+    for (const document of issue?.documents ?? []) {
+      byPath.set(document.path, document)
+    }
+    for (const document of commit?.documentation ?? []) {
+      byPath.set(document.path, document)
+    }
+    return [...byPath.values()]
+  }, [issue, commit])
 
   async function copyPrompt() {
     if (!prompt) return
@@ -206,7 +412,7 @@ function DeveloperDetails({ dashboard }: { dashboard: Dashboard | null }) {
   return (
     <>
       <section className="role-detail-hero">
-        <span>Travail actif</span>
+        <span>Tâche réellement en cours</span>
         <strong>{work.subitem_key || `#${work.issue_number}`}</strong>
         <p>{work.title || work.issue.title}</p>
         <div className="role-detail-chips">
@@ -216,9 +422,157 @@ function DeveloperDetails({ dashboard }: { dashboard: Dashboard | null }) {
         </div>
       </section>
 
+      <section className="role-detail-section task-specification">
+        <div className="role-detail-section-title">
+          Spécification documentée de la tâche
+        </div>
+        {!issue && !issueError && <LoadingDetail label="Lecture de l'issue active…" />}
+        {issueError && <DetailError value={issueError} />}
+        {issue && activeSection && (
+          <>
+            <div className="role-detail-subtitle">{activeSection.title}</div>
+            <MarkdownDocument markdown={activeSection.content} />
+          </>
+        )}
+        {issue && !activeSection && (
+          <>
+            <p className="role-detail-muted">
+              Aucune section dédiée à {work.subitem_key || work.key} n'a été détectée;
+              le contenu complet de l'issue est affiché.
+            </p>
+            <MarkdownDocument markdown={issue.body} />
+          </>
+        )}
+        {issue && activeSection && (
+          <details className="role-document-accordion parent-issue-source">
+            <summary>
+              <div>
+                <strong>Contexte complet de l'issue #{issue.number}</strong>
+                <small>{issue.title}</small>
+              </div>
+            </summary>
+            <div className="role-document-body">
+              <MarkdownDocument markdown={issue.body} />
+            </div>
+          </details>
+        )}
+      </section>
+
       <section className="role-detail-section">
-        <div className="role-detail-section-title">Exécution GitHub</div>
-        <dl className="role-detail-facts">
+        <div className="role-detail-section-title">HEAD de la branche active</div>
+        {commitError && <DetailError value={commitError} />}
+        {!work.last_commit && (
+          <p className="role-detail-muted">Aucun commit de travail actif détecté.</p>
+        )}
+        {work.last_commit && !commit && !commitError && (
+          <LoadingDetail label="Lecture du commit courant…" />
+        )}
+        {commit && (
+          <>
+            <div className="commit-detail-head">
+              <div>
+                <a href={commit.url} target="_blank" rel="noreferrer">
+                  <strong>{commit.short_sha}</strong>
+                </a>
+                <span>{commit.message}</span>
+              </div>
+              <div className="commit-detail-stats">
+                <span>+{commit.stats.additions ?? 0}</span>
+                <span>−{commit.stats.deletions ?? 0}</span>
+                <span>{commit.files.length} fichier(s)</span>
+              </div>
+            </div>
+            <dl className="role-detail-facts compact">
+              <div>
+                <dt>Branche</dt>
+                <dd>
+                  {work.active_branch ? (
+                    <a href={work.active_branch.url} target="_blank" rel="noreferrer">
+                      {work.active_branch.name}
+                    </a>
+                  ) : '—'}
+                </dd>
+              </div>
+              <div>
+                <dt>Auteur</dt>
+                <dd>{commit.author || '—'}</dd>
+              </div>
+              <div>
+                <dt>Date</dt>
+                <dd>{formatDate(commit.date)}</dd>
+              </div>
+              <div>
+                <dt>SHA</dt>
+                <dd className="mono">{commit.sha}</dd>
+              </div>
+            </dl>
+            <div className="commit-file-list">
+              {commit.files.map((changed) => (
+                <a
+                  key={changed.filename}
+                  href={changed.url || undefined}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="commit-file-row"
+                >
+                  <span className={`commit-file-status ${changed.status || ''}`}>
+                    {changed.status || 'changed'}
+                  </span>
+                  <span className="commit-file-name">{changed.filename}</span>
+                  <span className="commit-file-delta">
+                    +{changed.additions ?? 0} −{changed.deletions ?? 0}
+                  </span>
+                </a>
+              ))}
+            </div>
+          </>
+        )}
+      </section>
+
+      <section className="role-detail-section">
+        <div className="role-detail-section-title">
+          Documentation associée à l'issue / au commit
+        </div>
+        {!issue && !issueError && <LoadingDetail label="Résolution de la documentation…" />}
+        {documents.length ? (
+          <div className="role-document-stack">
+            {documents.map((document, index) => (
+              <DocumentAccordion
+                key={document.path}
+                document={document}
+                open={index === 0}
+                badge={
+                  dashboard.architecture.referenced_adrs.includes(document.name)
+                    ? 'ADR du bloc'
+                    : commit?.documentation.some((item) => item.path === document.path)
+                      ? 'modifié par HEAD'
+                      : undefined
+                }
+              />
+            ))}
+          </div>
+        ) : (
+          issue && (
+            <p className="role-detail-muted">
+              Aucun document Markdown explicitement référencé par l'issue ou modifié par le HEAD.
+            </p>
+          )
+        )}
+      </section>
+
+      <section className="role-detail-section">
+        <div className="role-detail-section-title">PR / CI</div>
+        <dl className="role-detail-facts compact">
+          <div>
+            <dt>PR</dt>
+            <dd>
+              {work.primary_pr ? (
+                <a href={work.primary_pr.url} target="_blank" rel="noreferrer">
+                  #{work.primary_pr.number} · {work.primary_pr.title}
+                </a>
+              ) : 'Aucune PR associée'}
+            </dd>
+          </div>
           <div>
             <dt>Issue</dt>
             <dd>
@@ -227,47 +581,7 @@ function DeveloperDetails({ dashboard }: { dashboard: Dashboard | null }) {
               </a>
             </dd>
           </div>
-          <div>
-            <dt>Branche</dt>
-            <dd>
-              {work.active_branch ? (
-                <a href={work.active_branch.url} target="_blank" rel="noreferrer">
-                  {work.active_branch.name}
-                </a>
-              ) : (
-                '—'
-              )}
-            </dd>
-          </div>
-          <div>
-            <dt>Dernier commit</dt>
-            <dd>
-              {work.last_commit ? (
-                <a href={work.last_commit.url} target="_blank" rel="noreferrer">
-                  {work.last_commit.short_sha} · {work.last_commit.message}
-                </a>
-              ) : (
-                '—'
-              )}
-            </dd>
-          </div>
-          <div>
-            <dt>PR</dt>
-            <dd>
-              {work.primary_pr ? (
-                <a href={work.primary_pr.url} target="_blank" rel="noreferrer">
-                  #{work.primary_pr.number} · {work.primary_pr.title}
-                </a>
-              ) : (
-                'Aucune PR associée'
-              )}
-            </dd>
-          </div>
         </dl>
-      </section>
-
-      <section className="role-detail-section">
-        <div className="role-detail-section-title">CI</div>
         {run ? (
           <>
             <div className="role-detail-run-head">
@@ -331,89 +645,130 @@ function DeveloperDetails({ dashboard }: { dashboard: Dashboard | null }) {
 }
 
 function ArchitectDetails({ dashboard }: { dashboard: Dashboard | null }) {
+  const [architecture, setArchitecture] = useState<ArchitectureDetail | null>(null)
+  const [issue, setIssue] = useState<IssueDetail | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!dashboard) return
+    let cancelled = false
+    setArchitecture(null)
+    setIssue(null)
+    setError(null)
+
+    void Promise.all([
+      fetchDetail<ArchitectureDetail>(
+        detailUrl('/api/details/architecture', dashboard.repo),
+      ),
+      fetchDetail<IssueDetail>(
+        detailUrl(
+          `/api/details/issues/${dashboard.active_work.issue_number}`,
+          dashboard.repo,
+        ),
+      ),
+    ])
+      .then(([architectureValue, issueValue]) => {
+        if (!cancelled) {
+          setArchitecture(architectureValue)
+          setIssue(issueValue)
+        }
+      })
+      .catch((caught) => {
+        if (!cancelled) {
+          setError(caught instanceof Error ? caught.message : 'Erreur inconnue')
+        }
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [dashboard?.repo, dashboard?.active_work.issue_number])
+
   if (!dashboard) {
     return <p className="role-detail-muted">Données GitHub indisponibles.</p>
   }
 
   const referenced = new Set(dashboard.architecture.referenced_adrs)
+  const overview = architecture?.documents.find((document) => document.name === 'README.md')
+  const adrs = architecture?.documents.filter((document) => document.name.startsWith('ADR-')) ?? []
+  const relevantAdrs = adrs.filter((document) => referenced.has(document.name))
+  const otherAdrs = adrs.filter((document) => !referenced.has(document.name))
+  const activeSection = dashboard.active_work.subitem_key
+    ? issue?.sections.find(
+        (section) => section.work_key === dashboard.active_work.subitem_key,
+      ) ?? null
+    : null
 
   return (
     <>
       <section className="role-detail-hero">
         <span>Architecture du bloc actif</span>
-        <strong>{dashboard.active_work.subitem_key || `#${dashboard.active_work.issue_number}`}</strong>
+        <strong>
+          {dashboard.active_work.subitem_key || `#${dashboard.active_work.issue_number}`}
+        </strong>
         <p>{dashboard.active_work.title || dashboard.active_work.issue.title}</p>
       </section>
 
-      <section className="role-detail-section">
-        <div className="role-detail-section-title">Architecture de l'application</div>
-        <div className="role-detail-architecture-flow" aria-label="Architecture applicative">
-          {APP_ARCHITECTURE.map((layer, index) => (
-            <div key={layer}>
-              <span>{layer}</span>
-              {index < APP_ARCHITECTURE.length - 1 && <b aria-hidden="true">↓</b>}
-            </div>
-          ))}
-        </div>
-      </section>
+      {error && <DetailError value={error} />}
+      {!architecture && !error && <LoadingDetail label="Chargement de l'architecture et des ADR…" />}
 
-      <section className="role-detail-section">
-        <div className="role-detail-section-title">ADR du bloc</div>
-        {dashboard.architecture.referenced_adrs.length ? (
-          <div className="role-detail-link-list">
-            {dashboard.architecture.adrs
-              .filter((adr) => referenced.has(adr.name))
-              .map((adr) => (
-                <a key={adr.name} href={adr.url} target="_blank" rel="noreferrer">
-                  {adr.name}
-                </a>
-              ))}
-          </div>
-        ) : (
-          <p className="role-detail-muted">
-            Aucun ADR n'est explicitement référencé par le bloc actif.
-          </p>
-        )}
-      </section>
-
-      <section className="role-detail-section">
-        <div className="role-detail-section-title">
-          Documentation d'architecture · {dashboard.architecture.adrs.length} ADR
-        </div>
-        <div className="role-detail-link-list dense">
-          {dashboard.architecture.adrs.map((adr) => (
-            <a
-              className={referenced.has(adr.name) ? 'referenced' : ''}
-              key={adr.name}
-              href={adr.url}
-              target="_blank"
-              rel="noreferrer"
-            >
-              {referenced.has(adr.name) ? '● ' : ''}
-              {adr.name}
-            </a>
-          ))}
-        </div>
-        <a
-          className="role-detail-inline-link"
-          href={dashboard.architecture.url}
-          target="_blank"
-          rel="noreferrer"
-        >
-          Ouvrir docs/architecture ↗
-        </a>
-      </section>
-
-      {dashboard.related_issues.length > 0 && (
+      {activeSection && (
         <section className="role-detail-section">
-          <div className="role-detail-section-title">Contexte lié au bloc</div>
-          <div className="role-detail-link-list">
-            {dashboard.related_issues.map((issue) => (
-              <a key={issue.number} href={issue.url} target="_blank" rel="noreferrer">
-                #{issue.number} · {issue.title}
-              </a>
+          <div className="role-detail-section-title">Contexte documenté du bloc actif</div>
+          <div className="role-detail-subtitle">{activeSection.title}</div>
+          <MarkdownDocument markdown={activeSection.content} />
+        </section>
+      )}
+
+      {overview && (
+        <section className="role-detail-section">
+          <div className="role-detail-section-title">Architecture de l'application</div>
+          <DocumentAccordion document={overview} open />
+        </section>
+      )}
+
+      {architecture && (
+        <section className="role-detail-section">
+          <div className="role-detail-section-title">
+            ADR pertinents pour le bloc · {relevantAdrs.length}
+          </div>
+          {relevantAdrs.length ? (
+            <div className="role-document-stack">
+              {relevantAdrs.map((document, index) => (
+                <DocumentAccordion
+                  key={document.path}
+                  document={document}
+                  open={index === 0}
+                  badge="référencé"
+                />
+              ))}
+            </div>
+          ) : (
+            <p className="role-detail-muted">
+              Aucun ADR n'est explicitement référencé par l'issue ou le bloc actif.
+            </p>
+          )}
+        </section>
+      )}
+
+      {architecture && otherAdrs.length > 0 && (
+        <section className="role-detail-section">
+          <div className="role-detail-section-title">
+            Autres ADR disponibles · {otherAdrs.length}
+          </div>
+          <div className="role-document-stack">
+            {otherAdrs.map((document) => (
+              <DocumentAccordion key={document.path} document={document} />
             ))}
           </div>
+          <a
+            className="role-detail-inline-link"
+            href={architecture.url}
+            target="_blank"
+            rel="noreferrer"
+          >
+            Ouvrir docs/architecture ↗
+          </a>
         </section>
       )}
     </>
@@ -513,7 +868,7 @@ export default function RoleDetailPanel({
   return (
     <div className="role-detail-backdrop" onMouseDown={onClose}>
       <aside
-        className="role-detail-drawer"
+        className="role-detail-drawer rich"
         role="dialog"
         aria-modal="true"
         aria-labelledby="role-detail-title"
@@ -541,8 +896,8 @@ export default function RoleDetailPanel({
         </div>
 
         <footer className="role-detail-footer">
-          <span>Actualisé {formatDate(dashboard?.generated_at)}</span>
-          <span>GitHub reste la source de vérité.</span>
+          <span>Dashboard {formatDate(dashboard?.generated_at)}</span>
+          <span>Les détails sont chargés à la demande depuis GitHub.</span>
         </footer>
       </aside>
     </div>
