@@ -58,6 +58,8 @@ def required_permission(method: str, path: str) -> str | None:
         return PERMISSION_ADMIN_USERS
     if path.startswith("/api/v1/communications"):
         return PERMISSION_MANAGE_COMMUNICATIONS
+    if path == "/api/v1/demand-requesters":
+        return PERMISSION_MANAGE_DEMANDS
     if verb == "GET":
         return PERMISSION_READ
     if (
