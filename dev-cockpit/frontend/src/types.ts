@@ -169,3 +169,29 @@ export type RoleConfig = {
 export type RolesConfig = {
   roles: RoleConfig[]
 }
+
+export type ChatEffectiveState =
+  | 'working'
+  | 'idle'
+  | 'possible_stall'
+  | 'disconnected'
+
+export type ChatConversationStatus = {
+  conversation_url: string
+  state: 'working' | 'idle'
+  effective_state: ChatEffectiveState
+  connected: boolean
+  page_visible: boolean
+  page_focused: boolean
+  ui_signal: 'stop-control' | 'none'
+  last_seen_at: string
+  last_seen_seconds: number
+  working_since: string | null
+  last_completed_at: string | null
+  last_completed_seconds: number | null
+}
+
+export type ChatStatusResponse = {
+  stale_after_seconds: number
+  conversations: ChatConversationStatus[]
+}

@@ -210,6 +210,8 @@ Le token doit rester local, en lecture seule, et n'est transmis qu'au backend du
 
 Les cartes de rôles/conversations se configurent directement dans l'interface du cockpit. Leur configuration locale est conservée dans le volume Docker `dev-cockpit-data`; aucune édition manuelle de JSON n'est requise. `docker compose down -v` supprime également cette configuration locale.
 
+Le sous-dossier `dev-cockpit/firefox-companion/` fournit une extension Firefox locale optionnelle qui relaie uniquement l'état `working/idle` des conversations ChatGPT associées aux rôles. Elle n'utilise aucune API OpenAI et ne transmet pas le contenu des messages.
+
 Sur la VM Ubuntu de production, ne pas activer le profil `dev-tools` et ne pas provisionner les variables `DEV_COCKPIT_*`. Les workflows GitHub Actions valident ce chemin Docker, mais ne déploient pas automatiquement la VM.
 
 Voir [`dev-cockpit/README.md`](dev-cockpit/README.md) pour l'architecture, la logique `STALLED`, les tests et le développement hors Docker.
