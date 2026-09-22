@@ -113,8 +113,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # #370 measurement run 3
-        shard_index: [0, 1, 2]
+        # #370: 3-shard pilot not retained; measured gain was unstable and costlier.
+        shard_index: [0, 1]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -134,7 +134,7 @@ jobs:
         run: >-
           python tools/run_test_shard.py
           --shard-index "${{ matrix.shard_index }}"
-          --shard-count 3
+          --shard-count 2
           --top-slowest 25
       - name: Enforce V2 SQLite performance budgets
         if: matrix.shard_index == 0
