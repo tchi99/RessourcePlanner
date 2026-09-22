@@ -1,6 +1,6 @@
 # ADR-004 — Séparer proposition candidate, autorisation approuvée et plan actif
 
-Status: Proposed  
+Status: Accepted  
 Date: 2026-09-22
 
 ## Context
@@ -66,7 +66,10 @@ Par défaut :
 - projet, site, type/classe, compétences, tâche/WorkPackage et effort sont structurants par défaut;
 - les jours actifs restent une préférence de distribution;
 - une ressource proposée reste une suggestion et non une contrainte d'autorisation;
-- les ressources réellement affectées restent portées par `Shift.resource_id` conformément à ADR-001.
+- les ressources réellement affectées restent portées par `Shift.resource_id` conformément à ADR-001;
+- un `PROJECT_MANAGER` dispose d'une tolérance déléguée de **+20 % inclusivement** sur l'effort/heures d'un besoin, calculée depuis la dernière révision approuvée locale et sans composition successive;
+- au-delà de cette tolérance, une réapprobation `COORDINATOR`/`ADMIN` est requise;
+- `ADMIN` et `COORDINATOR`, déjà habilités à approuver, peuvent élargir eux-mêmes l'autorisation sans second workflow; une nouvelle révision approuvée est alors créée et activée atomiquement.
 
 ## Alternatives considered
 
@@ -104,11 +107,19 @@ Rejeté. Cela permettrait à une modification non approuvée de modifier le plan
 - les previews doivent être revalidés lors de l'exécution;
 - certaines routes historiques par demande devront converger vers les contrats par ligne.
 
-## Open decision
+## KEEP_EXCEPTION and delegated changes
 
-La manière exacte dont `KEEP_EXCEPTION` interagit avec l'enveloppe approuvée reste à décider.
+`KEEP_EXCEPTION` est une décision opérationnelle explicite, distincte d'une augmentation durable de l'autorisation.
 
-Une exception ne doit jamais être présentée comme une augmentation silencieuse de l'autorisation approuvée. Si elle est permise, elle doit rester distincte, explicite et auditée.
+Règles retenues :
+
+- pour un `PROJECT_MANAGER`, une hausse d'effort jusqu'à +20 % inclusivement de la dernière base approuvée peut être appliquée sans nouvelle approbation si toute la portée métier reste inchangée;
+- la référence du seuil reste toujours la dernière révision approuvée, ce qui interdit les augmentations composées successives;
+- au-delà de +20 %, la demande candidate doit être réapprouvée par un `COORDINATOR` ou `ADMIN` avant de remplacer l'autorisation active;
+- un `ADMIN` ou `COORDINATOR` qui modifie lui-même l'autorisation n'est pas soumis à un aller-retour d'auto-approbation : la modification crée directement une nouvelle révision approuvée et auditée;
+- une véritable `KEEP_EXCEPTION` conserve la révision approuvée et matérialise seulement un excédent opérationnel explicite; elle ne doit jamais masquer un changement de fenêtre, projet, site, type/classe, compétences, tâche/WorkPackage ou topologie d'alternatives.
+
+Le plan actif peut continuer à évoluer contre l'ancienne révision approuvée pendant qu'une modification hors tolérance attend sa réapprobation.
 
 ## References
 

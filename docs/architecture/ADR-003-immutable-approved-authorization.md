@@ -1,6 +1,6 @@
 # ADR-003 — Révision approuvée immuable comme preuve d'autorisation
 
-Status: Proposed  
+Status: Accepted  
 Date: 2026-09-22
 
 ## Context
@@ -50,6 +50,12 @@ Une politique backend commune compare les mutations à la révision active et re
 - `EXPLICIT_EXCEPTION_REQUIRED`;
 - `APPROVAL_REFERENCE_UNKNOWN`;
 - `INVALID`.
+
+La politique peut autoriser une **tolérance déléguée d'effort** selon l'acteur sans altérer la révision approuvée de référence. Pour un `PROJECT_MANAGER`, cette tolérance est fixée à **+20 % inclusivement** du budget approuvé local du besoin concerné. Le plafond est toujours calculé depuis la dernière révision approuvée, jamais depuis une valeur déjà augmentée par tolérance; les hausses ne se composent donc pas entre elles.
+
+La tolérance déléguée ne couvre que l'effort/heures dans la même portée approuvée. Elle ne couvre pas les changements de fenêtre, projet, site, type/classe, compétences, tâche/WorkPackage, ajout de ligne/période cumulative ou consommation simultanée d'alternatives exclusives.
+
+`ADMIN` et `COORDINATOR`, déjà détenteurs de l'autorité d'approbation, ne repassent pas par un second workflow lorsqu'ils élargissent eux-mêmes l'autorisation. Une hausse durable crée toutefois une nouvelle révision approuvée immuable et auditée, activée atomiquement.
 
 L'enveloppe conserve sa topologie locale : budgets, fenêtres, lignes, groupes, alternatives et qualifications. Elle n'est pas réduite à un total global transférable.
 
@@ -106,13 +112,20 @@ Pour ces données :
 
 La migration ne force pas une réapprobation générale.
 
-## Open decision
+## Delegated tolerance and KEEP_EXCEPTION
 
-La politique finale de `KEEP_EXCEPTION` reste une décision PO ouverte.
+La décision PO est fixée :
 
-#38 permet aujourd'hui de conserver explicitement des quarts verrouillés au-delà de `planned_hours`. #13 doit décider quels rôles peuvent autoriser cette exception et jusqu'où elle peut dépasser l'enveloppe approuvée.
+- un `PROJECT_MANAGER` peut augmenter l'effort/heures d'un besoin jusqu'à **+20 % inclusivement** de la dernière révision approuvée locale, sans réapprobation;
+- au-delà de +20 %, `REAPPROVAL_REQUIRED` s'applique et l'approbation d'un `COORDINATOR` ou `ADMIN` est requise;
+- la tolérance est locale au besoin et ne peut pas être transférée entre lignes, périodes ou groupes;
+- le plafond ne se compose jamais : une base approuvée de 100 h reste plafonnée à 120 h tant qu'aucune nouvelle révision n'est approuvée;
+- les changements de portée restent soumis à réapprobation même sous 20 %;
+- `ADMIN` et `COORDINATOR` n'ont pas à s'auto-réapprouver; une hausse durable de l'autorisation crée directement une nouvelle révision approuvée atomique et auditée.
 
-Tant que cette décision n'est pas prise, la politique peut retourner `EXPLICIT_EXCEPTION_REQUIRED`, mais ne doit pas inventer l'autorisation finale.
+`KEEP_EXCEPTION` reste distinct d'une augmentation durable de l'autorisation : il conserve le budget approuvé et accepte explicitement un excédent verrouillé. Il doit rester visible, justifié/audité et ne réécrit jamais silencieusement la révision approuvée.
+
+La politique peut conserver `WITHIN_ENVELOPE` comme résultat contractuel pour une hausse PM tolérée, avec une raison telle que `DELEGATED_TOLERANCE`, afin d'exposer clairement la base approuvée, la valeur proposée, la variation et l'acteur.
 
 ## References
 
