@@ -35,11 +35,11 @@ class RequestApprovalRevision(TimestampMixin, Base):
     __table_args__ = (
         CheckConstraint(
             "request_version >= 1",
-            name="request_approval_revision_request_version_positive",
+            name="req_version_positive",
         ),
         CheckConstraint(
             "payload_format_version >= 1",
-            name="request_approval_revision_format_version_positive",
+            name="format_version_positive",
         ),
         Index(
             "ix_request_approval_revision_request_created",
@@ -59,13 +59,13 @@ class RequestApprovalRevision(TimestampMixin, Base):
     )
     workforce_request_id: Mapped[str] = mapped_column(
         String(ID_LENGTH),
-        ForeignKey("workforce_requests.id"),
+        ForeignKey("workforce_requests.id", name="fk_req_approval_revisions_request"),
         nullable=False,
         index=True,
     )
     previous_revision_id: Mapped[str | None] = mapped_column(
         String(ID_LENGTH),
-        ForeignKey("request_approval_revisions.id"),
+        ForeignKey("request_approval_revisions.id", name="fk_req_approval_revisions_previous"),
         nullable=True,
         index=True,
     )
@@ -106,7 +106,7 @@ class RequestApprovalReference(TimestampMixin, Base):
     __table_args__ = (
         CheckConstraint(
             "status IN ('CAPTURED', 'LEGACY_UNKNOWN')",
-            name="request_approval_reference_status",
+            name="status",
         ),
         Index(
             "ix_request_approval_reference_active_revision",
@@ -116,12 +116,12 @@ class RequestApprovalReference(TimestampMixin, Base):
 
     workforce_request_id: Mapped[str] = mapped_column(
         String(ID_LENGTH),
-        ForeignKey("workforce_requests.id"),
+        ForeignKey("workforce_requests.id", name="fk_req_approval_refs_request"),
         primary_key=True,
     )
     active_revision_id: Mapped[str | None] = mapped_column(
         String(ID_LENGTH),
-        ForeignKey("request_approval_revisions.id"),
+        ForeignKey("request_approval_revisions.id", name="fk_req_approval_refs_active_revision"),
         nullable=True,
     )
     status: Mapped[str] = mapped_column(
