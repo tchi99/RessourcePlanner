@@ -74,6 +74,55 @@ DEV_COCKPIT_HTTP_PORT=8081
 
 Sans token, `/api/dashboard` retourne une erreur de configuration explicite plutôt que d'essayer silencieusement un accès non authentifié.
 
+## Rôles et conversations ChatGPT
+
+Le cockpit affiche une petite équipe visuelle configurable (Product Owner, Developer et Architecte par défaut).
+
+La configuration se fait entièrement dans l'interface avec **Gérer les rôles**. Aucun fichier JSON n'a besoin d'être modifié manuellement. Pour chaque rôle, l'UI permet de :
+
+- modifier le nom et l'identifiant;
+- choisir un avatar prédéfini;
+- associer l'URL d'une conversation ChatGPT;
+- activer/désactiver le rôle;
+- réordonner ou supprimer le rôle;
+- ajouter de nouveaux rôles.
+
+Le lien ChatGPT ouvre la conversation dans un nouvel onglet. Le cockpit n'embarque pas ChatGPT dans un iframe et n'utilise aucune API OpenAI.
+
+Les bulles affichées sur les cartes sont dérivées des données déjà connues du cockpit. Le rôle avec l'avatar `developer` reflète notamment READY, travail en cours, CI, mergeabilité et stalls; son avatar reçoit une animation CSS légère quand une activité de développement est observée. Les autres rôles affichent des informations contextuelles simples provenant du roadmap, des ADR ou de la CI.
+
+Cette configuration est uniquement une **préférence locale de présentation**. Elle ne devient jamais une source de vérité sur l'état produit ou le roadmap.
+
+### Persistance
+
+Le backend sauvegarde la configuration dans :
+
+```text
+/data/roles.json
+```
+
+avec une écriture atomique. En Docker, `/data` est relié au volume nommé :
+
+```text
+dev-cockpit-data
+```
+
+Ainsi, un rebuild ou un redémarrage du conteneur conserve les rôles et liens configurés.
+
+```bash
+docker compose down
+```
+
+conserve le volume. En revanche :
+
+```bash
+docker compose down -v
+```
+
+supprime les volumes locaux, **incluant la configuration des rôles du cockpit**.
+
+Les endpoints locaux correspondants sont `GET /api/roles` et `PUT /api/roles`. Ils restent servis uniquement par le backend cockpit sur l'interface loopback exposée par Compose.
+
 ## Détection du travail interrompu
 
 Le cockpit ne considère pas le dernier commit global du dépôt comme un signal de stall. Il observe uniquement l'activité GitHub pertinente pour la tranche active.
