@@ -18,6 +18,7 @@ INITIAL_REVISION = MIGRATIONS / "versions" / "0001_initial_planning_schema.py"
 EXPECTED_TABLES = {
     "business_contacts",
     "command_idempotency_receipts",
+    "planning_mutation_state",
     "projects",
     "request_approval_references",
     "request_approval_revisions",
