@@ -7,6 +7,7 @@ from typing import Protocol
 from .plan_delta import DemandApprovalStateReadModel, DemandPlanDeltaReadModel
 from .query_models import (
     DemandHistoryReadModel,
+    DemandMaterializedRequirementReadModel,
     MediumTermUnlinkedSegmentReadModel,
     PendingDemandLoadReadModel,
     PlanningActionReadModel,
@@ -79,6 +80,11 @@ class PlannerQueryPort(Protocol):
         self,
         number: str,
     ) -> DemandApprovalStateReadModel | None: ...
+
+    def list_demand_requirements(
+        self,
+        number: str,
+    ) -> Sequence[DemandMaterializedRequirementReadModel]: ...
 
     def demand_plan_delta(self, number: str) -> DemandPlanDeltaReadModel | None: ...
 

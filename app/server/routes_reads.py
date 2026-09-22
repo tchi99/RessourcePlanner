@@ -10,6 +10,8 @@ from ..application import (
     ApplicationNotFoundError,
     ApplicationValidationError,
     DemandApprovalStateReadModel,
+    DemandDetailReadModel,
+    DemandDetailService,
     DemandHistoryReadModel,
     DemandPeriodReadModel,
     DemandPlanDeltaReadModel,
@@ -17,6 +19,7 @@ from ..application import (
     DemandRequesterReadModel,
     DemandRequesterService,
     MediumTermUnlinkedSegmentReadModel,
+    OperationalContactService,
     PlannerQueryPort,
     PlanningActionReadModel,
     PlanningCapacityGridReadModel,
@@ -91,6 +94,7 @@ def build_read_router(
     query_dependency: QueryProvider,
     user_view_context_dependency: QueryProvider | None = None,
     demand_requester_dependency: QueryProvider | None = None,
+    operational_contact_dependency: QueryProvider | None = None,
 ) -> APIRouter:
     router = APIRouter(prefix="/api/v1", tags=["reads"])
 
@@ -197,6 +201,23 @@ def build_read_router(
                 context={"demand_number": number},
             )
         return row
+
+    if operational_contact_dependency is not None:
+
+        @router.get("/demands/{number}/detail")
+        def get_demand_detail(
+            number: str,
+            request: Request,
+            queries: PlannerQueryPort = Depends(query_dependency),
+            contacts: OperationalContactService = Depends(
+                operational_contact_dependency
+            ),
+        ) -> DemandDetailReadModel:
+            principal: AuthPrincipal = request.state.auth_principal
+            return DemandDetailService(queries, contacts).get(
+                number,
+                permissions=principal.permissions,
+            )
 
     @router.get("/demands/{number}/history")
     def list_demand_history(

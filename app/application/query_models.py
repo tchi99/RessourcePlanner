@@ -47,6 +47,35 @@ class ResourceReadModel:
 
 
 @dataclass(frozen=True, slots=True)
+class DemandMaterializedResourceReadModel:
+    resource_id: str
+    resource_name: str
+    allocated_hours: float
+    locked_hours: float = 0.0
+
+
+@dataclass(frozen=True, slots=True)
+class DemandMaterializedRequirementReadModel:
+    requirement_id: str
+    segment_id: str
+    source_request_line_id: str | None
+    status: str
+    start_date: date
+    end_date: date
+    planned_hours: float
+    covered_hours: float
+    locked_hours: float
+    remaining_hours: float
+    excess_hours: float
+    automatic_target_resource_id: str | None = None
+    automatic_target_resource_name: str | None = None
+    mobilized_resources: tuple[DemandMaterializedResourceReadModel, ...] = ()
+    approval_revision_id: str | None = None
+    approved_entry_key: str | None = None
+    approval_reference_status: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class ResourceAvailabilityRuleReadModel:
     id: str
     availability_type: str

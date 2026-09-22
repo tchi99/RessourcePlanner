@@ -8,6 +8,8 @@ from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from ...application.query_models import (
+    DemandMaterializedRequirementReadModel,
+    DemandMaterializedResourceReadModel,
     MediumTermUnlinkedSegmentReadModel,
     PendingDemandLoadReadModel,
     PlanningActionReadModel,
@@ -307,6 +309,154 @@ class SqlPlannerQueryRepository(PlannerQueryPort):
                 request_line_id=request_line_id,
             )
         )
+
+    def list_demand_requirements(
+        self,
+        number: str,
+    ) -> tuple[DemandMaterializedRequirementReadModel, ...]:
+        """Project the active materialized plan for one demand without N+1 reads."""
+
+        wanted = _text(number)
+        if not wanted:
+            return ()
+        request = self._session.scalar(
+            select(WorkforceRequest).where(
+                (WorkforceRequest.legacy_demand_number == wanted)
+                | (WorkforceRequest.id == wanted)
+            )
+        )
+        if request is None:
+            return ()
+
+        requirements = tuple(
+            self._session.scalars(
+                select(ResourceRequirement)
+                .where(
+                    ResourceRequirement.workforce_request_id == request.id,
+                    ResourceRequirement.origin == "REQUEST",
+                    ResourceRequirement.status != "Annulé",
+                )
+                .order_by(
+                    ResourceRequirement.start_date,
+                    ResourceRequirement.created_at,
+                    ResourceRequirement.id,
+                )
+            ).all()
+        )
+        if not requirements:
+            return ()
+
+        requirement_ids = tuple(row.id for row in requirements)
+        shifts = tuple(
+            self._session.scalars(
+                select(Shift)
+                .where(
+                    Shift.resource_requirement_id.in_(requirement_ids),
+                    (Shift.allocation_type.is_(None))
+                    | (Shift.allocation_type != MISSING_ALLOCATION_TYPE),
+                )
+                .order_by(
+                    Shift.resource_requirement_id,
+                    Shift.work_date,
+                    Shift.resource_id,
+                    Shift.id,
+                )
+            ).all()
+        )
+        resource_ids = {
+            row.resource_id for row in shifts if _text(row.resource_id)
+        }
+        resource_ids.update(
+            row.assigned_resource_id
+            for row in requirements
+            if _text(row.assigned_resource_id)
+        )
+        resources = (
+            {
+                row.id: row
+                for row in self._session.scalars(
+                    select(Resource).where(Resource.id.in_(tuple(resource_ids)))
+                ).all()
+            }
+            if resource_ids
+            else {}
+        )
+
+        shifts_by_requirement: dict[str, list[Shift]] = {}
+        for shift in shifts:
+            shifts_by_requirement.setdefault(
+                shift.resource_requirement_id,
+                [],
+            ).append(shift)
+
+        result: list[DemandMaterializedRequirementReadModel] = []
+        for requirement in requirements:
+            grouped: dict[str, list[float]] = {}
+            for shift in shifts_by_requirement.get(requirement.id, ()):
+                values = grouped.setdefault(shift.resource_id, [0.0, 0.0])
+                values[0] += float(shift.hours)
+                if shift.locked:
+                    values[1] += float(shift.hours)
+
+            mobilized = tuple(
+                DemandMaterializedResourceReadModel(
+                    resource_id=resource_id,
+                    resource_name=(
+                        resources[resource_id].name
+                        if resource_id in resources
+                        else resource_id
+                    ),
+                    allocated_hours=round(values[0], 2),
+                    locked_hours=round(values[1], 2),
+                )
+                for resource_id, values in sorted(
+                    grouped.items(),
+                    key=lambda item: (
+                        resources[item[0]].name
+                        if item[0] in resources
+                        else item[0],
+                        item[0],
+                    ),
+                )
+            )
+            covered = round(sum(row.allocated_hours for row in mobilized), 2)
+            locked = round(sum(row.locked_hours for row in mobilized), 2)
+            planned = round(float(requirement.planned_hours), 2)
+            target = resources.get(requirement.assigned_resource_id)
+            result.append(
+                DemandMaterializedRequirementReadModel(
+                    requirement_id=requirement.id,
+                    segment_id=_text(requirement.legacy_segment_id) or requirement.id,
+                    source_request_line_id=_optional_text(
+                        requirement.source_request_line_id
+                    ),
+                    status=_text(requirement.status),
+                    start_date=requirement.start_date,
+                    end_date=requirement.end_date,
+                    planned_hours=planned,
+                    covered_hours=covered,
+                    locked_hours=locked,
+                    remaining_hours=round(max(planned - covered, 0.0), 2),
+                    excess_hours=round(max(covered - planned, 0.0), 2),
+                    automatic_target_resource_id=_optional_text(
+                        requirement.assigned_resource_id
+                    ),
+                    automatic_target_resource_name=(
+                        _optional_text(target.name) if target is not None else None
+                    ),
+                    mobilized_resources=mobilized,
+                    approval_revision_id=_optional_text(
+                        requirement.approval_revision_id
+                    ),
+                    approved_entry_key=_optional_text(
+                        requirement.approved_entry_key
+                    ),
+                    approval_reference_status=_optional_text(
+                        requirement.approval_reference_status
+                    ),
+                )
+            )
+        return tuple(result)
 
     def list_pending_loads(
         self,

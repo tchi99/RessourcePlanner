@@ -67,6 +67,15 @@ from .errors import (
     ApplicationOperationError,
     ApplicationValidationError,
 )
+from .demand_detail import (
+    DemandDetailAlternativeGroupReadModel,
+    DemandDetailLineReadModel,
+    DemandDetailPolicyReadModel,
+    DemandDetailReadModel,
+    DemandDetailService,
+    DemandDetailWorkflowReadModel,
+    DemandMaterializedPlanSummaryReadModel,
+)
 from .demand_requesters import (
     DemandRequesterDirectoryPort,
     DemandRequesterReadModel,
@@ -138,6 +147,8 @@ from .project_sync import (
 )
 from .query_models import (
     DemandHistoryReadModel,
+    DemandMaterializedRequirementReadModel,
+    DemandMaterializedResourceReadModel,
     MediumTermUnlinkedSegmentReadModel,
     PendingDemandLoadReadModel,
     PlanningActionReadModel,
@@ -249,7 +260,16 @@ __all__ = [
     "DemandCreateCommand",
     "DemandLineInput",
     "DemandEmergencyOverrideCommand",
+    "DemandDetailAlternativeGroupReadModel",
+    "DemandDetailLineReadModel",
+    "DemandDetailPolicyReadModel",
+    "DemandDetailReadModel",
+    "DemandDetailService",
+    "DemandDetailWorkflowReadModel",
+    "DemandMaterializedPlanSummaryReadModel",
     "DemandHistoryReadModel",
+    "DemandMaterializedRequirementReadModel",
+    "DemandMaterializedResourceReadModel",
     "DemandLineReadModel",
     "DemandMutationResult",
     "DemandOverrideMutationResult",

@@ -175,6 +175,14 @@ def build_demand_requester_service(session: Session) -> DemandRequesterService:
     return DemandRequesterService(SqlUserIdentityRepository(session))
 
 
+def build_operational_contact_service(
+    session: Session,
+) -> OperationalContactService:
+    """Compose batched operational-contact resolution for demand-detail reads."""
+
+    return OperationalContactService(SqlOperationalContactRepository(session))
+
+
 def build_user_view_context_repository(
     session: Session,
 ) -> UserViewContextRepositoryPort:
