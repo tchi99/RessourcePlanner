@@ -1,6 +1,6 @@
 # ADR-002 — Périodes par ligne et identités stables du besoin demandé
 
-Status: Proposed  
+Status: Accepted  
 Date: 2026-09-22
 
 ## Context
