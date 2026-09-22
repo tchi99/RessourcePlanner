@@ -41,7 +41,7 @@ class V1WebParityContractTests(unittest.TestCase):
         self.assertIn('@router.get("/segments")', reads)
         self.assertIn('@router.get("/segments/{segment_id}")', reads)
 
-    def test_resource_sql_model_exists_but_admin_is_tracked_as_cutover_blocker(self) -> None:
+    def test_resource_sql_model_exists_and_resource_admin_is_no_longer_a_cutover_blocker(self) -> None:
         models = (ROOT / "app/infrastructure/sql/models.py").read_text(encoding="utf-8")
         reads = (ROOT / "app/server/routes_reads.py").read_text(encoding="utf-8")
         parity = (ROOT / "docs/V1_WEB_PARITY.md").read_text(encoding="utf-8")
@@ -49,17 +49,18 @@ class V1WebParityContractTests(unittest.TestCase):
         self.assertIn("class Resource(", models)
         self.assertIn("class ResourceAvailabilityRule(", models)
         self.assertIn('@router.get("/resources")', reads)
-        self.assertIn("Bloqueur 1 — Administration Ressources & Disponibilités", parity)
         self.assertIn("#211", parity)
+        self.assertIn("Ressources / compétences / disponibilités", parity)
+        self.assertIn("aucun bloqueur V1", parity)
 
-    def test_excel_specific_screens_are_explicitly_not_cutover_requirements(self) -> None:
+    def test_excel_specific_surfaces_are_explicitly_not_cutover_requirements(self) -> None:
         parity = (ROOT / "docs/V1_WEB_PARITY.md").read_text(encoding="utf-8")
 
-        self.assertIn("Données Excel", parity)
-        self.assertIn("SUPPRIMER AU CUTOVER", parity)
-        self.assertIn("Paramètres Excel", parity)
-        self.assertIn("Outlook / Thunderbird", parity)
-        self.assertIn("REPORTER / REMPLACER", parity)
+        self.assertIn("Capacités volontairement non reproduites", parity)
+        self.assertIn("Données Excel génériques", parity)
+        self.assertIn("Grille Excel générique", parity)
+        self.assertIn("Paramètres OneDrive / xlwings", parity)
+        self.assertIn("à supprimer", parity)
 
 
 if __name__ == "__main__":

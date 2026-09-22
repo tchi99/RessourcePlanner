@@ -2,39 +2,73 @@
 
 Ce document fixe les invariants fonctionnels qui doivent rester vrais pendant le passage Excel/NiceGUI vers SQL/FastAPI/React.
 
+Il est aligné sur le modèle actuel après #13, #328, #329 et #331. Les ADR sous `docs/architecture/` restent autoritaires lorsqu'une décision y est formalisée.
+
 ## Propriété des données
 
-- `Project` porte le responsable de projet. La demande, le besoin et le quart ne dupliquent pas cette valeur comme source autoritaire.
-- `WorkforceRequest` porte le demandeur opérationnel et peut référencer directement un `WorkPackage`.
-- `ResourceRequirement` représente le besoin opérationnel. Un besoin issu d'une demande garde `workforce_request_id`; un besoin `QUICK_SHIFT`/`AD_HOC` peut légitimement avoir cette FK à `NULL`.
-- Un besoin ad hoc conserve son auteur dans `created_by_external_id` / `created_by_name`; l'auteur vient du contexte d'identité serveur, pas du corps HTTP.
+- `Project` porte le contexte projet et ses références métier.
+- `WorkforceRequest` est l'entête de workflow : projet, demandeur canonique, priorité, description, statut et version d'agrégat.
+- `RequestLine` est la frontière canonique du besoin demandé planifiable : classe/compétences, dates, effort, confirmation, tâche ERP, WorkPackage, ressource proposée et description.
+- Le schéma conserve certains champs historiques sur `WorkforceRequest` pour compatibilité; ils ne doivent pas redevenir la source autoritaire des propriétés propres à une ligne multi-besoins.
+- `ResourceRequirement` représente le besoin/budget opérationnel matérialisé. Un besoin issu d'une demande conserve `workforce_request_id` et, lorsque connu, `source_request_line_id`.
+- Un besoin `QUICK_SHIFT` / `AD_HOC` peut légitimement ne référencer aucune `WorkforceRequest`.
 - `Shift` reste rattaché à un `ResourceRequirement`; un Quick Shift ne crée jamais de fausse demande.
 
-## Alternatives, approbation et confirmation
+## Demandeur, acteur et contacts
 
-- Les périodes `CUMULATIVE` sont toutes consommatrices une fois l'enveloppe approuvée.
-- Un groupe `ALTERNATIVE` ne matérialise qu'une seule option sélectionnée; un groupe non résolu ne matérialise aucun besoin opérationnel.
-- Modifier la définition de l'enveloppe après approbation exige une nouvelle approbation et conserve le plan approuvé en place jusque-là.
-- Changer seulement la sélection d'une alternative à l'intérieur de l'enveloppe approuvée ne constitue pas une nouvelle enveloppe.
-- `Tentative` / `Confirmée` est distinct de l'approbation et peut être hérité ou surchargé aux niveaux besoin et quart.
+- Le demandeur canonique est référencé par identité stable lorsqu'elle est connue; nom/courriel restent des valeurs d'affichage ou snapshots.
+- L'acteur authentifié qui effectue une mutation reste distinct du demandeur métier dans l'audit.
+- Un `PROJECT_MANAGER` ne peut pas forcer un autre demandeur par API; la délégation d'un `COORDINATOR` est explicite.
+- `AppUser`, `Resource` et `BusinessContact` sont des concepts distincts.
+- Les données historiques dont l'identité stable ne peut pas être prouvée restent lisibles sans fabriquer de rapprochement par nom/courriel.
 
-## Capacité et ressources
+## Périodes, approbation et confirmation
 
-- Le planning hebdomadaire n'affiche comme planifiables que les ressources dont l'horaire standard chevauche la semaine affichée; l'historique demeure conservé.
+- Le propriétaire métier canonique d'une période est `RequestLine`.
+- L'identité logique d'une période est `(request_line_id, period_key)`; son `id` est une version physique persistée.
+- Les périodes `CUMULATIVE` sont toutes consommatrices dans l'enveloppe autorisée.
+- Un groupe `ALTERNATIVE` ne matérialise qu'une option active; les alternatives non sélectionnées restent néanmoins représentées dans la révision approuvée.
+- La demande candidate, la `RequestApprovalRevision` active et le plan opérationnel actif sont trois états distincts.
+- Une modification candidate hors enveloppe ne modifie pas le plan actif avant approbation.
+- La révision approuvée immuable est la preuve d'autorisation; les `ResourceRequirement` ne suffisent pas à reconstruire toutes les alternatives approuvées.
+- `Tentative` / `Confirmée` reste distinct de l'approbation et peut évoluer opérationnellement lorsque l'enveloppe l'autorise.
+- Les mutations opérationnelles sensibles utilisent des versions attendues et signalent les conflits.
+
+## Capacité, cible et ressources réelles
+
+- `ResourceRequirement.assigned_resource_id` est la cible de génération automatique du reliquat; ce n'est pas la vérité des affectations réelles.
+- `Shift.resource_id` est la ressource réellement affectée au quart.
+- Un besoin peut avoir des quarts sur plusieurs ressources.
+- Un quart verrouillé actif consomme la capacité de son propre `Shift.resource_id`, même sans cible automatique planifiable.
+- Créer, modifier ou déplacer un quart ne change pas implicitement la cible automatique.
 - La charge ferme et la charge potentielle sont séparées.
-- Une demande soumise qui modifie un plan approuvé est une proposition de remplacement et n'est pas additionnée au plan actuel.
-- La capacité moyen terme expose charge planifiée et charge macro projetée séparément; elles ne sont pas additionnées naïvement.
-- Les groupes de périodes alternatives ne sont jamais sommés entre eux dans la projection de capacité.
+- Une demande candidate qui remplace un plan approuvé n'est pas additionnée au plan actif.
+- Les groupes alternatifs ne sont jamais sommés naïvement dans les projections de capacité.
 
 ## Écritures et audit
 
-- Les actions NiceGUI sensibles sont protégées contre les doubles clics en vol.
-- Les créations HTTP sensibles utilisent une clé d'idempotence durable côté SQL.
-- Les identités métier historiques (`NoDemande`, `IDEffort`, `IDSegment`, `IDAllocation`) sont préservées pendant le cutover.
-- Le cutover préserve aussi `CreePar` des segments comme auteur opérationnel SQL lorsqu'il existe.
+- FastAPI reste la frontière de mutation du frontend React.
+- Les créations HTTP sensibles utilisent une clé d'idempotence durable lorsqu'elles créent un nouvel objet opérationnel.
+- Les mutations métier explicites sont auditées avec l'acteur réel disponible.
+- Les identités historiques utiles au cutover restent préservées; les nouvelles relations utilisent des IDs stables plutôt que les noms.
+- Une exception ou surallocation explicite ne doit jamais réécrire silencieusement l'autorisation approuvée.
 
 ## Cutover
 
-Le cutover SQL reste one-shot et transactionnel : préflight lecture seule, classeur gelé, migrations explicites, import, réconciliation puis commit. Le runtime normal ne lance aucune migration opportuniste et ne retombe pas silencieusement vers Excel.
+Le cutover SQL reste contrôlé : préflight lecture seule, source gelée, migrations explicites, import/réconciliation, puis bascule autoritaire.
 
-Après fusion de la tranche qui ajoute `created_by_name`, toute nouvelle modification de schéma métier doit être traitée explicitement comme une rupture du gel pré-cutover. La prochaine validation attendue est l'exécution réelle de la chaîne Alembic/runtime sur l'environnement SQL Server cible (#162).
+Le runtime normal :
+
+- ne lance pas de migration opportuniste sur une base de production explicitement configurée;
+- ne retombe pas silencieusement vers Excel;
+- conserve le runtime Web/SQL indépendant de NiceGUI/Excel.
+
+Les migrations additives introduites par les évolutions V2, notamment les lignes de demande, révisions approuvées, choix opérationnels et identités canoniques, font désormais partie du schéma à valider sur SQL Server.
+
+La prochaine validation environnementale structurante reste #162 : driver ODBC, migrations et smoke sur le SQL Server cible. Le cutover autoritaire et le retrait du legacy restent suivis dans #208/#336.
+
+## Références
+
+- #13, #162, #208, #288, #328, #329, #331, #336;
+- `docs/DEMANDS_V2_ARCHITECTURE.md`;
+- ADR-001 à ADR-004.

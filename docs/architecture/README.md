@@ -40,6 +40,30 @@ SQLAlchemy / base de données / intégrations externes
 
 Le backend Python reste autoritaire pour les règles métier de planification et de capacité.
 
+### Demandes V2
+
+Voir :
+
+- `../DEMANDS_V2_ARCHITECTURE.md`
+- `ADR-001-separate-requirement-target-from-shift-assignment.md`
+- `ADR-002-request-line-periods-and-identities.md`
+- `ADR-003-immutable-approved-authorization.md`
+- `ADR-004-candidate-approval-and-active-plan.md`
+
+Chaîne métier actuelle :
+
+```text
+Project
+└── WorkforceRequest
+    └── RequestLine
+        └── ResourceRequirement
+            └── Shift
+```
+
+`WorkPackage` est une référence de contexte/portée optionnelle, notamment portée par `RequestLine` pour les demandes multi-lignes. Les périodes appartiennent métier à la ligne. Le besoin/budget, la cible automatique et les ressources réellement affectées restent des concepts distincts.
+
+Depuis #13, la demande candidate, la révision approuvée immuable et le plan actif sont également séparés. Depuis #328, le demandeur canonique est distinct de l'acteur authentifié, de la ressource planifiable et des contacts métier. #329 compose ces éléments dans une projection de détail backend sans nouvel agrégat persistant.
+
 ### Authentification et autorisation
 
 Voir :
@@ -108,6 +132,19 @@ Exemples qui ne nécessitent normalement pas d'ADR :
 - changement UX limité;
 - optimisation interne sans conséquence architecturale;
 - détail d'implémentation entièrement contenu dans une issue.
+
+---
+
+### ADR acceptés actuels
+
+| ADR | Décision |
+|---|---|
+| ADR-001 | séparer cible automatique du besoin et affectation réelle des quarts |
+| ADR-002 | périodes métier par `RequestLine` et identités stables |
+| ADR-003 | révision approuvée immuable comme preuve d'autorisation |
+| ADR-004 | séparer demande candidate, autorisation approuvée et plan actif |
+
+Ces quatre ADR sont en statut `Accepted` et guident notamment #330, #332 et #333.
 
 ---
 
