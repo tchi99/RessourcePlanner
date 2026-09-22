@@ -461,7 +461,7 @@ class ResourceRequirement(TimestampMixin, Base):
     )
     approval_revision_id: Mapped[str | None] = mapped_column(
         String(ID_LENGTH),
-        ForeignKey("request_approval_revisions.id"),
+        ForeignKey("request_approval_revisions.id", name="fk_resource_requirements_approval_revision"),
         nullable=True,
         index=True,
     )
