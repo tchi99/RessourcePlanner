@@ -280,9 +280,17 @@ def build_next_action_and_prompt(
     stall_level = derived.get("stall_level")
     if stall_level == "confirmed":
         failed = f" ({', '.join(failed_jobs)})" if failed_jobs else ""
+        branch_name = (active_branch or {}).get("name")
+        context = (
+            f"la PR #{pr_number}"
+            if pr_number
+            else f"la branche {branch_name}"
+            if branch_name
+            else "l'état GitHub actuel"
+        )
         action = f"Reprendre {slice_key} : CI rouge abandonnée{failed}."
         prompt = (
-            f"Reprends {slice_key} depuis la PR #{pr_number} actuelle.\n"
+            f"Reprends {slice_key} depuis {context}.\n"
             f"La CI est rouge et aucune activité de reprise n'est visible{inactive_text} : analyse les jobs en échec{failed},\n"
             f"corrige les causes liées à la tranche et poursuis ensuite #{parent_issue} selon AGENTS.md et #{roadmap_issue}."
         )
@@ -313,9 +321,17 @@ def build_next_action_and_prompt(
 
     if derived.get("ci_red"):
         failed = f" ({', '.join(failed_jobs)})" if failed_jobs else ""
+        branch_name = (active_branch or {}).get("name")
+        context = (
+            f"la PR #{pr_number}"
+            if pr_number
+            else f"la branche {branch_name}"
+            if branch_name
+            else "l'état GitHub actuel"
+        )
         action = f"Reprendre {slice_key} : CI rouge{failed}."
         prompt = (
-            f"Reprends {slice_key} depuis la PR #{pr_number} actuelle.\n"
+            f"Reprends {slice_key} depuis {context}.\n"
             f"La CI est rouge : analyse les jobs en échec{failed}, corrige les causes liées\n"
             f"à la tranche et poursuis ensuite #{parent_issue} selon AGENTS.md et #{roadmap_issue}."
         )
