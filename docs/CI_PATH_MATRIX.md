@@ -41,7 +41,7 @@ Le diff Git est calculé avec `--no-renames`. Un renommage est donc vu comme une
 
 ## Frontière Dev Cockpit
 
-Le workflow principal ne déclare plus `dev-cockpit/**` dans son filtre `pull_request.paths`. Une PR strictement limitée au cockpit déclenche donc seulement `.github/workflows/dev-cockpit.yml`.
+Le workflow principal déclare `dev-cockpit/**` dans son filtre `pull_request.paths` afin que le check requis **Classify changed files** existe aussi pour une PR strictement limitée au cockpit. Le classifieur reconnaît cette frontière et garde alors `backend=false`, `frontend=false`, `runtime=false` et `conservative=false` : les validations lourdes du runtime RessourcePlanner restent donc `skipped`, tandis que le workflow dédié `.github/workflows/dev-cockpit.yml` effectue la validation réelle du cockpit.
 
 Les fichiers réellement partagés restent déclarés dans les deux workflows lorsque les deux surfaces doivent être validées, notamment `docker-compose.yml` et `.env.example`. Le workflow dédié lui-même reste couvert par le filtre global `.github/workflows/**` du workflow principal.
 

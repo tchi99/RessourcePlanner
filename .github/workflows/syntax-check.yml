@@ -23,6 +23,7 @@ on:
       - "tools/**"
       - "migrations/**"
       - "frontend/**"
+      - "dev-cockpit/**"
       - "docs/**"
       - "alembic.ini"
       - "requirements*.txt"
