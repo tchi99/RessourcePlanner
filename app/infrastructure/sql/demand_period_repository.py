@@ -184,7 +184,17 @@ class SqlDemandPeriodRepository(DemandPeriodRepositoryPort):
                 start_date=row.start_date,
                 end_date=row.end_date,
                 hours=float(row.hours),
-                confirmation=row.confirmation,
+                confirmation=(
+                    operational.confirmations.get(
+                        EnvelopeEntryIdentity(
+                            line_id=row.request_line_id or request.id,
+                            period_key=row.period_key,
+                        ).stable_key,
+                        row.confirmation,
+                    )
+                    if operational is not None
+                    else row.confirmation
+                ),
                 proposed_resource=resource_names.get(row.proposed_resource_id),
                 resource_count=row.resource_count,
                 desired_active_days=row.desired_active_days,
