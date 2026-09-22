@@ -1,5 +1,9 @@
 # Docker / Synology — runtime V2
 
+> **Statut : cible historique / non privilégiée.** La décision d'exploitation actuelle est de ne plus déployer RessourcePlanner directement dans Synology Container Manager. Le NAS Synology héberge désormais une **VM Ubuntu dédiée**, et Docker/Compose s'exécute dans cette VM. Voir [`DEPLOYMENT_UBUNTU_VM.md`](DEPLOYMENT_UBUNTU_VM.md) pour la procédure cible.
+>
+> Les artefacts `deploy/synology/` restent temporairement présents pour compatibilité et historique; ils ne définissent plus la cible de production privilégiée.
+
 Cette procédure couvre la conteneurisation de RessourcePlanner et la cible Synology Container Manager prévue par #263.
 
 Le chemin Docker ne dépend ni de NiceGUI/Excel, ni d'une installation globale de Python/Node/npm sur la machine qui exécute les conteneurs.
