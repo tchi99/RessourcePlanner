@@ -66,7 +66,7 @@ export default function ManualAllocationEditor({
   );
 
   const [segmentId, setSegmentId] = useState("");
-  const [technician, setTechnician] = useState("");
+  const [resourceId, setResourceId] = useState("");
   const [day, setDay] = useState(weekStart);
   const [hours, setHours] = useState("8");
   const [outsideStandardHours, setOutsideStandardHours] = useState(false);
@@ -87,7 +87,7 @@ export default function ManualAllocationEditor({
       ?? activeSegments[0]
       ?? null;
     setSegmentId(preferred?.segment_id ?? "");
-    setTechnician(preferred?.resource_name ?? "");
+    setResourceId(preferred?.automatic_target_resource_id ?? "");
     const minDay = preferred?.start_date ? maxIso(preferred.start_date, weekStart) : weekStart;
     const maxDay = preferred?.end_date ? minIso(preferred.end_date, weekEnd) : weekEnd;
     setDay(minDay <= maxDay ? minDay : (preferred?.start_date ?? weekStart));
@@ -101,15 +101,15 @@ export default function ManualAllocationEditor({
 
   useEffect(() => {
     if (!open || !selectedSegment) return;
-    if (!technician && selectedSegment.resource_name) {
-      setTechnician(selectedSegment.resource_name);
+    if (!resourceId && selectedSegment.automatic_target_resource_id) {
+      setResourceId(selectedSegment.automatic_target_resource_id);
     }
     const minDay = selectedSegment.start_date ? maxIso(selectedSegment.start_date, weekStart) : weekStart;
     const maxDay = selectedSegment.end_date ? minIso(selectedSegment.end_date, weekEnd) : weekEnd;
     if (day < minDay || day > maxDay) {
       setDay(minDay <= maxDay ? minDay : (selectedSegment.start_date ?? weekStart));
     }
-  }, [selectedSegment, open, weekStart, weekEnd, day, technician]);
+  }, [selectedSegment, open, weekStart, weekEnd, day, resourceId]);
 
   useEffect(() => {
     if (!open || !canManagePlanning) return;
@@ -130,8 +130,8 @@ export default function ManualAllocationEditor({
   async function create(policy: OverallocationPolicy | null = null) {
     if (!selectedSegment || saving) return;
     const parsedHours = Number(hours);
-    if (!technician.trim()) {
-      setError("Choisis une ressource.");
+    if (!resourceId.trim()) {
+      setError("Choisis une ressource pour ce quart.");
       return;
     }
     if (!day) {
@@ -144,7 +144,7 @@ export default function ManualAllocationEditor({
     }
 
     const payload: ManualAllocationUpdate = {
-      technician,
+      resource_id: resourceId,
       day,
       hours: parsedHours,
       outside_standard_hours: outsideStandardHours,
@@ -248,10 +248,10 @@ export default function ManualAllocationEditor({
             </label>
             <label>
               <span>Ressource</span>
-              <select value={technician} onChange={(event) => setTechnician(event.target.value)} disabled={saving} required>
+              <select value={resourceId} onChange={(event) => setResourceId(event.target.value)} disabled={saving} required>
                 <option value="">Sélectionner…</option>
                 {sortedResources.map((resource) => (
-                  <option value={resource.name} key={resource.id}>
+                  <option value={resource.id} key={resource.id}>
                     {resource.name}{resource.resource_class ? ` — ${resource.resource_class}` : ""}
                   </option>
                 ))}
@@ -286,6 +286,10 @@ export default function ManualAllocationEditor({
           {selectedSegment && (
             <div className="confirmation-help">
               <strong>{selectedSegment.project_number || "Projet"} · {selectedSegment.segment_id}</strong>
+              <span>
+                Cible automatique du reliquat : {selectedSegment.automatic_target_resource_name || "aucune"}.
+                La ressource choisie ici s’applique uniquement au quart manuel.
+              </span>
               <span>
                 Fenêtre {selectedSegment.start_date || "—"} → {selectedSegment.end_date || "—"} · {hoursLabel(selectedSegment.planned_hours)} h prévues
                 {selectedSegment.required_competency ? ` · ${selectedSegment.required_competency}` : ""}
