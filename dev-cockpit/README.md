@@ -41,7 +41,7 @@ RessourcePlanner  http://127.0.0.1:8080
 Dev Cockpit       http://127.0.0.1:8081
 ```
 
-Le service `dev-cockpit` est publié sur `127.0.0.1` seulement par défaut.
+Le service `dev-cockpit` est publié sur `127.0.0.1` seulement par défaut et utilise `restart: "no"`. Il doit donc être activé explicitement; un redémarrage de Docker/Ubuntu ne doit pas en faire un service persistant par accident.
 
 Le runtime métier normal reste inchangé :
 
@@ -50,6 +50,8 @@ docker compose up -d --build
 ```
 
 ne démarre pas le cockpit.
+
+La cible de production est la VM Ubuntu documentée dans [`docs/DEPLOYMENT_UBUNTU_VM.md`](../docs/DEPLOYMENT_UBUNTU_VM.md). Sur cette VM de production, ne pas activer `dev-tools`, ne pas provisionner de `DEV_COCKPIT_GITHUB_TOKEN` et ne pas intégrer le cockpit aux commandes de promotion/rollback.
 
 ## Configuration
 
@@ -122,10 +124,13 @@ docker compose config
 docker compose --profile dev-tools config
 ```
 
-Smoke ciblé :
+Smoke ciblé du chemin réellement documenté :
 
 ```bash
-docker compose --profile dev-tools up -d --build dev-cockpit
+docker compose --profile dev-tools up -d --build
+curl http://127.0.0.1:8080/ready
 curl http://127.0.0.1:8081/api/health
 curl http://127.0.0.1:8081/api/config
 ```
+
+La CI vérifie également que `docker compose config --services` n'inclut pas `dev-cockpit` sans profil, alors que `docker compose --profile dev-tools config --services` l'inclut.
