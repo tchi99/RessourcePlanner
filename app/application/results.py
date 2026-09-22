@@ -79,6 +79,15 @@ class DemandAlternativeSelectionResult(ApplicationResult):
     alternative_group: str
     period_id: str
     planning: PlanningResult | None = None
+    operational_version: int | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class DemandOperationalConfirmationResult(ApplicationResult):
+    demand_number: str
+    confirmation: str
+    operational_version: int
+    planning: PlanningResult | None = None
 
 
 @dataclass(frozen=True, slots=True)
