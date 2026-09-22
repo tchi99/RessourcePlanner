@@ -51,10 +51,17 @@ class PlanningDragDropApiTests(unittest.TestCase):
             active=True,
             sort_order=20,
         )
-        session.add_all([project, alice, bob])
+        carol = Resource(
+            id="R-CAROL-275",
+            name="Carol DnD",
+            resource_class="Programmation",
+            active=True,
+            sort_order=30,
+        )
+        session.add_all([project, alice, bob, carol])
         session.flush()
 
-        for resource, suffix in ((alice, "ALICE"), (bob, "BOB")):
+        for resource, suffix in ((alice, "ALICE"), (bob, "BOB"), (carol, "CAROL")):
             session.add(
                 ResourceAvailabilityRule(
                     id=f"SCH-{suffix}-275",
@@ -86,7 +93,7 @@ class PlanningDragDropApiTests(unittest.TestCase):
             assigned_resource_id=alice.id,
             start_date=date(2026, 9, 21),
             end_date=date(2026, 9, 25),
-            planned_hours=Decimal("8"),
+            planned_hours=Decimal("16"),
             status="Planifié",
             confirmation="Confirmée",
             origin="AD_HOC",
@@ -169,6 +176,59 @@ class PlanningDragDropApiTests(unittest.TestCase):
             self.assertEqual(segment["automatic_target_resource_id"], "R-BOB-275")
             self.assertEqual(segment["automatic_target_resource_name"], "Bob DnD")
             self.assertEqual(segment["resource_name"], "Bob DnD")
+
+    def test_move_a_to_b_then_explicit_target_c_preserves_b_and_retargets_only_remainder(self) -> None:
+        with TemporaryDirectory() as directory:
+            app = create_api_app(self._database(directory), actor_name="Coordonnateur DnD")
+            with TestClient(app) as client:
+                moved = client.post(
+                    "/api/v1/allocations/SHIFT-275/move",
+                    json={"resource_id": "R-BOB-275", "day": "2026-09-22"},
+                )
+                self.assertEqual(moved.status_code, 200, moved.text)
+
+                after_move = client.get("/api/v1/segments/SEG-275").json()
+                self.assertEqual(after_move["automatic_target_resource_id"], "R-ALICE-275")
+                self.assertEqual(after_move["locked_hours"], 8.0)
+                self.assertEqual(after_move["automatic_rebuild_hours"], 8.0)
+
+                shifts_after_move = client.get(
+                    "/api/v1/shifts",
+                    params={"start": "2026-09-21", "end": "2026-09-25"},
+                ).json()
+                locked_b = next(row for row in shifts_after_move if row["allocation_id"] == "SHIFT-275")
+                self.assertEqual(locked_b["resource_id"], "R-BOB-275")
+                self.assertTrue(locked_b["locked"])
+                auto_after_move = [
+                    row for row in shifts_after_move
+                    if not row["locked"] and row["allocation_type"] != "Hors horaire requis"
+                ]
+                self.assertEqual(sum(row["hours"] for row in auto_after_move), 8.0)
+                self.assertTrue(all(row["resource_id"] == "R-ALICE-275" for row in auto_after_move))
+
+                assigned = client.post(
+                    "/api/v1/segments/SEG-275/assign",
+                    json={"resource_id": "R-CAROL-275"},
+                )
+                self.assertEqual(assigned.status_code, 200, assigned.text)
+
+                final_segment = client.get("/api/v1/segments/SEG-275").json()
+                final_shifts = client.get(
+                    "/api/v1/shifts",
+                    params={"start": "2026-09-21", "end": "2026-09-25"},
+                ).json()
+
+            self.assertEqual(final_segment["automatic_target_resource_id"], "R-CAROL-275")
+            self.assertEqual(final_segment["automatic_target_resource_name"], "Carol DnD")
+            final_locked_b = next(row for row in final_shifts if row["allocation_id"] == "SHIFT-275")
+            self.assertEqual(final_locked_b["resource_id"], "R-BOB-275")
+            self.assertTrue(final_locked_b["locked"])
+            final_auto = [
+                row for row in final_shifts
+                if not row["locked"] and row["allocation_type"] != "Hors horaire requis"
+            ]
+            self.assertEqual(sum(row["hours"] for row in final_auto), 8.0)
+            self.assertTrue(all(row["resource_id"] == "R-CAROL-275" for row in final_auto))
 
     def test_quick_shift_move_cannot_leave_its_single_day_segment(self) -> None:
         with TemporaryDirectory() as directory:
