@@ -8,7 +8,7 @@ from app.main import create_app
 
 class ApiTests(unittest.TestCase):
     def test_health_and_config_never_expose_token_value(self):
-        secret = "github_pat_super-secret"
+        secret = "test"
         client = TestClient(create_app(Settings(github_token=secret)))
         health = client.get("/api/health")
         config = client.get("/api/config")
