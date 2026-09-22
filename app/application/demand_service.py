@@ -24,6 +24,7 @@ from ..domain.approval_envelope import (
     DECISION_EXPLICIT_EXCEPTION_REQUIRED,
     DECISION_INVALID,
     DECISION_REAPPROVAL_REQUIRED,
+    REASON_DELEGATED_TOLERANCE,
     EnvelopeDecision,
 )
 from .errors import (
@@ -322,6 +323,66 @@ class DemandService:
                 return role
         return None
 
+    def _apply_delegated_budget_changes(
+        self,
+        number: str,
+        decision: EnvelopeDecision,
+    ) -> None:
+        if decision.reason != REASON_DELEGATED_TOLERANCE:
+            return
+        if self._operational_choices is None:
+            raise ApplicationOperationError(
+                "Les budgets opérationnels versionnés ne sont pas disponibles.",
+                code="operational_budget_unavailable",
+                context={"demand_number": number},
+            )
+
+        changed = False
+        for change in decision.changes:
+            if (
+                change.code != REASON_DELEGATED_TOLERANCE
+                or not change.entry_key
+                or change.candidate_hours is None
+            ):
+                continue
+            call_application_port(
+                lambda change=change: self._operational_choices.set_budget_override(
+                    number,
+                    change.entry_key or "",
+                    float(change.candidate_hours),
+                ),
+                code_prefix="operational_budget_override",
+                context={
+                    "demand_number": number,
+                    "approved_entry_key": change.entry_key,
+                },
+            )
+            changed = True
+
+        if not changed:
+            return
+        sync_operational = getattr(
+            self._approved_sync,
+            "sync_operational_choices",
+            None,
+        )
+        if not callable(sync_operational):
+            raise ApplicationOperationError(
+                "La synchronisation des budgets opérationnels n'est pas disponible.",
+                code="operational_budget_sync_unavailable",
+                context={"demand_number": number},
+            )
+        call_application_port(
+            lambda: sync_operational(number),
+            code_prefix="operational_budget_sync",
+            context={"demand_number": number},
+        )
+        call_application_port(
+            self._planning.rebuild,
+            code_prefix="operational_budget_rebuild",
+            context={"demand_number": number},
+        )
+
     def _handle_candidate_envelope_decision(
         self,
         number: str,
@@ -359,6 +420,7 @@ class DemandService:
                 code_prefix="approval_envelope_decision_audit",
                 context={"demand_number": number},
             )
+            self._apply_delegated_budget_changes(number, decision)
             return False
 
         if PERMISSION_APPROVE_DEMANDS in self._permissions:
