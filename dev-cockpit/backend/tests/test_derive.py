@@ -174,7 +174,7 @@ class DeriveTests(unittest.TestCase):
             derived=derived,
             roadmap_issue=55,
         )
-        self.assertIn("Reprends 13C depuis la PR #401 actuelle", prompt)
+        self.assertIn("Reprends 13C depuis la PR #401", prompt)
         self.assertIn("La CI est rouge", prompt)
         self.assertIn("poursuis ensuite #13", prompt)
 
