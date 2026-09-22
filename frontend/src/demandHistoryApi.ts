@@ -6,6 +6,7 @@ export type DemandHistoryReadModel = {
   status: string | null;
   comment: string | null;
   details: string | null;
+  actor_user_id: string | null;
   actor_name: string | null;
 };
 
