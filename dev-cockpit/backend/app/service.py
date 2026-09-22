@@ -116,6 +116,51 @@ def _branch_summary(repo: str, branch: dict[str, Any] | None) -> dict[str, Any] 
     }
 
 
+async def _most_recent_matching_branch(
+    client: GitHubClient,
+    repo: str,
+    branches: list[dict[str, Any]],
+    key: str,
+) -> dict[str, Any] | None:
+    candidates = [
+        branch
+        for branch in branches
+        if branch.get("name") != "main"
+        and matches_work_key(str(branch.get("name") or ""), key)
+    ]
+    if not candidates:
+        return None
+    if len(candidates) == 1:
+        return candidates[0]
+
+    commits = await asyncio.gather(
+        *[
+            client.get_commit(repo, str((branch.get("commit") or {}).get("sha")))
+            for branch in candidates
+            if (branch.get("commit") or {}).get("sha")
+        ],
+        return_exceptions=True,
+    )
+    scored: list[tuple[str, str, dict[str, Any]]] = []
+    commit_index = 0
+    for branch in candidates:
+        sha = (branch.get("commit") or {}).get("sha")
+        info = None
+        if sha:
+            commit = commits[commit_index]
+            commit_index += 1
+            if isinstance(commit, dict):
+                info = commit_summary(commit)
+        scored.append(
+            (
+                str((info or {}).get("date") or ""),
+                str(branch.get("name") or ""),
+                branch,
+            )
+        )
+    return max(scored, key=lambda row: (row[0], row[1]))[2]
+
+
 def _merged_pr_summary(pr: dict[str, Any] | None) -> dict[str, Any] | None:
     if not pr:
         return None
@@ -136,7 +181,7 @@ async def build_dashboard(client: GitHubClient, settings: Settings, repo: str) -
         client.latest_commit(repo),
         client.get_text_file(repo, "AGENTS.md"),
         client.list_directory(repo, "docs/architecture"),
-        client.list_branches(repo, 100),
+        client.list_all_branches(repo, per_page=100),
     )
 
     roadmap_body = roadmap_raw.get("body") or ""
@@ -195,13 +240,11 @@ async def build_dashboard(client: GitHubClient, settings: Settings, repo: str) -
     if primary_pr:
         branch_raw = next((branch for branch in branches_raw if branch.get("name") == primary_pr.get("head")), None)
     if not branch_raw and not block_done:
-        branch_raw = next(
-            (
-                branch
-                for branch in branches_raw
-                if branch.get("name") != "main" and matches_work_key(str(branch.get("name") or ""), active_key)
-            ),
-            None,
+        branch_raw = await _most_recent_matching_branch(
+            client,
+            repo,
+            branches_raw,
+            active_key,
         )
     active_branch = _branch_summary(repo, branch_raw)
     if not active_branch and primary_pr and primary_pr.get("head"):
