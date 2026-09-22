@@ -102,6 +102,8 @@ class EnvelopePeriodDefinition:
     start_date: date
     end_date: date
     hours: float | Decimal
+    source_period_id: str | None = None
+    resource_count: int = 1
     kind: str = PERIOD_KIND_CUMULATIVE
     group_key: str | None = None
     confirmation: str = "Tentative"
@@ -115,6 +117,8 @@ class EnvelopeLineDefinition:
     line_id: str
     project_id: str
     site_id: str | None = None
+    location: str | None = None
+    slot_count: int = 1
     line_kind: str = "WORKFORCE"
     required_resource_class: str | None = None
     competency_ids: tuple[str, ...] = ()
@@ -134,6 +138,8 @@ class ApprovalEnvelopeEntry:
     identity: EnvelopeEntryIdentity
     project_id: str
     site_id: str | None
+    location: str | None
+    slot_count: int
     line_kind: str
     required_resource_class: str | None
     competency_ids: tuple[str, ...]
@@ -144,6 +150,7 @@ class ApprovalEnvelopeEntry:
     hours: Decimal
     kind: str
     group: EnvelopeGroupIdentity | None
+    source_period_id: str | None
     confirmation: str
     selected: bool
     proposed_resource_id: str | None
@@ -154,6 +161,8 @@ class ApprovalEnvelopeEntry:
             "identity": self.identity.stable_key,
             "project_id": self.project_id,
             "site_id": self.site_id,
+            "location": self.location,
+            "slot_count": self.slot_count,
             "line_kind": self.line_kind,
             "required_resource_class": self.required_resource_class,
             "competency_ids": list(self.competency_ids),
@@ -170,6 +179,7 @@ class ApprovalEnvelopeEntry:
         payload = self.authorization_payload()
         payload.update(
             {
+                "source_period_id": self.source_period_id,
                 "confirmation": self.confirmation,
                 "selected": self.selected,
                 "proposed_resource_id": self.proposed_resource_id,
@@ -303,6 +313,7 @@ def normalize_approval_envelope(
         common = {
             "project_id": project_id,
             "site_id": _optional_text(raw_line.site_id),
+            "location": _optional_text(raw_line.location),
             "line_kind": line_kind,
             "required_resource_class": _optional_text(
                 raw_line.required_resource_class
@@ -357,6 +368,11 @@ def normalize_approval_envelope(
                         "pas appartenir à un groupe alternatif."
                     )
 
+                if int(period.resource_count or 0) < 1:
+                    raise ValueError(
+                        f"Le nombre de ressources de {line_id}/{period_key} "
+                        "doit être au moins 1."
+                    )
                 _validate_window(
                     period.start_date,
                     period.end_date,
@@ -383,6 +399,8 @@ def normalize_approval_envelope(
                         ),
                         kind=kind,
                         group=group,
+                        source_period_id=_optional_text(period.source_period_id),
+                        slot_count=int(period.resource_count),
                         confirmation=confirmation,
                         selected=bool(period.selected),
                         proposed_resource_id=_optional_text(
@@ -404,6 +422,10 @@ def normalize_approval_envelope(
                 )
             continue
 
+        if int(raw_line.slot_count or 0) < 1:
+            raise ValueError(
+                f"Le nombre de ressources de la ligne {line_id} doit être au moins 1."
+            )
         if raw_line.start_date is None:
             raise ValueError(
                 f"La ligne {line_id} doit avoir une date de début lorsqu'elle "
@@ -429,6 +451,8 @@ def normalize_approval_envelope(
                 hours=_hours(raw_line.hours, field=f"Les heures de {line_id}"),
                 kind=PERIOD_KIND_CUMULATIVE,
                 group=None,
+                source_period_id=None,
+                slot_count=int(raw_line.slot_count),
                 confirmation=normalize_confirmation(raw_line.confirmation),
                 selected=True,
                 proposed_resource_id=_optional_text(
@@ -460,6 +484,11 @@ def validate_approval_envelope(envelope: ApprovalEnvelope) -> None:
             label=f"l'entrée {entry.identity.stable_key}",
             desired_active_days=entry.desired_active_days,
         )
+        if entry.slot_count < 1:
+            raise ValueError(
+                f"Le nombre de ressources de {entry.identity.stable_key} "
+                "doit être au moins 1."
+            )
         if entry.hours <= 0:
             raise ValueError(
                 f"Le budget de {entry.identity.stable_key} doit être positif."
@@ -503,6 +532,8 @@ def _scope_tuple(entry: ApprovalEnvelopeEntry) -> tuple[object, ...]:
     return (
         entry.project_id,
         entry.site_id,
+        entry.location,
+        entry.slot_count,
         entry.line_kind,
         entry.required_resource_class,
         entry.competency_ids,
