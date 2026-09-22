@@ -107,6 +107,15 @@ class DemandOperationalChoiceRepositoryPort(Protocol):
         expected_version: int | None = None,
     ) -> DemandOperationalChoiceReadModel: ...
 
+    def set_budget_override(
+        self,
+        demand_number: str,
+        entry_key: str,
+        hours: float,
+        *,
+        expected_version: int | None = None,
+    ) -> DemandOperationalChoiceReadModel: ...
+
 
 class DemandApprovalEnvelopePolicyPort(Protocol):
     """Common candidate-versus-approved authorization policy boundary."""
@@ -136,6 +145,29 @@ class DemandApprovalEnvelopePolicyPort(Protocol):
         decision: EnvelopeDecision,
         *,
         actor_name: str,
+    ) -> None: ...
+
+
+class PlanningAuthorizationPort(Protocol):
+    """Authorization guard for direct operational planning mutations."""
+
+    def authorize_segment_create(
+        self,
+        values: Mapping[str, Any],
+    ) -> None: ...
+
+    def authorize_segment_update(
+        self,
+        segment_id: str,
+        updates: Mapping[str, Any],
+    ) -> None: ...
+
+    def authorize_planned_hours(
+        self,
+        segment_id: str,
+        planned_hours: float,
+        *,
+        explicit_increase: bool = False,
     ) -> None: ...
 
 

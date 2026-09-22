@@ -1,0 +1,343 @@
+from __future__ import annotations
+
+from datetime import date, time
+from tempfile import TemporaryDirectory
+import json
+import unittest
+
+from fastapi.testclient import TestClient
+from sqlalchemy import func, select
+
+from app.infrastructure.sql import (
+    PlanningChangeHistory,
+    Project,
+    RequestApprovalReference,
+    RequestApprovalRevision,
+    RequestOperationalState,
+    Resource,
+    ResourceAvailabilityRule,
+    ResourceRequirement,
+    WorkforceRequest,
+    create_session_factory,
+    create_sql_engine,
+)
+from app.server import create_api_app
+from tests.http_test_auth import (
+    TEST_ADMIN_AUTH_RESOLVER,
+    TEST_PROJECT_MANAGER_AUTH_RESOLVER,
+)
+from tests.sqlite_test_template import SqliteDatabaseTemplate
+
+
+DAY = date(2026, 9, 22)
+
+
+class PlanningAuthorizationGuardTests(unittest.TestCase):
+    @staticmethod
+    def _seed_database(session) -> None:
+        session.add(Project(id="P1", number="P-1", name="Projet 13F"))
+        session.add(Resource(id="R1", name="Alice", active=True))
+        session.flush()
+        session.add(
+            ResourceAvailabilityRule(
+                id="STD-R1",
+                resource_id="R1",
+                availability_type="Horaire standard",
+                weekdays="Lun,Mar,Mer,Jeu,Ven,Sam,Dim",
+                start_time=time(8, 0),
+                end_time=time(20, 0),
+                active=True,
+            )
+        )
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        super().setUpClass()
+        cls._database_template = SqliteDatabaseTemplate(
+            filename="planning-authorization-13f.db",
+            seed=cls._seed_database,
+        )
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        cls._database_template.cleanup()
+        super().tearDownClass()
+
+    def _database(self, directory: str) -> str:
+        return self._database_template.copy_to(directory)
+
+    @staticmethod
+    def _create_and_approve(
+        client: TestClient,
+        *,
+        hours: float = 8,
+    ) -> str:
+        created = client.post(
+            "/api/v1/demands",
+            json={
+                "project_number": "P-1",
+                "desired_start": DAY.isoformat(),
+                "desired_end": DAY.isoformat(),
+                "estimated_hours": hours,
+                "proposed_technician": "Alice",
+                "submit": True,
+            },
+        )
+        assert created.status_code == 201, created.text
+        number = created.json()["demand_number"]
+        approved = client.post(
+            f"/api/v1/demands/{number}/approve",
+            json={"comment": "Autorisation 13F"},
+        )
+        assert approved.status_code == 200, approved.text
+        return number
+
+    @staticmethod
+    def _request_and_requirement(factory, number: str):
+        with factory() as session:
+            request = session.scalar(
+                select(WorkforceRequest).where(
+                    WorkforceRequest.legacy_demand_number == number
+                )
+            )
+            assert request is not None
+            requirement = session.scalar(
+                select(ResourceRequirement).where(
+                    ResourceRequirement.workforce_request_id == request.id,
+                    ResourceRequirement.status != "Annulé",
+                )
+            )
+            assert requirement is not None
+            return request.id, requirement.id, requirement.legacy_segment_id or requirement.id
+
+    def test_direct_request_segment_widening_is_blocked_but_quick_shift_stays_ad_hoc(self) -> None:
+        with TemporaryDirectory() as directory:
+            database_url = self._database(directory)
+            admin_app = create_api_app(
+                database_url,
+                actor_name="admin-13f",
+                auth_resolver=TEST_ADMIN_AUTH_RESOLVER,
+            )
+            with TestClient(admin_app, raise_server_exceptions=False) as client:
+                number = self._create_and_approve(client)
+
+                direct_create = client.post(
+                    "/api/v1/segments",
+                    json={
+                        "demand_number": number,
+                        "project_number": "P-1",
+                        "start_date": DAY.isoformat(),
+                        "end_date": DAY.isoformat(),
+                        "planned_hours": 4,
+                    },
+                    headers={"Idempotency-Key": "13f-direct-create"},
+                )
+                self.assertEqual(direct_create.status_code, 409, direct_create.text)
+                self.assertEqual(
+                    direct_create.json()["error"]["code"],
+                    "planning_authorization_entry_required",
+                )
+
+                quick = client.post(
+                    "/api/v1/quick-shifts",
+                    json={
+                        "project_number": "P-1",
+                        "technician": "Alice",
+                        "day": DAY.isoformat(),
+                        "hours": 2,
+                        "project_name": "Projet 13F",
+                    },
+                    headers={"Idempotency-Key": "13f-quick-shift"},
+                )
+                self.assertEqual(quick.status_code, 201, quick.text)
+
+            engine = create_sql_engine(database_url)
+            factory = create_session_factory(engine)
+            try:
+                request_id, _requirement_id, segment_id = self._request_and_requirement(
+                    factory,
+                    number,
+                )
+                with TestClient(admin_app, raise_server_exceptions=False) as client:
+                    structural = client.patch(
+                        f"/api/v1/segments/{segment_id}",
+                        json={
+                            "start_date": date(2026, 9, 23).isoformat(),
+                            "end_date": date(2026, 9, 23).isoformat(),
+                        },
+                    )
+                    self.assertEqual(structural.status_code, 409, structural.text)
+                    self.assertEqual(
+                        structural.json()["error"]["code"],
+                        "planning_authorization_scope_change",
+                    )
+                with factory() as session:
+                    linked = session.scalars(
+                        select(ResourceRequirement).where(
+                            ResourceRequirement.workforce_request_id == request_id
+                        )
+                    ).all()
+                    self.assertEqual(len(linked), 1)
+                    ad_hoc = session.scalars(
+                        select(ResourceRequirement).where(
+                            ResourceRequirement.workforce_request_id.is_(None)
+                        )
+                    ).all()
+                    self.assertTrue(ad_hoc)
+            finally:
+                engine.dispose()
+
+    def test_increase_planned_cannot_bypass_revision_but_keep_exception_can(self) -> None:
+        with TemporaryDirectory() as directory:
+            database_url = self._database(directory)
+            app = create_api_app(
+                database_url,
+                actor_name="coord-13f",
+                auth_resolver=TEST_ADMIN_AUTH_RESOLVER,
+            )
+            with TestClient(app, raise_server_exceptions=False) as client:
+                number = self._create_and_approve(client, hours=8)
+
+            engine = create_sql_engine(database_url)
+            factory = create_session_factory(engine)
+            try:
+                request_id, _requirement_id, segment_id = self._request_and_requirement(
+                    factory,
+                    number,
+                )
+                with factory() as session:
+                    reference = session.get(RequestApprovalReference, request_id)
+                    assert reference is not None
+                    revision_id = reference.active_revision_id
+
+                payload = {
+                    "technician": "Alice",
+                    "day": DAY.isoformat(),
+                    "hours": 9,
+                    "outside_standard_hours": False,
+                    "confirmation": None,
+                }
+                with TestClient(app, raise_server_exceptions=False) as client:
+                    blocked = client.post(
+                        f"/api/v1/segments/{segment_id}/allocations",
+                        json={**payload, "overallocation_policy": "INCREASE_PLANNED"},
+                        headers={"Idempotency-Key": "13f-increase-blocked"},
+                    )
+                    self.assertEqual(blocked.status_code, 409, blocked.text)
+                    self.assertEqual(
+                        blocked.json()["error"]["code"],
+                        "planning_authorization_revision_required",
+                    )
+
+                    kept = client.post(
+                        f"/api/v1/segments/{segment_id}/allocations",
+                        json={**payload, "overallocation_policy": "KEEP_EXCEPTION"},
+                        headers={"Idempotency-Key": "13f-keep-exception"},
+                    )
+                    self.assertEqual(kept.status_code, 201, kept.text)
+
+                    segment = client.get(f"/api/v1/segments/{segment_id}")
+                    self.assertEqual(segment.status_code, 200, segment.text)
+                    self.assertEqual(segment.json()["planned_hours"], 8.0)
+                    self.assertEqual(segment.json()["locked_hours"], 9.0)
+                    self.assertEqual(segment.json()["overallocated_hours"], 1.0)
+
+                with factory() as session:
+                    reference = session.get(RequestApprovalReference, request_id)
+                    assert reference is not None
+                    self.assertEqual(reference.active_revision_id, revision_id)
+                    revision_count = session.scalar(
+                        select(func.count(RequestApprovalRevision.id)).where(
+                            RequestApprovalRevision.workforce_request_id == request_id
+                        )
+                    )
+                    self.assertEqual(revision_count, 1)
+                    audit = session.scalars(
+                        select(PlanningChangeHistory).where(
+                            PlanningChangeHistory.entity_reference == segment_id
+                        )
+                    ).all()
+                    self.assertTrue(
+                        any(
+                            row.action == "Dérogation surallocation manuelle"
+                            for row in audit
+                        )
+                    )
+            finally:
+                engine.dispose()
+
+    def test_project_manager_twenty_percent_updates_active_budget_not_approved_revision(self) -> None:
+        with TemporaryDirectory() as directory:
+            database_url = self._database(directory)
+            admin_app = create_api_app(
+                database_url,
+                actor_name="admin-13f",
+                auth_resolver=TEST_ADMIN_AUTH_RESOLVER,
+            )
+            with TestClient(admin_app, raise_server_exceptions=False) as client:
+                number = self._create_and_approve(client, hours=10)
+
+            engine = create_sql_engine(database_url)
+            factory = create_session_factory(engine)
+            try:
+                request_id, _requirement_id, _segment_id = self._request_and_requirement(
+                    factory,
+                    number,
+                )
+                with factory() as session:
+                    reference = session.get(RequestApprovalReference, request_id)
+                    assert reference is not None
+                    revision_id = reference.active_revision_id
+            finally:
+                engine.dispose()
+
+            pm_app = create_api_app(
+                database_url,
+                actor_name="pm-13f",
+                auth_resolver=TEST_PROJECT_MANAGER_AUTH_RESOLVER,
+            )
+            with TestClient(pm_app, raise_server_exceptions=False) as client:
+                patched = client.patch(
+                    f"/api/v1/demands/{number}",
+                    json={
+                        "estimated_hours": 12,
+                        "comment": "Tolérance déléguée active",
+                    },
+                )
+                self.assertEqual(patched.status_code, 200, patched.text)
+                self.assertFalse(patched.json()["reapproval_required"])
+
+            engine = create_sql_engine(database_url)
+            factory = create_session_factory(engine)
+            try:
+                with factory() as session:
+                    request = session.get(WorkforceRequest, request_id)
+                    assert request is not None
+                    requirement = session.scalar(
+                        select(ResourceRequirement).where(
+                            ResourceRequirement.workforce_request_id == request_id,
+                            ResourceRequirement.status != "Annulé",
+                        )
+                    )
+                    assert requirement is not None
+                    self.assertEqual(float(requirement.planned_hours), 12.0)
+                    reference = session.get(RequestApprovalReference, request_id)
+                    assert reference is not None
+                    self.assertEqual(reference.active_revision_id, revision_id)
+                    revision = session.get(RequestApprovalRevision, revision_id)
+                    assert revision is not None
+                    payload = json.loads(revision.payload_text)
+                    approved_entry = payload["authorization"]["entries"][0]
+                    self.assertEqual(float(approved_entry["hours"]), 10.0)
+                    state = session.get(RequestOperationalState, request_id)
+                    assert state is not None
+                    overrides = json.loads(state.budget_overrides_text)
+                    self.assertEqual(len(overrides), 1)
+                    self.assertEqual(float(next(iter(overrides.values()))), 12.0)
+                    self.assertGreaterEqual(state.version, 2)
+            finally:
+                engine.dispose()
+
+
+if __name__ == "__main__":
+    unittest.main()

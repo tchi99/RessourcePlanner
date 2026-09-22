@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, datetime
 from typing import Any, Mapping
 
@@ -154,6 +154,7 @@ class DemandOperationalChoiceReadModel:
     version: int
     selections: Mapping[str, str]
     confirmations: Mapping[str, str]
+    budget_overrides: Mapping[str, float] = field(default_factory=dict)
 
 
 @dataclass(frozen=True, slots=True)

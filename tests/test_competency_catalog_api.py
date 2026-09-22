@@ -138,20 +138,24 @@ class CompetencyCatalogApiTests(unittest.TestCase):
                 self.assertEqual(demand.json()["required_competency_ids"], [scada_id])
                 self.assertEqual(demand.json()["required_competencies"], "SCADA")
 
-                created_segment = client.post(
-                    "/api/v1/segments",
-                    headers={"Idempotency-Key": "competency-segment-1"},
-                    json={
-                        "demand_number": demand_number,
-                        "start_date": "2026-09-21",
-                        "end_date": "2026-09-21",
-                        "planned_hours": 8,
-                        "description": "Besoin ciblé",
-                        "required_competency_id": scada_id,
-                    },
+                submitted = client.post(
+                    f"/api/v1/demands/{demand_number}/submit"
                 )
-                self.assertEqual(created_segment.status_code, 201)
-                segment_id = created_segment.json()["segment_id"]
+                self.assertEqual(submitted.status_code, 200, submitted.text)
+                approved = client.post(
+                    f"/api/v1/demands/{demand_number}/approve",
+                    json={"comment": "Matérialisation compétence"},
+                )
+                self.assertEqual(approved.status_code, 200, approved.text)
+                segment_row = next(
+                    row
+                    for row in client.get(
+                        "/api/v1/segments",
+                        params={"include_cancelled": "false"},
+                    ).json()
+                    if row["demand_number"] == demand_number
+                )
+                segment_id = segment_row["segment_id"]
                 segment = client.get(f"/api/v1/segments/{segment_id}")
                 self.assertEqual(segment.status_code, 200)
                 self.assertEqual(segment.json()["required_competency_id"], scada_id)

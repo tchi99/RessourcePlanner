@@ -169,7 +169,7 @@ class DemandEnvelopeReapprovalPolicyTests(unittest.TestCase):
                     self.assertEqual(reference.active_revision_id, original_revision)
                     self.assertEqual(
                         self._active_requirement(session, request.id).planned_hours,
-                        100,
+                        120,
                     )
                     revision_count = session.scalar(
                         select(func.count(RequestApprovalRevision.id)).where(

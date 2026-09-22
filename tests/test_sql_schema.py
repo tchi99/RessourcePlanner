@@ -91,6 +91,8 @@ class SqlSchemaTests(unittest.TestCase):
         approval_references = Base.metadata.tables["request_approval_references"].c
         operational_states = Base.metadata.tables["request_operational_states"].c
 
+        self.assertFalse(operational_states.budget_overrides_text.nullable)
+
         self.assertFalse(requirements.project_id.nullable)
         self.assertTrue(requirements.workforce_request_id.nullable)
         self.assertTrue(requirements.source_request_line_id.nullable)

@@ -46,6 +46,7 @@ from ..infrastructure.sql import (
     SqlProjectCommunicationRepository,
     SqlPlannerQueryRepositoryWithLoadProfiles,
     SqlPlanningCommandAdapter,
+    SqlRequestPlanningAuthorizationRepository,
     SqlResourceAdminRepository,
     SqlSmtpConfigurationRepository,
     SqlSegmentRepositoryWithActiveDayMetrics,
@@ -87,10 +88,16 @@ def build_sql_facade(
     work_packages = SqlWorkPackageRepository(session)
     resources = SqlResourceAdminRepository(session)
     planning_commands = SqlPlanningCommandAdapter(session)
+    planning_authorization = SqlRequestPlanningAuthorizationRepository(
+        session,
+        actor_name=actor,
+        roles=roles,
+    )
     allocation_commands = OverallocationAuditedAllocationCommandAdapter(
         SqlOverallocationAllocationCommandAdapter(
             session,
             planning=planning_commands,
+            authorization=planning_authorization,
         ),
         journal,
         session,
@@ -119,7 +126,7 @@ def build_sql_facade(
             permissions=permissions,
             roles=roles,
         ),
-        segments=SegmentService(segments, planning_commands),
+        segments=SegmentService(segments, planning_commands, planning_authorization),
         allocations=AllocationService(allocation_commands),
         quick_shifts=QuickShiftService(segments, allocation_commands),
         planning=PlanningService(planning_commands),

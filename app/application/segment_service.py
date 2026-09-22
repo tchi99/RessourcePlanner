@@ -12,7 +12,7 @@ from .errors import (
     ApplicationValidationError,
     call_application_port,
 )
-from .repository_ports import SegmentRepositoryPort
+from .repository_ports import PlanningAuthorizationPort, SegmentRepositoryPort
 
 
 class SegmentService:
@@ -22,9 +22,11 @@ class SegmentService:
         self,
         segments: SegmentRepositoryPort,
         planning: PlanningCommandPort,
+        authorization: PlanningAuthorizationPort | None = None,
     ) -> None:
         self._segments = segments
         self._planning = planning
+        self._authorization = authorization
 
     @staticmethod
     def _identifier(value: object) -> str:
@@ -53,6 +55,12 @@ class SegmentService:
 
     def create_command(self, command: SegmentCreateCommand) -> tuple[str, dict[str, Any]]:
         values = command.to_repository_values()
+        if self._authorization is not None:
+            call_application_port(
+                lambda: self._authorization.authorize_segment_create(values),
+                code_prefix="segment_authorization_create",
+                context={"demand_number": command.demand_number},
+            )
         identifier = str(
             call_application_port(
                 lambda: self._segments.create(values),
@@ -130,6 +138,15 @@ class SegmentService:
             start if isinstance(start, date) else None,
             end if isinstance(end, date) else None,
         )
+        if self._authorization is not None:
+            call_application_port(
+                lambda: self._authorization.authorize_segment_update(
+                    identifier,
+                    values,
+                ),
+                code_prefix="segment_authorization_update",
+                context={"segment_id": identifier},
+            )
 
         call_application_port(
             lambda: self._segments.update(identifier, values),
