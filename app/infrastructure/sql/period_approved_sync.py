@@ -12,6 +12,7 @@ from ...application.command_ports import ApprovedDemandSyncPort
 from ...domain.active_days import split_total_workforce_hours
 from ...domain.confirmation import CONFIRMATION_CONFIRMED, normalize_confirmation
 from ...domain.demand_periods import PERIOD_KIND_CUMULATIVE
+from .approval_revision_models import APPROVAL_REFERENCE_CAPTURED
 from .approval_revision_repository import SqlRequestApprovalRevisionRepository
 from .base import utc_now
 from .demand_period_models import (
@@ -894,6 +895,61 @@ class SqlPeriodAwareApprovedDemandSyncAdapter(ApprovedDemandSyncPort):
                     else request.approved_by_name
                 ),
                 details=self._approved_context_details(request, materialized),
+                occurred_at=utc_now(),
+            )
+        )
+        self._session.flush()
+
+    def sync_operational_choices(self, demand_number: str) -> None:
+        """Resync active planning from approved authorization, never from candidate data."""
+
+        request = self._request(demand_number)
+        current = self._active_requirements(request.id)
+        prepared = self._plan_preparer.prepare_active(
+            request,
+            current=current,
+        )
+        self._plan_preparer.assert_locked_compatible(
+            request,
+            current,
+            prepared.specs,
+        )
+        matches, obsolete = self._plan_preparer.match_current(
+            request,
+            current,
+            prepared.specs,
+        )
+        project = self._session.get(Project, request.project_id)
+        if project is None:
+            raise KeyError(f"Projet {request.project_id} introuvable")
+
+        for requirement in obsolete:
+            requirement.status = "Annulé"
+
+        materialized: list[ResourceRequirement] = []
+        for match in matches:
+            requirement = self._apply_line_spec(
+                request,
+                project,
+                match.requirement,
+                match.spec,
+            )
+            requirement.approval_revision_id = prepared.approval_revision_id
+            requirement.approved_entry_key = match.spec.approved_entry_key
+            requirement.approval_reference_status = APPROVAL_REFERENCE_CAPTURED
+            materialized.append(requirement)
+
+        self._session.add(
+            WorkforceRequestHistory(
+                workforce_request_id=request.id,
+                action="Synchronisation choix opérationnels",
+                status=request.status,
+                comment=(
+                    f"{len(materialized)} besoin(s) actifs synchronisés contre la "
+                    f"révision {prepared.approval_revision_id}; "
+                    f"version opérationnelle {prepared.operational_version}."
+                ),
+                actor_name=request.approved_by_name,
                 occurred_at=utc_now(),
             )
         )
