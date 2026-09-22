@@ -759,56 +759,7 @@ export default function DemandsPage() {
                 <small>Ces données proviennent du projet et restent en lecture seule dans la demande.</small>
               </div>
 
-              {!creating && selectedDemand && (
-                <section className="demand-contact-card">
-                  <div className="panel-heading">
-                    <div>
-                      <span className="eyebrow">Responsabilité opérationnelle</span>
-                      <h3>Contacts effectifs</h3>
-                      <p>La hiérarchie est calculée par FastAPI. React affiche la source; il ne décide pas du fallback.</p>
-                    </div>
-                  </div>
 
-                  <label>
-                    Override du responsable pour toute la demande
-                    <ContactSelect
-                      contacts={contacts}
-                      value={demandContactLink?.operational_responsible_override_contact_id ?? null}
-                      onChange={(value) => void changeOperationalOverride(value)}
-                      disabled={!canManageDemands || overridePending || saving}
-                      inheritLabel="Hériter de la tâche puis du chargé de projet"
-                    />
-                    {!canManageDemands && <small>Lecture seule : permission manage_demands requise pour modifier.</small>}
-                    {selectedDemand.status === "En planification" && canManageDemands && (
-                      <small>Modifier cet override déclenchera une nouvelle approbation sans modifier immédiatement le planning approuvé.</small>
-                    )}
-                  </label>
-
-                  <div className="demand-line-contact-resolutions">
-                    {(selectedDemand.lines ?? []).filter((line) => line.active).map((line, index) => {
-                      const resolution = lineContactResolutions[line.line_id];
-                      if (!resolution) return null;
-                      return (
-                        <article className="demand-line-contact-row" key={line.line_id}>
-                          <div className="demand-line-contact-heading">
-                            <strong>Ligne {index + 1}</strong>
-                            <span>
-                              {resolution.task_code ? `Tâche ${resolution.task_code}` : "Sans tâche"}
-                              {resolution.proposed_resource_name ? ` · ${resolution.proposed_resource_name}` : ""}
-                            </span>
-                          </div>
-                          <ResolutionSummary title="Responsable opérationnel" resolution={resolution.operational_responsible} />
-                          <ResolutionSummary title="Coordonnateur" resolution={resolution.coordinator} />
-                          {resolution.diagnostics.length > 0 && (
-                            <small className="contact-diagnostics">{resolution.diagnostics.join(" · ")}</small>
-                          )}
-                        </article>
-                      );
-                    })}
-                  </div>
-                  <small className="contact-context-note">Résolution courante des lignes enregistrées. Le contexte d'un planning déjà approuvé est conservé séparément sur ses besoins jusqu'à la réapprobation.</small>
-                </section>
-              )}
 
               <div className="demand-form-grid">
                 <label className="span-2">
@@ -1047,6 +998,63 @@ export default function DemandsPage() {
                     : "Une demande peut être approuvée tout en demeurant Tentative. Les heures représentent toujours le volume total; les jours actifs guident seulement sa répartition selon la capacité disponible."}
                 </span>
               </div>
+
+              {!creating && selectedDemand && (
+                <details className="demand-advanced-options">
+                  <summary>
+                    <strong>Options avancées</strong>
+                    <span>Responsabilité opérationnelle et dérogations de contexte.</span>
+                  </summary>
+                <section className="demand-contact-card">
+                  <div className="panel-heading">
+                    <div>
+                      <span className="eyebrow">Responsabilité opérationnelle</span>
+                      <h3>Contacts effectifs</h3>
+                      <p>La hiérarchie est calculée par FastAPI. React affiche la source; il ne décide pas du fallback.</p>
+                    </div>
+                  </div>
+
+                  <label>
+                    Override du responsable pour toute la demande
+                    <ContactSelect
+                      contacts={contacts}
+                      value={demandContactLink?.operational_responsible_override_contact_id ?? null}
+                      onChange={(value) => void changeOperationalOverride(value)}
+                      disabled={!canManageDemands || overridePending || saving}
+                      inheritLabel="Hériter de la tâche puis du chargé de projet"
+                    />
+                    {!canManageDemands && <small>Lecture seule : permission manage_demands requise pour modifier.</small>}
+                    {selectedDemand.status === "En planification" && canManageDemands && (
+                      <small>Modifier cet override déclenchera une nouvelle approbation sans modifier immédiatement le planning approuvé.</small>
+                    )}
+                  </label>
+
+                  <div className="demand-line-contact-resolutions">
+                    {(selectedDemand.lines ?? []).filter((line) => line.active).map((line, index) => {
+                      const resolution = lineContactResolutions[line.line_id];
+                      if (!resolution) return null;
+                      return (
+                        <article className="demand-line-contact-row" key={line.line_id}>
+                          <div className="demand-line-contact-heading">
+                            <strong>Ligne {index + 1}</strong>
+                            <span>
+                              {resolution.task_code ? `Tâche ${resolution.task_code}` : "Sans tâche"}
+                              {resolution.proposed_resource_name ? ` · ${resolution.proposed_resource_name}` : ""}
+                            </span>
+                          </div>
+                          <ResolutionSummary title="Responsable opérationnel" resolution={resolution.operational_responsible} />
+                          <ResolutionSummary title="Coordonnateur" resolution={resolution.coordinator} />
+                          {resolution.diagnostics.length > 0 && (
+                            <small className="contact-diagnostics">{resolution.diagnostics.join(" · ")}</small>
+                          )}
+                        </article>
+                      );
+                    })}
+                  </div>
+                  <small className="contact-context-note">Résolution courante des lignes enregistrées. Le contexte d'un planning déjà approuvé est conservé séparément sur ses besoins jusqu'à la réapprobation.</small>
+                </section>
+                </details>
+              )}
 
               <div className="demand-editor-actions">
                 {creating && (
