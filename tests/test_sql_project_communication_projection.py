@@ -9,6 +9,7 @@ import unittest
 from fastapi.testclient import TestClient
 
 from app.application.communications import CommunicationTransportResult
+from app.domain.planning_engine import MISSING_ALLOCATION_TYPE
 from app.application.operational_contacts import OperationalContactService
 from app.application.project_communications import ProjectCommunicationService
 from app.infrastructure.sql import (
@@ -322,6 +323,15 @@ class SqlProjectCommunicationProjectionTests(unittest.TestCase):
                     allocation_type="Flexible",
                     outside_standard_hours=True,
                 ),
+                Shift(
+                    id="S-MISSING",
+                    resource_requirement_id="REQ1",
+                    resource_id="R2",
+                    work_date=WEEK,
+                    hours=Decimal("6"),
+                    allocation_type=MISSING_ALLOCATION_TYPE,
+                    outside_standard_hours=False,
+                ),
             ]
         )
 
@@ -347,6 +357,28 @@ class SqlProjectCommunicationProjectionTests(unittest.TestCase):
                 operational_contacts=operational,
             )
         )
+
+    def test_missing_allocation_proposals_are_not_project_assignments(self) -> None:
+        with TemporaryDirectory() as directory:
+            url = self._database(directory)
+            engine = create_sql_engine(url)
+            factory = create_session_factory(engine)
+            try:
+                with factory() as session:
+                    assignments = SqlProjectCommunicationRepository(
+                        session,
+                        operational_contacts=OperationalContactService(
+                            SqlOperationalContactRepository(session)
+                        ),
+                    ).list_assignments(
+                        week_start=WEEK,
+                        week_end=WEEK,
+                    )
+            finally:
+                engine.dispose()
+
+        self.assertEqual({row.shift_id for row in assignments}, {"S1", "S2"})
+        self.assertNotIn("S-MISSING", {row.shift_id for row in assignments})
 
     def test_projection_uses_approved_context_and_user_backed_contacts(self) -> None:
         with TemporaryDirectory() as directory:
