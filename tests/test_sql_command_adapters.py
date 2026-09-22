@@ -152,6 +152,7 @@ class SqlCommandAdapterTests(unittest.TestCase):
                 hours=Decimal("8"),
                 resource_id="R2",
             )
+            target_requirement.end_date = D1
             session.add(
                 Shift(
                     id="LOCK-NO-TARGET",
