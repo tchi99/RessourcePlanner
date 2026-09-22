@@ -114,12 +114,12 @@ def build_sql_facade(
         ),
         journal,
         session,
-        versioning=planning_versions,
     )
     approved_sync = EmergencyAwareApprovedDemandSyncAdapter(
         SqlPeriodAwareApprovedDemandSyncAdapter(session),
         journal,
         session,
+        versioning=planning_versions,
     )
 
     return EmergencyApplicationFacade(
