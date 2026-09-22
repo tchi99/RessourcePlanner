@@ -1,175 +1,109 @@
 # Parité utile V1 → Web/SQL
 
-Ce document répond à une seule question : **qu'est-ce qui doit réellement exister dans React/FastAPI avant de pouvoir retirer le runtime NiceGUI/Excel?**
+> **Statut : audit de transition, mis à jour après la fermeture de #211/#212.**  
+> Ce document ne définit pas le roadmap courant; l'ordre de travail est dans #55.
 
-Il ne cherche pas à reproduire écran pour écran la V1. La règle de décision est :
+Ce document répond à la question : **quelles capacités V1 doivent encore empêcher le retrait de NiceGUI/Excel?**
 
-- **MIGRER — bloque le cutover** : capacité opérationnelle nécessaire après le jour du basculement;
-- **COUVERT** : capacité déjà disponible dans React/FastAPI/SQL;
-- **SUPPRIMER AU CUTOVER** : fonction uniquement utile parce qu'Excel est aujourd'hui le stockage autoritaire;
-- **REPORTER / REMPLACER** : utile, mais la cible V2 est différente et elle ne doit pas être recopiée telle quelle.
+## Résumé actuel
 
----
+Les deux bloqueurs fonctionnels identifiés par l'audit initial sont maintenant fermés :
 
-## Résumé exécutif
+- ✅ #211 — administration Ressources, compétences et disponibilités;
+- ✅ #212 — édition et assignation des Segments / `ResourceRequirement`.
 
-La majorité du flux métier est déjà couverte par React V2 :
+Depuis cet audit, le Web V2 a également livré notamment :
 
-- planning opérationnel;
-- édition de quarts;
+- planning opérationnel React;
+- création/édition/verrouillage des quarts;
 - Quick Shift;
-- moyen terme / WorkPackages;
-- demandes, périodes, alternatives et approbations;
-- portefeuille Projets + Acumatica Phase 1.
+- WorkPackages / moyen terme;
+- demandes multi-lignes (#288);
+- périodes et alternatives par ligne (#13 / ADR-002);
+- workflow/actions backend autoritaires (#327);
+- identité canonique du demandeur (#328);
+- projection backend de détail unifiée (#329);
+- contacts métier (#289);
+- drag-and-drop (#275);
+- recommandations et file « à traiter » (#273);
+- communications projet (#290).
 
-Deux écarts restent de vrais bloqueurs du retrait de NiceGUI :
+**Il ne reste donc plus de bloqueur de parité V1 identifié dans #211/#212.**
 
-1. **administration des ressources, compétences et disponibilités — #211**;
-2. **édition/assignation des ResourceRequirements (segments) depuis React — #212**.
+Les blocages réels du cutover sont maintenant surtout environnementaux et de bascule :
 
-Les autres surfaces V1 ne doivent pas retarder le cutover SQL.
+1. #162 — validation SQL Server réelle : ODBC, migrations et smoke;
+2. #208 — bascule SQL autoritaire et retrait du runtime V1;
+3. #336 — nettoyage post-cutover des artefacts legacy.
 
----
+#330 améliore actuellement l'ergonomie du détail de demande React, mais ne réintroduit pas un manque de capacité métier exclusif à NiceGUI.
 
-## Matrice de décision
+## Matrice actuelle
 
-| Surface / capacité V1 | État V2 | Décision | Justification |
-|---|---|---|---|
-| Planning opérationnel hebdomadaire | React + FastAPI livrés | **COUVERT** | Snapshot SQL, filtres, charge ferme/potentielle, édition de quart |
-| Quick Shift | React + FastAPI livrés | **COUVERT** | Chemin ad hoc sans fausse demande |
-| Moyen terme / efforts | React WorkPackages livré | **COUVERT** | WorkPackages, capacité, mutations, demandes liées |
-| Demandes / approbations | React + FastAPI livrés | **COUVERT** | Création, modification, périodes, alternatives, workflow |
-| Projets | React + sync Acumatica Phase 1 | **COUVERT** | SQL local opérationnel + frontière ERP |
-| Tableau de bord V1 | Données déjà exposées ailleurs | **SUPPRIMER COMME BLOQUEUR** | Agrégat de KPI; utile éventuellement plus tard, mais aucune mutation exclusive |
-| Segments : liste / détail | API read déjà présente | **MIGRER — #212** | React ne permet pas encore de travailler directement avec le besoin ressource |
-| Segments : créer / modifier / annuler / assigner | API command déjà présente | **MIGRER — #212** | Commandes backend prêtes, surface React manquante |
-| Recommandation de ressource V1 | Pas de surface React dédiée | **REPORTER** | Aide à la décision, pas nécessaire pour préserver la capacité d'opérer; moteur/règles pourront être réexposés plus tard |
-| Ressources : créer / modifier / activer / désactiver | SQL existe; lecture API seulement | **MIGRER — #211** | Nécessaire pour administrer l'équipe après cutover |
-| Classe / compétences / note / ordre ressource | SQL existe; lecture API seulement | **MIGRER — #211** | Influence le planning, le tri et la capacité opérationnelle |
-| Horaire standard ressource | SQL `ResourceAvailabilityRule` existe; pas d'API de mutation | **MIGRER — #211** | Le calcul de capacité dépend directement de ces règles |
-| Vacances / absences | SQL supporte les règles; pas d'admin Web | **MIGRER — #211** | Nécessaire pour maintenir une capacité fiable après cutover |
-| Jours fériés globaux | SQL supporte `resource_id=NULL` pour `Jour férié` | **MIGRER — #211** | Nécessaire à la capacité, mais peut partager la même surface Disponibilités |
-| Ordre manuel / préférences locales V1 | `Resource.sort_order` existe | **MIGRER LE MINIMUM — #211** | Conserver l'ordre serveur; ne pas reproduire les préférences Excel/locales inutiles |
-| Rebuild planning explicite | Route FastAPI `/planning/rebuild` existe | **REPORTER / SUPPORT** | Pas un manque de domaine; ajouter un bouton admin seulement si nécessaire |
-| Données Excel génériques | Spécifique au classeur | **SUPPRIMER AU CUTOVER** | Une grille SQL générique serait un anti-pattern et contournerait les services métier |
-| Paramètres chemin classeur / OneDrive | Spécifique au runtime V1 | **SUPPRIMER AU CUTOVER** | SQL devient autoritaire; aucun fichier partagé à configurer |
-| Auto-refresh signature Excel | Spécifique à Excel | **SUPPRIMER AU CUTOVER** | Les lectures Web passent par API/SQL |
-| Communications Outlook / Thunderbird | Runtime historique | **REPORTER / REMPLACER** | La cible est #40 / M365 derrière une frontière remplaçable |
-| Communications React placeholder | Non livré | **NON BLOQUANT** | Ne doit pas forcer la conservation d'Excel/NiceGUI |
-| Validation moteur pur / diagnostics V1 | Backend/tests disponibles | **SUPPORT** | Garder les diagnostics côté backend/CI plutôt que reproduire des patchs UI |
+| Surface / capacité | État Web V2 | Impact cutover |
+|---|---|---|
+| Planning opérationnel | couvert | aucun bloqueur V1 |
+| Quick Shift / ad hoc | couvert | aucun bloqueur V1 |
+| Moyen terme / WorkPackages | couvert | aucun bloqueur V1 |
+| Demandes / approbations | couvert | #330 consolide l'UX, pas le modèle |
+| Périodes / alternatives | couvert par ligne | règles autoritaires dans #13 |
+| Segments / besoins | couvert | #212 fermé |
+| Ressources / compétences / disponibilités | couvert | #211 fermé |
+| Recommandation / « à traiter » | couvert | #273 |
+| Drag-and-drop | couvert | #275; enrichissements #332/#333 à venir |
+| Communications | couvert localement | validation M365 réelle suivie séparément dans #40 |
+| Données Excel génériques | à supprimer | ne pas recréer une grille SQL générique |
+| Paramètres OneDrive/xlwings | à supprimer | spécifiques au runtime V1 |
+| SQL Server réel | non validé sur cible | **bloque #208** via #162 |
+| Retrait NiceGUI/Excel | non terminé | #208 puis #336 |
 
----
+## Capacités volontairement non reproduites
 
-## Bloqueur 1 — Administration Ressources & Disponibilités — #211
+### Grille Excel générique
 
-### Déjà présent
+Elle ne doit pas être portée vers SQL. Les mutations Web doivent passer par des commandes métier explicites, avec validation et audit.
 
-SQL possède déjà :
+### Paramètres OneDrive / xlwings
 
-- `Resource.id` stable;
-- nom, courriel, classe, compétences, note;
-- `active`;
-- `sort_order`;
-- `ResourceAvailabilityRule`;
-- horaire standard;
-- fenêtres de dates;
-- jours de semaine;
-- heures début/fin;
-- vacances/absences;
-- jours fériés globaux.
+Ils disparaissent avec le runtime Excel autoritaire. Leur absence dans React est une simplification attendue.
 
-Le moteur moyen terme consomme déjà ces règles pour calculer la capacité. Il ne manque donc pas un nouveau modèle métier : il manque **l'administration Web**.
+### Rebuild comme geste utilisateur principal
 
-### À livrer avant cutover
+Le backend conserve les outils de rebuild/support nécessaires, mais le runtime React doit maintenir le plan via les mutations canoniques plutôt que dépendre d'un bouton de recalcul général.
 
-Backend :
+## Évolutions produit après la parité
 
-- create/update/deactivate Resource;
-- lecture détaillée des availability rules;
-- create/update/delete/deactivate availability rule;
-- validation déterministe des types, dates et heures;
-- protection des noms/identités stables;
-- aucune suppression physique opportuniste d'une ressource déjà référencée.
+Les issues suivantes améliorent le produit sans être des preuves que NiceGUI doit rester en production :
 
-React :
+- #330 — détail de demande React unifié;
+- #332 — partage et duplication atomiques de quarts;
+- #333 — extension de fenêtre et dialogue DnD contextuel;
+- #291/#292 — actifs réservables et qualifications;
+- #276 — routage d'approbation par tâche;
+- #278 — dashboard Coordonnateur.
 
-- page Administration / Ressources;
-- création et modification profil;
-- actif/inactif;
-- classe, compétences, note, ordre;
-- horaire standard;
-- absences/vacances;
-- jours fériés globaux;
-- états loading/error/empty.
+Ces fonctionnalités doivent respecter les mêmes frontières backend autoritaires; elles ne justifient pas de réinvestir le runtime V1.
 
-### À ne pas recopier
+## Ordre de cutover
 
-- écriture directe dans une feuille `RessourcesMO`;
-- édition générique de `Disponibilites` comme tableau Excel;
-- préférences locales de tri qui contournent `sort_order` serveur.
+```text
+Web V2 fonctionnel / parité utile atteinte
+        ↓
+#162 validation SQL Server réelle
+        ↓
+#208 cutover SQL autoritaire
+        ↓
+#336 nettoyage post-cutover / retrait legacy
+```
 
----
+La cible de déploiement est la VM Ubuntu documentée dans `DEPLOYMENT_UBUNTU_VM.md`; SQL Server reste externe.
 
-## Bloqueur 2 — Segments / ResourceRequirements dans React — #212
+## Références
 
-### Déjà présent
-
-FastAPI expose déjà :
-
-- `GET /api/v1/segments`;
-- `GET /api/v1/segments/{segment_id}`;
-- `POST /api/v1/segments`;
-- `PATCH /api/v1/segments/{segment_id}`;
-- `POST /api/v1/segments/{segment_id}/cancel`;
-- `POST /api/v1/segments/{segment_id}/assign`;
-- création / édition / release / suppression d'allocations;
-- édition de quarts et Quick Shift.
-
-La dette n'est donc pas dans le domaine ni dans la persistance : elle est principalement **frontend**.
-
-### À livrer avant cutover
-
-- ouvrir le ResourceRequirement lié depuis le planning opérationnel;
-- afficher les segments d'une demande dans l'espace Demandes;
-- créer un segment lorsque le workflow l'exige;
-- modifier fenêtre, heures, compétence, type de planification, priorité, hors horaire et confirmation;
-- assigner/réassigner une ressource;
-- annuler un segment;
-- recharger les données autoritaires après mutation;
-- conserver FastAPI comme autorité de validation.
-
-Une page `Segments` autonome n'est **pas obligatoire**. L'intégration aux écrans Planning + Demandes est préférable si elle couvre les mêmes opérations avec moins de navigation.
-
----
-
-## Capacités V1 volontairement non bloquantes
-
-### Dashboard
-
-Le Dashboard V1 combine essentiellement des compteurs et une vue de charge. Le planning, le moyen terme et les demandes possèdent déjà ces informations sous une forme plus directement actionnable. Un dashboard V2 pourra revenir plus tard, mais il ne justifie pas de conserver NiceGUI.
-
-### Données Excel
-
-La grille d'édition générique des feuilles doit disparaître. Recréer une grille SQL générique permettrait de contourner les validations de domaine, les services applicatifs et l'audit. Chaque mutation nécessaire doit avoir une commande métier explicite.
-
-### Paramètres Excel
-
-Le chemin OneDrive, la connexion xlwings et la signature des feuilles disparaissent avec le cutover SQL. Leur absence en React est donc une **preuve de simplification**, pas un manque de parité.
-
-### Communications
-
-Les intégrations Outlook/Thunderbird du runtime V1 ne doivent pas être portées automatiquement. La cible reste #40/M365. Elles peuvent rester disponibles dans V1 pendant la transition sans bloquer le passage du cœur de planification à SQL/Web.
-
----
-
-## Ordre recommandé après cette analyse
-
-1. **#211 — Ressources & disponibilités Web** : bloqueur principal, car c'est une mutation opérationnelle sans équivalent Web aujourd'hui.
-2. **#212 — Segments intégrés Planning/Demandes** : backend déjà prêt, principalement travail React.
-3. **Runtime Web autonome** : servir/lancer React + FastAPI sans `main.py`.
-4. Validation réelle SQL Server #162 lorsqu'elle devient possible.
-5. Cutover #158/#161, puis retrait définitif du runtime V1.
-
-Le Dashboard, les communications et les fonctions de recommandation peuvent avancer indépendamment après le cutover de base.
-
-Refs : #40 #55 #158 #161 #162 #208 #209 #210 #211 #212
+- #55 — roadmap maître;
+- #162 — SQL Server réel;
+- #208 — cutover autoritaire;
+- #211/#212 — anciens bloqueurs de parité, terminés;
+- #330 — consolidation UX Demandes;
+- #336 — nettoyage post-cutover;
+- `docs/DEMANDS_V2_ARCHITECTURE.md`.
