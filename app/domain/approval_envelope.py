@@ -5,7 +5,7 @@ from datetime import date
 from decimal import Decimal, InvalidOperation
 import hashlib
 import json
-from typing import Iterable
+from typing import Iterable, Mapping
 
 from .active_days import normalize_active_day_target
 from .confirmation import normalize_confirmation
@@ -210,6 +210,108 @@ class ApprovalEnvelope:
             "authorization_fingerprint": self.authorization_fingerprint,
             "entries": [entry.snapshot_payload() for entry in self.entries],
         }
+
+
+def approval_envelope_from_snapshot_payload(
+    payload: Mapping[str, object],
+) -> ApprovalEnvelope:
+    """Rehydrate the canonical immutable envelope captured in an approval revision."""
+
+    raw_entries = payload.get("entries")
+    if not isinstance(raw_entries, list):
+        raise ValueError("Le snapshot approuvé ne contient pas une liste d'entrées valide.")
+
+    entries: list[ApprovalEnvelopeEntry] = []
+    for raw in raw_entries:
+        if not isinstance(raw, Mapping):
+            raise ValueError("Une entrée du snapshot approuvé est invalide.")
+        try:
+            identity_parts = json.loads(_text(raw.get("identity")))
+        except (TypeError, ValueError, json.JSONDecodeError) as exc:
+            raise ValueError("Une identité d'entrée approuvée est invalide.") from exc
+        if (
+            not isinstance(identity_parts, list)
+            or len(identity_parts) != 3
+            or identity_parts[0] not in {"LINE", "PERIOD"}
+        ):
+            raise ValueError("Une identité d'entrée approuvée est invalide.")
+        line_id = _text(identity_parts[1])
+        period_key = _optional_text(identity_parts[2])
+        if not line_id:
+            raise ValueError("Une entrée approuvée doit référencer une ligne stable.")
+
+        group: EnvelopeGroupIdentity | None = None
+        group_value = _optional_text(raw.get("group"))
+        if group_value:
+            try:
+                group_parts = json.loads(group_value)
+            except (TypeError, ValueError, json.JSONDecodeError) as exc:
+                raise ValueError("Une identité de groupe approuvé est invalide.") from exc
+            if (
+                not isinstance(group_parts, list)
+                or len(group_parts) != 3
+                or group_parts[0] != "GROUP"
+                or _text(group_parts[1]) != line_id
+                or not _text(group_parts[2])
+            ):
+                raise ValueError("Une identité de groupe approuvé est invalide.")
+            group = EnvelopeGroupIdentity(
+                line_id=line_id,
+                group_key=_text(group_parts[2]),
+            )
+
+        try:
+            start_date = date.fromisoformat(_text(raw.get("start_date")))
+            end_date = date.fromisoformat(_text(raw.get("end_date")))
+        except ValueError as exc:
+            raise ValueError("Une fenêtre approuvée est invalide.") from exc
+
+        competencies_raw = raw.get("competency_ids")
+        competencies = (
+            tuple(_text(value) for value in competencies_raw if _text(value))
+            if isinstance(competencies_raw, list)
+            else ()
+        )
+        entry = ApprovalEnvelopeEntry(
+            identity=EnvelopeEntryIdentity(
+                line_id=line_id,
+                period_key=period_key,
+            ),
+            project_id=_text(raw.get("project_id")),
+            site_id=_optional_text(raw.get("site_id")),
+            location=_optional_text(raw.get("location")),
+            slot_count=max(int(raw.get("slot_count") or 1), 1),
+            line_kind=_text(raw.get("line_kind")).upper() or "WORKFORCE",
+            required_resource_class=_optional_text(
+                raw.get("required_resource_class")
+            ),
+            competency_ids=_normalized_competency_ids(competencies),
+            task_ref=_optional_text(raw.get("task_ref")),
+            work_package_ref=_optional_text(raw.get("work_package_ref")),
+            start_date=start_date,
+            end_date=end_date,
+            hours=_hours(
+                raw.get("hours"),
+                field=f"Les heures de {line_id}/{period_key or 'LINE'}",
+            ),
+            kind=_text(raw.get("kind")).upper() or PERIOD_KIND_CUMULATIVE,
+            group=group,
+            source_period_id=_optional_text(raw.get("source_period_id")),
+            confirmation=normalize_confirmation(raw.get("confirmation")),
+            selected=bool(raw.get("selected")),
+            proposed_resource_id=_optional_text(raw.get("proposed_resource_id")),
+            desired_active_days=(
+                int(raw["desired_active_days"])
+                if raw.get("desired_active_days") is not None
+                else None
+            ),
+        )
+        entries.append(entry)
+
+    entries.sort(key=lambda entry: entry.identity.stable_key)
+    envelope = ApprovalEnvelope(entries=tuple(entries))
+    validate_approval_envelope(envelope)
+    return envelope
 
 
 @dataclass(frozen=True, slots=True)
