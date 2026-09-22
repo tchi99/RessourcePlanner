@@ -131,6 +131,11 @@ def _request_permissions(request: Request) -> tuple[str, ...]:
     return tuple(principal.permissions) if principal is not None else ()
 
 
+def _request_roles(request: Request) -> tuple[str, ...]:
+    principal: AuthPrincipal | None = getattr(request.state, "auth_principal", None)
+    return tuple(principal.roles) if principal is not None else ()
+
+
 def make_facade_dependency(
     factory: SqlSessionFactory,
     *,
@@ -147,6 +152,7 @@ def make_facade_dependency(
             session,
             actor_name=_request_actor(request, actor_name),
             permissions=_request_permissions(request),
+            roles=_request_roles(request),
         )
 
     return dependency
