@@ -246,7 +246,9 @@ export default function DemandsPage() {
       getResources(true, controller.signal),
       getCompetencies("", false, controller.signal),
       getBusinessContacts(false, controller.signal),
-      getDemandRequesters(controller.signal),
+      canManageDemands
+        ? getDemandRequesters(controller.signal)
+        : Promise.resolve([] as DemandRequesterReadModel[]),
     ])
       .then(([demandRows, projectRows, resourceRows, competencyRows, contactRows, requesterRows]) => {
         setDemands(demandRows);
@@ -268,7 +270,7 @@ export default function DemandsPage() {
         if (!controller.signal.aborted) setLoading(false);
       });
     return () => controller.abort();
-  }, [scope, scopeLoading]);
+  }, [scope, scopeLoading, canManageDemands]);
 
   useEffect(() => {
     if (creating || !selectedNumber) return;
