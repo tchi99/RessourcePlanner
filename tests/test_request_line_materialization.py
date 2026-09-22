@@ -28,7 +28,10 @@ from app.infrastructure.sql import (
     create_sql_engine,
 )
 from app.server import create_api_app
-from tests.http_test_auth import TEST_ADMIN_AUTH_RESOLVER
+from tests.http_test_auth import (
+    TEST_ADMIN_AUTH_RESOLVER,
+    TEST_PROJECT_MANAGER_AUTH_RESOLVER,
+)
 from tests.sqlite_test_template import SqliteDatabaseTemplate
 
 
@@ -532,24 +535,30 @@ class RequestLineMaterializationHttpTests(unittest.TestCase):
                     self.assertEqual(initial_shift.work_date, D1)
                 engine.dispose()
 
-                changed = client.patch(
-                    f"/api/v1/demands/{number}",
-                    json={
-                        "expected_version": version,
-                        "comment": "Déplacer au mardi",
-                        "lines": [
-                            {
-                                "id": line_id,
-                                "desired_start": D2.isoformat(),
-                                "desired_end": D2.isoformat(),
-                                "estimated_hours": 8,
-                                "desired_active_days": 1,
-                                "proposed_resource_id": "R1",
-                                "task_code": "220",
-                            }
-                        ],
-                    },
+                pm_app = create_api_app(
+                    database_url,
+                    actor_name="pm-288e",
+                    auth_resolver=TEST_PROJECT_MANAGER_AUTH_RESOLVER,
                 )
+                with TestClient(pm_app, raise_server_exceptions=False) as pm_client:
+                    changed = pm_client.patch(
+                        f"/api/v1/demands/{number}",
+                        json={
+                            "expected_version": version,
+                            "comment": "Déplacer au mardi",
+                            "lines": [
+                                {
+                                    "id": line_id,
+                                    "desired_start": D2.isoformat(),
+                                    "desired_end": D2.isoformat(),
+                                    "estimated_hours": 8,
+                                    "desired_active_days": 1,
+                                    "proposed_resource_id": "R1",
+                                    "task_code": "220",
+                                }
+                            ],
+                        },
+                    )
                 self.assertEqual(changed.status_code, 200, changed.text)
                 self.assertTrue(changed.json()["reapproval_required"])
                 self.assertEqual(changed.json()["status"], "Soumise")

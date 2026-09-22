@@ -19,12 +19,15 @@ from app.infrastructure.sql import (
     create_session_factory,
     create_sql_engine,
 )
-from app.server import create_api_app
+from app.server import create_api_app as _create_api_app
 
 
-from tests.http_test_auth import TEST_ADMIN_AUTH_RESOLVER
+from tests.http_test_auth import (
+    TEST_ADMIN_AUTH_RESOLVER,
+    TEST_PROJECT_MANAGER_AUTH_RESOLVER,
+)
 
-create_api_app = partial(create_api_app, auth_resolver=TEST_ADMIN_AUTH_RESOLVER)
+create_api_app = partial(_create_api_app, auth_resolver=TEST_ADMIN_AUTH_RESOLVER)
 
 class MediumTermUnlinkedSegmentsApiTests(unittest.TestCase):
     def _database(self, directory: str) -> str:
@@ -194,9 +197,13 @@ class MediumTermUnlinkedSegmentsApiTests(unittest.TestCase):
 
     def test_existing_commands_can_explicitly_attach_request_and_ad_hoc(self) -> None:
         with TemporaryDirectory() as directory:
-            app = create_api_app(self._database(directory))
-            with TestClient(app) as client:
-                demand_link = client.patch(
+            database_url = self._database(directory)
+            pm_app = _create_api_app(
+                database_url,
+                auth_resolver=TEST_PROJECT_MANAGER_AUTH_RESOLVER,
+            )
+            with TestClient(pm_app) as pm_client:
+                demand_link = pm_client.patch(
                     "/api/v1/demands/DMO-274-UNLINKED",
                     json={
                         "work_package_ref": "EFF-274",
@@ -206,6 +213,8 @@ class MediumTermUnlinkedSegmentsApiTests(unittest.TestCase):
                 self.assertEqual(demand_link.status_code, 200, demand_link.text)
                 self.assertTrue(demand_link.json()["reapproval_required"])
 
+            app = create_api_app(database_url)
+            with TestClient(app) as client:
                 segment_link = client.patch(
                     "/api/v1/segments/SEG-274-ADHOC",
                     json={"source_effort_id": "EFF-274"},

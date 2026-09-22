@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from typing import Any, Protocol
 
+from ..domain.approval_envelope import EnvelopeDecision
 from ..domain.demand_periods import DemandPeriodDefinition
 from ..domain.planning_snapshot import PlanningSnapshot
 from .query_models import WorkPackageReadModel
@@ -105,6 +106,37 @@ class DemandOperationalChoiceRepositoryPort(Protocol):
         period_id: str | None = None,
         expected_version: int | None = None,
     ) -> DemandOperationalChoiceReadModel: ...
+
+
+class DemandApprovalEnvelopePolicyPort(Protocol):
+    """Common candidate-versus-approved authorization policy boundary."""
+
+    def evaluate_candidate(
+        self,
+        demand_number: str,
+        *,
+        actor_role: str | None = None,
+    ) -> EnvelopeDecision: ...
+
+    def mark_reapproval_required(
+        self,
+        demand_number: str,
+        decision: EnvelopeDecision,
+    ) -> None: ...
+
+    def record_candidate_decision(
+        self,
+        demand_number: str,
+        decision: EnvelopeDecision,
+    ) -> None: ...
+
+    def stamp_direct_approval(
+        self,
+        demand_number: str,
+        decision: EnvelopeDecision,
+        *,
+        actor_name: str,
+    ) -> None: ...
 
 
 class SegmentRepositoryPort(Protocol):

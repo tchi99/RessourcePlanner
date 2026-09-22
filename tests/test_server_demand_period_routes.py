@@ -21,17 +21,20 @@ from app.infrastructure.sql import (
     create_sql_engine,
     transactional_session,
 )
-from app.server import create_api_app
+from app.server import create_api_app as _create_api_app
 
 
 D1 = date(2026, 9, 7)
 D2 = date(2026, 9, 8)
 
 
-from tests.http_test_auth import TEST_ADMIN_AUTH_RESOLVER
+from tests.http_test_auth import (
+    TEST_ADMIN_AUTH_RESOLVER,
+    TEST_PROJECT_MANAGER_AUTH_RESOLVER,
+)
 from tests.sqlite_test_template import SqliteDatabaseTemplate
 
-create_api_app = partial(create_api_app, auth_resolver=TEST_ADMIN_AUTH_RESOLVER)
+create_api_app = partial(_create_api_app, auth_resolver=TEST_ADMIN_AUTH_RESOLVER)
 
 class ServerDemandPeriodRouteTests(unittest.TestCase):
     @staticmethod
@@ -215,10 +218,16 @@ class ServerDemandPeriodRouteTests(unittest.TestCase):
                 )
                 self.assertEqual(approved.status_code, 200, approved.text)
 
-                changed = client.put(
-                    f"/api/v1/demands/{number}/periods",
-                    json=self._alternatives(second_hours=10),
+                pm_app = _create_api_app(
+                    database_url,
+                    actor_name="pm-period-test",
+                    auth_resolver=TEST_PROJECT_MANAGER_AUTH_RESOLVER,
                 )
+                with TestClient(pm_app, raise_server_exceptions=False) as pm_client:
+                    changed = pm_client.put(
+                        f"/api/v1/demands/{number}/periods",
+                        json=self._alternatives(second_hours=10),
+                    )
                 self.assertEqual(changed.status_code, 200, changed.text)
                 self.assertTrue(changed.json()["reapproval_required"])
                 self.assertEqual(changed.json()["status"], "Soumise")

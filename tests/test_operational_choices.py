@@ -18,7 +18,10 @@ from app.infrastructure.sql import (
     create_sql_engine,
 )
 from app.server import create_api_app
-from tests.http_test_auth import TEST_ADMIN_AUTH_RESOLVER
+from tests.http_test_auth import (
+    TEST_ADMIN_AUTH_RESOLVER,
+    TEST_PROJECT_MANAGER_AUTH_RESOLVER,
+)
 from tests.sqlite_test_template import SqliteDatabaseTemplate
 
 
@@ -142,20 +145,30 @@ class VersionedOperationalChoicesApiTests(unittest.TestCase):
                 )
                 self.assertEqual(approved.status_code, 200, approved.text)
 
-                # Edit only the candidate after approval. The active plan must not
-                # silently adopt these new dates or the new candidate selection.
-                replaced = client.put(
-                    f"/api/v1/demands/{number}/lines/{line_id}/periods",
-                    json=self._alternatives(D3, D4),
+                # Edit only the candidate after approval as a project manager. The
+                # active plan must not silently adopt these new dates or selection.
+                pm_app = create_api_app(
+                    database_url,
+                    actor_name="pm-13d",
+                    auth_resolver=TEST_PROJECT_MANAGER_AUTH_RESOLVER,
                 )
-                self.assertEqual(replaced.status_code, 200, replaced.text)
-                self.assertTrue(replaced.json()["reapproval_required"])
-                candidate_selected = client.put(
-                    f"/api/v1/demands/{number}/lines/{line_id}/alternative-groups/VISITE/selection",
-                    json={"period_id": "OPT-B"},
-                )
-                self.assertEqual(candidate_selected.status_code, 200, candidate_selected.text)
-                self.assertIsNone(candidate_selected.json()["planning"])
+                with TestClient(pm_app, raise_server_exceptions=False) as pm_client:
+                    replaced = pm_client.put(
+                        f"/api/v1/demands/{number}/lines/{line_id}/periods",
+                        json=self._alternatives(D3, D4),
+                    )
+                    self.assertEqual(replaced.status_code, 200, replaced.text)
+                    self.assertTrue(replaced.json()["reapproval_required"])
+                    candidate_selected = pm_client.put(
+                        f"/api/v1/demands/{number}/lines/{line_id}/alternative-groups/VISITE/selection",
+                        json={"period_id": "OPT-B"},
+                    )
+                    self.assertEqual(
+                        candidate_selected.status_code,
+                        200,
+                        candidate_selected.text,
+                    )
+                    self.assertIsNone(candidate_selected.json()["planning"])
 
             engine = create_sql_engine(database_url)
             factory = create_session_factory(engine)

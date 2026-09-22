@@ -265,6 +265,14 @@ class SqlRequestApprovalRevisionRepository:
             desired_active_days=period.desired_active_days,
         )
 
+    def candidate_envelope(
+        self,
+        request: WorkforceRequest,
+    ):
+        """Return the canonical current candidate envelope for policy evaluation."""
+
+        return normalize_approval_envelope(self._envelope_lines(request))
+
     def create_revision(
         self,
         request: WorkforceRequest,
@@ -277,7 +285,7 @@ class SqlRequestApprovalRevisionRepository:
         switch the active reference in the same database transaction.
         """
 
-        envelope = normalize_approval_envelope(self._envelope_lines(request))
+        envelope = self.candidate_envelope(request)
         approved_at = request.approved_at or utc_now()
         reference = self._session.get(RequestApprovalReference, request.id)
         previous_revision_id = (

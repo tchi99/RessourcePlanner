@@ -19,6 +19,13 @@ from .commands import (
     DemandSubmitCommand,
     DemandUpdateCommand,
 )
+from ..domain.approval_envelope import (
+    DECISION_APPROVAL_REFERENCE_UNKNOWN,
+    DECISION_EXPLICIT_EXCEPTION_REQUIRED,
+    DECISION_INVALID,
+    DECISION_REAPPROVAL_REQUIRED,
+    EnvelopeDecision,
+)
 from .errors import (
     ApplicationConflictError,
     ApplicationNotFoundError,
@@ -37,9 +44,16 @@ from .demand_workflow_policy import (
     assert_demand_action,
     demand_workflow_state,
 )
-from .security import PERMISSION_APPROVE_DEMANDS, PERMISSION_MANAGE_DEMANDS
+from .security import (
+    PERMISSION_APPROVE_DEMANDS,
+    PERMISSION_MANAGE_DEMANDS,
+    ROLE_ADMIN,
+    ROLE_COORDINATOR,
+    ROLE_PROJECT_MANAGER,
+)
 from .read_models import DemandOperationalChoiceReadModel, DemandPeriodReadModel
 from .repository_ports import (
+    DemandApprovalEnvelopePolicyPort,
     DemandOperationalChoiceRepositoryPort,
     DemandPeriodRepositoryPort,
     DemandRepositoryPort,
@@ -71,6 +85,12 @@ BUSINESS_DEMAND_FIELDS = frozenset(
     }
 )
 
+LEGACY_UNKNOWN_REAPPROVAL_FIELDS = BUSINESS_DEMAND_FIELDS - {
+    "Description",
+    "Confirmation",
+    "TechnicienPropose",
+}
+
 
 class DemandService:
     """Application service for the workforce-demand lifecycle."""
@@ -83,8 +103,10 @@ class DemandService:
         *,
         periods: DemandPeriodRepositoryPort | None = None,
         operational_choices: DemandOperationalChoiceRepositoryPort | None = None,
+        approval_envelope_policy: DemandApprovalEnvelopePolicyPort | None = None,
         current_user: str = "",
         permissions: Sequence[str] | None = None,
+        roles: Sequence[str] | None = None,
         batch: Callable[[str], ContextManager[Any]] | None = None,
     ) -> None:
         self._demands = demands
@@ -92,11 +114,13 @@ class DemandService:
         self._approved_sync = approved_sync
         self._periods = periods
         self._operational_choices = operational_choices
+        self._approval_envelope_policy = approval_envelope_policy
         self._current_user = str(current_user or "")
         self._permissions = tuple(permissions) if permissions is not None else (
             PERMISSION_MANAGE_DEMANDS,
             PERMISSION_APPROVE_DEMANDS,
         )
+        self._roles = tuple(str(role).strip().upper() for role in (roles or ()) if str(role).strip())
         self._batch = batch
 
     def _context(self, label: str) -> ContextManager[Any]:
@@ -292,6 +316,80 @@ class DemandService:
             business_blocks=self._workflow_business_blocks(existing),
         )
 
+    def _envelope_actor_role(self) -> str | None:
+        for role in (ROLE_ADMIN, ROLE_COORDINATOR, ROLE_PROJECT_MANAGER):
+            if role in self._roles:
+                return role
+        return None
+
+    def _handle_candidate_envelope_decision(
+        self,
+        number: str,
+        decision: EnvelopeDecision,
+        *,
+        legacy_unknown_requires_reapproval: bool,
+    ) -> bool:
+        policy = self._approval_envelope_policy
+        if policy is None:
+            return legacy_unknown_requires_reapproval
+
+        needs_approval = decision.decision == DECISION_REAPPROVAL_REQUIRED
+        if decision.decision == DECISION_APPROVAL_REFERENCE_UNKNOWN:
+            needs_approval = legacy_unknown_requires_reapproval
+        elif decision.decision == DECISION_INVALID:
+            detail = next(
+                (change.detail for change in decision.changes if change.detail),
+                "La proposition candidate ne forme pas une enveloppe valide.",
+            )
+            raise ApplicationValidationError(
+                detail,
+                code="approval_envelope_invalid",
+                context={"demand_number": number, "decision": decision.to_dict()},
+            )
+        elif decision.decision == DECISION_EXPLICIT_EXCEPTION_REQUIRED:
+            raise ApplicationConflictError(
+                "La modification exige une dérogation explicite.",
+                code="approval_envelope_exception_required",
+                context={"demand_number": number, "decision": decision.to_dict()},
+            )
+
+        if not needs_approval:
+            call_application_port(
+                lambda: policy.record_candidate_decision(number, decision),
+                code_prefix="approval_envelope_decision_audit",
+                context={"demand_number": number},
+            )
+            return False
+
+        if PERMISSION_APPROVE_DEMANDS in self._permissions:
+            call_application_port(
+                lambda: policy.stamp_direct_approval(
+                    number,
+                    decision,
+                    actor_name=self._current_user,
+                ),
+                code_prefix="approval_envelope_direct_approval",
+                context={"demand_number": number},
+            )
+            call_application_port(
+                lambda: self._approved_sync.sync_approved(number),
+                code_prefix="approval_envelope_direct_sync",
+                context={"demand_number": number},
+            )
+            call_application_port(
+                self._planning.rebuild,
+                code_prefix="approval_envelope_direct_rebuild",
+                context={"demand_number": number},
+            )
+            return False
+
+        call_application_port(
+            lambda: policy.mark_reapproval_required(number, decision),
+            code_prefix="approval_envelope_reapproval",
+            context={"demand_number": number},
+        )
+        return True
+
     def create_command(self, command: DemandCreateCommand) -> str:
         values = command.to_repository_values()
         with self._context("create demand"):
@@ -363,13 +461,21 @@ class DemandService:
                 end if isinstance(end, date) else None,
             )
 
-        reapproval_required = (
-            existing.status == "En planification"
-            and bool(BUSINESS_DEMAND_FIELDS.intersection(data))
+        was_approved = existing.status == "En planification"
+        envelope_relevant_change = bool(
+            BUSINESS_DEMAND_FIELDS.intersection(data)
+        )
+        fallback_reapproval_required = (
+            was_approved
+            and envelope_relevant_change
+        )
+        legacy_unknown_requires_reapproval = (
+            was_approved
+            and bool(LEGACY_UNKNOWN_REAPPROVAL_FIELDS.intersection(data))
         )
 
         audit_comment = str(command.comment or "").strip()
-        if reapproval_required:
+        if self._approval_envelope_policy is None and fallback_reapproval_required:
             data["Statut"] = "Soumise"
             data["ApprouvePar"] = None
             data["DateApprobation"] = None
@@ -390,7 +496,25 @@ class DemandService:
                 code_prefix="demand_update",
                 context={"demand_number": number},
             )
-        return reapproval_required
+            if (
+                was_approved
+                and envelope_relevant_change
+                and self._approval_envelope_policy is not None
+            ):
+                decision = call_application_port(
+                    lambda: self._approval_envelope_policy.evaluate_candidate(
+                        number,
+                        actor_role=self._envelope_actor_role(),
+                    ),
+                    code_prefix="approval_envelope_compare",
+                    context={"demand_number": number},
+                )
+                return self._handle_candidate_envelope_decision(
+                    number,
+                    decision,
+                    legacy_unknown_requires_reapproval=legacy_unknown_requires_reapproval,
+                )
+        return fallback_reapproval_required
 
     def replace_periods_command(
         self,
@@ -454,14 +578,15 @@ class DemandService:
         if old_signature == new_signature:
             return tuple(current), False
 
-        reapproval_required = existing.status == "En planification"
+        was_approved = existing.status == "En planification"
+        reapproval_required = was_approved
         status_update: dict[str, Any] = {}
         comment = (
             f"Périodes détaillées de la ligne {request_line_id} modifiées"
             if request_line_id is not None
             else "Périodes détaillées de la demande modifiées"
         )
-        if reapproval_required:
+        if self._approval_envelope_policy is None and reapproval_required:
             status_update = {
                 "Statut": "Soumise",
                 "ApprouvePar": None,
@@ -502,6 +627,23 @@ class DemandService:
                     "request_line_id": request_line_id,
                 },
             )
+            if was_approved and self._approval_envelope_policy is not None:
+                decision = call_application_port(
+                    lambda: self._approval_envelope_policy.evaluate_candidate(
+                        number,
+                        actor_role=self._envelope_actor_role(),
+                    ),
+                    code_prefix="approval_envelope_period_compare",
+                    context={
+                        "demand_number": number,
+                        "request_line_id": request_line_id,
+                    },
+                )
+                reapproval_required = self._handle_candidate_envelope_decision(
+                    number,
+                    decision,
+                    legacy_unknown_requires_reapproval=True,
+                )
         return tuple(updated), reapproval_required
 
     def select_alternative_command(
