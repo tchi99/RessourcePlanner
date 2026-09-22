@@ -69,13 +69,20 @@ export type Commit = {
 }
 
 export type StalledDetails = {
+  level: 'confirmed' | 'stalled' | 'possible' | null
   threshold_minutes: number
   ci_failed_at: string | null
   ci_failed_minutes: number | null
   last_commit_at: string | null
   last_commit_minutes: number | null
+  last_activity_at: string | null
+  last_activity_minutes: number | null
+  last_activity_source: string | null
   no_new_commit: boolean
   no_active_workflow: boolean
+  branch_present: boolean
+  pr_present: boolean
+  explicit_in_progress: boolean
 }
 
 export type Dashboard = {
@@ -110,8 +117,11 @@ export type Dashboard = {
     last_commit: Commit | null
     states: string[]
     stalled: boolean
+    stall_level: 'confirmed' | 'stalled' | 'possible' | null
     stalled_details: StalledDetails
     failed_jobs: string[]
+    explicit_in_progress: boolean
+    active_runs: Run[]
     merged_but_unmarked_pr: {
       number: number
       title: string
