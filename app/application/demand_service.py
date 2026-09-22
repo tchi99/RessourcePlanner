@@ -462,13 +462,17 @@ class DemandService:
             )
 
         was_approved = existing.status == "En planification"
-        legacy_reapproval_required = (
+        fallback_reapproval_required = (
+            was_approved
+            and bool(BUSINESS_DEMAND_FIELDS.intersection(data))
+        )
+        legacy_unknown_requires_reapproval = (
             was_approved
             and bool(LEGACY_UNKNOWN_REAPPROVAL_FIELDS.intersection(data))
         )
 
         audit_comment = str(command.comment or "").strip()
-        if self._approval_envelope_policy is None and legacy_reapproval_required:
+        if self._approval_envelope_policy is None and fallback_reapproval_required:
             data["Statut"] = "Soumise"
             data["ApprouvePar"] = None
             data["DateApprobation"] = None
@@ -501,9 +505,9 @@ class DemandService:
                 return self._handle_candidate_envelope_decision(
                     number,
                     decision,
-                    legacy_unknown_requires_reapproval=legacy_reapproval_required,
+                    legacy_unknown_requires_reapproval=legacy_unknown_requires_reapproval,
                 )
-        return legacy_reapproval_required
+        return fallback_reapproval_required
 
     def replace_periods_command(
         self,
