@@ -141,6 +141,7 @@ export default function DemandDetail({
           demandNumber={demandNumber}
           embedded
           onChanged={changed}
+          refreshToken={refreshKey}
         />
       </details>
 
@@ -149,7 +150,7 @@ export default function DemandDetail({
           <span>Historique</span>
           <small>Chronologie auditée de cette demande, sans changer de contexte.</small>
         </summary>
-        <DemandHistoryPage demandNumber={demandNumber} embedded />
+        <DemandHistoryPage demandNumber={demandNumber} embedded refreshToken={refreshKey} />
       </details>
     </section>
   );
