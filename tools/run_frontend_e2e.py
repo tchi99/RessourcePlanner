@@ -61,6 +61,13 @@ ROLE_IDENTITIES = {
     ROLE_TECHNICIAN: ("Technicien Alice", "EMP-ALICE"),
 }
 
+ROLE_APP_USER_SUBJECTS = {
+    ROLE_ADMIN: "admin",
+    ROLE_PROJECT_MANAGER: "project-manager",
+    ROLE_COORDINATOR: "coordinator",
+    ROLE_TECHNICIAN: "technician-a",
+}
+
 
 class FakePlaywrightSmtpClient:
     """Capture explicit SMTP sends locally; never opens a network connection."""
@@ -94,15 +101,26 @@ class FakePlaywrightCommunicationTransport:
 def _principal_for_request(request: Request) -> AuthPrincipal | None:
     role = str(request.headers.get("X-E2E-Role") or "").strip().upper()
     identity = ROLE_IDENTITIES.get(role)
-    if identity is None:
+    subject = ROLE_APP_USER_SUBJECTS.get(role)
+    if identity is None or subject is None:
         return None
+
+    factory = request.app.state.session_factory
+    with factory() as session:
+        record = SqlUserIdentityRepository(session).get_by_external_identity(
+            "urn:resourceplanner:e2e-dev",
+            subject,
+        )
+    if record is None or not record.active:
+        return None
+
     display_name, employee_external_id = identity
     return AuthPrincipal.from_roles(
-        local_user_id=f"playwright-{role.lower()}",
-        issuer="urn:resourceplanner:playwright",
-        subject=f"playwright-{role.lower()}",
+        local_user_id=record.user_id,
+        issuer=record.issuer,
+        subject=record.subject,
         display_name=display_name,
-        email=None,
+        email=record.email,
         employee_external_id=employee_external_id,
         roles=(role,),
         auth_mode="test",
