@@ -113,7 +113,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # #370 measurement run 2
+        # #370 measurement run 3
         shard_index: [0, 1, 2]
     steps:
       - name: Checkout
