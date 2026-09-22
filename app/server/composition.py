@@ -36,6 +36,7 @@ from ..infrastructure.sql import (
     SqlBusinessContactAdminRepository,
     SqlCommandIdempotencyAdapter,
     SqlCompetencyCatalogRepository,
+    SqlDemandApprovalEnvelopePolicyRepository,
     SqlDemandPeriodRepository,
     SqlEmergencyDemandRepository,
     SqlOverallocationAllocationCommandAdapter,
@@ -67,6 +68,7 @@ def build_sql_facade(
     *,
     actor_name: str = "api",
     permissions: Sequence[str] | None = None,
+    roles: Sequence[str] | None = None,
 ) -> ApplicationFacade:
     """Compose one application facade inside the caller-owned SQL transaction."""
 
@@ -109,8 +111,13 @@ def build_sql_facade(
                 session,
                 actor_name=actor,
             ),
+            approval_envelope_policy=SqlDemandApprovalEnvelopePolicyRepository(
+                session,
+                actor_name=actor,
+            ),
             current_user=actor,
             permissions=permissions,
+            roles=roles,
         ),
         segments=SegmentService(segments, planning_commands),
         allocations=AllocationService(allocation_commands),
