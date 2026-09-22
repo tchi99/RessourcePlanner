@@ -154,6 +154,7 @@ class DemandOperationalChoiceReadModel:
     version: int
     selections: Mapping[str, str]
     confirmations: Mapping[str, str]
+    budget_overrides: Mapping[str, float]
 
 
 @dataclass(frozen=True, slots=True)
