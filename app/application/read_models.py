@@ -147,6 +147,16 @@ class DemandReadModel:
 
 
 @dataclass(frozen=True, slots=True)
+class DemandOperationalChoiceReadModel:
+    """Active operational choices tied to one immutable approved revision."""
+
+    approval_revision_id: str
+    version: int
+    selections: Mapping[str, str]
+    confirmations: Mapping[str, str]
+
+
+@dataclass(frozen=True, slots=True)
 class DemandPeriodReadModel:
     """One versioned requested period/option under a workforce request line."""
 
