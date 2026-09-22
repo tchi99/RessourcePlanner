@@ -9,6 +9,7 @@ from ..application import (
     CompetencyCatalogService,
     AvailabilityRuleUpdateCommand,
     DemandAlternativeSelectCommand,
+    DemandOperationalConfirmationCommand,
     DemandApproveCommand,
     DemandCancelCommand,
     DemandCorrectionCommand,
@@ -41,6 +42,7 @@ from .schemas import (
     AvailabilityRuleCreateRequest,
     AvailabilityRuleUpdateRequest,
     DemandAlternativeSelectionRequest,
+    DemandOperationalConfirmationRequest,
     DemandCreateRequest,
     DemandLineRequest,
     DemandPeriodsReplaceRequest,
@@ -334,6 +336,7 @@ def build_command_router(
                     number=number,
                     alternative_group=alternative_group,
                     period_id=body.period_id,
+                    expected_operational_version=body.expected_operational_version,
                 )
             )
         )
@@ -373,6 +376,89 @@ def build_command_router(
                     request_line_id=line_id,
                     alternative_group=alternative_group,
                     period_id=body.period_id,
+                    expected_operational_version=body.expected_operational_version,
+                )
+            )
+        )
+
+    @router.put(
+        "/demands/{number}/operational-alternative-groups/"
+        "{alternative_group}/selection"
+    )
+    def select_demand_operational_alternative(
+        number: str,
+        alternative_group: str,
+        body: DemandAlternativeSelectionRequest,
+        facade: ApplicationFacade = Depends(facade_dependency),
+    ) -> dict[str, Any]:
+        return _payload(
+            facade.select_demand_alternative(
+                DemandAlternativeSelectCommand(
+                    number=number,
+                    alternative_group=alternative_group,
+                    period_id=body.period_id,
+                    expected_operational_version=body.expected_operational_version,
+                    operational=True,
+                )
+            )
+        )
+
+    @router.put(
+        "/demands/{number}/lines/{line_id}/operational-alternative-groups/"
+        "{alternative_group}/selection"
+    )
+    def select_demand_line_operational_alternative(
+        number: str,
+        line_id: str,
+        alternative_group: str,
+        body: DemandAlternativeSelectionRequest,
+        facade: ApplicationFacade = Depends(facade_dependency),
+    ) -> dict[str, Any]:
+        return _payload(
+            facade.select_demand_alternative(
+                DemandAlternativeSelectCommand(
+                    number=number,
+                    request_line_id=line_id,
+                    alternative_group=alternative_group,
+                    period_id=body.period_id,
+                    expected_operational_version=body.expected_operational_version,
+                    operational=True,
+                )
+            )
+        )
+
+    @router.put("/demands/{number}/operational-confirmation")
+    def set_demand_operational_confirmation(
+        number: str,
+        body: DemandOperationalConfirmationRequest,
+        facade: ApplicationFacade = Depends(facade_dependency),
+    ) -> dict[str, Any]:
+        return _payload(
+            facade.set_demand_operational_confirmation(
+                DemandOperationalConfirmationCommand(
+                    number=number,
+                    confirmation=body.confirmation,
+                    period_id=body.period_id,
+                    expected_operational_version=body.expected_operational_version,
+                )
+            )
+        )
+
+    @router.put("/demands/{number}/lines/{line_id}/operational-confirmation")
+    def set_demand_line_operational_confirmation(
+        number: str,
+        line_id: str,
+        body: DemandOperationalConfirmationRequest,
+        facade: ApplicationFacade = Depends(facade_dependency),
+    ) -> dict[str, Any]:
+        return _payload(
+            facade.set_demand_operational_confirmation(
+                DemandOperationalConfirmationCommand(
+                    number=number,
+                    request_line_id=line_id,
+                    period_id=body.period_id,
+                    confirmation=body.confirmation,
+                    expected_operational_version=body.expected_operational_version,
                 )
             )
         )
