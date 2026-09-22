@@ -9,6 +9,7 @@ from ..application import (
     ApplicationConflictError,
     ApplicationNotFoundError,
     ApplicationValidationError,
+    DemandApprovalStateReadModel,
     DemandHistoryReadModel,
     DemandPeriodReadModel,
     DemandPlanDeltaReadModel,
@@ -250,6 +251,20 @@ def build_read_router(
                 request_line_id=line_id,
             )
         )
+
+    @router.get("/demands/{number}/approval-state")
+    def demand_approval_state(
+        number: str,
+        queries: PlannerQueryPort = Depends(query_dependency),
+    ) -> DemandApprovalStateReadModel:
+        row = queries.demand_approval_state(number)
+        if row is None:
+            raise ApplicationNotFoundError(
+                f"Demande {number} introuvable",
+                code="demand_not_found",
+                context={"demand_number": number},
+            )
+        return row
 
     @router.get("/demands/{number}/plan-delta")
     def demand_plan_delta(

@@ -1,7 +1,45 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from datetime import date
+from dataclasses import dataclass, field
+from datetime import date, datetime
+from typing import Mapping
+
+
+@dataclass(frozen=True, slots=True)
+class DemandPlanDeltaDiagnosticReadModel:
+    code: str
+    message: str
+    requirement_id: str | None = None
+    spec_key: tuple[str, ...] | None = None
+    shift_ids: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class DemandApprovalStateReadModel:
+    demand_number: str
+    candidate_request_version: int
+    approval_reference_status: str | None
+    active_revision_id: str | None = None
+    previous_revision_id: str | None = None
+    approved_request_version: int | None = None
+    approved_at: datetime | None = None
+    approved_by_name: str | None = None
+    authorization_fingerprint: str | None = None
+    candidate_authorization_fingerprint: str | None = None
+    candidate_matches_approved: bool | None = None
+    payload_format_version: int | None = None
+    operational_version: int | None = None
+    envelope_decision: str | None = None
+    envelope_reason: str | None = None
+    envelope_changes: tuple[Mapping[str, object], ...] = ()
+    active_selections: Mapping[str, str] = field(default_factory=dict)
+    active_confirmations: Mapping[str, str] = field(default_factory=dict)
+    active_budget_overrides: Mapping[str, float] = field(default_factory=dict)
+    active_requirement_count: int = 0
+    active_planned_hours: float = 0.0
+    active_approved_entry_keys: tuple[str, ...] = ()
+    active_matches_approved_revision: bool | None = None
+    diagnostics: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -37,3 +75,12 @@ class DemandPlanDeltaReadModel:
     proposed_hours: float = 0.0
     net_hours: float = 0.0
     items: tuple[DemandPlanDeltaItemReadModel, ...] = ()
+    approval_reference_status: str | None = None
+    active_revision_id: str | None = None
+    approved_request_version: int | None = None
+    authorization_fingerprint: str | None = None
+    candidate_authorization_fingerprint: str | None = None
+    operational_version: int | None = None
+    envelope_decision: str | None = None
+    envelope_reason: str | None = None
+    diagnostics: tuple[DemandPlanDeltaDiagnosticReadModel, ...] = ()
