@@ -82,14 +82,21 @@ class CiChangeClassifierTests(unittest.TestCase):
                 self.assertTrue(result.runtime)
                 self.assertFalse(result.conservative)
 
-    def test_workflow_path_filters_keep_dev_cockpit_boundary_explicit(self) -> None:
+    def test_workflow_path_filters_keep_dev_cockpit_required_check_lightweight(self) -> None:
         from pathlib import Path
 
         primary = Path(".github/workflows/syntax-check.yml").read_text(encoding="utf-8")
         cockpit = Path(".github/workflows/dev-cockpit.yml").read_text(encoding="utf-8")
 
-        self.assertNotIn('      - "dev-cockpit/**"', primary)
+        self.assertIn('      - "dev-cockpit/**"', primary)
         self.assertIn('      - "dev-cockpit/**"', cockpit)
+
+        cockpit_only = classify_changes(["dev-cockpit/frontend/src/App.tsx"])
+        self.assertFalse(cockpit_only.backend)
+        self.assertFalse(cockpit_only.frontend)
+        self.assertFalse(cockpit_only.runtime)
+        self.assertFalse(cockpit_only.conservative)
+
         for shared_path in ("docker-compose.yml", ".env.example"):
             marker = f'      - "{shared_path}"'
             self.assertIn(marker, primary)
