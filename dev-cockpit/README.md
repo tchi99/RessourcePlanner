@@ -97,15 +97,24 @@ Cette configuration est uniquement une **préférence locale de présentation**.
 
 Les cartes de rôles servent aussi de points d'entrée vers un panneau latéral contextuel. Le panneau s'ouvre depuis l'avatar, le nom ou le bouton **Voir détails**.
 
-Les vues spécialisées du MVP sont :
+Les vues spécialisées chargent maintenant le détail GitHub **à la demande** :
 
-- **Product Owner** : roadmap maître, bloc actif, prochaines sous-tranches, prochaine action, warnings et issues liées;
-- **Developer** : travail actif, états dérivés, issue, branche, dernier commit, PR, CI/jobs, diagnostic de stall et prompt de reprise;
-- **Architecte** : architecture applicative de référence, bloc actif, ADR explicitement référencés et ensemble des ADR disponibles;
+- **Product Owner** : roadmap maître complet; chaque issue devient un accordéon qui charge son corps GitHub réel, ses sections et sa documentation référencée;
+- **Developer** : section exacte de la sous-tranche active extraite de l'issue parent, contexte complet de l'issue, HEAD de la branche active, statistiques/fichiers du commit, documentation et ADR associés, PR/CI, diagnostic de stall et prompt de reprise;
+- **Architecte** : contenu réel de `docs/architecture/README.md`, contexte de la sous-tranche active, ADR pertinents puis autres ADR, tous lisibles dans des accordéons sans quitter le cockpit;
 - **Reviewer** : jobs CI en échec et PR ouvertes;
 - **Generic** : vue minimale et état de la conversation associée.
 
-Le panneau réutilise uniquement les données déjà présentes dans le `Dashboard`; il ne crée pas une nouvelle source de vérité et n'ajoute pas d'appel GitHub spécifique lors de l'ouverture.
+Le `Dashboard` reste volontairement léger. Les panneaux utilisent des routes de détail séparées :
+
+```text
+GET /api/details/roadmap
+GET /api/details/issues/{number}
+GET /api/details/commits/{sha}
+GET /api/details/architecture
+```
+
+Ces routes utilisent le même accès GitHub en lecture seule et ne sont invoquées que lorsque la vue concernée est ouverte. GitHub demeure la source de vérité; aucun contenu n'est recopié dans une base locale.
 
 Le panneau peut être fermé avec le bouton ×, en cliquant à l'extérieur ou avec la touche `Escape`. Sur mobile, il occupe toute la largeur.
 
