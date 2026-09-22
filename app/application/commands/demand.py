@@ -78,6 +78,7 @@ class DemandCreateCommand:
     project_name: str = ""
     client: str = ""
     project_manager: str = ""
+    requester_user_id: str | None = None
     requester: str | None = None
     work_package_ref: str | None = None
     task_code: str | None = None
@@ -255,6 +256,7 @@ class DemandCreateCommand:
             "NomProjet": text(self.project_name),
             "Client": text(self.client),
             "ChargeProjet": text(self.project_manager),
+            "RequesterUserId": self.requester_user_id,
             "Demandeur": self.requester,
             "SourceEffortID": self.work_package_ref,
             "TaskCode": self.task_code,
@@ -289,6 +291,7 @@ class DemandUpdateCommand:
     project_name: str | None | UnsetType = UNSET
     client: str | None | UnsetType = UNSET
     project_manager: str | None | UnsetType = UNSET
+    requester_user_id: str | None | UnsetType = UNSET
     requester: str | None | UnsetType = UNSET
     work_package_ref: str | None | UnsetType = UNSET
     task_code: str | None | UnsetType = UNSET
@@ -468,6 +471,7 @@ class DemandUpdateCommand:
             "NomProjet": self.project_name,
             "Client": self.client,
             "ChargeProjet": self.project_manager,
+            "RequesterUserId": self.requester_user_id,
             "Demandeur": self.requester,
             "SourceEffortID": self.work_package_ref,
             "TaskCode": self.task_code,
