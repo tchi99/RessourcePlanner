@@ -6,7 +6,7 @@ from typing import Any
 
 from .config import Settings
 from .derive import commit_summary
-from .github import GitHubClient
+from .github import GitHubClient, GitHubError
 from .roadmap import top_level_items
 
 HEADING_RE = re.compile(r"^(?P<marks>#{1,6})\s+(?P<title>.+?)\s*$")
@@ -102,7 +102,7 @@ async def _read_document(
 ) -> dict[str, Any] | None:
     try:
         content = await client.get_text_file(repo, path, ref=ref)
-    except Exception:
+    except (GitHubError, UnicodeDecodeError):
         return None
     return {
         "name": path.rsplit("/", 1)[-1],
@@ -126,7 +126,7 @@ async def _issue_documents(
     if adr_refs:
         try:
             architecture_entries = await client.list_directory(repo, "docs/architecture")
-        except Exception:
+        except GitHubError:
             architecture_entries = []
 
     by_path: dict[str, str | None] = {path: None for path in explicit_paths}
