@@ -122,6 +122,9 @@ services:
       DEV_COCKPIT_REPOSITORY: "${DEV_COCKPIT_REPOSITORY:-tchi99/RessourcePlanner}"
       DEV_COCKPIT_ROADMAP_ISSUE: "${DEV_COCKPIT_ROADMAP_ISSUE:-55}"
       DEV_COCKPIT_STALLED_AFTER_MINUTES: "${DEV_COCKPIT_STALLED_AFTER_MINUTES:-30}"
+      DEV_COCKPIT_DATA_DIR: "/data"
+    volumes:
+      - dev-cockpit-data:/data
     ports:
       - "127.0.0.1:${DEV_COCKPIT_HTTP_PORT:-8081}:8000"
     # Outil local/dev explicite : ne pas le redémarrer automatiquement avec le runtime hôte.
@@ -130,3 +133,4 @@ services:
 volumes:
   resourceplanner-data:
   resourceplanner-logs:
+  dev-cockpit-data:
