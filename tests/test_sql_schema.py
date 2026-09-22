@@ -31,6 +31,7 @@ EXPECTED_TABLES = {
     "communication_deliveries",
     "competencies",
     "planning_change_history",
+    "planning_mutation_state",
     "projects",
     "request_approval_references",
     "request_approval_revisions",
@@ -78,6 +79,7 @@ class SqlSchemaTests(unittest.TestCase):
         communication_messages = Base.metadata.tables["communication_messages"].c
         communication_snapshots = Base.metadata.tables["communication_snapshot_lines"].c
         planning_history = Base.metadata.tables["planning_change_history"].c
+        planning_state = Base.metadata.tables["planning_mutation_state"].c
         task_catalog = Base.metadata.tables["task_catalog_items"].c
         competencies = Base.metadata.tables["competencies"].c
         resource_competencies = Base.metadata.tables["resource_competencies"].c
@@ -93,6 +95,8 @@ class SqlSchemaTests(unittest.TestCase):
         operational_states = Base.metadata.tables["request_operational_states"].c
 
         self.assertFalse(operational_states.budget_overrides_text.nullable)
+        self.assertFalse(planning_state.id.nullable)
+        self.assertFalse(planning_state.version.nullable)
 
         self.assertFalse(requirements.project_id.nullable)
         self.assertTrue(requirements.workforce_request_id.nullable)
