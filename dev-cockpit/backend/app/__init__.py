@@ -1,0 +1,1 @@
+"""RessourcePlanner Dev Cockpit backend."""

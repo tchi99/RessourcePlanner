@@ -161,6 +161,40 @@ Voir [`docs/DOCKER_SYNOLOGY.md`](docs/DOCKER_SYNOLOGY.md) pour le détail du run
 
 ---
 
+## Dev Cockpit local
+
+Le Dev Cockpit est un outil de développement isolé sous `dev-cockpit/`. Il observe GitHub en lecture seule et n'est pas intégré au frontend/backend métier.
+
+Le runtime RessourcePlanner normal reste inchangé :
+
+```bash
+docker compose up -d --build
+```
+
+RessourcePlanner reste disponible sur `http://127.0.0.1:8080`.
+
+Pour démarrer RessourcePlanner et le Dev Cockpit :
+
+```bash
+docker compose --profile dev-tools up -d --build
+```
+
+Le cockpit est alors disponible sur `http://127.0.0.1:8081` et n'est publié que sur loopback par défaut.
+
+Configurer le token GitHub local dans le `.env` racine :
+
+```dotenv
+DEV_COCKPIT_GITHUB_TOKEN=
+DEV_COCKPIT_REPOSITORY=tchi99/RessourcePlanner
+DEV_COCKPIT_ROADMAP_ISSUE=55
+DEV_COCKPIT_STALLED_AFTER_MINUTES=30
+DEV_COCKPIT_HTTP_PORT=8081
+```
+
+Le token doit rester local, en lecture seule, et n'est transmis qu'au backend du cockpit. Sans token, le cockpit affiche une erreur de configuration explicite.
+
+Voir [`dev-cockpit/README.md`](dev-cockpit/README.md) pour l'architecture, la logique `STALLED`, les tests et le développement hors Docker.
+
 ## Runtime Web Windows
 
 Pour le développement ou un runtime local Windows hors Docker :

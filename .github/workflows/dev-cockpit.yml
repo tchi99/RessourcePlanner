@@ -1,0 +1,90 @@
+name: Dev Cockpit
+
+on:
+  pull_request:
+    paths:
+      - "dev-cockpit/**"
+      - "docker-compose.yml"
+      - ".env.example"
+      - ".gitignore"
+      - "README.md"
+      - ".github/workflows/dev-cockpit.yml"
+
+concurrency:
+  group: dev-cockpit-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      DEV_COCKPIT_HTTP_PORT: "18081"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+          cache-dependency-path: dev-cockpit/backend/requirements.txt
+
+      - name: Install cockpit backend dependencies
+        run: python -m pip install -r dev-cockpit/backend/requirements.txt
+
+      - name: Compile and test cockpit backend
+        env:
+          PYTHONPATH: dev-cockpit/backend
+        run: |
+          python -m compileall -q dev-cockpit/backend
+          python -m unittest discover -s dev-cockpit/backend/tests -v
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install and build cockpit frontend
+        working-directory: dev-cockpit/frontend
+        run: |
+          npm install --no-audit --no-fund
+          npm run build
+
+      - name: Validate Compose with and without dev-tools profile
+        run: |
+          docker compose config >/tmp/resourceplanner-compose.yml
+          docker compose --profile dev-tools config >/tmp/resourceplanner-dev-tools-compose.yml
+
+      - name: Smoke Dev Cockpit container
+        run: |
+          docker compose --profile dev-tools up -d --build dev-cockpit
+          ready=0
+          for attempt in $(seq 1 45); do
+            if curl -fsS http://127.0.0.1:18081/api/health >/tmp/cockpit-health.json; then
+              ready=1
+              break
+            fi
+            sleep 2
+          done
+          test "$ready" = "1"
+          grep -q '"token_configured":false' /tmp/cockpit-health.json
+          curl -fsS http://127.0.0.1:18081/api/config | grep -q 'tchi99/RessourcePlanner'
+          curl -fsS http://127.0.0.1:18081/ | grep -qi '<html'
+          status="$(curl -sS -o /tmp/cockpit-dashboard.json -w '%{http_code}' http://127.0.0.1:18081/api/dashboard)"
+          test "$status" = "503"
+          grep -q 'DEV_COCKPIT_GITHUB_TOKEN' /tmp/cockpit-dashboard.json
+
+      - name: Show Docker diagnostics on failure
+        if: failure()
+        run: |
+          docker compose --profile dev-tools ps -a
+          docker compose --profile dev-tools logs --no-color --tail=250 dev-cockpit
+
+      - name: Stop cockpit smoke
+        if: always()
+        run: docker compose --profile dev-tools down --remove-orphans

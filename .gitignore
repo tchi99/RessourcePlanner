@@ -59,3 +59,8 @@ signing-output/
 
 # Manual ERP CSV exports
 imports/*.csv
+
+# Dev Cockpit local artifacts
+dev-cockpit/.venv/
+dev-cockpit/frontend/node_modules/
+dev-cockpit/frontend/dist/
