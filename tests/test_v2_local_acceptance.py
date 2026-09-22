@@ -360,11 +360,47 @@ class V2LocalAcceptanceTests(unittest.TestCase):
             self.assertTrue(changed.json()["reapproval_required"])
             self.assertEqual(changed.json()["status"], "Soumise")
 
+            approval_state = project_manager.get(
+                f"/api/v1/demands/{demand_number}/approval-state"
+            )
+            self.assertEqual(
+                approval_state.status_code,
+                200,
+                approval_state.text,
+            )
+            authorization = approval_state.json()
+            self.assertEqual(
+                authorization["approval_reference_status"],
+                "CAPTURED",
+            )
+            self.assertFalse(authorization["candidate_matches_approved"])
+            self.assertEqual(
+                authorization["envelope_decision"],
+                "REAPPROVAL_REQUIRED",
+            )
+            self.assertEqual(
+                authorization["active_planned_hours"],
+                20.0,
+            )
+
             delta = project_manager.get(f"/api/v1/demands/{demand_number}/plan-delta")
             self.assertEqual(delta.status_code, 200, delta.text)
-            self.assertTrue(delta.json()["available"])
-            self.assertTrue(delta.json()["has_changes"])
-            self.assertGreater(len(delta.json()["items"]), 0)
+            preview = delta.json()
+            self.assertTrue(preview["available"])
+            self.assertTrue(preview["has_changes"])
+            self.assertGreater(len(preview["items"]), 0)
+            self.assertEqual(
+                preview["active_revision_id"],
+                authorization["active_revision_id"],
+            )
+            self.assertEqual(
+                preview["authorization_fingerprint"],
+                authorization["authorization_fingerprint"],
+            )
+            self.assertEqual(
+                preview["candidate_authorization_fingerprint"],
+                authorization["candidate_authorization_fingerprint"],
+            )
 
             preserved = self._segments_for(project_manager, demand_number)
             self.assertAlmostEqual(sum(row["planned_hours"] for row in preserved), 20.0)
