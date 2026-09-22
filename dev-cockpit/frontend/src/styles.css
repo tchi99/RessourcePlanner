@@ -890,3 +890,46 @@ footer a { color: #768aa6; }
     padding-right: 14px;
   }
 }
+
+
+.role-avatar-button {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.role-avatar-button:hover {
+  background: transparent;
+  border-color: transparent;
+}
+
+.role-avatar-button:focus-visible,
+.role-name-button:focus-visible {
+  outline: 2px solid #6d9ee8;
+  outline-offset: 3px;
+}
+
+.role-name-button {
+  border: 0;
+  background: transparent;
+  color: #e8edf5;
+  padding: 0;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  text-align: left;
+}
+
+.role-name-button:hover {
+  border: 0;
+  background: transparent;
+  color: #c8dcfb;
+}
+
+.role-detail-section button.primary {
+  background: #2966bd;
+  border-color: #3a7bd5;
+  font-weight: 750;
+}
