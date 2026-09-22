@@ -253,6 +253,13 @@ class DemandPeriodsReplaceRequest(StrictRequest):
 
 class DemandAlternativeSelectionRequest(StrictRequest):
     period_id: str = Field(min_length=1)
+    expected_operational_version: int | None = Field(default=None, ge=1)
+
+
+class DemandOperationalConfirmationRequest(StrictRequest):
+    confirmation: Literal["Tentative", "Confirmée"]
+    period_id: str | None = Field(default=None, min_length=1)
+    expected_operational_version: int | None = Field(default=None, ge=1)
 
 
 class DemandWorkflowVersionRequest(StrictRequest):
