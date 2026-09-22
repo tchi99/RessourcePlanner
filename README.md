@@ -18,7 +18,7 @@ Le socle V2 comprend notamment :
 - persistance **SQLAlchemy 2.x + Alembic**;
 - **SQLite** pour le développement local et les tests;
 - **SQL Server** comme cible de production;
-- packaging **Docker / Docker Compose**, avec Synology Container Manager comme cible de déploiement privilégiée;
+- packaging **Docker / Docker Compose**, avec **VM Ubuntu dédiée** comme cible de déploiement privilégiée; le NAS Synology héberge la VM mais n'exécute plus directement le runtime applicatif;
 - authentification locale de développement, sessions serveur, RBAC et préparation OIDC;
 - imports ERP temporaires depuis fichiers Excel/CSV derrière des outils dédiés;
 - communications projet avec préparation Microsoft Graph et envoi SMTP explicite;
@@ -157,7 +157,7 @@ Cette dernière commande est destructive pour les données Docker locales.
 
 Le Compose local charge des données et identités de démonstration et active le sélecteur d’identité de test. Ce mode est réservé au développement.
 
-Voir [`docs/DOCKER_SYNOLOGY.md`](docs/DOCKER_SYNOLOGY.md) pour le détail du runtime Docker et de la cible Synology.
+Voir [`docs/DEPLOYMENT_UBUNTU_VM.md`](docs/DEPLOYMENT_UBUNTU_VM.md) pour la cible de déploiement actuelle sur VM Ubuntu. [`docs/DOCKER_SYNOLOGY.md`](docs/DOCKER_SYNOLOGY.md) est conservé comme référence historique du déploiement direct sur DSM/Container Manager.
 
 ---
 
@@ -423,7 +423,8 @@ Les dépendances Web/SQL canoniques restent séparées des dépendances legacy.
 - [`docs/architecture/README.md`](docs/architecture/README.md) — architecture et convention ADR;
 - [`docs/REACT_V2_DEV.md`](docs/REACT_V2_DEV.md) — développement React + FastAPI;
 - [`docs/WEB_RUNTIME.md`](docs/WEB_RUNTIME.md) — runtime Web same-origin;
-- [`docs/DOCKER_SYNOLOGY.md`](docs/DOCKER_SYNOLOGY.md) — Docker et cible Synology;
+- [`docs/DEPLOYMENT_UBUNTU_VM.md`](docs/DEPLOYMENT_UBUNTU_VM.md) — déploiement Docker cible sur VM Ubuntu hébergée par le Synology;
+- [`docs/DOCKER_SYNOLOGY.md`](docs/DOCKER_SYNOLOGY.md) — ancienne cible directe Synology/Container Manager, conservée comme référence historique;
 - [`docs/V2_RUNTIME_OPERATIONS.md`](docs/V2_RUNTIME_OPERATIONS.md) — exploitation et diagnostic;
 - [`docs/ENVIRONMENT_VARIABLES.md`](docs/ENVIRONMENT_VARIABLES.md) — configuration;
 - [`docs/AUTH_RBAC.md`](docs/AUTH_RBAC.md) — authentification et RBAC;
