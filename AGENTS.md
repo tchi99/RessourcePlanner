@@ -83,11 +83,12 @@ understand scope
 → targeted tests
 → broader relevant validation
 → create/update PR
+→ enable auto-merge when the PR is complete and eligible
 → CI
-→ diagnose failures
+→ diagnose failures when needed
 → correct failures
 → CI green
-→ merge
+→ automatic merge
 → update relevant GitHub roadmap issue
 → next approved READY sub-item
 ```
@@ -453,6 +454,8 @@ When CI fails:
 7. allow CI to run again;
 8. repeat until green.
 
+If auto-merge is enabled on the PR, a red CI must leave the PR open. Do not bypass required checks to force a merge. Resume the PR, correct the failure, and let auto-merge complete only after all required checks are green.
+
 Normal CI failures are part of development and do not require user authorization.
 
 Do not bypass, delete or weaken a meaningful test merely to obtain a green check.
@@ -493,16 +496,45 @@ The PR description should summarize:
 
 Do not mix unrelated cleanup into the same PR.
 
-Before merging, verify:
+### Auto-merge policy
 
-- required CI jobs are green;
+When repository auto-merge is available and the PR is complete, coherent and ready to merge, enable auto-merge instead of waiting manually for CI to finish.
+
+The normal autonomous flow is:
+
+```text
+PR complete
+→ enable auto-merge
+→ required CI checks run
+→ if red: keep PR open, diagnose, fix and rerun
+→ if green: GitHub merges automatically
+```
+
+Do not enable auto-merge when:
+
+- the user explicitly asked to stop before merge;
+- a product or architecture decision is still unresolved;
+- the change requires a destructive migration;
+- the change introduces an unexpected breaking contract;
+- a significant security/authentication decision is still open;
+- a required review or repository rule intentionally blocks automatic merge;
+- a known blocking defect remains.
+
+Auto-merge is not permission to weaken branch protection, required checks or tests.
+
+Before declaring a PR ready for auto-merge, verify:
+
 - requested behavior is implemented;
+- appropriate local/targeted validation has been performed;
+- migrations/documentation are updated when required;
 - no known blocking defect remains;
-- migrations/documentation are updated when required.
+- no stop condition from this file applies.
 
-When the task has been approved for autonomous development, a green PR may be merged without asking for another confirmation unless the user explicitly requested a stop before merge.
+Once auto-merge is armed, the agent does not need to remain idle merely waiting for green CI. If CI later fails during the active task/session, resume the PR and correct the failure. If the session is interrupted, the PR must remain safely open unless all required repository checks become green and GitHub merges it automatically.
 
-If repository protection or required approval prevents merging, report the blocker rather than circumventing it.
+When the task has been approved for autonomous development, a PR that satisfies all required repository checks may be merged automatically without asking for another confirmation unless the user explicitly requested a stop before merge.
+
+If repository protection, required approval or another rule prevents merging, report the blocker rather than circumventing it.
 
 ---
 
