@@ -39,6 +39,7 @@ import {
   writeShiftDrag,
 } from "./planningDragDrop";
 import { assignSegment } from "./segments-api";
+import DemandDetail from "./DemandDetail";
 import ManualAllocationEditor from "./ManualAllocationEditor";
 import PlanningActionPanel from "./PlanningActionPanel";
 import QuickShiftEditor from "./QuickShiftEditor";
@@ -201,7 +202,13 @@ function ShiftCard({
   );
 }
 
-function PendingLoadCard({ load }: { load: PendingDemandLoadReadModel }) {
+function PendingLoadCard({
+  load,
+  onOpenDemand,
+}: {
+  load: PendingDemandLoadReadModel;
+  onOpenDemand: (demandNumber: string) => void;
+}) {
   const proposed = load.projected_hours ?? load.window_hours;
   const replacement = normalize(load.mode) === "replacement";
   const dateLabel = load.start_date === load.end_date
@@ -235,24 +242,31 @@ function PendingLoadCard({ load }: { load: PendingDemandLoadReadModel }) {
           )}
         </div>
       )}
+      <button
+        type="button"
+        className="pending-detail-button"
+        onClick={() => onOpenDemand(load.demand_number)}
+      >
+        Ouvrir le détail de la demande
+      </button>
     </article>
   );
 }
 
 function PendingGhostCard({
   load,
-  onOpenDemands,
+  onOpenDemand,
 }: {
   load: PendingDemandLoadReadModel;
-  onOpenDemands?: () => void;
+  onOpenDemand?: (demandNumber: string) => void;
 }) {
   const tentative = confirmationKind(load.confirmation) === "tentative";
   return (
     <button
       type="button"
       className={`pending-ghost-card ${tentative ? "is-tentative" : ""}`}
-      onClick={onOpenDemands}
-      disabled={!onOpenDemands}
+      onClick={() => onOpenDemand?.(load.demand_number)}
+      disabled={!onOpenDemand}
       title={`Demande ${load.demand_number} · ressource proposée ${load.proposed_resource || "—"} · aucune charge ferme comptabilisée`}
     >
       <strong>{load.project_number || "Projet"}</strong>
@@ -282,7 +296,7 @@ function ResourceRow({
   pendingLoads: PendingDemandLoadReadModel[];
   diagnostics: Map<string, PlanningSegmentCapacityDiagnosticReadModel>;
   onEditShift: (shift: ShiftReadModel) => void;
-  onOpenDemands?: () => void;
+  onOpenDemand?: (demandNumber: string) => void;
   dragEnabled: boolean;
   onDropShift: (payload: ShiftDragPayload, resource: ResourceReadModel, day: string) => void;
   onDropSegment: (payload: SegmentDragPayload, resource: ResourceReadModel) => void;
@@ -396,7 +410,7 @@ function ResourceRow({
             {ghosts.map((load) => (
               <PendingGhostCard
                 load={load}
-                onOpenDemands={onOpenDemands}
+                onOpenDemand={onOpenDemand}
                 key={`ghost-${load.demand_number}-${iso}`}
               />
             ))}
@@ -429,6 +443,8 @@ export default function PlanningPage({ onOpenDemands }: { onOpenDemands?: () => 
   const [editingSegmentId, setEditingSegmentId] = useState<string | null>(null);
   const [quickShiftOpen, setQuickShiftOpen] = useState(false);
   const [manualAllocationOpen, setManualAllocationOpen] = useState(false);
+  const [detailDemandNumber, setDetailDemandNumber] = useState<string | null>(null);
+  const [detailContextDirty, setDetailContextDirty] = useState(false);
   const [dropBusy, setDropBusy] = useState<string | null>(null);
   const [dragFeedback, setDragFeedback] = useState<{
     tone: "success" | "error" | "info";
@@ -902,7 +918,7 @@ export default function PlanningPage({ onOpenDemands }: { onOpenDemands?: () => 
                       pendingLoads={pendingLoads}
                       diagnostics={diagnosticsBySegment}
                       onEditShift={setEditingShift}
-                      onOpenDemands={onOpenDemands}
+                      onOpenDemand={setDetailDemandNumber}
                       dragEnabled={canManagePlanning && !dropBusy}
                       onDropShift={(payload, target, day) => void moveShiftFromDrop(payload, target, day)}
                       onDropSegment={(payload, target) => void assignSegmentFromDrop(payload, target)}
@@ -928,7 +944,11 @@ export default function PlanningPage({ onOpenDemands }: { onOpenDemands?: () => 
           ) : visiblePendingLoads.length > 0 ? (
             <div className="pending-list">
               {visiblePendingLoads.map((load) => (
-                <PendingLoadCard load={load} key={`${load.demand_number}-${load.start_date}-${load.mode}`} />
+                <PendingLoadCard
+                  load={load}
+                  onOpenDemand={setDetailDemandNumber}
+                  key={`${load.demand_number}-${load.start_date}-${load.mode}`}
+                />
               ))}
             </div>
           ) : (
@@ -976,6 +996,43 @@ export default function PlanningPage({ onOpenDemands }: { onOpenDemands?: () => 
             setRefreshKey((value) => value + 1);
           }}
         />
+      )}
+
+      {detailDemandNumber && (
+        <div
+          className="demand-detail-modal-backdrop"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.currentTarget !== event.target) return;
+            if (detailContextDirty && !window.confirm("Des périodes non enregistrées seront perdues. Fermer le détail?")) return;
+            setDetailDemandNumber(null);
+            setDetailContextDirty(false);
+          }}
+        >
+          <section className="demand-detail-modal" role="dialog" aria-modal="true" aria-label={`Détail de la demande ${detailDemandNumber}`}>
+            <header className="demand-detail-modal-header">
+              <div>
+                <strong>Détail de la demande</strong>
+                <span>{detailDemandNumber}</span>
+              </div>
+              <button type="button" onClick={() => {
+                if (detailContextDirty && !window.confirm("Des périodes non enregistrées seront perdues. Fermer le détail?")) return;
+                setDetailDemandNumber(null);
+                setDetailContextDirty(false);
+              }}>
+                Fermer
+              </button>
+            </header>
+            <div className="demand-detail-modal-body">
+              <DemandDetail
+                demandNumber={detailDemandNumber}
+                compact
+                onDirtyChange={setDetailContextDirty}
+                onChanged={() => setRefreshKey((value) => value + 1)}
+              />
+            </div>
+          </section>
+        </div>
       )}
 
       <QuickShiftEditor
