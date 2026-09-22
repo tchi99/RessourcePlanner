@@ -354,7 +354,7 @@ class SqlPeriodAwareApprovedDemandSyncAdapter(ApprovedDemandSyncPort):
                 elif requirement.status not in {"Terminé", "Annulé"}:
                     requirement.status = "À assigner"
 
-                requirement.project_id = request.project_id
+                requirement.project_id = project.id
                 requirement.start_date = period.start_date
                 requirement.end_date = period.end_date
                 requirement.planned_hours = Decimal(str(split_hours[index])).quantize(Decimal("0.01"))
@@ -366,7 +366,11 @@ class SqlPeriodAwareApprovedDemandSyncAdapter(ApprovedDemandSyncPort):
                     or ""
                 )
                 requirement.required_competency = request.required_competencies
-                requirement.priority = request.priority or "Normale"
+                requirement.priority = (
+            priority
+            if priority is not None
+            else request.priority or "Normale"
+        )
                 requirement.origin = ORIGIN_REQUEST
                 legacy_line = self._session.get(RequestLine, request.id)
                 self._capture_approved_contact_context(
@@ -729,6 +733,8 @@ class SqlPeriodAwareApprovedDemandSyncAdapter(ApprovedDemandSyncPort):
         project: Project,
         requirement: ResourceRequirement | None,
         spec: PreparedRequirementSpec,
+        *,
+        priority: str | None = None,
     ) -> ResourceRequirement:
         proposed = (
             self._session.get(Resource, spec.proposed_resource_id)
@@ -758,7 +764,11 @@ class SqlPeriodAwareApprovedDemandSyncAdapter(ApprovedDemandSyncPort):
                     "RequiredCompetencyIDs": spec.competency_ids,
                     "SourceRequestLineID": spec.source_request_line_id,
                     "TypePlanification": "Flexible",
-                    "Priorite": request.priority or "Normale",
+                    "Priorite": (
+                        priority
+                        if priority is not None
+                        else request.priority or "Normale"
+                    ),
                     "HorsHoraireAutorise": False,
                     "OrigineSegment": ORIGIN_REQUEST,
                     "Confirmation": spec.confirmation,
@@ -919,9 +929,14 @@ class SqlPeriodAwareApprovedDemandSyncAdapter(ApprovedDemandSyncPort):
             current,
             prepared.specs,
         )
-        project = self._session.get(Project, request.project_id)
+        approved_project_id = _text(prepared.project_id)
+        if not approved_project_id:
+            raise ValueError(
+                "La révision approuvée active ne contient pas de projet."
+            )
+        project = self._session.get(Project, approved_project_id)
         if project is None:
-            raise KeyError(f"Projet {request.project_id} introuvable")
+            raise KeyError(f"Projet {approved_project_id} introuvable")
 
         for requirement in obsolete:
             requirement.status = "Annulé"
@@ -933,6 +948,7 @@ class SqlPeriodAwareApprovedDemandSyncAdapter(ApprovedDemandSyncPort):
                 project,
                 match.requirement,
                 match.spec,
+                priority=prepared.priority,
             )
             requirement.approval_revision_id = prepared.approval_revision_id
             requirement.approved_entry_key = match.spec.approved_entry_key
