@@ -462,9 +462,12 @@ class DemandService:
             )
 
         was_approved = existing.status == "En planification"
+        envelope_relevant_change = bool(
+            BUSINESS_DEMAND_FIELDS.intersection(data)
+        )
         fallback_reapproval_required = (
             was_approved
-            and bool(BUSINESS_DEMAND_FIELDS.intersection(data))
+            and envelope_relevant_change
         )
         legacy_unknown_requires_reapproval = (
             was_approved
@@ -493,7 +496,11 @@ class DemandService:
                 code_prefix="demand_update",
                 context={"demand_number": number},
             )
-            if was_approved and self._approval_envelope_policy is not None:
+            if (
+                was_approved
+                and envelope_relevant_change
+                and self._approval_envelope_policy is not None
+            ):
                 decision = call_application_port(
                     lambda: self._approval_envelope_policy.evaluate_candidate(
                         number,
