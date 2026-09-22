@@ -171,6 +171,9 @@ jobs:
           docker compose -f deploy/synology/compose.yml config >/tmp/resourceplanner-synology-compose.yml
       - name: Build and start Docker runtime
         run: docker compose up -d --build
+      - name: Assert dev-only services stay stopped by default
+        run: |
+          ! docker compose ps --services --status running | grep -qx 'dev-cockpit'
       - name: Smoke same-origin frontend, API and readiness
         run: |
           ready=0
