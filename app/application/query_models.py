@@ -272,6 +272,8 @@ class PlanningSegmentCapacityDiagnosticReadModel:
     outside_standard_hours: float
     unplaced_hours: float
     requires_outside_standard_hours: bool
+    automatic_target_resource_id: str | None = None
+    automatic_target_resource_name: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

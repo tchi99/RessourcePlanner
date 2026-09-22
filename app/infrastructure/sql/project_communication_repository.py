@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from ...application.operational_contacts import OperationalContactService
 from ...application.project_communications import ProjectCommunicationRepositoryPort
 from ...domain.confirmation import effective_confirmation
+from ...domain.planning_engine import MISSING_ALLOCATION_TYPE
 from ...domain.project_communication import (
     ProjectCommunicationAssignment,
     ProjectCommunicationParticipant,
@@ -187,6 +188,8 @@ class SqlProjectCommunicationRepository(ProjectCommunicationRepositoryPort):
             .where(
                 Shift.work_date >= week_start,
                 Shift.work_date <= week_end,
+                (Shift.allocation_type.is_(None))
+                | (Shift.allocation_type != MISSING_ALLOCATION_TYPE),
             )
             .order_by(
                 Project.number,

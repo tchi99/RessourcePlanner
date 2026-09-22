@@ -5,7 +5,7 @@ from pathlib import Path
 from types import MappingProxyType
 import unittest
 
-from app.domain.planning_engine import LockedAllocationInput, SegmentInput
+from app.domain.planning_engine import MISSING_ALLOCATION_TYPE, LockedAllocationInput, SegmentInput
 from app.domain.planning_projection import (
     PlanningCalculationSnapshot,
     project_planning_snapshot,
@@ -85,6 +85,16 @@ class PlanningProjectionTests(unittest.TestCase):
                     "Verrouillee": "Non",
                     "HorsHoraire": "Non",
                     "TypeAllocation": "Flexible",
+                },
+                {
+                    "IDAllocation": "A-MISSING",
+                    "IDSegment": "S1",
+                    "Technicien": "R1",
+                    "Date": D2,
+                    "Heures": 10,
+                    "Verrouillee": "Non",
+                    "HorsHoraire": "Non",
+                    "TypeAllocation": MISSING_ALLOCATION_TYPE,
                 },
                 {
                     "IDAllocation": "A-LOCK-NO-SCHEDULE",

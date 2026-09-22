@@ -161,6 +161,22 @@ class OperationalPlanningQueueApiTests(unittest.TestCase):
                 confirmation="Confirmée",
                 origin="REQUEST",
             )
+            covered = ResourceRequirement(
+                id="REQ-COVERED",
+                legacy_segment_id="SEG-COVERED",
+                project_id="P-273",
+                workforce_request_id=approved.id,
+                assigned_resource_id=None,
+                start_date=date(2026, 9, 21),
+                end_date=date(2026, 9, 25),
+                planned_hours=Decimal("8"),
+                status="À assigner",
+                required_competency="PLC",
+                required_competency_id="C-PLC",
+                priority="Normale",
+                confirmation="Confirmée",
+                origin="REQUEST",
+            )
             load = ResourceRequirement(
                 id="REQ-LOAD",
                 legacy_segment_id="SEG-2026-0272",
@@ -177,8 +193,32 @@ class OperationalPlanningQueueApiTests(unittest.TestCase):
                 confirmation="Confirmée",
                 origin="REQUEST",
             )
-            session.add_all([target, load])
+            session.add_all([target, covered, load])
             session.flush()
+            session.add_all(
+                [
+                    Shift(
+                        id="SHIFT-TARGET-LOCK",
+                        resource_requirement_id=target.id,
+                        resource_id="R-ALICE",
+                        work_date=date(2026, 9, 22),
+                        hours=Decimal("8"),
+                        source="MANUAL",
+                        locked=True,
+                        outside_standard_hours=False,
+                    ),
+                    Shift(
+                        id="SHIFT-COVERED",
+                        resource_requirement_id=covered.id,
+                        resource_id="R-BOB",
+                        work_date=date(2026, 9, 22),
+                        hours=Decimal("8"),
+                        source="MANUAL",
+                        locked=True,
+                        outside_standard_hours=False,
+                    ),
+                ]
+            )
             session.add(
                 Shift(
                     id="SHIFT-ALICE",
@@ -222,7 +262,7 @@ class OperationalPlanningQueueApiTests(unittest.TestCase):
             self.assertEqual(assignment["demand_number"], "DMO-2026-0274")
             self.assertEqual(assignment["task_code"], "310")
             self.assertEqual(assignment["required_competency_id"], "C-PLC")
-            self.assertEqual(assignment["planned_hours"], 24.0)
+            self.assertEqual(assignment["planned_hours"], 16.0)
 
     def test_recommendations_prioritize_competency_then_capacity(self) -> None:
         with TemporaryDirectory() as directory:
@@ -242,15 +282,15 @@ class OperationalPlanningQueueApiTests(unittest.TestCase):
             self.assertTrue(alice["class_match"])
             self.assertEqual(alice["required_class"], "Programmation")
             self.assertEqual(alice["capacity_hours"], 40.0)
-            self.assertEqual(alice["confirmed_hours"], 8.0)
+            self.assertEqual(alice["confirmed_hours"], 16.0)
             self.assertEqual(alice["tentative_hours"], 0.0)
-            self.assertEqual(alice["prudent_free"], 32.0)
+            self.assertEqual(alice["prudent_free"], 24.0)
             self.assertEqual(alice["overtime_needed"], 0.0)
 
             bob = rows[1]
             self.assertFalse(bob["competency_match"])
             self.assertFalse(bob["class_match"])
-            self.assertEqual(bob["prudent_free"], 40.0)
+            self.assertEqual(bob["prudent_free"], 32.0)
             self.assertGreater(alice["score"], bob["score"])
 
 

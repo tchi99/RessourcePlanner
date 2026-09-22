@@ -56,6 +56,7 @@ def _allocation_projection(result: object) -> tuple[AllocationProjection, ...]:
             outside_schedule=bool(row.outside_schedule),
         )
         for row in allocations
+        if bool(getattr(row, "counts_as_allocated", True))
     )
 
 
@@ -63,6 +64,7 @@ def _item_from_difference(
     difference: AllocationDifference,
     *,
     change: str,
+    resource_id_by_name: dict[str, str] | None = None,
 ) -> DemandPlanDeltaItemReadModel:
     current = difference.legacy_hours > 0
     proposed = difference.shadow_hours > 0
@@ -71,6 +73,12 @@ def _item_from_difference(
         segment_id=difference.segment_id,
         current_resource_name=difference.resource_id if current else None,
         proposed_resource_name=difference.resource_id if proposed else None,
+        current_resource_id=(
+            (resource_id_by_name or {}).get(difference.resource_id) if current else None
+        ),
+        proposed_resource_id=(
+            (resource_id_by_name or {}).get(difference.resource_id) if proposed else None
+        ),
         current_date=difference.day if current else None,
         proposed_date=difference.day if proposed else None,
         current_hours=float(difference.legacy_hours),
@@ -89,6 +97,8 @@ def _item_from_difference(
 
 def _delta_items(
     differences: tuple[AllocationDifference, ...],
+    *,
+    resource_id_by_name: dict[str, str] | None = None,
 ) -> tuple[DemandPlanDeltaItemReadModel, ...]:
     """Turn semantic-key differences into coordinator-friendly add/move/change/cancel rows."""
 
@@ -98,7 +108,11 @@ def _delta_items(
 
     for difference in differences:
         if difference.legacy_hours > 0 and difference.shadow_hours > 0:
-            direct.append(_item_from_difference(difference, change="MODIFY"))
+            direct.append(_item_from_difference(
+                difference,
+                change="MODIFY",
+                resource_id_by_name=resource_id_by_name,
+            ))
         elif difference.legacy_hours > 0:
             old_only[difference.segment_id].append(difference)
         elif difference.shadow_hours > 0:
@@ -120,7 +134,11 @@ def _delta_items(
                 None,
             )
             if pair_index is None:
-                direct.append(_item_from_difference(old, change="CANCEL"))
+                direct.append(_item_from_difference(
+                    old,
+                    change="CANCEL",
+                    resource_id_by_name=resource_id_by_name,
+                ))
                 continue
             new = new_rows[pair_index]
             used_new.add(pair_index)
@@ -130,6 +148,8 @@ def _delta_items(
                     segment_id=segment_id,
                     current_resource_name=old.resource_id,
                     proposed_resource_name=new.resource_id,
+                    current_resource_id=(resource_id_by_name or {}).get(old.resource_id),
+                    proposed_resource_id=(resource_id_by_name or {}).get(new.resource_id),
                     current_date=old.day,
                     proposed_date=new.day,
                     current_hours=float(old.legacy_hours),
@@ -144,7 +164,11 @@ def _delta_items(
 
         for index, new in enumerate(new_rows):
             if index not in used_new:
-                direct.append(_item_from_difference(new, change="ADD"))
+                direct.append(_item_from_difference(
+                    new,
+                    change="ADD",
+                    resource_id_by_name=resource_id_by_name,
+                ))
 
     order = {"CANCEL": 0, "MOVE": 1, "MODIFY": 2, "ADD": 3}
     return tuple(
@@ -738,7 +762,14 @@ class SqlPlannerQueryRepositoryWithPlanDelta(SqlPlannerQueryRepositoryWeb):
             current_calculation.persisted_allocations,
             _allocation_projection(proposed_result),
         )
-        items = _delta_items(comparison.differences)
+        resource_id_by_name = {
+            resource.name: resource.id
+            for resource in self._delta_session.scalars(select(Resource)).all()
+        }
+        items = _delta_items(
+            comparison.differences,
+            resource_id_by_name=resource_id_by_name,
+        )
         counts = {
             name: sum(1 for item in items if item.change == name)
             for name in ("ADD", "MODIFY", "MOVE", "CANCEL")
