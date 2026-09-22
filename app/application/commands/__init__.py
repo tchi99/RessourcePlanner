@@ -17,6 +17,7 @@ from .demand import (
 )
 from .demand_period import (
     DemandAlternativeSelectCommand,
+    DemandOperationalConfirmationCommand,
     DemandPeriodInput,
     DemandPeriodsReplaceCommand,
 )
@@ -27,6 +28,7 @@ from .work_package import WorkPackageCreateCommand, WorkPackageUpdateCommand
 
 __all__ = [
     "DemandAlternativeSelectCommand",
+    "DemandOperationalConfirmationCommand",
     "DemandApproveCommand",
     "DemandCancelCommand",
     "DemandCorrectionCommand",

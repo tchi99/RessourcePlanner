@@ -78,6 +78,8 @@ from .identity_constraints import (
     WORKFORCE_REQUEST_NUMBER_INDEX,
 )
 from .resource_identity_constraints import RESOURCE_EXTERNAL_ID_INDEX
+from .operational_choice_models import RequestOperationalState
+from .operational_choice_repository import SqlRequestOperationalChoiceRepository
 from .operational_contact_repository import SqlOperationalContactRepository
 from .project_communication_repository import SqlProjectCommunicationRepository
 from .period_approved_sync import SqlPeriodAwareApprovedDemandSyncAdapter
@@ -134,6 +136,7 @@ __all__ = [
     "RequestLine",
     "RequestApprovalReference",
     "RequestApprovalRevision",
+    "RequestOperationalState",
     "RequestLineCompetency",
     "RESOURCE_EXTERNAL_ID_INDEX",
     "RESOURCE_REQUIREMENT_NUMBER_INDEX",
@@ -158,6 +161,7 @@ __all__ = [
     "SqlEmployeeSyncRepository",
     "SqlIdentityResourceLinkRepository",
     "SqlOperationalContactRepository",
+    "SqlRequestOperationalChoiceRepository",
     "SqlProjectCommunicationRepository",
     "SqlOverallocationAllocationCommandAdapter",
     "SqlPeriodAwareApprovedDemandSyncAdapter",

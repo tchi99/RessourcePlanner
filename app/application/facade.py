@@ -3,6 +3,7 @@ from __future__ import annotations
 from .allocation_service import AllocationService
 from .commands import (
     DemandAlternativeSelectCommand,
+    DemandOperationalConfirmationCommand,
     DemandApproveCommand,
     DemandCancelCommand,
     DemandCorrectionCommand,
@@ -42,6 +43,7 @@ from .results import (
     AllocationMutationResult,
     DemandAlternativeSelectionResult,
     DemandMutationResult,
+    DemandOperationalConfirmationResult,
     DemandPeriodsMutationResult,
     PlanningResult,
     QuickShiftCreatedResult,
@@ -159,11 +161,31 @@ class ApplicationFacade:
         command: DemandAlternativeSelectCommand,
     ) -> DemandAlternativeSelectionResult:
         summary = self._demands.select_alternative_command(command)
+        state = self._demands.operational_choice_state(command.number)
         return DemandAlternativeSelectionResult(
             demand_number=_identifier(command.number),
             alternative_group=_identifier(command.alternative_group),
             period_id=_identifier(command.period_id),
             planning=PlanningResult.from_mapping(summary) if summary is not None else None,
+            operational_version=state.version if state is not None else None,
+        )
+
+    def set_demand_operational_confirmation(
+        self,
+        command: DemandOperationalConfirmationCommand,
+    ) -> DemandOperationalConfirmationResult:
+        summary = self._demands.set_operational_confirmation_command(command)
+        state = self._demands.operational_choice_state(command.number)
+        if state is None:
+            raise ApplicationOperationError(
+                "L'état opérationnel actif est introuvable après confirmation.",
+                code="operational_choice_state_missing",
+            )
+        return DemandOperationalConfirmationResult(
+            demand_number=_identifier(command.number),
+            confirmation=_identifier(command.confirmation),
+            operational_version=state.version,
+            planning=PlanningResult.from_mapping(summary),
         )
 
     def demand_workflow_state(self, number: str) -> DemandWorkflowReadModel:

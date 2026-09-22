@@ -25,6 +25,7 @@ from .demand_period_models import (
     WorkforceRequestPeriodRequirement,
     WorkforceRequestPeriodSelection,
 )
+from .operational_choice_repository import SqlRequestOperationalChoiceRepository
 from .models import (
     ORIGIN_REQUEST,
     Project,
@@ -291,6 +292,7 @@ class SqlRequestApprovalRevisionRepository:
                 "request_id": request.id,
                 "request_version": max(int(request.aggregate_version or 1), 1),
                 "project_id": request.project_id,
+                "priority": _optional_text(request.priority),
                 "site_client": _optional_text(request.site_client),
                 "location": _optional_text(request.location),
                 "line_mode": bool(request.line_mode),
@@ -419,6 +421,14 @@ class SqlRequestApprovalRevisionRepository:
             reference.active_revision_id = revision.id
             reference.status = APPROVAL_REFERENCE_CAPTURED
         self._session.flush()
+        SqlRequestOperationalChoiceRepository(
+            self._session,
+            actor_name=_text(request.approved_by_name),
+        ).initialize_for_revision(
+            request.id,
+            revision,
+            actor_name=request.approved_by_name,
+        )
 
     def active_reference_status(
         self,

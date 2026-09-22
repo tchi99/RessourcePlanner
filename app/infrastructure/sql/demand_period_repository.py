@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from ...application.read_models import DemandPeriodReadModel
 from ...application.repository_ports import DemandPeriodRepositoryPort
 from ...domain.active_days import normalize_active_day_target
+from ...domain.approval_envelope import EnvelopeEntryIdentity, EnvelopeGroupIdentity
 from ...domain.confirmation import normalize_confirmation
 from ...domain.demand_periods import DemandPeriodDefinition, validate_period_definitions
 from .base import utc_now
@@ -17,6 +18,7 @@ from .demand_period_models import (
     WorkforceRequestPeriodSelection,
 )
 from .models import RequestLine, Resource, WorkforceRequest, WorkforceRequestHistory
+from .operational_choice_repository import SqlRequestOperationalChoiceRepository
 
 
 def _text(value: object) -> str:
@@ -157,6 +159,14 @@ class SqlDemandPeriodRepository(DemandPeriodRepositoryPort):
             request.id,
             request_line_id=scoped_line_id,
         )
+        operational = (
+            SqlRequestOperationalChoiceRepository(
+                self._session,
+                actor_name=self._actor_name,
+            ).state_for_request_id(request.id)
+            if request.status == "En planification"
+            else None
+        )
         resource_ids = {row.proposed_resource_id for row in periods if row.proposed_resource_id}
         resources = (
             self._session.scalars(select(Resource).where(Resource.id.in_(resource_ids))).all()
@@ -176,18 +186,46 @@ class SqlDemandPeriodRepository(DemandPeriodRepositoryPort):
                 start_date=row.start_date,
                 end_date=row.end_date,
                 hours=float(row.hours),
-                confirmation=row.confirmation,
+                confirmation=(
+                    operational.confirmations.get(
+                        EnvelopeEntryIdentity(
+                            line_id=row.request_line_id or request.id,
+                            period_key=row.period_key,
+                        ).stable_key,
+                        row.confirmation,
+                    )
+                    if operational is not None
+                    else row.confirmation
+                ),
                 proposed_resource=resource_names.get(row.proposed_resource_id),
                 resource_count=row.resource_count,
                 desired_active_days=row.desired_active_days,
                 note=row.note,
                 selected=(
-                    bool(row.alternative_group)
-                    and bool(row.request_line_id)
-                    and selections.get(
-                        (row.request_line_id, _text(row.alternative_group))
+                    (
+                        bool(row.alternative_group)
+                        and bool(row.request_line_id)
+                        and operational is not None
+                        and operational.selections.get(
+                            EnvelopeGroupIdentity(
+                                line_id=row.request_line_id,
+                                group_key=_text(row.alternative_group),
+                            ).stable_key
+                        )
+                        == EnvelopeEntryIdentity(
+                            line_id=row.request_line_id,
+                            period_key=row.period_key,
+                        ).stable_key
                     )
-                    == row.id
+                    if operational is not None
+                    else (
+                        bool(row.alternative_group)
+                        and bool(row.request_line_id)
+                        and selections.get(
+                            (row.request_line_id, _text(row.alternative_group))
+                        )
+                        == row.id
+                    )
                 ),
             )
             for row in periods

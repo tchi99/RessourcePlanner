@@ -12,6 +12,7 @@ from ...application.command_ports import ApprovedDemandSyncPort
 from ...domain.active_days import split_total_workforce_hours
 from ...domain.confirmation import CONFIRMATION_CONFIRMED, normalize_confirmation
 from ...domain.demand_periods import PERIOD_KIND_CUMULATIVE
+from .approval_revision_models import APPROVAL_REFERENCE_CAPTURED
 from .approval_revision_repository import SqlRequestApprovalRevisionRepository
 from .base import utc_now
 from .demand_period_models import (
@@ -353,7 +354,7 @@ class SqlPeriodAwareApprovedDemandSyncAdapter(ApprovedDemandSyncPort):
                 elif requirement.status not in {"Terminé", "Annulé"}:
                     requirement.status = "À assigner"
 
-                requirement.project_id = request.project_id
+                requirement.project_id = project.id
                 requirement.start_date = period.start_date
                 requirement.end_date = period.end_date
                 requirement.planned_hours = Decimal(str(split_hours[index])).quantize(Decimal("0.01"))
@@ -728,6 +729,8 @@ class SqlPeriodAwareApprovedDemandSyncAdapter(ApprovedDemandSyncPort):
         project: Project,
         requirement: ResourceRequirement | None,
         spec: PreparedRequirementSpec,
+        *,
+        priority: str | None = None,
     ) -> ResourceRequirement:
         proposed = (
             self._session.get(Resource, spec.proposed_resource_id)
@@ -757,7 +760,11 @@ class SqlPeriodAwareApprovedDemandSyncAdapter(ApprovedDemandSyncPort):
                     "RequiredCompetencyIDs": spec.competency_ids,
                     "SourceRequestLineID": spec.source_request_line_id,
                     "TypePlanification": "Flexible",
-                    "Priorite": request.priority or "Normale",
+                    "Priorite": (
+                        priority
+                        if priority is not None
+                        else request.priority or "Normale"
+                    ),
                     "HorsHoraireAutorise": False,
                     "OrigineSegment": ORIGIN_REQUEST,
                     "Confirmation": spec.confirmation,
@@ -785,7 +792,7 @@ class SqlPeriodAwareApprovedDemandSyncAdapter(ApprovedDemandSyncPort):
         elif requirement.status not in {"Terminé", "Annulé"}:
             requirement.status = "À assigner"
 
-        requirement.project_id = request.project_id
+        requirement.project_id = project.id
         requirement.workforce_request_id = request.id
         requirement.source_request_line_id = spec.source_request_line_id
         requirement.start_date = spec.start_date
@@ -799,7 +806,11 @@ class SqlPeriodAwareApprovedDemandSyncAdapter(ApprovedDemandSyncPort):
         requirement.required_competency_id = (
             spec.competency_ids[0] if len(spec.competency_ids) == 1 else None
         )
-        requirement.priority = request.priority or "Normale"
+        requirement.priority = (
+            priority
+            if priority is not None
+            else request.priority or "Normale"
+        )
         requirement.origin = ORIGIN_REQUEST
         source_line = (
             self._session.get(RequestLine, spec.source_request_line_id)
@@ -894,6 +905,67 @@ class SqlPeriodAwareApprovedDemandSyncAdapter(ApprovedDemandSyncPort):
                     else request.approved_by_name
                 ),
                 details=self._approved_context_details(request, materialized),
+                occurred_at=utc_now(),
+            )
+        )
+        self._session.flush()
+
+    def sync_operational_choices(self, demand_number: str) -> None:
+        """Resync active planning from approved authorization, never from candidate data."""
+
+        request = self._request(demand_number)
+        current = self._active_requirements(request.id)
+        prepared = self._plan_preparer.prepare_active(
+            request,
+            current=current,
+        )
+        self._plan_preparer.assert_locked_compatible(
+            request,
+            current,
+            prepared.specs,
+        )
+        matches, obsolete = self._plan_preparer.match_current(
+            request,
+            current,
+            prepared.specs,
+        )
+        approved_project_id = _text(prepared.project_id)
+        if not approved_project_id:
+            raise ValueError(
+                "La révision approuvée active ne contient pas de projet."
+            )
+        project = self._session.get(Project, approved_project_id)
+        if project is None:
+            raise KeyError(f"Projet {approved_project_id} introuvable")
+
+        for requirement in obsolete:
+            requirement.status = "Annulé"
+
+        materialized: list[ResourceRequirement] = []
+        for match in matches:
+            requirement = self._apply_line_spec(
+                request,
+                project,
+                match.requirement,
+                match.spec,
+                priority=prepared.priority,
+            )
+            requirement.approval_revision_id = prepared.approval_revision_id
+            requirement.approved_entry_key = match.spec.approved_entry_key
+            requirement.approval_reference_status = APPROVAL_REFERENCE_CAPTURED
+            materialized.append(requirement)
+
+        self._session.add(
+            WorkforceRequestHistory(
+                workforce_request_id=request.id,
+                action="Synchronisation choix opérationnels",
+                status=request.status,
+                comment=(
+                    f"{len(materialized)} besoin(s) actifs synchronisés contre la "
+                    f"révision {prepared.approval_revision_id}; "
+                    f"version opérationnelle {prepared.operational_version}."
+                ),
+                actor_name=request.approved_by_name,
                 occurred_at=utc_now(),
             )
         )

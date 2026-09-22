@@ -41,6 +41,7 @@ from ..infrastructure.sql import (
     SqlOverallocationAllocationCommandAdapter,
     SqlPeriodAwareApprovedDemandSyncAdapter,
     SqlOperationalContactRepository,
+    SqlRequestOperationalChoiceRepository,
     SqlProjectCommunicationRepository,
     SqlPlannerQueryRepositoryWithLoadProfiles,
     SqlPlanningCommandAdapter,
@@ -104,6 +105,10 @@ def build_sql_facade(
             planning_commands,
             approved_sync,
             periods=periods,
+            operational_choices=SqlRequestOperationalChoiceRepository(
+                session,
+                actor_name=actor,
+            ),
             current_user=actor,
             permissions=permissions,
         ),

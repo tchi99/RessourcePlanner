@@ -78,6 +78,35 @@ class DemandPeriodRepositoryPort(Protocol):
     ) -> Mapping[str, str]: ...
 
 
+class DemandOperationalChoiceRepositoryPort(Protocol):
+    """Versioned active choices applied to the current approved revision."""
+
+    def state_for_demand(
+        self,
+        demand_number: str,
+    ) -> DemandOperationalChoiceReadModel | None: ...
+
+    def select_alternative(
+        self,
+        demand_number: str,
+        alternative_group: str,
+        period_id: str,
+        *,
+        request_line_id: str | None = None,
+        expected_version: int | None = None,
+    ) -> DemandOperationalChoiceReadModel: ...
+
+    def set_confirmation(
+        self,
+        demand_number: str,
+        confirmation: str,
+        *,
+        request_line_id: str | None = None,
+        period_id: str | None = None,
+        expected_version: int | None = None,
+    ) -> DemandOperationalChoiceReadModel: ...
+
+
 class SegmentRepositoryPort(Protocol):
     """Persistence contract required by operational segment workflows."""
 
