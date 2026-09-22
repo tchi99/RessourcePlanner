@@ -10,9 +10,10 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ...application.errors import ApplicationValidationError
-from ...application.read_models import SegmentReadModel
+from ...application.read_models import SegmentMobilizedResourceReadModel, SegmentReadModel
 from ...application.repository_ports import SegmentRepositoryPort
 from ...domain.availability_rules import availability_hours_for_day
+from ...domain.planning_engine import MISSING_ALLOCATION_TYPE
 from ...domain.manual_overallocation import (
     INCREASE_PLANNED,
     KEEP_EXCEPTION,
@@ -67,6 +68,134 @@ def _segment_metrics(session: Session, identifier: str) -> dict[str, float] | No
     }
 
 
+def _allocation_projection_metrics(
+    session: Session,
+    requirements: Sequence[ResourceRequirement],
+) -> dict[str, dict[str, object]]:
+    """Build additive #331A coverage metrics from counted persisted shifts."""
+
+    rows = tuple(requirements)
+    if not rows:
+        return {}
+
+    requirement_ids = tuple(row.id for row in rows)
+    shift_rows = session.execute(
+        select(
+            Shift.resource_requirement_id,
+            Shift.resource_id,
+            Resource.name,
+            Shift.locked,
+            func.coalesce(func.sum(Shift.hours), 0),
+        )
+        .join(Resource, Shift.resource_id == Resource.id)
+        .where(
+            Shift.resource_requirement_id.in_(requirement_ids),
+            (Shift.allocation_type.is_(None))
+            | (Shift.allocation_type != MISSING_ALLOCATION_TYPE),
+        )
+        .group_by(
+            Shift.resource_requirement_id,
+            Shift.resource_id,
+            Resource.name,
+            Shift.locked,
+        )
+        .order_by(
+            Shift.resource_requirement_id,
+            Resource.name,
+            Shift.resource_id,
+            Shift.locked,
+        )
+    ).all()
+
+    by_requirement: dict[str, dict[str, object]] = {
+        requirement.id: {
+            "locked_hours": 0.0,
+            "replaceable_hours": 0.0,
+            "resources": {},
+        }
+        for requirement in rows
+    }
+
+    for requirement_id, resource_id, resource_name, locked, hours in shift_rows:
+        amount = float(hours or 0)
+        metrics = by_requirement[requirement_id]
+        key = "locked_hours" if locked else "replaceable_hours"
+        metrics[key] = float(metrics[key]) + amount
+
+        resources = metrics["resources"]
+        if not isinstance(resources, dict):
+            continue
+        resource_metrics = resources.setdefault(
+            resource_id,
+            {
+                "resource_name": _text(resource_name),
+                "allocated_hours": 0.0,
+                "locked_hours": 0.0,
+                "replaceable_hours": 0.0,
+            },
+        )
+        resource_metrics["allocated_hours"] += amount
+        resource_metrics[key] += amount
+
+    result: dict[str, dict[str, object]] = {}
+    for requirement in rows:
+        reference = _text(requirement.legacy_segment_id) or requirement.id
+        planned = float(requirement.planned_hours)
+        metrics = by_requirement[requirement.id]
+        locked = float(metrics["locked_hours"])
+        replaceable = float(metrics["replaceable_hours"])
+        covered = locked + replaceable
+        resource_values = metrics["resources"]
+        mobilized = ()
+        if isinstance(resource_values, dict):
+            mobilized = tuple(
+                SegmentMobilizedResourceReadModel(
+                    resource_id=resource_id,
+                    resource_name=_text(values["resource_name"]),
+                    allocated_hours=round(float(values["allocated_hours"]), 2),
+                    locked_hours=round(float(values["locked_hours"]), 2),
+                    replaceable_hours=round(float(values["replaceable_hours"]), 2),
+                )
+                for resource_id, values in sorted(
+                    resource_values.items(),
+                    key=lambda item: (
+                        _text(item[1]["resource_name"]).casefold(),
+                        item[0],
+                    ),
+                )
+            )
+        result[reference] = {
+            "planned_hours": round(planned, 2),
+            "locked_hours": round(locked, 2),
+            "replaceable_hours": round(replaceable, 2),
+            "covered_hours": round(covered, 2),
+            "automatic_rebuild_hours": round(max(planned - locked, 0.0), 2),
+            "remaining_hours": round(max(planned - covered, 0.0), 2),
+            "excess_hours": round(max(covered - planned, 0.0), 2),
+            # Compatibility: #38 historically defines overallocation from locked decisions.
+            "overallocated_hours": round(max(locked - planned, 0.0), 2),
+            "mobilized_resources": mobilized,
+        }
+    return result
+
+
+def _segment_projection_metrics(
+    session: Session,
+    identifier: str,
+) -> dict[str, object] | None:
+    wanted = _text(identifier)
+    requirement = session.scalar(
+        select(ResourceRequirement).where(
+            (ResourceRequirement.id == wanted)
+            | (ResourceRequirement.legacy_segment_id == wanted)
+        )
+    )
+    if requirement is None:
+        return None
+    reference = _text(requirement.legacy_segment_id) or requirement.id
+    return _allocation_projection_metrics(session, (requirement,)).get(reference)
+
+
 def _snapshot_with_metrics(
     snapshot: Mapping[str, object] | None,
     metrics: Mapping[str, float] | None,
@@ -86,47 +215,42 @@ class SqlSegmentRepositoryWithAllocationMetrics(SqlSegmentRepository):
         super().__init__(session, actor_name=actor_name)
         self._overallocation_session = session
 
-    def _metric_map(self) -> dict[str, dict[str, float]]:
+    def _metric_map(self) -> dict[str, dict[str, object]]:
         requirements = self._overallocation_session.scalars(
             select(ResourceRequirement)
         ).all()
-        locked_rows = self._overallocation_session.execute(
-            select(
-                Shift.resource_requirement_id,
-                func.coalesce(func.sum(Shift.hours), 0),
-            )
-            .where(Shift.locked.is_(True))
-            .group_by(Shift.resource_requirement_id)
-        ).all()
-        locked_by_requirement = {
-            requirement_id: float(hours or 0)
-            for requirement_id, hours in locked_rows
-        }
-        result: dict[str, dict[str, float]] = {}
-        for requirement in requirements:
-            reference = _text(requirement.legacy_segment_id) or requirement.id
-            planned = float(requirement.planned_hours)
-            locked = locked_by_requirement.get(requirement.id, 0.0)
-            result[reference] = {
-                "planned_hours": round(planned, 2),
-                "locked_hours": round(locked, 2),
-                "overallocated_hours": round(max(locked - planned, 0.0), 2),
-            }
-        return result
+        return _allocation_projection_metrics(
+            self._overallocation_session,
+            requirements,
+        )
 
     @staticmethod
     def _enrich(
         row: SegmentReadModel,
-        metrics: Mapping[str, float] | None,
+        metrics: Mapping[str, object] | None,
     ) -> SegmentReadModel:
         values = metrics or {}
         locked = float(values.get("locked_hours", 0.0))
-        excess = float(values.get("overallocated_hours", 0.0))
+        replaceable = float(values.get("replaceable_hours", 0.0))
+        covered = float(values.get("covered_hours", 0.0))
+        rebuild = float(values.get("automatic_rebuild_hours", 0.0))
+        remaining = float(values.get("remaining_hours", 0.0))
+        coverage_excess = float(values.get("excess_hours", 0.0))
+        locked_excess = float(values.get("overallocated_hours", 0.0))
+        mobilized = values.get("mobilized_resources", ())
+        if not isinstance(mobilized, tuple):
+            mobilized = ()
         return replace(
             row,
+            mobilized_resources=mobilized,
             locked_hours=round(locked, 2),
-            overallocated_hours=round(excess, 2),
-            overallocated=excess > TOLERANCE_HOURS,
+            replaceable_hours=round(replaceable, 2),
+            covered_hours=round(covered, 2),
+            automatic_rebuild_hours=round(rebuild, 2),
+            remaining_hours=round(remaining, 2),
+            excess_hours=round(coverage_excess, 2),
+            overallocated_hours=round(locked_excess, 2),
+            overallocated=locked_excess > TOLERANCE_HOURS,
         )
 
     def list(self, *, include_cancelled: bool = True) -> Sequence[SegmentReadModel]:
@@ -138,7 +262,7 @@ class SqlSegmentRepositoryWithAllocationMetrics(SqlSegmentRepository):
         row = super().get(segment_id)
         if row is None:
             return None
-        return self._enrich(row, _segment_metrics(self._overallocation_session, row.segment_id))
+        return self._enrich(row, _segment_projection_metrics(self._overallocation_session, row.segment_id))
 
 
 class SqlOverallocationAllocationCommandAdapter(SqlAllocationCommandAdapter):
