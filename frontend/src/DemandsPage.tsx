@@ -6,6 +6,7 @@ import {
   CompetencyReadModel,
   ContactLinkReadModel,
   DemandReadModel,
+  DemandDetailReadModel,
   DemandRequesterReadModel,
   DemandWrite,
   ProjectReadModel,
@@ -16,12 +17,11 @@ import {
   createDemand,
   getBusinessContacts,
   getCompetencies,
-  getDemand,
+  getDemandDetail,
   getDemandBusinessContacts,
   getDemandRequesters,
   getDemands,
   getProjects,
-  getRequestLineContactResolution,
   getResources,
   getTaskCatalog,
   getWorkPackages,
@@ -31,6 +31,7 @@ import {
 import CompetencyPicker from "./CompetencyPicker";
 import { ContactSelect, ResolutionSummary } from "./BusinessContactUi";
 import { useAuth } from "./AuthContext";
+import DemandDetail from "./DemandDetail";
 import DemandLinesEditor, {
   DemandLineDefaults,
   DemandLineDraft,
@@ -218,6 +219,7 @@ export default function DemandsPage() {
   const [workPackages, setWorkPackages] = useState<WorkPackageReadModel[]>([]);
   const [selectedNumber, setSelectedNumber] = useState<string | null>(null);
   const [selectedDemand, setSelectedDemand] = useState<DemandReadModel | null>(null);
+  const [selectedDetail, setSelectedDetail] = useState<DemandDetailReadModel | null>(null);
   const [creating, setCreating] = useState(false);
   const [form, setForm] = useState<FormState>(() => emptyForm());
   const [lineMode, setLineMode] = useState(false);
@@ -226,6 +228,8 @@ export default function DemandsPage() {
   const [loading, setLoading] = useState(true);
   const [detailLoading, setDetailLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [editorDirty, setEditorDirty] = useState(false);
+  const [contextDirty, setContextDirty] = useState(false);
   const [overridePending, setOverridePending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -278,10 +282,12 @@ export default function DemandsPage() {
     setDetailLoading(true);
     setError(null);
     Promise.all([
-      getDemand(selectedNumber, controller.signal),
+      getDemandDetail(selectedNumber, controller.signal),
       getDemandBusinessContacts(selectedNumber, controller.signal),
     ])
-      .then(async ([demand, contactLink]) => {
+      .then(([detail, contactLink]) => {
+        const demand = detail.demand;
+        setSelectedDetail(detail);
         setSelectedDemand(demand);
         setDemandContactLink(contactLink);
         setForm(formFromDemand(demand));
@@ -289,14 +295,15 @@ export default function DemandsPage() {
         const activeLines = (demand.lines ?? []).filter((line) => line.active);
         setLines(activeLines.map(demandLineDraftFromReadModel));
         setGenerationCount(String(Math.max(activeLines.length, 1)));
-        const resolutions = await Promise.all(
-          activeLines.map((line) => getRequestLineContactResolution(line.line_id, controller.signal)),
+        setLineContactResolutions(
+          Object.fromEntries(
+            detail.lines
+              .filter((row) => row.contacts)
+              .map((row) => [row.line.line_id, row.contacts!]),
+          ),
         );
-        if (!controller.signal.aborted) {
-          setLineContactResolutions(
-            Object.fromEntries(resolutions.map((row) => [row.line_id, row])),
-          );
-        }
+        setEditorDirty(false);
+        setContextDirty(false);
       })
       .catch((reason: unknown) => {
         if (reason instanceof DOMException && reason.name === "AbortError") return;
@@ -330,6 +337,16 @@ export default function DemandsPage() {
       });
     return () => controller.abort();
   }, [form.project_number, scope]);
+
+  useEffect(() => {
+    if (!editorDirty && !contextDirty) return;
+    const warnBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", warnBeforeUnload);
+    return () => window.removeEventListener("beforeunload", warnBeforeUnload);
+  }, [editorDirty, contextDirty]);
 
   const statusOptions = useMemo(
     () => [...new Set(demands.map((row) => row.status).filter(Boolean))].sort((a, b) => a.localeCompare(b, "fr-CA")),
@@ -374,32 +391,44 @@ export default function DemandsPage() {
   async function reloadDemand(number: string) {
     const [rows, detail, contactLink] = await Promise.all([
       getDemands(undefined, scope),
-      getDemand(number),
+      getDemandDetail(number),
       getDemandBusinessContacts(number),
     ]);
-    const activeLines = (detail.lines ?? []).filter((line) => line.active);
-    const resolutions = await Promise.all(
-      activeLines.map((line) => getRequestLineContactResolution(line.line_id)),
-    );
+    const demand = detail.demand;
+    const activeLines = (demand.lines ?? []).filter((line) => line.active);
     setDemands(rows);
-    setSelectedNumber(detail.number);
-    setSelectedDemand(detail);
+    setSelectedNumber(demand.number);
+    setSelectedDetail(detail);
+    setSelectedDemand(demand);
     setDemandContactLink(contactLink);
     setLineContactResolutions(
-      Object.fromEntries(resolutions.map((row) => [row.line_id, row])),
+      Object.fromEntries(
+        detail.lines
+          .filter((row) => row.contacts)
+          .map((row) => [row.line.line_id, row.contacts!]),
+      ),
     );
-    setForm(formFromDemand(detail));
-    setLineMode(Boolean(detail.line_mode));
+    setForm(formFromDemand(demand));
+    setLineMode(Boolean(demand.line_mode));
     setLines(activeLines.map(demandLineDraftFromReadModel));
     setGenerationCount(String(Math.max(activeLines.length, 1)));
+    setEditorDirty(false);
+    setContextDirty(false);
+  }
+
+  function confirmDiscardChanges() {
+    if (!editorDirty && !contextDirty) return true;
+    return window.confirm("Des modifications non enregistrées seront perdues. Continuer?");
   }
 
   function beginCreate() {
+    if (!confirmDiscardChanges()) return;
     const firstProject = projects[0]?.number ?? "";
     setDetailLoading(false);
     setCreating(true);
     setSelectedNumber(null);
     setSelectedDemand(null);
+    setSelectedDetail(null);
     setDemandContactLink(null);
     setLineContactResolutions({});
     setForm(emptyForm(firstProject, principal?.local_user_id ?? ""));
@@ -408,13 +437,17 @@ export default function DemandsPage() {
     setGenerationCount("2");
     setNotice(null);
     setError(null);
+    setEditorDirty(false);
+    setContextDirty(false);
     createRetry.current = null;
   }
 
   function selectDemand(number: string) {
-    if (saving) return;
+    if (saving || number === selectedNumber) return;
+    if (!confirmDiscardChanges()) return;
     setCreating(false);
     setSelectedNumber(number);
+    setSelectedDetail(null);
     setDemandContactLink(null);
     setLineContactResolutions({});
     setLineMode(false);
@@ -426,6 +459,7 @@ export default function DemandsPage() {
 
   function setField<K extends keyof FormState>(field: K, value: FormState[K]) {
     setForm((current) => ({ ...current, [field]: value }));
+    setEditorDirty(true);
   }
 
   function activateLineMode() {
@@ -433,6 +467,7 @@ export default function DemandsPage() {
     const count = Number.isInteger(requested) && requested > 0 ? requested : 1;
     const defaults = lineDefaultsFromForm(form, resources);
     setLineMode(true);
+    setEditorDirty(true);
     setGenerationCount(String(count));
     setLines(Array.from({ length: count }, () => newDemandLine(defaults)));
     setError(null);
@@ -442,6 +477,7 @@ export default function DemandsPage() {
   function revertUnsavedLineMode() {
     setLineMode(false);
     setLines([]);
+    setEditorDirty(true);
     setNotice("Retour au besoin simple. Aucune ligne n’a encore été enregistrée.");
     setError(null);
   }
@@ -705,6 +741,11 @@ export default function DemandsPage() {
               </div>
 
               {detailLoading && <div className="editor-loading">Actualisation du détail…</div>}
+              {!detailLoading && selectedDetail && !creating && (
+                <div className="editor-loading">
+                  Contexte backend v{selectedDetail.version} · {selectedDetail.workflow.available_actions.length} action(s) disponible(s)
+                </div>
+              )}
 
               <div className="project-master-card">
                 <div>
@@ -718,56 +759,7 @@ export default function DemandsPage() {
                 <small>Ces données proviennent du projet et restent en lecture seule dans la demande.</small>
               </div>
 
-              {!creating && selectedDemand && (
-                <section className="demand-contact-card">
-                  <div className="panel-heading">
-                    <div>
-                      <span className="eyebrow">Responsabilité opérationnelle</span>
-                      <h3>Contacts effectifs</h3>
-                      <p>La hiérarchie est calculée par FastAPI. React affiche la source; il ne décide pas du fallback.</p>
-                    </div>
-                  </div>
 
-                  <label>
-                    Override du responsable pour toute la demande
-                    <ContactSelect
-                      contacts={contacts}
-                      value={demandContactLink?.operational_responsible_override_contact_id ?? null}
-                      onChange={(value) => void changeOperationalOverride(value)}
-                      disabled={!canManageDemands || overridePending || saving}
-                      inheritLabel="Hériter de la tâche puis du chargé de projet"
-                    />
-                    {!canManageDemands && <small>Lecture seule : permission manage_demands requise pour modifier.</small>}
-                    {selectedDemand.status === "En planification" && canManageDemands && (
-                      <small>Modifier cet override déclenchera une nouvelle approbation sans modifier immédiatement le planning approuvé.</small>
-                    )}
-                  </label>
-
-                  <div className="demand-line-contact-resolutions">
-                    {(selectedDemand.lines ?? []).filter((line) => line.active).map((line, index) => {
-                      const resolution = lineContactResolutions[line.line_id];
-                      if (!resolution) return null;
-                      return (
-                        <article className="demand-line-contact-row" key={line.line_id}>
-                          <div className="demand-line-contact-heading">
-                            <strong>Ligne {index + 1}</strong>
-                            <span>
-                              {resolution.task_code ? `Tâche ${resolution.task_code}` : "Sans tâche"}
-                              {resolution.proposed_resource_name ? ` · ${resolution.proposed_resource_name}` : ""}
-                            </span>
-                          </div>
-                          <ResolutionSummary title="Responsable opérationnel" resolution={resolution.operational_responsible} />
-                          <ResolutionSummary title="Coordonnateur" resolution={resolution.coordinator} />
-                          {resolution.diagnostics.length > 0 && (
-                            <small className="contact-diagnostics">{resolution.diagnostics.join(" · ")}</small>
-                          )}
-                        </article>
-                      );
-                    })}
-                  </div>
-                  <small className="contact-context-note">Résolution courante des lignes enregistrées. Le contexte d'un planning déjà approuvé est conservé séparément sur ses besoins jusqu'à la réapprobation.</small>
-                </section>
-              )}
 
               <div className="demand-form-grid">
                 <label className="span-2">
@@ -777,6 +769,7 @@ export default function DemandsPage() {
                     onChange={(event) => {
                       const projectNumber = event.target.value;
                       setTaskSearch("");
+                      setEditorDirty(true);
                       setForm((current) => ({
                         ...current,
                         project_number: projectNumber,
@@ -870,7 +863,10 @@ export default function DemandsPage() {
               {lineMode ? (
                 <DemandLinesEditor
                   lines={lines}
-                  onChange={setLines}
+                  onChange={(next) => {
+                    setLines(next);
+                    setEditorDirty(true);
+                  }}
                   defaults={lineDefaultsFromForm(form, resources)}
                   generationCount={generationCount}
                   onGenerationCountChange={setGenerationCount}
@@ -1003,10 +999,69 @@ export default function DemandsPage() {
                 </span>
               </div>
 
+              {!creating && selectedDemand && (
+                <details className="demand-advanced-options">
+                  <summary>
+                    <strong>Options avancées</strong>
+                    <span>Responsabilité opérationnelle et dérogations de contexte.</span>
+                  </summary>
+                <section className="demand-contact-card">
+                  <div className="panel-heading">
+                    <div>
+                      <span className="eyebrow">Responsabilité opérationnelle</span>
+                      <h3>Contacts effectifs</h3>
+                      <p>La hiérarchie est calculée par FastAPI. React affiche la source; il ne décide pas du fallback.</p>
+                    </div>
+                  </div>
+
+                  <label>
+                    Override du responsable pour toute la demande
+                    <ContactSelect
+                      contacts={contacts}
+                      value={demandContactLink?.operational_responsible_override_contact_id ?? null}
+                      onChange={(value) => void changeOperationalOverride(value)}
+                      disabled={!canManageDemands || overridePending || saving}
+                      inheritLabel="Hériter de la tâche puis du chargé de projet"
+                    />
+                    {!canManageDemands && <small>Lecture seule : permission manage_demands requise pour modifier.</small>}
+                    {selectedDemand.status === "En planification" && canManageDemands && (
+                      <small>Modifier cet override déclenchera une nouvelle approbation sans modifier immédiatement le planning approuvé.</small>
+                    )}
+                  </label>
+
+                  <div className="demand-line-contact-resolutions">
+                    {(selectedDemand.lines ?? []).filter((line) => line.active).map((line, index) => {
+                      const resolution = lineContactResolutions[line.line_id];
+                      if (!resolution) return null;
+                      return (
+                        <article className="demand-line-contact-row" key={line.line_id}>
+                          <div className="demand-line-contact-heading">
+                            <strong>Ligne {index + 1}</strong>
+                            <span>
+                              {resolution.task_code ? `Tâche ${resolution.task_code}` : "Sans tâche"}
+                              {resolution.proposed_resource_name ? ` · ${resolution.proposed_resource_name}` : ""}
+                            </span>
+                          </div>
+                          <ResolutionSummary title="Responsable opérationnel" resolution={resolution.operational_responsible} />
+                          <ResolutionSummary title="Coordonnateur" resolution={resolution.coordinator} />
+                          {resolution.diagnostics.length > 0 && (
+                            <small className="contact-diagnostics">{resolution.diagnostics.join(" · ")}</small>
+                          )}
+                        </article>
+                      );
+                    })}
+                  </div>
+                  <small className="contact-context-note">Résolution courante des lignes enregistrées. Le contexte d'un planning déjà approuvé est conservé séparément sur ses besoins jusqu'à la réapprobation.</small>
+                </section>
+                </details>
+              )}
+
               <div className="demand-editor-actions">
                 {creating && (
                   <button type="button" className="secondary-button" onClick={() => {
+                    if (!confirmDiscardChanges()) return;
                     setCreating(false);
+                    setEditorDirty(false);
                     setSelectedNumber(demands[0]?.number ?? null);
                   }} disabled={saving}>Annuler</button>
                 )}
@@ -1020,6 +1075,13 @@ export default function DemandsPage() {
               <strong>Aucune demande sélectionnée</strong>
               <span>Sélectionne une demande ou crée un nouveau brouillon.</span>
             </div>
+          )}
+          {!creating && selectedDemand && (
+            <DemandDetail
+              demandNumber={selectedDemand.number}
+              onChanged={() => void reloadDemand(selectedDemand.number)}
+              onDirtyChange={setContextDirty}
+            />
           )}
         </div>
       </div>
