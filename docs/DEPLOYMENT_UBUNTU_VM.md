@@ -110,21 +110,44 @@ Les outils de développement auxiliaires, comme le Dev Cockpit, doivent utiliser
 
 ## Dev Cockpit
 
-Le Dev Cockpit est un outil de développement et d'exploitation locale, pas une dépendance du runtime métier.
+Le Dev Cockpit est intégré au `docker-compose.yml` principal comme **outil local/dev optionnel**. Il n'est pas une dépendance du runtime métier et ne fait pas partie de la promotion de production.
 
-S'il est intégré au Compose du dépôt, privilégier :
+Le service `dev-cockpit` est placé sous le profil Compose `dev-tools`. Par conséquent, le lancement normal :
+
+```bash
+docker compose up -d --build
+```
+
+démarre RessourcePlanner sans le cockpit.
+
+Sur une VM ou un poste de développement, la commande explicite :
 
 ```bash
 docker compose --profile dev-tools up -d --build
 ```
 
-avec une publication locale telle que :
+démarre RessourcePlanner et le cockpit ensemble. Les publications par défaut restent limitées à la loopback de l'hôte :
 
 ```text
-127.0.0.1:8081
+RessourcePlanner  127.0.0.1:8080
+Dev Cockpit       127.0.0.1:8081
 ```
 
-Il ne doit pas être démarré automatiquement avec le runtime de production.
+Le cockpit a `restart: "no"` : après un redémarrage de Docker ou de la VM, il doit être relancé explicitement avec le profil `dev-tools`.
+
+### Règles de production
+
+Sur la VM Ubuntu de production :
+
+- ne pas activer le profil `dev-tools`;
+- ne pas provisionner `DEV_COCKPIT_GITHUB_TOKEN` ni les autres variables `DEV_COCKPIT_*` dans la configuration de production;
+- ne pas publier le port 8081 sur le LAN;
+- ne pas ajouter le cockpit aux procédures de promotion, rollback ou démarrage du runtime métier;
+- conserver les déploiements explicites : les workflows GitHub Actions du dépôt valident le Compose et les smokes, mais ne déploient pas automatiquement la VM.
+
+Le token GitHub du cockpit reste uniquement dans l'environnement du backend cockpit. Il n'est ni injecté dans le build React, ni retourné par l'API.
+
+Pour un diagnostic ponctuel sur une **VM de développement**, conserver l'écoute loopback et utiliser au besoin un tunnel SSH plutôt que d'ouvrir le port 8081 sur le réseau.
 
 ## SQL Server
 
