@@ -8,17 +8,20 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class ReactDemandPeriodsContractTests(unittest.TestCase):
-    def test_workspace_exposes_periods_without_replacing_demand_editor(self) -> None:
+    def test_periods_are_embedded_in_the_unified_demand_detail(self) -> None:
         workspace = (ROOT / "frontend" / "src" / "DemandsWorkspace.tsx").read_text(
             encoding="utf-8"
         )
-        app = (ROOT / "frontend" / "src" / "App.tsx").read_text(encoding="utf-8")
+        detail = (ROOT / "frontend" / "src" / "DemandDetail.tsx").read_text(
+            encoding="utf-8"
+        )
         main = (ROOT / "frontend" / "src" / "main.tsx").read_text(encoding="utf-8")
 
         self.assertIn("<DemandsPage />", workspace)
-        self.assertIn("<DemandPeriodsPage />", workspace)
-        self.assertIn("Périodes & alternatives", workspace)
-        self.assertIn("<DemandsWorkspace />", app)
+        self.assertNotIn("<DemandPeriodsPage />", workspace)
+        self.assertNotIn("Périodes & alternatives", workspace)
+        self.assertIn("<DemandPeriodsPage", detail)
+        self.assertIn("demandNumber={demandNumber}", detail)
         self.assertIn('import "./demand-periods.css"', main)
 
     def test_api_client_uses_existing_period_and_selection_endpoints(self) -> None:
@@ -50,7 +53,7 @@ class ReactDemandPeriodsContractTests(unittest.TestCase):
         self.assertIn("selectedDemand?.line_mode", source)
         self.assertIn("singleSlot={Boolean(selectedLine)}", source)
         self.assertIn("Une période de RequestLine représente exactement un slot.", source)
-        self.assertIn("disabled={saving || dirty || period.selected}", source)
+        self.assertIn("disabled={!canEdit || saving || dirty || period.selected}", source)
 
     def test_period_save_preserves_backend_authority_and_reapproval_signal(self) -> None:
         source = (ROOT / "frontend" / "src" / "DemandPeriodsPage.tsx").read_text(
