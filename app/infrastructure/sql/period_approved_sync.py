@@ -1018,7 +1018,21 @@ class SqlPeriodAwareApprovedDemandSyncAdapter(ApprovedDemandSyncPort):
             self._legacy.sync_approved(demand_number)
             legacy_line = self._session.get(RequestLine, request.id)
             materialized = self._active_requirements(request.id)
+            legacy_competency_ids = (
+                prepared.specs[0].competency_ids
+                if prepared.specs
+                else ()
+            )
             for requirement in materialized:
+                requirement.required_competency_id = (
+                    legacy_competency_ids[0]
+                    if len(legacy_competency_ids) == 1
+                    else None
+                )
+                self._replace_requirement_competencies(
+                    requirement,
+                    legacy_competency_ids,
+                )
                 self._capture_approved_contact_context(
                     request,
                     requirement,
