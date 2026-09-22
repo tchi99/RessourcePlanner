@@ -95,12 +95,14 @@ type DemandWorkflowPageProps = {
   demandNumber?: string;
   embedded?: boolean;
   onChanged?: () => void;
+  refreshToken?: number;
 };
 
 export default function DemandWorkflowPage({
   demandNumber,
   embedded = false,
   onChanged,
+  refreshToken = 0,
 }: DemandWorkflowPageProps = {}) {
   const [demands, setDemands] = useState<DemandReadModel[]>([]);
   const [selectedNumber, setSelectedNumber] = useState("");
@@ -140,6 +142,7 @@ export default function DemandWorkflowPage({
   useEffect(() => {
     let active = true;
     setLoading(true);
+    setWorkflowState(null);
     const demandRequest = demandNumber
       ? getDemand(demandNumber).then((row) => [row])
       : getDemands();
@@ -169,7 +172,7 @@ export default function DemandWorkflowPage({
         if (active) setLoading(false);
       });
     return () => { active = false; };
-  }, [demandNumber]);
+  }, [demandNumber, refreshToken]);
 
   useEffect(() => {
     if (!selectedNumber || loading) return;
