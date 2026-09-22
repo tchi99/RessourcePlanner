@@ -126,10 +126,10 @@ export function cancelSegment(segmentId: string) {
   );
 }
 
-export function assignSegment(segmentId: string, technician: string) {
+export function assignSegment(segmentId: string, resourceId: string) {
   return sendJson<SegmentMutationResult>(
     `/api/v1/segments/${encodeURIComponent(segmentId)}/assign`,
     "POST",
-    { technician },
+    { resource_id: resourceId },
   );
 }
