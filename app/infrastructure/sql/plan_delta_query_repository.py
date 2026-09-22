@@ -729,6 +729,7 @@ class SqlPlannerQueryRepositoryWithPlanDelta(SqlPlannerQueryRepositoryWeb):
             proposed_calculation.segments,
             proposed_calculation.locked_allocations,
             proposed_calculation.capacity_by_resource_day,
+            preserve_locked_segment_ids=proposed_calculation.preserved_segment_ids,
             outside_schedule_eligible_by_resource_day=(
                 proposed_calculation.outside_schedule_eligible_by_resource_day
             ),

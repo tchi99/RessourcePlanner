@@ -279,6 +279,7 @@ def build_allocation_plan(
     locked_allocations: Sequence[LockedAllocationInput],
     capacity_by_resource_day: Mapping[CapacityKey, float],
     *,
+    preserve_locked_segment_ids: Sequence[str] | set[str] | frozenset[str] | None = None,
     outside_schedule_eligible_by_resource_day: Mapping[CapacityKey, bool] | None = None,
     outside_schedule_daily_limit: float = 8.0,
     missing_allocation_type: str = MISSING_ALLOCATION_TYPE,
@@ -293,13 +294,18 @@ def build_allocation_plan(
     """
     active_segments = [segment for segment in segments if float(segment.hours) > 0]
     segment_map = {segment.segment_id: segment for segment in active_segments}
+    preservable_segment_ids = (
+        set(segment_map)
+        if preserve_locked_segment_ids is None
+        else {str(value) for value in preserve_locked_segment_ids if str(value)}
+    )
 
     preserved: list[PlannedAllocation] = []
     locked_by_segment: dict[str, float] = {}
     locked_days_by_segment: dict[str, set[date]] = {}
     normal_used: dict[CapacityKey, float] = {}
     for allocation in locked_allocations:
-        if allocation.segment_id not in segment_map or float(allocation.hours) <= 0:
+        if allocation.segment_id not in preservable_segment_ids or float(allocation.hours) <= 0:
             continue
         hours = float(allocation.hours)
         preserved.append(
@@ -331,7 +337,11 @@ def build_allocation_plan(
 
     allocations: list[PlannedAllocation] = list(preserved)
     missing_total = 0.0
-    overtime_total = sum(item.hours for item in preserved if item.outside_schedule)
+    overtime_total = sum(
+        item.hours
+        for item in preserved
+        if item.outside_schedule and item.segment_id in segment_map
+    )
     missing_count = 0
 
     def place_segment(segment: SegmentInput, allocation_type: str) -> None:
@@ -438,7 +448,11 @@ def build_allocation_plan(
         )
     )
     requested = sum(float(segment.hours) for segment in active_segments)
-    allocated = sum(float(item.hours) for item in allocations if item.counts_as_allocated)
+    allocated = sum(
+        float(item.hours)
+        for item in allocations
+        if item.counts_as_allocated and item.segment_id in segment_map
+    )
     diagnostics = _active_day_diagnostics(active_segments, allocations)
     return PlanResult(
         allocations=tuple(allocations),

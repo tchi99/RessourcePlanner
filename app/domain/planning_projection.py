@@ -39,6 +39,7 @@ class PlanningCalculationSnapshot:
     capacity_by_resource_day: Mapping[CapacityKey, float]
     outside_schedule_eligible_by_resource_day: Mapping[CapacityKey, bool]
     persisted_allocations: tuple[AllocationProjection, ...]
+    preserved_segment_ids: frozenset[str]
     unsupported_segment_ids: tuple[str, ...]
 
 
@@ -147,8 +148,22 @@ def _segment_inputs(
     return tuple(inputs), tuple(sorted(set(unsupported)))
 
 
+def _active_segment_ids(
+    segment_rows: Sequence[dict[str, Any]],
+) -> frozenset[str]:
+    return frozenset(
+        segment_id
+        for row in segment_rows
+        if str(row.get("Statut") or "") not in {"Annulé", "Terminé"}
+        for segment_id in (str(row.get("IDSegment") or "").strip(),)
+        if segment_id
+    )
+
+
 def _locked_inputs(
     allocation_rows: Sequence[dict[str, Any]],
+    *,
+    preserved_segment_ids: frozenset[str],
 ) -> tuple[LockedAllocationInput, ...]:
     result: list[LockedAllocationInput] = []
     for row in allocation_rows:
@@ -158,7 +173,13 @@ def _locked_inputs(
         resource_id = str(row.get("Technicien") or "").strip()
         segment_id = str(row.get("IDSegment") or "").strip()
         hours = _number(row.get("Heures"))
-        if not day or not resource_id or not segment_id or hours <= 0:
+        if (
+            not day
+            or not resource_id
+            or not segment_id
+            or segment_id not in preserved_segment_ids
+            or hours <= 0
+        ):
             continue
         result.append(
             LockedAllocationInput(
@@ -212,7 +233,7 @@ def _outside_schedule_eligibility_snapshot(
 
 def _persisted_projection(
     allocation_rows: Sequence[dict[str, Any]],
-    included_segment_ids: set[str],
+    included_segment_ids: set[str] | frozenset[str],
 ) -> tuple[AllocationProjection, ...]:
     result: list[AllocationProjection] = []
     for row in allocation_rows:
@@ -244,8 +265,11 @@ def project_planning_snapshot(snapshot: PlanningSnapshot) -> PlanningCalculation
 
     schedulable = _schedulable_resource_ids(snapshot.technicians, snapshot.availability)
     segments, unsupported = _segment_inputs(snapshot.segments, snapshot.demands, schedulable)
-    locked = _locked_inputs(snapshot.allocations)
-    included_ids = {segment.segment_id for segment in segments}
+    preserved_segment_ids = _active_segment_ids(snapshot.segments)
+    locked = _locked_inputs(
+        snapshot.allocations,
+        preserved_segment_ids=preserved_segment_ids,
+    )
 
     return PlanningCalculationSnapshot(
         segments=segments,
@@ -255,6 +279,10 @@ def project_planning_snapshot(snapshot: PlanningSnapshot) -> PlanningCalculation
             snapshot.availability,
             segments,
         ),
-        persisted_allocations=_persisted_projection(snapshot.allocations, included_ids),
+        persisted_allocations=_persisted_projection(
+            snapshot.allocations,
+            preserved_segment_ids,
+        ),
+        preserved_segment_ids=preserved_segment_ids,
         unsupported_segment_ids=unsupported,
     )

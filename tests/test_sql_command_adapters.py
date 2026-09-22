@@ -12,6 +12,7 @@ from app.application.allocation_service import AllocationService
 from app.application.demand_service import DemandService
 from app.application.planning_service import PlanningService
 from app.application.quick_shift_service import QuickShiftService
+from app.domain.planning_engine import MISSING_ALLOCATION_TYPE
 from app.infrastructure.sql import (
     Base,
     ORIGIN_QUICK_SHIFT,
@@ -80,7 +81,7 @@ class SqlCommandAdapterTests(unittest.TestCase):
         *,
         identifier: str = "SEG-LOCK",
         hours: Decimal = Decimal("12"),
-        resource_id: str = "R1",
+        resource_id: str | None = "R1",
     ) -> ResourceRequirement:
         requirement = ResourceRequirement(
             id=f"REQ-{identifier}",
@@ -136,6 +137,60 @@ class SqlCommandAdapterTests(unittest.TestCase):
             ).all()
             self.assertEqual(sum(float(row.hours) for row in shifts), 12.0)
             self.assertEqual(sum(1 for row in shifts if row.locked), 1)
+
+    def test_rebuild_counts_locked_shift_capacity_without_automatic_target(self) -> None:
+        with transactional_session(self.factory) as session:
+            locked_requirement = self._add_requirement(
+                session,
+                identifier="SEG-LOCKED-ONLY",
+                hours=Decimal("8"),
+                resource_id=None,
+            )
+            target_requirement = self._add_requirement(
+                session,
+                identifier="SEG-BOB",
+                hours=Decimal("8"),
+                resource_id="R2",
+            )
+            target_requirement.end_date = D1
+            session.add(
+                Shift(
+                    id="LOCK-NO-TARGET",
+                    legacy_allocation_id="MAN-NO-TARGET",
+                    resource_requirement_id=locked_requirement.id,
+                    resource_id="R2",
+                    work_date=D1,
+                    hours=Decimal("8"),
+                    allocation_type="Flexible",
+                    source="MANUAL",
+                    locked=True,
+                )
+            )
+            session.flush()
+
+            summary = SqlPlanningCommandAdapter(session).rebuild()
+
+            locked = session.get(Shift, "LOCK-NO-TARGET")
+            self.assertIsNotNone(locked)
+            assert locked is not None
+            self.assertTrue(locked.locked)
+            self.assertEqual(locked.resource_id, "R2")
+            self.assertIsNone(locked_requirement.assigned_resource_id)
+
+            target_shifts = session.scalars(
+                select(Shift).where(
+                    Shift.resource_requirement_id == target_requirement.id
+                )
+            ).all()
+            counted_target = [
+                row
+                for row in target_shifts
+                if row.allocation_type != MISSING_ALLOCATION_TYPE
+            ]
+            self.assertEqual(counted_target, [])
+            self.assertEqual(summary["locked_allocations"], 1)
+            self.assertEqual(summary["allocated_hours"], 0.0)
+            self.assertEqual(summary["unallocated_hours"], 8.0)
 
     def test_manual_shift_create_release_and_total_guard(self) -> None:
         with transactional_session(self.factory) as session:

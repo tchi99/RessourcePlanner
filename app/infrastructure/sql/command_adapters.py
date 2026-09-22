@@ -82,6 +82,7 @@ class SqlPlanningCommandAdapter(PlanningCommandPort):
             calculation.segments,
             calculation.locked_allocations,
             calculation.capacity_by_resource_day,
+            preserve_locked_segment_ids=calculation.preserved_segment_ids,
             outside_schedule_eligible_by_resource_day=(
                 calculation.outside_schedule_eligible_by_resource_day
             ),
