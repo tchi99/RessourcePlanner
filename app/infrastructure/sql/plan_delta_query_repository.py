@@ -869,7 +869,7 @@ class SqlPlannerQueryRepositoryWithPlanDelta(SqlPlannerQueryRepositoryWeb):
                     "envelope_reason",
                     approval_state.envelope_reason,
                 )
-            return delta(**values)
+            return DemandPlanDeltaReadModel(**values)
 
         current_requirements = self._current_requirements(request.id)
         if request.status != "Soumise":
