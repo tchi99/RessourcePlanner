@@ -1,0 +1,36 @@
+{
+  "manifest_version": 3,
+  "name": "RessourcePlanner Dev Cockpit Companion",
+  "version": "0.1.0",
+  "description": "Relais local entre les onglets ChatGPT et le Dev Cockpit. Aucun contenu de conversation n'est transmis.",
+  "permissions": [
+    "storage"
+  ],
+  "host_permissions": [
+    "http://127.0.0.1/*",
+    "http://localhost/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "https://chatgpt.com/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "background": {
+    "scripts": [
+      "background.js"
+    ]
+  },
+  "options_ui": {
+    "page": "options.html",
+    "open_in_tab": true
+  },
+  "action": {
+    "default_title": "Dev Cockpit Companion"
+  }
+}
