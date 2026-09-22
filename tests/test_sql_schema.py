@@ -32,6 +32,8 @@ EXPECTED_TABLES = {
     "competencies",
     "planning_change_history",
     "projects",
+    "request_approval_references",
+    "request_approval_revisions",
     "request_lines",
     "request_line_competencies",
     "resource_requirement_competencies",
@@ -84,6 +86,8 @@ class SqlSchemaTests(unittest.TestCase):
             "resource_requirement_competencies"
         ].c
         selections = Base.metadata.tables["workforce_request_period_selections"].c
+        approval_revisions = Base.metadata.tables["request_approval_revisions"].c
+        approval_references = Base.metadata.tables["request_approval_references"].c
 
         self.assertFalse(requirements.project_id.nullable)
         self.assertTrue(requirements.workforce_request_id.nullable)
@@ -94,6 +98,15 @@ class SqlSchemaTests(unittest.TestCase):
         )
         self.assertTrue(requirements.approved_request_version.nullable)
         self.assertFalse(requirements.approved_contact_context_status.nullable)
+        self.assertTrue(requirements.approval_revision_id.nullable)
+        self.assertTrue(requirements.approved_entry_key.nullable)
+        self.assertFalse(requirements.approval_reference_status.nullable)
+        self.assertFalse(approval_revisions.workforce_request_id.nullable)
+        self.assertTrue(approval_revisions.previous_revision_id.nullable)
+        self.assertFalse(approval_revisions.payload_text.nullable)
+        self.assertFalse(approval_references.workforce_request_id.nullable)
+        self.assertTrue(approval_references.active_revision_id.nullable)
+        self.assertFalse(approval_references.status.nullable)
         self.assertTrue(requirements.required_resource_class.nullable)
         self.assertTrue(projects.project_manager_contact_id.nullable)
         self.assertTrue(resources.coordinator_contact_id.nullable)
