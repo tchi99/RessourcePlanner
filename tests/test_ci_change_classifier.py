@@ -97,10 +97,6 @@ class CiChangeClassifierTests(unittest.TestCase):
         self.assertFalse(cockpit_only.runtime)
         self.assertFalse(cockpit_only.conservative)
 
-        self.assertIn("RUN_PYTHON_VALIDATION:", primary)
-        self.assertIn("Record lightweight required check", primary)
-        self.assertIn('name: Python verification (shard ${{ matrix.shard_index }})', primary)
-
         for shared_path in ("docker-compose.yml", ".env.example"):
             marker = f'      - "{shared_path}"'
             self.assertIn(marker, primary)

@@ -10,7 +10,7 @@ Le diff Git est calculé avec `--no-renames`. Un renommage est donc vu comme une
 | Backend / Python / tests / migrations | `app/**`, `tests/**`, `migrations/**`, `main.py`, `alembic.ini` | run | run | run | run |
 | Frontend | `frontend/**` | skip | skip | run | run |
 | Docker / déploiement / runtime partagé | Dockerfiles, Compose, scripts de lancement/installation, `deploy/**`, `.env.example`, `.dockerignore` | run | run | run | run |
-| Dev Cockpit seulement | `dev-cockpit/**` | skip | checks shards légers seulement | skip | skip |
+| Dev Cockpit seulement | `dev-cockpit/**` | skip | skip | skip | skip |
 | CI / dépendances / outillage | `.github/workflows/**`, `requirements*.txt`, `constraints*.txt`, `tools/**` | run | run | run | run |
 | Chemin non reconnu | tout autre chemin qui déclenche le workflow | run | run | run | run |
 
@@ -20,7 +20,7 @@ Le diff Git est calculé avec `--no-renames`. Un renommage est donc vu comme une
 - Un chemin inconnu est classé conservateur.
 - Une modification du workflow, des dépendances ou de l'outillage CI lance toutes les validations lourdes.
 - Si le job de classification échoue, les quatre jobs lourds utilisent `always()` et se lancent quand même. Le job de classification reste en échec, donc la CI demeure rouge.
-- Les noms existants des checks lourds restent inchangés. Les deux checks matriciels Python requis par la règle de branche sont toujours matérialisés; lorsqu'aucune validation Python n'est pertinente, chaque shard exécute seulement un no-op léger et termine en succès. Les autres validations non pertinentes restent `skipped`.
+- Les noms existants des checks lourds restent inchangés; une validation non pertinente apparaît comme `skipped` plutôt que de disparaître du workflow.
 
 ## Cas représentatifs
 
@@ -41,7 +41,7 @@ Le diff Git est calculé avec `--no-renames`. Un renommage est donc vu comme une
 
 ## Frontière Dev Cockpit
 
-Le workflow principal déclare `dev-cockpit/**` dans son filtre `pull_request.paths` afin que les checks requis existent aussi pour une PR strictement limitée au cockpit. Le classifieur reconnaît cette frontière et garde alors `backend=false`, `frontend=false`, `runtime=false` et `conservative=false` : les validations lourdes du runtime RessourcePlanner ne s'exécutent pas. Les deux contextes requis `Python verification (shard 0)` et `Python verification (shard 1)` sont toutefois matérialisés par un no-op très court, tandis que le workflow dédié `.github/workflows/dev-cockpit.yml` effectue la validation réelle du cockpit.
+Le workflow principal déclare `dev-cockpit/**` dans son filtre `pull_request.paths` afin que le check requis **Classify changed files** existe aussi pour une PR strictement limitée au cockpit. Le classifieur reconnaît cette frontière et garde alors `backend=false`, `frontend=false`, `runtime=false` et `conservative=false` : les validations lourdes du runtime RessourcePlanner restent donc `skipped`, tandis que le workflow dédié `.github/workflows/dev-cockpit.yml` effectue la validation réelle du cockpit.
 
 Les fichiers réellement partagés restent déclarés dans les deux workflows lorsque les deux surfaces doivent être validées, notamment `docker-compose.yml` et `.env.example`. Le workflow dédié lui-même reste couvert par le filtre global `.github/workflows/**` du workflow principal.
 

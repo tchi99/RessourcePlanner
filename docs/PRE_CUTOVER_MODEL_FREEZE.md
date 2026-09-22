@@ -33,6 +33,7 @@ Il est aligné sur le modèle actuel après #13, #328, #329 et #331. Les ADR sou
 - La révision approuvée immuable est la preuve d'autorisation; les `ResourceRequirement` ne suffisent pas à reconstruire toutes les alternatives approuvées.
 - `Tentative` / `Confirmée` reste distinct de l'approbation et peut évoluer opérationnellement lorsque l'enveloppe l'autorise.
 - Les mutations opérationnelles sensibles utilisent des versions attendues et signalent les conflits.
+- Tant que le rebuild reste global, les écritures concurrentes pertinentes du planning participent à la révision globale/CAS définie par ADR-005; l'acquisition se fait avant les lectures décisionnelles et couvre la transaction jusqu'au commit/rollback.
 
 ## Capacité, cible et ressources réelles
 
@@ -49,6 +50,7 @@ Il est aligné sur le modèle actuel après #13, #328, #329 et #331. Les ADR sou
 
 - FastAPI reste la frontière de mutation du frontend React.
 - Les créations HTTP sensibles utilisent une clé d'idempotence durable lorsqu'elles créent un nouvel objet opérationnel.
+- Les commandes composites de planning rejouent le reçu idempotent avant de rejeter une version devenue ancienne et ne font qu'un rebuild par succès neuf.
 - Les mutations métier explicites sont auditées avec l'acteur réel disponible.
 - Les identités historiques utiles au cutover restent préservées; les nouvelles relations utilisent des IDs stables plutôt que les noms.
 - Une exception ou surallocation explicite ne doit jamais réécrire silencieusement l'autorisation approuvée.
@@ -69,6 +71,6 @@ La prochaine validation environnementale structurante reste #162 : driver ODBC, 
 
 ## Références
 
-- #13, #162, #208, #288, #328, #329, #331, #336;
+- #13, #162, #208, #288, #328, #329, #331, #332, #336;
 - `docs/DEMANDS_V2_ARCHITECTURE.md`;
-- ADR-001 à ADR-004.
+- ADR-001 à ADR-005.
