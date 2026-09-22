@@ -13,6 +13,7 @@ from sqlalchemy import select
 from app.domain.manual_overallocation import manual_overallocation_impact
 from app.infrastructure.sql import (
     Base,
+    ORIGIN_AD_HOC,
     PlanningChangeHistory,
     Project,
     Resource,
@@ -100,6 +101,7 @@ class ManualOverallocationHttpTests(unittest.TestCase):
                         status="Planifié",
                         planning_type="Flexible",
                         confirmation="Confirmée",
+                        origin=ORIGIN_AD_HOC,
                     )
                 )
         engine.dispose()
