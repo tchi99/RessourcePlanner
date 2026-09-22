@@ -3,6 +3,7 @@ name: CI
 on:
   pull_request:
     paths:
+      - "AGENTS.md"
       - "main.py"
       - "Lancer_Application.bat"
       - "Lancer_Application_Legacy.bat"
