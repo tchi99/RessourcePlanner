@@ -25,6 +25,7 @@ from ...application.query_ports import PlannerQueryPort
 from ...application.read_models import DemandPeriodReadModel, DemandReadModel, SegmentReadModel
 from ...domain.availability_rules import availability_hours_for_day, availability_state_for_day
 from ...domain.confirmation import effective_confirmation
+from ...domain.planning_engine import MISSING_ALLOCATION_TYPE
 from ...domain.demand_periods import (
     DemandPeriodDefinition,
     projected_hours_in_window,
@@ -659,7 +660,6 @@ class SqlPlannerQueryRepository(PlannerQueryPort):
                 ResourceRequirement.status.notin_(("Annulé", "Terminé")),
                 ResourceRequirement.end_date >= start,
                 ResourceRequirement.start_date <= end,
-                ResourceRequirement.assigned_resource_id.is_not(None),
             )
         )
         if identifiers is not None:
@@ -721,6 +721,8 @@ class SqlPlannerQueryRepository(PlannerQueryPort):
 
         shifts_by_resource_day: dict[tuple[str, date], list[ShiftReadModel]] = {}
         for shift in occupied_shifts:
+            if shift.allocation_type == MISSING_ALLOCATION_TYPE:
+                continue
             shifts_by_resource_day.setdefault((shift.resource_id, shift.work_date), []).append(shift)
 
         resource_rows: list[PlanningResourceCapacityReadModel] = []
@@ -787,7 +789,11 @@ class SqlPlannerQueryRepository(PlannerQueryPort):
                     Shift.resource_requirement_id,
                     Shift.hours,
                     Shift.outside_standard_hours,
-                ).where(Shift.resource_requirement_id.in_(requirement_ids))
+                ).where(
+                    Shift.resource_requirement_id.in_(requirement_ids),
+                    (Shift.allocation_type.is_(None))
+                    | (Shift.allocation_type != MISSING_ALLOCATION_TYPE),
+                )
             ).all()
             accumulated: dict[str, list[float]] = {}
             for requirement_id, shift_hours, outside_flag in raw_shift_rows:
@@ -892,6 +898,10 @@ class SqlPlannerQueryRepository(PlannerQueryPort):
         ):
             if segment.resource_name:
                 continue
+            if segment.automatic_rebuild_hours <= 0.01:
+                # The budget is already covered by locked real shifts; no automatic
+                # target is required until some of those decisions are released.
+                continue
             if _normalized_text(segment.status) in {"annule", "termine"}:
                 continue
             demand = demands.get(segment.demand_number or "")
@@ -915,7 +925,7 @@ class SqlPlannerQueryRepository(PlannerQueryPort):
                     task_label=demand.task_label if demand is not None else None,
                     start_date=segment.start_date,
                     end_date=segment.end_date,
-                    planned_hours=float(segment.planned_hours),
+                    planned_hours=float(segment.automatic_rebuild_hours),
                     required_competency=segment.required_competency,
                     required_competency_id=segment.required_competency_id,
                     priority=segment.priority,
@@ -987,7 +997,7 @@ class SqlPlannerQueryRepository(PlannerQueryPort):
         required_class = _optional_text(segment.required_resource_class)
         if required_class is None and len(class_hints) == 1:
             required_class = next(iter(class_hints))
-        required_hours = max(float(segment.planned_hours), 0.0)
+        required_hours = max(float(segment.automatic_rebuild_hours), 0.0)
         candidates: list[dict[str, object]] = []
 
         for resource in resources:
@@ -1001,7 +1011,13 @@ class SqlPlannerQueryRepository(PlannerQueryPort):
             tentative = 0.0
             outside = 0.0
             for shift in shifts:
-                if shift.resource_id != resource.id or shift.segment_id == segment.segment_id:
+                if shift.allocation_type == MISSING_ALLOCATION_TYPE:
+                    continue
+                if shift.resource_id != resource.id:
+                    continue
+                if shift.segment_id == segment.segment_id and not shift.locked:
+                    # Replaceable output of this need will be regenerated; locked
+                    # decisions remain real capacity commitments on their resources.
                     continue
                 shift_hours = float(shift.hours)
                 if shift.outside_standard_hours:
