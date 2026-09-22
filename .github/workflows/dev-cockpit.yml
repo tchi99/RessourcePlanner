@@ -21,7 +21,7 @@ permissions:
 jobs:
   validate:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     env:
       RESOURCEPLANNER_HTTP_PORT: "18080"
       DEV_COCKPIT_HTTP_PORT: "18081"
@@ -61,13 +61,26 @@ jobs:
         run: |
           docker compose config >/tmp/resourceplanner-compose.yml
           docker compose --profile dev-tools config >/tmp/resourceplanner-dev-tools-compose.yml
-          docker compose config --services >/tmp/resourceplanner-services.txt
-          docker compose --profile dev-tools config --services >/tmp/resourceplanner-dev-tools-services.txt
-          ! grep -qx 'dev-cockpit' /tmp/resourceplanner-services.txt
-          grep -qx 'backend' /tmp/resourceplanner-dev-tools-services.txt
-          grep -qx 'frontend' /tmp/resourceplanner-dev-tools-services.txt
-          grep -qx 'dev-cockpit' /tmp/resourceplanner-dev-tools-services.txt
-          grep -q '127.0.0.1:18081' /tmp/resourceplanner-dev-tools-compose.yml
+          docker compose config --format json >/tmp/resourceplanner-compose.json
+          docker compose --profile dev-tools config --format json >/tmp/resourceplanner-dev-tools-compose.json
+          python - <<'PY'
+          import json
+
+          default = json.load(open("/tmp/resourceplanner-compose.json", encoding="utf-8"))
+          dev = json.load(open("/tmp/resourceplanner-dev-tools-compose.json", encoding="utf-8"))
+
+          assert "dev-cockpit" not in default["services"]
+          assert {"backend", "frontend", "dev-cockpit"} <= set(dev["services"])
+
+          cockpit = dev["services"]["dev-cockpit"]
+          assert cockpit.get("restart") == "no"
+          assert any(
+              str(port.get("published")) == "18081"
+              and port.get("host_ip") == "127.0.0.1"
+              and int(port.get("target")) == 8000
+              for port in cockpit.get("ports", [])
+          )
+          PY
 
       - name: Smoke RessourcePlanner plus Dev Cockpit
         run: |
