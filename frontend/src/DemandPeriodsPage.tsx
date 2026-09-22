@@ -586,7 +586,7 @@ export default function DemandPeriodsPage({
         <div className="period-toolbar">
           <div>
             <button type="button" className="secondary-button" onClick={addCumulative} disabled={!canEdit || saving || periodLoading || (selectedDemand.line_mode && !selectedLine)}>+ Période cumulative</button>
-            <button type="button" className="secondary-button" onClick={addAlternativeGroup} disabled={saving || periodLoading || (selectedDemand.line_mode && !selectedLine)}>+ Groupe alternatif</button>
+            <button type="button" className="secondary-button" onClick={addAlternativeGroup} disabled={!canEdit || saving || periodLoading || (selectedDemand.line_mode && !selectedLine)}>+ Groupe alternatif</button>
           </div>
           <button type="button" className="primary-button" onClick={savePeriods} disabled={!canEdit || saving || periodLoading || !dirty}>
             {saving ? "Enregistrement…" : "Enregistrer les périodes"}
