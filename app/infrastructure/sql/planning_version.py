@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from sqlalchemy import CheckConstraint, Integer, select, text, update
+from sqlalchemy import CheckConstraint, Integer, select, String, text, update
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from ...application.errors import ApplicationConflictError, ApplicationValidationError
@@ -8,7 +8,7 @@ from ...application.repository_ports import PlanningMutationVersionPort
 from .base import Base
 
 
-PLANNING_STATE_ID = 1
+PLANNING_STATE_ID = "GLOBAL"
 _SESSION_GUARD_KEY = "planning_mutation_version_guard"
 
 
@@ -17,11 +17,11 @@ class PlanningMutationState(Base):
 
     __tablename__ = "planning_mutation_state"
     __table_args__ = (
-        CheckConstraint("id = 1", name="planning_mutation_state_singleton"),
+        CheckConstraint("id = 'GLOBAL'", name="planning_mutation_state_singleton"),
         CheckConstraint("version >= 1", name="planning_mutation_state_version_positive"),
     )
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
     version: Mapped[int] = mapped_column(
         Integer,
         nullable=False,
