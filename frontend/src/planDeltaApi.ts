@@ -7,6 +7,8 @@ export type DemandPlanDeltaItem = {
   segment_id: string;
   current_resource_name: string | null;
   proposed_resource_name: string | null;
+  current_resource_id: string | null;
+  proposed_resource_id: string | null;
   current_date: string | null;
   proposed_date: string | null;
   current_hours: number;

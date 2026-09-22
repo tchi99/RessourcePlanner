@@ -577,7 +577,7 @@ test("V2 local acceptance path runs through React, Chromium, FastAPI and SQLite"
     expect(
       invalidMoveResponse.request().postDataJSON(),
       "Le drag doit transmettre le quart exact et la journée cible exacte.",
-    ).toEqual({ technician: "Bob", day: d3 });
+    ).toEqual({ resource_id: "R-BOB", day: d3 });
     expect(
       invalidMoveResponse.status(),
       `Le backend doit refuser le déplacement hors fenêtre. Réponse: ${await invalidMoveResponse.text()}`,

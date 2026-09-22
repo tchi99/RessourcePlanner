@@ -276,12 +276,24 @@ export type DemandReadModel = {
   lines: DemandLineReadModel[];
 };
 
+export type SegmentMobilizedResourceReadModel = {
+  resource_id: string;
+  resource_name: string;
+  allocated_hours: number;
+  locked_hours: number;
+  replaceable_hours: number;
+};
+
 export type SegmentReadModel = {
   segment_id: string;
   demand_number: string | null;
   project_number: string | null;
   project_name: string | null;
   resource_name: string | null;
+  requirement_id: string | null;
+  automatic_target_resource_id: string | null;
+  automatic_target_resource_name: string | null;
+  mobilized_resources: SegmentMobilizedResourceReadModel[];
   start_date: string | null;
   end_date: string | null;
   planned_hours: number;
@@ -297,6 +309,19 @@ export type SegmentReadModel = {
   confirmation_overridden: boolean;
   project_manager: string | null;
   requester: string | null;
+  locked_hours: number;
+  replaceable_hours: number;
+  covered_hours: number;
+  automatic_rebuild_hours: number;
+  remaining_hours: number;
+  excess_hours: number;
+  overallocated_hours: number;
+  overallocated: boolean;
+  desired_active_days: number | null;
+  planned_active_days: number;
+  active_day_target_met: boolean | null;
+  active_day_diagnostic: string | null;
+  load_profile: string;
 };
 
 export type ShiftReadModel = {
@@ -501,6 +526,8 @@ export type PlanningSegmentCapacityDiagnosticReadModel = {
   outside_standard_hours: number;
   unplaced_hours: number;
   requires_outside_standard_hours: boolean;
+  automatic_target_resource_id: string | null;
+  automatic_target_resource_name: string | null;
 };
 
 export type PlanningCapacityGridReadModel = {
@@ -571,12 +598,14 @@ export type DemandMutationResult = {
 };
 
 export type AllocationMoveWrite = {
-  technician: string;
+  resource_id: string;
   day: string;
+  technician?: string | null;
 };
 
 export type ManualAllocationUpdate = {
-  technician: string;
+  resource_id: string;
+  technician?: string | null;
   day: string;
   hours: number;
   outside_standard_hours: boolean;
