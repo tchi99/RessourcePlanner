@@ -366,11 +366,7 @@ class SqlPeriodAwareApprovedDemandSyncAdapter(ApprovedDemandSyncPort):
                     or ""
                 )
                 requirement.required_competency = request.required_competencies
-                requirement.priority = (
-            priority
-            if priority is not None
-            else request.priority or "Normale"
-        )
+                requirement.priority = request.priority or "Normale"
                 requirement.origin = ORIGIN_REQUEST
                 legacy_line = self._session.get(RequestLine, request.id)
                 self._capture_approved_contact_context(
