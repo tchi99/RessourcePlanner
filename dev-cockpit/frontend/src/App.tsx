@@ -24,7 +24,11 @@ function formatMinutes(value: number | null | undefined): string {
 
 function StateBadge({ value }: { value: string }) {
   const tone =
-    value === 'CI_RED' || value === 'BLOCKED' || value === 'STALLED'
+    value === 'CI_RED' ||
+    value === 'BLOCKED' ||
+    value === 'STALLED' ||
+    value === 'STALLED_CONFIRMED' ||
+    value === 'POSSIBLE_STALL'
       ? 'danger'
       : value === 'MERGEABLE' || value === 'DONE'
         ? 'success'
@@ -134,8 +138,16 @@ export default function App() {
   }
 
   const primaryPr = data?.active_work.primary_pr ?? null
-  const run = latestRun(primaryPr)
+  const run =
+    latestRun(primaryPr) ?? data?.active_work.active_runs?.[0] ?? null
   const issueUrl = data?.active_work.issue.url
+  const stallDetails = data?.active_work.stalled_details
+  const stallTitle =
+    data?.active_work.stall_level === 'confirmed'
+      ? '⚠ Dev probablement arrêté — CI rouge abandonnée'
+      : data?.active_work.stall_level === 'possible'
+        ? '⚠ Travail possiblement interrompu'
+        : '⚠ Dev probablement arrêté'
 
   return (
     <main className="shell">
@@ -253,22 +265,29 @@ export default function App() {
                 </div>
               </div>
 
-              {data.active_work.stalled && (
+              {data.active_work.stalled && stallDetails && (
                 <div className="stalled-banner">
-                  <strong>⚠ Dev probablement arrêté</strong>
-                  <span>
-                    CI rouge depuis{' '}
-                    {formatMinutes(
-                      data.active_work.stalled_details.ci_failed_minutes,
+                  <strong>{stallTitle}</strong>
+                  {stallDetails.ci_failed_minutes != null &&
+                    data.active_work.stall_level === 'confirmed' && (
+                      <span>
+                        CI rouge depuis{' '}
+                        {formatMinutes(stallDetails.ci_failed_minutes)}
+                      </span>
                     )}
+                  <span>
+                    Dernière activité GitHub pertinente il y a{' '}
+                    {formatMinutes(stallDetails.last_activity_minutes)}
                   </span>
                   <span>
-                    {data.active_work.stalled_details.no_new_commit
-                      ? 'Aucun nouveau commit'
-                      : 'Un nouveau commit existe'}
+                    {stallDetails.branch_present
+                      ? 'Branche de travail détectée'
+                      : 'Aucune branche associée'}
+                    {' · '}
+                    {stallDetails.pr_present ? 'PR détectée' : 'Aucune PR associée'}
                   </span>
                   <span>
-                    {data.active_work.stalled_details.no_active_workflow
+                    {stallDetails.no_active_workflow
                       ? 'Aucun workflow actif'
                       : 'Workflow actif'}
                   </span>
@@ -345,6 +364,14 @@ export default function App() {
                     ) : (
                       '—'
                     )}
+                  </dd>
+                </div>
+                <div>
+                  <dt>Dernière activité</dt>
+                  <dd>
+                    {stallDetails?.last_activity_at
+                      ? `${formatDate(stallDetails.last_activity_at)} · ${stallDetails.last_activity_source ?? 'GitHub'}`
+                      : '—'}
                   </dd>
                 </div>
                 <div>
