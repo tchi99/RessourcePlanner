@@ -29,6 +29,7 @@ from .demand_period_models import (
 )
 from .models import Project, RequestLine, Resource, ResourceRequirement, WorkforceRequest, WorkPackage
 from .planning_repository import SqlPlanningReadRepository
+from .request_plan_preparation import SqlRequestPlanPreparer
 from .web_query_repository import SqlPlannerQueryRepositoryWeb
 
 
@@ -189,6 +190,7 @@ class SqlPlannerQueryRepositoryWithPlanDelta(SqlPlannerQueryRepositoryWeb):
     def __init__(self, session: Session) -> None:
         super().__init__(session)
         self._delta_session = session
+        self._plan_preparer = SqlRequestPlanPreparer(session)
 
     def _request(self, number: str) -> WorkforceRequest | None:
         wanted = _text(number)
@@ -577,114 +579,61 @@ class SqlPlannerQueryRepositoryWithPlanDelta(SqlPlannerQueryRepositoryWeb):
         current: list[ResourceRequirement],
         snapshot: PlanningSnapshot,
     ) -> list[dict[str, object]] | None:
-        if bool(request.line_mode):
-            return self._proposed_line_segments(request, current)
-
+        del snapshot  # preparation is intentionally independent from engine capacity.
         project = self._delta_session.get(Project, request.project_id)
         if project is None:
             return None
+
+        try:
+            prepared = self._plan_preparer.prepare(
+                request,
+                current=current,
+            )
+        except ValueError:
+            return None
+
         resources = {
             row.id: row
             for row in self._delta_session.scalars(select(Resource)).all()
         }
-        period_key_by_requirement = self._period_key_by_requirement(request.id)
-        active_periods = self._active_periods(request.id)
-        periods = self._effective_periods(request.id, active_periods=active_periods)
-        proposed: list[dict[str, object]] = []
-
-        if active_periods:
-            # Detailed periods replace the simple request envelope. An unresolved
-            # alternative group therefore proposes no requirement instead of
-            # silently falling back to the legacy envelope.
-            if not periods:
-                return []
-            current_by_period: dict[str, list[ResourceRequirement]] = defaultdict(list)
-            for requirement in current:
-                key = period_key_by_requirement.get(requirement.id)
-                if key:
-                    current_by_period[key].append(requirement)
-
-            for period in periods:
-                ranked = sorted(
-                    current_by_period.get(period.period_key, []),
-                    key=lambda row: (
-                        0 if row.assigned_resource_id else 1,
-                        row.created_at,
-                        row.id,
-                    ),
-                )
-                desired = max(int(period.resource_count or 1), 1)
-                split_hours = split_total_workforce_hours(period.hours, desired)
-                inherited_confirmation = normalize_confirmation(period.confirmation)
-                for index in range(desired):
-                    requirement = ranked[index] if index < len(ranked) else None
-                    resource = (
-                        resources.get(requirement.assigned_resource_id)
-                        if requirement is not None and requirement.assigned_resource_id
-                        else resources.get(period.proposed_resource_id)
-                    )
-                    proposed.append(
-                        self._segment_row(
-                            requirement=requirement,
-                            request=request,
-                            project=project,
-                            resource=resource,
-                            start_date=period.start_date,
-                            end_date=period.end_date,
-                            hours=split_hours[index],
-                            confirmation=inherited_confirmation,
-                            description=period.note or request.description,
-                            synthetic_id=f"PREVIEW-{period.period_key}-{index + 1}",
-                        )
-                    )
-            return proposed
-
-        if request.desired_start is None:
-            return None
-        desired = max(int(request.resource_count or 1), 1)
-        proposed_resource = resources.get(request.proposed_resource_id)
-        per_resource = self._legacy_hours_per_resource(
+        matches, _obsolete = self._plan_preparer.match_current(
             request,
-            desired,
             current,
-            proposed_resource,
-            snapshot,
+            prepared.specs,
         )
-        if per_resource is None or per_resource <= 0:
-            return None
-        ranked = sorted(
-            current,
-            key=lambda row: (
-                0 if row.assigned_resource_id else 1,
-                row.created_at,
-                row.id,
-            ),
-        )
-        inherited_confirmation = normalize_confirmation(
-            request.confirmation,
-            default=CONFIRMATION_CONFIRMED,
-        )
-        for index in range(desired):
-            requirement = ranked[index] if index < len(ranked) else None
-            if requirement is not None and requirement.assigned_resource_id:
-                resource = resources.get(requirement.assigned_resource_id)
-            elif index == 0:
-                resource = proposed_resource
-            else:
-                resource = None
+
+        proposed: list[dict[str, object]] = []
+        for match in matches:
+            spec = match.spec
+            requirement = match.requirement
+            resource_id = (
+                requirement.assigned_resource_id
+                if requirement is not None
+                and requirement.assigned_resource_id
+                else spec.proposed_resource_id
+            )
+            row = self._segment_row(
+                requirement=requirement,
+                request=request,
+                project=project,
+                resource=resources.get(resource_id),
+                start_date=spec.start_date,
+                end_date=spec.end_date,
+                hours=float(spec.planned_hours),
+                confirmation=spec.confirmation,
+                description=spec.description,
+                synthetic_id=(
+                    "PREVIEW-" + "-".join(str(part) for part in spec.key)
+                ),
+            )
             proposed.append(
-                self._segment_row(
-                    requirement=requirement,
-                    request=request,
-                    project=project,
-                    resource=resource,
-                    start_date=request.desired_start,
-                    end_date=request.desired_end or request.desired_start,
-                    hours=per_resource,
-                    confirmation=inherited_confirmation,
-                    description=request.description or "Ressource additionnelle",
-                    synthetic_id=f"PREVIEW-{request.id}-{index + 1}",
-                )
+                {
+                    **row,
+                    "SourceEffortID": spec.source_effort_id,
+                    "ClasseRessourceRequise": spec.required_resource_class,
+                    "CompetenceRequise": spec.required_competency,
+                    "JoursActifsCibles": spec.desired_active_days,
+                }
             )
         return proposed
 
@@ -718,6 +667,27 @@ class SqlPlannerQueryRepositoryWithPlanDelta(SqlPlannerQueryRepositoryWeb):
                 reason="CURRENT_PLAN_UNSUPPORTED",
                 has_changes=False,
             )
+
+        try:
+            prepared = self._plan_preparer.prepare(
+                request,
+                current=current_requirements,
+            )
+        except ValueError:
+            prepared = None
+        if prepared is not None:
+            locked_conflicts = self._plan_preparer.locked_conflicts(
+                request,
+                current_requirements,
+                prepared.specs,
+            )
+            if locked_conflicts:
+                return DemandPlanDeltaReadModel(
+                    demand_number=demand_number,
+                    available=False,
+                    reason=locked_conflicts[0].code,
+                    has_changes=False,
+                )
 
         proposed_rows = self._proposed_segments(request, current_requirements, snapshot)
         if proposed_rows is None:

@@ -34,6 +34,10 @@ from .models import (
     WorkforceRequestHistory,
     WorkPackage,
 )
+from .request_plan_preparation import (
+    PreparedRequirementSpec,
+    SqlRequestPlanPreparer,
+)
 from .segment_repository import SqlSegmentRepository
 
 
@@ -67,6 +71,7 @@ class SqlPeriodAwareApprovedDemandSyncAdapter(ApprovedDemandSyncPort):
         self._segments = SqlSegmentRepository(session)
         self._legacy = SqlEstimatedDaysApprovedDemandSyncAdapter(session)
         self._approval_revisions = SqlRequestApprovalRevisionRepository(session)
+        self._plan_preparer = SqlRequestPlanPreparer(session)
 
     def _request(self, number: str) -> WorkforceRequest:
         wanted = _text(number)
@@ -722,7 +727,7 @@ class SqlPeriodAwareApprovedDemandSyncAdapter(ApprovedDemandSyncPort):
         request: WorkforceRequest,
         project: Project,
         requirement: ResourceRequirement | None,
-        spec: _LineRequirementSpec,
+        spec: PreparedRequirementSpec,
     ) -> ResourceRequirement:
         proposed = (
             self._session.get(Resource, spec.proposed_resource_id)
@@ -731,7 +736,7 @@ class SqlPeriodAwareApprovedDemandSyncAdapter(ApprovedDemandSyncPort):
         )
         if spec.proposed_resource_id and proposed is None:
             raise KeyError(
-                f"Ressource proposée {spec.proposed_resource_id} introuvable pour la ligne {spec.line.id}."
+                f"Ressource proposée {spec.proposed_resource_id} introuvable pour la ligne {spec.source_request_line_id}."
             )
 
         if requirement is None:
@@ -750,7 +755,7 @@ class SqlPeriodAwareApprovedDemandSyncAdapter(ApprovedDemandSyncPort):
                     "ClasseRessourceRequise": spec.required_resource_class,
                     "CompetenceRequise": spec.required_competency,
                     "RequiredCompetencyIDs": spec.competency_ids,
-                    "SourceRequestLineID": spec.line.id,
+                    "SourceRequestLineID": spec.source_request_line_id,
                     "TypePlanification": "Flexible",
                     "Priorite": request.priority or "Normale",
                     "HorsHoraireAutorise": False,
@@ -766,7 +771,7 @@ class SqlPeriodAwareApprovedDemandSyncAdapter(ApprovedDemandSyncPort):
             )
             if requirement is None:
                 raise RuntimeError(
-                    f"Le besoin créé pour la ligne {spec.line.id} est introuvable."
+                    f"Le besoin créé pour la ligne {spec.source_request_line_id} est introuvable."
                 )
         elif (
             proposed is not None
@@ -782,7 +787,7 @@ class SqlPeriodAwareApprovedDemandSyncAdapter(ApprovedDemandSyncPort):
 
         requirement.project_id = request.project_id
         requirement.workforce_request_id = request.id
-        requirement.source_request_line_id = spec.line.id
+        requirement.source_request_line_id = spec.source_request_line_id
         requirement.start_date = spec.start_date
         requirement.end_date = spec.end_date
         requirement.planned_hours = spec.planned_hours
@@ -796,15 +801,25 @@ class SqlPeriodAwareApprovedDemandSyncAdapter(ApprovedDemandSyncPort):
         )
         requirement.priority = request.priority or "Normale"
         requirement.origin = ORIGIN_REQUEST
+        source_line = (
+            self._session.get(RequestLine, spec.source_request_line_id)
+            if spec.source_request_line_id
+            else None
+        )
         self._capture_approved_contact_context(
             request,
             requirement,
-            spec.line,
+            source_line,
         )
         if not requirement.confirmation_overridden:
             requirement.confirmation = spec.confirmation
         self._replace_requirement_competencies(requirement, spec.competency_ids)
-        self._update_period_link(requirement, spec.period)
+        source_period = (
+            self._session.get(WorkforceRequestPeriod, spec.source_period_id)
+            if spec.source_period_id
+            else None
+        )
+        self._update_period_link(requirement, source_period)
         return requirement
 
     def _sync_request_lines(
@@ -819,10 +834,12 @@ class SqlPeriodAwareApprovedDemandSyncAdapter(ApprovedDemandSyncPort):
         if not lines:
             raise ValueError("Une demande multi-lignes doit conserver au moins une ligne active.")
 
-        specs, unresolved = self._line_specs(request, lines, periods)
         current = self._active_requirements(request.id)
+        prepared = self._plan_preparer.prepare(request, current=current)
+        specs = list(prepared.specs)
+        unresolved = prepared.unresolved_groups
+        self._plan_preparer.assert_locked_compatible(request, current, specs)
         current_by_key = self._current_requirement_keys(current)
-        locked_by_requirement = self._locked_shifts({row.id for row in current})
 
         keep: dict[tuple[str, ...], ResourceRequirement | None] = {}
         desired_by_key = {spec.key: spec for spec in specs}
@@ -835,21 +852,6 @@ class SqlPeriodAwareApprovedDemandSyncAdapter(ApprovedDemandSyncPort):
                 continue
             keep[key] = rows[0]
             obsolete.extend(rows[1:])
-
-        for requirement in obsolete:
-            self._validate_locked_requirement(
-                requirement,
-                None,
-                locked_by_requirement.get(requirement.id, []),
-            )
-        for spec in specs:
-            requirement = keep.get(spec.key)
-            if requirement is not None:
-                self._validate_locked_requirement(
-                    requirement,
-                    spec,
-                    locked_by_requirement.get(requirement.id, []),
-                )
 
         for requirement in obsolete:
             requirement.status = "Annulé"
@@ -919,6 +921,16 @@ class SqlPeriodAwareApprovedDemandSyncAdapter(ApprovedDemandSyncPort):
     def sync_approved(self, demand_number: str) -> None:
         request = self._request(demand_number)
         periods = self._active_periods(request.id)
+        current_before = self._active_requirements(request.id)
+        prepared = self._plan_preparer.prepare(
+            request,
+            current=current_before,
+        )
+        self._plan_preparer.assert_locked_compatible(
+            request,
+            current_before,
+            prepared.specs,
+        )
         if not bool(request.line_mode) and not periods:
             self._legacy.prevalidate_approved(demand_number)
         emergency = self._emergency_materialization(request)
