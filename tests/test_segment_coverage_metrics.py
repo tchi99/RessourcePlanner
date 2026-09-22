@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 
 from app.domain.planning_engine import MISSING_ALLOCATION_TYPE
 from app.infrastructure.sql import (
+    ORIGIN_AD_HOC,
     Base,
     Project,
     Resource,
@@ -56,6 +57,7 @@ class SegmentCoverageMetricsTests(unittest.TestCase):
                         end_date=today + timedelta(days=1),
                         planned_hours=40,
                         status="Planifié",
+                        origin=ORIGIN_AD_HOC,
                         planning_type="Flexible",
                         confirmation="Confirmée",
                     ),
@@ -68,6 +70,7 @@ class SegmentCoverageMetricsTests(unittest.TestCase):
                         end_date=today,
                         planned_hours=8,
                         status="Planifié",
+                        origin=ORIGIN_AD_HOC,
                         planning_type="Flexible",
                         confirmation="Confirmée",
                     ),
