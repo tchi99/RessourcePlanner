@@ -510,6 +510,15 @@ class DemandApproveCommand:
     number: str
     comment: str = ""
     expected_version: int | None = None
+    expected_planning_version: int | None = None
+
+    def __post_init__(self) -> None:
+        if self.expected_planning_version is not None and int(self.expected_planning_version) < 1:
+            raise ApplicationValidationError(
+                "La version attendue du planning doit être au moins 1.",
+                code="planning_version_invalid",
+                context={"expected_planning_version": self.expected_planning_version},
+            )
 
 
 @dataclass(frozen=True, slots=True)
