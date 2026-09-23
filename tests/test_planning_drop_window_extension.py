@@ -8,6 +8,8 @@ import unittest
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 
+from app.application import AllocationWindowExtensionProposalCommand
+from app.application.security import ROLE_PROJECT_MANAGER, permissions_for_roles
 from app.infrastructure.sql import (
     Base,
     ORIGIN_AD_HOC,
@@ -22,6 +24,7 @@ from app.infrastructure.sql import (
     create_sql_engine,
 )
 from app.server import create_api_app
+from app.server.composition import build_sql_facade
 from tests.http_test_auth import TEST_ADMIN_AUTH_RESOLVER
 
 
@@ -360,6 +363,131 @@ class PlanningDropWindowExtensionTests(unittest.TestCase):
                 self.assertEqual(shift.resource_id, "R1")
                 self.assertTrue(shift.locked)
                 self.assertEqual(shift.source, "MANUAL")
+            engine.dispose()
+
+
+
+    def test_non_approver_proposal_keeps_active_plan_until_normal_approval(self) -> None:
+        with TemporaryDirectory() as directory:
+            url = self._database(directory, with_adhoc=False)
+            app = create_api_app(url, auth_resolver=TEST_ADMIN_AUTH_RESOLVER)
+            with TestClient(app, raise_server_exceptions=False) as client:
+                created = client.post(
+                    "/api/v1/demands",
+                    json={
+                        "project_number": "P-1",
+                        "desired_start": DAY.isoformat(),
+                        "desired_end": DAY.isoformat(),
+                        "estimated_hours": 8,
+                        "proposed_technician": "Alice",
+                        "submit": True,
+                    },
+                )
+                self.assertEqual(created.status_code, 201, created.text)
+                number = created.json()["demand_number"]
+                approved = client.post(
+                    f"/api/v1/demands/{number}/approve",
+                    json={"comment": "Approbation initiale 333B normal"},
+                )
+                self.assertEqual(approved.status_code, 200, approved.text)
+
+            engine = create_sql_engine(url)
+            factory = create_session_factory(engine)
+            with factory.begin() as session:
+                requirement = session.scalar(
+                    select(ResourceRequirement).where(
+                        ResourceRequirement.workforce_request_id.is_not(None),
+                        ResourceRequirement.status != "Annulé",
+                    )
+                )
+                assert requirement is not None
+                shift = session.scalar(
+                    select(Shift).where(
+                        Shift.resource_requirement_id == requirement.id,
+                        Shift.allocation_type != "Hors horaire requis",
+                    )
+                )
+                assert shift is not None
+                shift.source = "MANUAL"
+                shift.locked = True
+                shift.resource_id = "R1"
+                shift.work_date = DAY
+                allocation_id = shift.legacy_allocation_id or shift.id
+                requirement_id = requirement.id
+                shift_id = shift.id
+            engine.dispose()
+
+            with TestClient(app, raise_server_exceptions=False) as client:
+                evaluated = client.post(
+                    f"/api/v1/allocations/{allocation_id}/evaluate-drop",
+                    json={"resource_id": "R2", "day": NEXT_DAY.isoformat()},
+                )
+            self.assertEqual(evaluated.status_code, 200, evaluated.text)
+            context = evaluated.json()
+
+            engine = create_sql_engine(url)
+            factory = create_session_factory(engine)
+            with factory.begin() as session:
+                facade = build_sql_facade(
+                    session,
+                    actor_name="Chargé de projet",
+                    permissions=permissions_for_roles((ROLE_PROJECT_MANAGER,)),
+                    roles=(ROLE_PROJECT_MANAGER,),
+                )
+                result = facade.propose_allocation_window_extension(
+                    AllocationWindowExtensionProposalCommand(
+                        allocation_id=allocation_id,
+                        resource_id="R2",
+                        day=NEXT_DAY,
+                        expected_request_version=context["request_version"],
+                        expected_approval_revision_id=context["approval_revision_id"],
+                    )
+                )
+                self.assertTrue(result.reapproval_required)
+                self.assertEqual(result.status, "Soumise")
+            engine.dispose()
+
+            engine = create_sql_engine(url)
+            factory = create_session_factory(engine)
+            with factory() as session:
+                request = session.scalar(
+                    select(WorkforceRequest).where(
+                        WorkforceRequest.legacy_demand_number == number
+                    )
+                )
+                requirement = session.get(ResourceRequirement, requirement_id)
+                shift = session.get(Shift, shift_id)
+                assert request is not None and requirement is not None and shift is not None
+                self.assertEqual(request.status, "Soumise")
+                self.assertEqual(request.desired_end, NEXT_DAY)
+                self.assertEqual(requirement.end_date, DAY)
+                self.assertEqual(shift.work_date, DAY)
+                self.assertEqual(shift.resource_id, "R1")
+                self.assertTrue(shift.locked)
+            engine.dispose()
+
+            with TestClient(app, raise_server_exceptions=False) as client:
+                current = client.get(f"/api/v1/demands/{number}")
+                self.assertEqual(current.status_code, 200, current.text)
+                normal_approval = client.post(
+                    f"/api/v1/demands/{number}/approve",
+                    json={
+                        "comment": "Réapprobation normale 333B",
+                        "expected_version": current.json()["version"],
+                    },
+                )
+            self.assertEqual(normal_approval.status_code, 200, normal_approval.text)
+
+            engine = create_sql_engine(url)
+            factory = create_session_factory(engine)
+            with factory() as session:
+                requirement = session.get(ResourceRequirement, requirement_id)
+                shift = session.get(Shift, shift_id)
+                assert requirement is not None and shift is not None
+                self.assertEqual(requirement.end_date, NEXT_DAY)
+                self.assertEqual(shift.work_date, DAY)
+                self.assertEqual(shift.resource_id, "R1")
+                self.assertTrue(shift.locked)
             engine.dispose()
 
 
