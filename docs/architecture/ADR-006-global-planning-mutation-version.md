@@ -1,4 +1,4 @@
-# ADR-005 — Révision globale des mutations de planning
+# ADR-006 — Révision globale des mutations de planning
 
 Status: Accepted  
 Date: 2026-09-22
