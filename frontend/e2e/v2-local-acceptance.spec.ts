@@ -557,7 +557,7 @@ test("V2 local acceptance path runs through React, Chromium, FastAPI and SQLite"
     await expect(quickShift).toBeHidden();
 
     const shiftsResponse = await page.request.get(
-      `/api/v1/shifts?start=${d1}&end=${d5}`,
+      `/api/v1/shifts?start=${sourceDay}&end=${weekEnd}`,
     );
     expect(shiftsResponse.ok()).toBeTruthy();
     const shifts = await shiftsResponse.json() as Array<{
@@ -630,7 +630,7 @@ test("V2 local acceptance path runs through React, Chromium, FastAPI and SQLite"
       work_date: string;
     }>).find((row) => row.allocation_id === allocationId);
     expect(unchangedShift?.resource_name).toBe("Alice");
-    expect(unchangedShift?.work_date).toBe(d2);
+    expect(unchangedShift?.work_date).toBe(sourceDay);
 
     await dragWithDataTransfer(
       page,
@@ -677,7 +677,7 @@ test("V2 local acceptance path runs through React, Chromium, FastAPI and SQLite"
     await expect(page.locator(".planning-drag-feedback")).toContainText("Quart déplacé vers Alice");
 
     const aliceD2Source = aliceRow
-      .locator(`.planning-drop-day[data-day="${d2}"]`)
+      .locator(`.planning-drop-day[data-day="${sourceDay}"]`)
       .locator(`.shift-card[data-allocation-id="${allocationId}"]`);
     const bobD3Target = bobRow.locator(`.planning-drop-day[data-day="${d3}"]`);
     await dragWithDataTransfer(page, aliceD2Source, bobD3Target);
@@ -746,14 +746,18 @@ test("V2 local acceptance path runs through React, Chromium, FastAPI and SQLite"
 
 test("REQUEST window proposal never replays the original drag after direct approval", async ({ browser }) => {
   test.setTimeout(120_000);
-  const { d1, d2, d3, d5 } = acceptanceDates();
+  const { d1 } = acceptanceDates();
+  const cleanWeek = new Date(`${d1}T12:00:00`);
+  const sourceDay = localIso(addDays(cleanWeek, 7));
+  const targetDay = localIso(addDays(cleanWeek, 8));
+  const weekEnd = localIso(addDays(cleanWeek, 13));
   const { context, page } = await openAs(browser, "COORDINATOR");
 
   const created = await page.request.post("/api/v1/demands", {
     data: {
       project_number: "P-251",
-      desired_start: d2,
-      desired_end: d2,
+      desired_start: sourceDay,
+      desired_end: sourceDay,
       estimated_hours: 2,
       proposed_technician: "Alice",
       description: "Proposition fenêtre DnD #333C",
@@ -764,7 +768,7 @@ test("REQUEST window proposal never replays the original drag after direct appro
   const demandNumber = (await created.json()).demand_number as string;
 
   const snapshotBeforeApproval = await page.request.get(
-    `/api/v1/planning/snapshot?start=${d1}&end=${d5}&scope=global`,
+    `/api/v1/planning/snapshot?start=${sourceDay}&end=${weekEnd}&scope=global`,
   );
   expect(snapshotBeforeApproval.ok()).toBeTruthy();
   const planningVersion = (await snapshotBeforeApproval.json()).planning_version as number;
@@ -797,9 +801,10 @@ test("REQUEST window proposal never replays the original drag after direct appro
   ));
   expect(shift, "Quart REQUEST #333C introuvable après approbation").toBeDefined();
   expect(shift!.resource_name).toBe("Alice");
-  expect(shift!.work_date).toBe(d2);
+  expect(shift!.work_date).toBe(sourceDay);
 
   await navigateMain(page, "Planning opérationnel");
+  await page.getByRole("button", { name: /Suivante/ }).click();
   await page.getByRole("button", { name: /Suivante/ }).click();
 
   const aliceRow = page.locator(".resource-identity").filter({ hasText: "Alice" }).first().locator("..");
@@ -807,7 +812,7 @@ test("REQUEST window proposal never replays the original drag after direct appro
   const source = aliceRow
     .locator(`.planning-drop-day[data-day="${d2}"]`)
     .locator(`.shift-card[data-allocation-id="${shift!.allocation_id}"]`);
-  const target = bobRow.locator(`.planning-drop-day[data-day="${d3}"]`);
+  const target = bobRow.locator(`.planning-drop-day[data-day="${targetDay}"]`);
   await expect(source).toBeVisible();
 
   const evaluatePromise = page.waitForResponse((response) => (
@@ -848,7 +853,7 @@ test("REQUEST window proposal never replays the original drag after direct appro
   await expect(page.locator(".planning-drag-feedback")).toContainText("Aucun quart n’a été déplacé");
 
   const afterProposalResponse = await page.request.get(
-    `/api/v1/shifts?start=${d1}&end=${d5}`,
+    `/api/v1/shifts?start=${sourceDay}&end=${weekEnd}`,
   );
   const unchangedShift = (await afterProposalResponse.json() as Array<{
     allocation_id: string;
@@ -862,7 +867,7 @@ test("REQUEST window proposal never replays the original drag after direct appro
     `/api/v1/segments/${encodeURIComponent(shift!.segment_id)}`,
   );
   expect(segmentAfterProposal.ok()).toBeTruthy();
-  expect((await segmentAfterProposal.json()).end_date).toBe(d3);
+  expect((await segmentAfterProposal.json()).end_date).toBe(targetDay);
 
   await expect(source).toBeVisible();
   await dragWithDataTransfer(page, source, target);
@@ -874,7 +879,7 @@ test("REQUEST window proposal never replays the original drag after direct appro
   await dialog.getByRole("button", { name: "Annuler", exact: true }).click();
 
   const afterCancelResponse = await page.request.get(
-    `/api/v1/shifts?start=${d1}&end=${d5}`,
+    `/api/v1/shifts?start=${sourceDay}&end=${weekEnd}`,
   );
   const afterCancel = (await afterCancelResponse.json() as Array<{
     allocation_id: string;
@@ -882,7 +887,7 @@ test("REQUEST window proposal never replays the original drag after direct appro
     work_date: string;
   }>).find((row) => row.allocation_id === shift!.allocation_id);
   expect(afterCancel?.resource_name).toBe("Alice");
-  expect(afterCancel?.work_date).toBe(d2);
+  expect(afterCancel?.work_date).toBe(sourceDay);
 
   await closeContext(context);
 });
