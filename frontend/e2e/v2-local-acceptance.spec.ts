@@ -797,7 +797,6 @@ test("REQUEST window proposal never replays the original drag after direct appro
 
   await navigateMain(page, "Planning opérationnel");
   await page.getByRole("button", { name: /Suivante/ }).click();
-  await page.getByLabel("Recherche").fill(demandNumber);
 
   const aliceRow = page.locator(".resource-identity").filter({ hasText: "Alice" }).first().locator("..");
   const bobRow = page.locator(".resource-identity").filter({ hasText: "Bob" }).first().locator("..");
