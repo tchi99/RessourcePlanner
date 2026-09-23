@@ -249,9 +249,8 @@ def _explicit_work_done(body: str, key: str) -> bool:
             continue
 
         # A numeric WORK is complete only when the completion marker belongs to
-        # that item's own segment. Broad prose such as
-        # "#291 terminé; le flux poursuit avec #292 → #399" must never mark the
-        # later references complete.
+        # that item's own segment. Completion prose about an earlier item must
+        # never mark later issue references complete.
         first = references[0]
         next_start = references[1].start() if len(references) > 1 else len(line)
         scoped = line[first.start():next_start]
@@ -259,7 +258,7 @@ def _explicit_work_done(body: str, key: str) -> bool:
 
         # A gate may target the same issue number as the following WORK.
         # Its completion must never mark that WORK complete.
-        if _pipeline_kind(scoped) != PIPELINE_WORK:
+        if _pipeline_kind(line) != PIPELINE_WORK:
             continue
         if "✅" in prefix or "✅" in scoped or DONE_WORDS.search(scoped):
             return True
