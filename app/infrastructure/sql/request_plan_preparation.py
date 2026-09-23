@@ -232,6 +232,8 @@ class SqlRequestPlanPreparer:
         unresolved = 0
 
         for line in lines:
+            if _text(line.kind) == "ASSET":
+                continue  # Asset requirements use exclusive days, never hourly shifts.
             if _text(line.kind) != "WORKFORCE":
                 raise ValueError(
                     f"La ligne {line.id} de type {line.kind} ne peut pas être matérialisée."
@@ -586,6 +588,8 @@ class SqlRequestPlanPreparer:
         groups_selected: set[str] = set()
 
         for row in entries:
+            if _text(row.get("line_kind")).upper() == "ASSET":
+                continue
             identity_key = _text(row.get("identity"))
             if not identity_key:
                 continue

@@ -222,9 +222,9 @@ class DemandService:
                         "request_line_id": wanted,
                     },
                 )
-            if line.kind != "WORKFORCE":
+            if line.kind not in {"WORKFORCE", "ASSET"}:
                 raise ApplicationValidationError(
-                    "Seules les lignes WORKFORCE supportent les périodes dans #288D.",
+                    "Type de ligne non supporté pour les périodes.",
                     code="demand_line_kind_unsupported",
                     context={"line_id": line.line_id, "kind": line.kind},
                 )
@@ -244,7 +244,7 @@ class DemandService:
             period.period_id,
             period.start_date,
             period.end_date,
-            float(period.hours),
+            float(period.hours) if period.hours is not None else None,
             period.kind,
             period.alternative_group,
             period.confirmation,
@@ -260,7 +260,7 @@ class DemandService:
             period.period_id,
             period.start_date,
             period.end_date,
-            float(period.hours),
+            float(period.hours) if period.hours is not None else None,
             period.kind,
             period.alternative_group,
             period.confirmation,
@@ -733,7 +733,8 @@ class DemandService:
 
         try:
             definitions = tuple(item.to_definition() for item in command.periods)
-            validate_period_definitions(definitions)
+            line = next((row for row in existing.lines if row.line_id == request_line_id), None)
+            validate_period_definitions(definitions, allow_unbudgeted=bool(line and line.kind == "ASSET"))
         except ValueError as exc:
             raise ApplicationValidationError(
                 str(exc),

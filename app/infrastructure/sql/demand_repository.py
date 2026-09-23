@@ -305,6 +305,8 @@ class SqlDemandRepository(DemandRepositoryPort):
                     ),
                     description=_optional_text(line.description),
                     active=bool(line.active),
+                    asset_type_id=_optional_text(line.asset_type_id),
+                    proposed_asset_id=_optional_text(line.proposed_asset_id),
                 )
             )
 
@@ -532,14 +534,24 @@ class SqlDemandRepository(DemandRepositoryPort):
                 )
 
             kind = _text(raw.get("kind")) or "WORKFORCE"
-            if kind != "WORKFORCE":
-                raise ValueError("Seules les lignes WORKFORCE sont supportées.")
+            if kind not in {"WORKFORCE", "ASSET"}:
+                raise ValueError("Type de ligne non supporté.")
             work_package = self._work_package(
                 raw.get("work_package_ref"),
                 project_id=project.id,
             )
             task = self._task(raw.get("task_code"), project_number=project.number)
             proposed = self._resource_by_id(raw.get("proposed_resource_id"))
+            asset_type_id = _optional_text(raw.get("asset_type_id"))
+            proposed_asset_id = _optional_text(raw.get("proposed_asset_id"))
+            if kind == "ASSET":
+                from .asset_models import Asset, AssetType
+                asset_type = self._session.get(AssetType, asset_type_id) if asset_type_id else None
+                if asset_type is None or not asset_type.active:
+                    raise ValueError("Le type d'actif est introuvable ou inactif.")
+                asset = self._session.get(Asset, proposed_asset_id) if proposed_asset_id else None
+                if proposed_asset_id and (asset is None or not asset.active or asset.asset_type_id != asset_type.id):
+                    raise ValueError("L'actif proposé est incompatible ou inactif.")
             competencies = self._competencies(
                 tuple(raw.get("required_competency_ids") or ())
             )
@@ -567,6 +579,8 @@ class SqlDemandRepository(DemandRepositoryPort):
             line.erp_task_code = task.task_code if task is not None else None
             line.erp_task_label = task.label if task is not None else None
             line.proposed_resource_id = proposed.id if proposed is not None else None
+            line.asset_type_id = asset_type_id if kind == "ASSET" else None
+            line.proposed_asset_id = proposed_asset_id if kind == "ASSET" else None
             line.description = _optional_text(raw.get("description"))
             line.active = True
 
@@ -619,15 +633,18 @@ class SqlDemandRepository(DemandRepositoryPort):
         ]
         request.desired_start = min(starts) if starts else None
         request.desired_end = max(ends) if ends else None
-        request.resource_count = sum(max(int(line.slot_count or 1), 1) for line in lines)
+        workforce_lines = [line for line in lines if line.kind == "WORKFORCE"]
+        request.resource_count = max(
+            sum(max(int(line.slot_count or 1), 1) for line in workforce_lines), 1
+        )
         request.estimated_hours = (
-            sum((line.estimated_hours or Decimal("0")) for line in lines)
-            if all(line.estimated_hours is not None for line in lines)
+            sum((line.estimated_hours or Decimal("0")) for line in workforce_lines)
+            if workforce_lines and all(line.estimated_hours is not None for line in workforce_lines)
             else None
         )
         request.estimated_days = (
-            sum((line.desired_active_days or Decimal("0")) for line in lines)
-            if all(line.desired_active_days is not None for line in lines)
+            sum((line.desired_active_days or Decimal("0")) for line in workforce_lines)
+            if workforce_lines and all(line.desired_active_days is not None for line in workforce_lines)
             else None
         )
         snapshots = tuple(

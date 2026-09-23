@@ -40,6 +40,8 @@ class DemandLineInput:
     proposed_resource_id: str | None = None
     confirmation: str = "Confirmée"
     description: str | None = None
+    asset_type_id: str | None = None
+    proposed_asset_id: str | None = None
 
     def to_repository_values(self, *, require_complete: bool) -> dict[str, object]:
         try:
@@ -60,6 +62,8 @@ class DemandLineInput:
                 confirmation=self.confirmation,
                 description=self.description,
                 require_complete=require_complete,
+                asset_type_id=self.asset_type_id,
+                proposed_asset_id=self.proposed_asset_id,
             )
         except RequestLinePolicyError as exc:
             raise ApplicationValidationError(

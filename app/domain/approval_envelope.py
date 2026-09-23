@@ -127,7 +127,7 @@ class EnvelopePeriodDefinition:
     period_key: str
     start_date: date
     end_date: date
-    hours: float | Decimal
+    hours: float | Decimal | None
     source_period_id: str | None = None
     resource_count: int = 1
     kind: str = PERIOD_KIND_CUMULATIVE
@@ -157,6 +157,9 @@ class EnvelopeLineDefinition:
     proposed_resource_id: str | None = None
     desired_active_days: int | None = None
     periods: tuple[EnvelopePeriodDefinition, ...] = ()
+    asset_type_id: str | None = None
+    occupancy_policy: str | None = None
+    proposed_asset_id: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -173,7 +176,7 @@ class ApprovalEnvelopeEntry:
     work_package_ref: str | None
     start_date: date
     end_date: date
-    hours: Decimal
+    hours: Decimal | None
     kind: str
     group: EnvelopeGroupIdentity | None
     source_period_id: str | None
@@ -181,9 +184,12 @@ class ApprovalEnvelopeEntry:
     selected: bool
     proposed_resource_id: str | None
     desired_active_days: int | None
+    asset_type_id: str | None = None
+    occupancy_policy: str | None = None
+    proposed_asset_id: str | None = None
 
     def authorization_payload(self) -> dict[str, object]:
-        return {
+        payload = {
             "identity": self.identity.stable_key,
             "project_id": self.project_id,
             "site_id": self.site_id,
@@ -196,10 +202,13 @@ class ApprovalEnvelopeEntry:
             "work_package_ref": self.work_package_ref,
             "start_date": self.start_date.isoformat(),
             "end_date": self.end_date.isoformat(),
-            "hours": format(self.hours, "f"),
+            "hours": format(self.hours, "f") if self.hours is not None else None,
             "kind": self.kind,
             "group": self.group.stable_key if self.group else None,
         }
+        if self.line_kind == "ASSET":
+            payload.update(asset_type_id=self.asset_type_id, occupancy_policy=self.occupancy_policy)
+        return payload
 
     def snapshot_payload(self) -> dict[str, object]:
         payload = self.authorization_payload()
@@ -212,6 +221,8 @@ class ApprovalEnvelopeEntry:
                 "desired_active_days": self.desired_active_days,
             }
         )
+        if self.line_kind == "ASSET":
+            payload["proposed_asset_id"] = self.proposed_asset_id
         return payload
 
 
@@ -232,7 +243,7 @@ class ApprovalEnvelope:
 
     def to_snapshot_payload(self) -> dict[str, object]:
         return {
-            "format_version": 1,
+            "format_version": 2 if any(entry.line_kind == "ASSET" for entry in self.entries) else 1,
             "authorization_fingerprint": self.authorization_fingerprint,
             "entries": [entry.snapshot_payload() for entry in self.entries],
         }
@@ -316,10 +327,8 @@ def approval_envelope_from_snapshot_payload(
             work_package_ref=_optional_text(raw.get("work_package_ref")),
             start_date=start_date,
             end_date=end_date,
-            hours=_hours(
-                raw.get("hours"),
-                field=f"Les heures de {line_id}/{period_key or 'LINE'}",
-            ),
+            hours=(_hours(raw["hours"], field=f"Les heures de {line_id}/{period_key or 'LINE'}")
+                   if raw.get("hours") is not None else None),
             kind=_text(raw.get("kind")).upper() or PERIOD_KIND_CUMULATIVE,
             group=group,
             source_period_id=_optional_text(raw.get("source_period_id")),
@@ -331,6 +340,9 @@ def approval_envelope_from_snapshot_payload(
                 if raw.get("desired_active_days") is not None
                 else None
             ),
+            asset_type_id=_optional_text(raw.get("asset_type_id")),
+            occupancy_policy=_optional_text(raw.get("occupancy_policy")),
+            proposed_asset_id=_optional_text(raw.get("proposed_asset_id")),
         )
         entries.append(entry)
 
@@ -437,6 +449,10 @@ def normalize_approval_envelope(
         if not project_id:
             raise ValueError(f"La ligne {line_id} doit référencer un projet.")
         line_kind = _text(raw_line.line_kind).upper() or "WORKFORCE"
+        if line_kind not in {"WORKFORCE", "ASSET"}:
+            raise ValueError(f"Type de ligne non supporté: {line_kind}")
+        if line_kind == "ASSET" and (not raw_line.asset_type_id or raw_line.occupancy_policy != "EXCLUSIVE_DAY"):
+            raise ValueError(f"La ligne {line_id} doit préciser un type et une occupation exclusive quotidienne.")
         competencies = _normalized_competency_ids(raw_line.competency_ids)
         common = {
             "project_id": project_id,
@@ -450,6 +466,8 @@ def normalize_approval_envelope(
             "task_ref": _optional_text(raw_line.task_ref),
             "work_package_ref": _optional_text(raw_line.work_package_ref),
         }
+        if line_kind == "ASSET":
+            common.update(asset_type_id=raw_line.asset_type_id, occupancy_policy=raw_line.occupancy_policy, proposed_asset_id=raw_line.proposed_asset_id)
 
         if raw_line.periods:
             seen_periods: set[str] = set()
@@ -521,10 +539,8 @@ def normalize_approval_envelope(
                         ),
                         start_date=period.start_date,
                         end_date=period.end_date,
-                        hours=_hours(
-                            period.hours,
-                            field=f"Les heures de {line_id}/{period_key}",
-                        ),
+                        hours=(_hours(period.hours, field=f"Les heures de {line_id}/{period_key}")
+                               if period.hours is not None else None),
                         kind=kind,
                         group=group,
                         source_period_id=_optional_text(period.source_period_id),
@@ -566,7 +582,7 @@ def normalize_approval_envelope(
             label=f"la ligne {line_id}",
             desired_active_days=raw_line.desired_active_days,
         )
-        if raw_line.hours is None:
+        if raw_line.hours is None and line_kind == "WORKFORCE":
             raise ValueError(
                 f"La ligne {line_id} doit avoir des heures lorsqu'elle n'a pas "
                 "de périodes explicites."
@@ -576,7 +592,8 @@ def normalize_approval_envelope(
                 identity=EnvelopeEntryIdentity(line_id=line_id),
                 start_date=raw_line.start_date,
                 end_date=end_date,
-                hours=_hours(raw_line.hours, field=f"Les heures de {line_id}"),
+                hours=(_hours(raw_line.hours, field=f"Les heures de {line_id}")
+                       if raw_line.hours is not None else None),
                 kind=PERIOD_KIND_CUMULATIVE,
                 group=None,
                 source_period_id=None,
@@ -617,7 +634,11 @@ def validate_approval_envelope(envelope: ApprovalEnvelope) -> None:
                 f"Le nombre de ressources de {entry.identity.stable_key} "
                 "doit être au moins 1."
             )
-        if entry.hours <= 0:
+        if entry.line_kind == "ASSET" and (not entry.asset_type_id or entry.occupancy_policy != "EXCLUSIVE_DAY"):
+            raise ValueError("Une entrée ASSET doit définir son type et sa politique d'occupation.")
+        if entry.hours is None and entry.line_kind == "WORKFORCE":
+            raise ValueError("Un budget humain est requis.")
+        if entry.hours is not None and entry.hours <= 0:
             raise ValueError(
                 f"Le budget de {entry.identity.stable_key} doit être positif."
             )
@@ -667,6 +688,8 @@ def _scope_tuple(entry: ApprovalEnvelopeEntry) -> tuple[object, ...]:
         entry.competency_ids,
         entry.task_ref,
         entry.work_package_ref,
+        entry.asset_type_id,
+        entry.occupancy_policy,
     )
 
 
@@ -686,6 +709,9 @@ def _budget_change(
             False,
         )
 
+    if candidate.hours is None or approved.hours is None:
+        return (EnvelopeChange(code=REASON_BUDGET_INCREASE if candidate.hours is not None else REASON_BUDGET_REDUCTION,
+                               entry_key=approved.identity.stable_key), True, False)
     delta = candidate.hours - approved.hours
     percent = (delta / approved.hours * Decimal("100")).quantize(_HUNDREDTH)
     if delta < 0:
@@ -871,6 +897,9 @@ def compare_approval_envelopes(
                     entry_key=identity.stable_key,
                 )
             )
+        if reference.proposed_asset_id != proposed.proposed_asset_id:
+            operational_change = True
+            changes.append(EnvelopeChange(code=CHANGE_PROPOSED_RESOURCE, entry_key=identity.stable_key))
 
     if requires_reapproval:
         primary = next(

@@ -71,6 +71,8 @@ class DemandLineReadModel:
     proposed_resource: str | None = None
     description: str | None = None
     active: bool = True
+    asset_type_id: str | None = None
+    proposed_asset_id: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -169,7 +171,7 @@ class DemandPeriodReadModel:
     kind: str
     start_date: date
     end_date: date
-    hours: float
+    hours: float | None
     confirmation: str
     request_line_id: str | None = None
     alternative_group: str | None = None

@@ -34,7 +34,7 @@ class WorkforceRequestPeriod(TimestampMixin, Base):
     __tablename__ = "workforce_request_periods"
     __table_args__ = (
         CheckConstraint("end_date >= start_date", name="request_period_date_window"),
-        CheckConstraint("hours > 0", name="request_period_hours_positive"),
+        CheckConstraint("hours IS NULL OR hours > 0", name="request_period_hours_positive"),
         CheckConstraint("resource_count >= 1", name="request_period_resource_count"),
         CheckConstraint(
             "(kind = 'ALTERNATIVE' AND alternative_group IS NOT NULL) OR "
@@ -81,7 +81,7 @@ class WorkforceRequestPeriod(TimestampMixin, Base):
     alternative_group: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
     start_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
     end_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
-    hours: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    hours: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
     confirmation: Mapped[str] = mapped_column(
         String(32), nullable=False, server_default=text("'Tentative'"), index=True
     )

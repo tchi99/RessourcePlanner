@@ -496,6 +496,8 @@ class SqlPeriodAwareApprovedDemandSyncAdapter(ApprovedDemandSyncPort):
         unresolved = 0
 
         for line in lines:
+            if _text(line.kind) == "ASSET":
+                continue
             if _text(line.kind) != "WORKFORCE":
                 raise ValueError(
                     f"La ligne {line.id} de type {line.kind} ne peut pas être matérialisée."
@@ -970,9 +972,13 @@ class SqlPeriodAwareApprovedDemandSyncAdapter(ApprovedDemandSyncPort):
             )
         )
         self._session.flush()
+        from .asset_plan import SqlAssetPlanSynchronizer
+        SqlAssetPlanSynchronizer(self._session).from_active_revision(request)
 
     def cancel_materialized(self, demand_number: str) -> None:
         request = self._request(demand_number)
+        from .asset_plan import SqlAssetPlanSynchronizer
+        SqlAssetPlanSynchronizer(self._session).cancel(request)
         current = self._active_requirements(request.id)
         locked = self._locked_shifts({row.id for row in current})
         protected = [
@@ -1056,6 +1062,10 @@ class SqlPeriodAwareApprovedDemandSyncAdapter(ApprovedDemandSyncPort):
             self._sync_legacy_periods(request, periods)
 
         if revision is not None:
+            from .asset_plan import SqlAssetPlanSynchronizer
+            SqlAssetPlanSynchronizer(self._session).sync(
+                request, self._approval_revisions.candidate_envelope(request), revision
+            )
             self._approval_revisions.bind_materialized_requirements(
                 request,
                 revision,
