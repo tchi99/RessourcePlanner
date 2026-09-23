@@ -9,10 +9,12 @@ import {
   WorkPackageReadModel,
 } from "./api";
 import CompetencyPicker from "./CompetencyPicker";
+import { AssetCatalogItem, AssetTypeCatalogItem } from "./assetApi";
 
 export type DemandLineDraft = {
   key: string;
   id?: string;
+  kind: "WORKFORCE" | "ASSET";
   required_resource_class: string;
   required_competency_ids: string[];
   desired_start: string;
@@ -22,6 +24,8 @@ export type DemandLineDraft = {
   work_package_ref: string;
   task_code: string;
   proposed_resource_id: string;
+  asset_type_id: string;
+  proposed_asset_id: string;
   confirmation: "Tentative" | "Confirmée";
   description: string;
   estimated_hours_source?: string | null;
@@ -51,6 +55,7 @@ export function demandLineDraftFromReadModel(line: DemandLineReadModel): DemandL
   return {
     key: line.line_id || draftKey(),
     id: line.line_id || undefined,
+    kind: line.kind === "ASSET" ? "ASSET" : "WORKFORCE",
     required_resource_class: line.required_resource_class ?? "",
     required_competency_ids: line.required_competency_ids ?? [],
     desired_start: line.desired_start ?? "",
@@ -62,6 +67,8 @@ export function demandLineDraftFromReadModel(line: DemandLineReadModel): DemandL
     work_package_ref: line.work_package_ref ?? "",
     task_code: line.task_code ?? "",
     proposed_resource_id: line.proposed_resource_id ?? "",
+    asset_type_id: line.asset_type_id ?? "",
+    proposed_asset_id: line.proposed_asset_id ?? "",
     confirmation: line.confirmation === "Tentative" ? "Tentative" : "Confirmée",
     description: line.description ?? "",
     estimated_hours_source: line.estimated_hours_source,
@@ -71,22 +78,42 @@ export function demandLineDraftFromReadModel(line: DemandLineReadModel): DemandL
 export function demandLineWrite(line: DemandLineDraft, position: number): DemandLineWrite {
   const activeDays = optionalNumber(line.desired_active_days);
   const hours = optionalNumber(line.estimated_hours);
-  return {
+  const shared = {
     ...(line.id ? { id: line.id } : {}),
     position,
-    kind: "WORKFORCE",
-    required_resource_class: line.required_resource_class.trim() || null,
-    required_competency_ids: line.required_competency_ids,
+    kind: line.kind,
     desired_start: line.desired_start || null,
     desired_end: line.desired_end || null,
-    desired_active_days: activeDays == null || Number.isNaN(activeDays) ? null : activeDays,
     estimated_hours: hours == null || Number.isNaN(hours) ? null : hours,
     work_package_ref: line.work_package_ref || null,
     task_code: line.task_code || null,
-    proposed_resource_id: line.proposed_resource_id || null,
     confirmation: line.confirmation,
     description: line.description.trim() || null,
-  };
+  } satisfies Partial<DemandLineWrite>;
+
+  if (line.kind === "ASSET") {
+    return {
+      ...shared,
+      kind: "ASSET",
+      required_resource_class: null,
+      required_competency_ids: [],
+      desired_active_days: null,
+      proposed_resource_id: null,
+      asset_type_id: line.asset_type_id || null,
+      proposed_asset_id: line.proposed_asset_id || null,
+    } as DemandLineWrite;
+  }
+
+  return {
+    ...shared,
+    kind: "WORKFORCE",
+    required_resource_class: line.required_resource_class.trim() || null,
+    required_competency_ids: line.required_competency_ids,
+    desired_active_days: activeDays == null || Number.isNaN(activeDays) ? null : activeDays,
+    proposed_resource_id: line.proposed_resource_id || null,
+    asset_type_id: null,
+    proposed_asset_id: null,
+  } as DemandLineWrite;
 }
 
 export function lineValidationMessage(line: DemandLineDraft, position: number): string | null {
@@ -95,16 +122,28 @@ export function lineValidationMessage(line: DemandLineDraft, position: number): 
   if (line.desired_end && line.desired_end < line.desired_start) {
     return `Ligne ${number} : la date de fin ne peut pas précéder la date de début.`;
   }
-  const days = optionalNumber(line.desired_active_days);
+
   const hours = optionalNumber(line.estimated_hours);
-  if (Number.isNaN(days) || Number.isNaN(hours)) {
-    return `Ligne ${number} : les jours et les heures doivent être numériques.`;
-  }
-  if (days != null && (!Number.isInteger(days) || days < 1)) {
-    return `Ligne ${number} : les jours actifs doivent être un entier supérieur ou égal à 1.`;
+  if (Number.isNaN(hours)) {
+    return `Ligne ${number} : les heures doivent être numériques.`;
   }
   if (hours != null && hours <= 0) {
     return `Ligne ${number} : les heures doivent être supérieures à zéro.`;
+  }
+
+  if (line.kind === "ASSET") {
+    if (!line.asset_type_id) {
+      return `Ligne ${number} : sélectionne un type d’actif.`;
+    }
+    return null;
+  }
+
+  const days = optionalNumber(line.desired_active_days);
+  if (Number.isNaN(days)) {
+    return `Ligne ${number} : les jours doivent être numériques.`;
+  }
+  if (days != null && (!Number.isInteger(days) || days < 1)) {
+    return `Ligne ${number} : les jours actifs doivent être un entier supérieur ou égal à 1.`;
   }
   if (days == null && hours == null) {
     return `Ligne ${number} : indique les heures ou le nombre de jours actifs.`;
@@ -120,6 +159,7 @@ export function lineValidationMessage(line: DemandLineDraft, position: number): 
 }
 
 function lineProjectedHours(line: DemandLineDraft): number {
+  if (line.kind === "ASSET") return 0;
   const hours = optionalNumber(line.estimated_hours);
   if (hours != null && !Number.isNaN(hours)) return hours;
   const days = optionalNumber(line.desired_active_days);
@@ -128,6 +168,7 @@ function lineProjectedHours(line: DemandLineDraft): number {
 }
 
 function lineProjectedDays(line: DemandLineDraft): number {
+  if (line.kind === "ASSET") return 0;
   const days = optionalNumber(line.desired_active_days);
   return days != null && !Number.isNaN(days) ? days : 0;
 }
@@ -142,6 +183,8 @@ export default function DemandLinesEditor({
   resources,
   workPackages,
   tasks,
+  assetTypes,
+  assets,
   disabled = false,
 }: {
   lines: DemandLineDraft[];
@@ -153,6 +196,8 @@ export default function DemandLinesEditor({
   resources: ResourceReadModel[];
   workPackages: WorkPackageReadModel[];
   tasks: TaskCatalogItemReadModel[];
+  assetTypes: AssetTypeCatalogItem[];
+  assets: AssetCatalogItem[];
   disabled?: boolean;
 }) {
   const resourceClasses = useMemo(
@@ -167,6 +212,8 @@ export default function DemandLinesEditor({
     () => lines.reduce((sum, line) => sum + lineProjectedDays(line), 0),
     [lines],
   );
+  const workforceCount = lines.filter((line) => line.kind === "WORKFORCE").length;
+  const assetCount = lines.length - workforceCount;
 
   function updateLine(index: number, patch: Partial<DemandLineDraft>) {
     onChange(lines.map((line, lineIndex) => (
@@ -205,12 +252,12 @@ export default function DemandLinesEditor({
   }
 
   return (
-    <section className="request-lines-editor" aria-label="Lignes de main-d’œuvre">
+    <section className="request-lines-editor" aria-label="Lignes planifiables">
       <div className="request-lines-heading">
         <div>
           <span className="eyebrow">Besoins planifiables</span>
-          <h3>Lignes de main-d’œuvre</h3>
-          <p>Chaque ligne représente un slot de ressource indépendant. Les heures laissées vides sont calculées et persistées par le backend à 8 h par jour actif.</p>
+          <h3>Lignes planifiables</h3>
+          <p>Chaque ligne représente soit un besoin de main-d’œuvre, soit un actif physique. Les actifs utilisent une occupation par unité/jour et ne sont jamais convertis en fausses heures.</p>
         </div>
         <div className="request-lines-actions">
           <label>
@@ -235,10 +282,10 @@ export default function DemandLinesEditor({
       </div>
 
       <div className="request-lines-summary" aria-label="Récapitulatif des lignes">
-        <div><strong>{lines.length}</strong><span>ligne(s)</span></div>
-        <div><strong>{totalDays}</strong><span>jour(s) actif(s)</span></div>
-        <div><strong>{Number(totalHours.toFixed(2))}</strong><span>heure(s) projetées</span></div>
-        <small>Les heures projetées utilisent 8 h/j uniquement pour l’aperçu; le backend demeure autoritaire sur la valeur persistée.</small>
+        <div><strong>{workforceCount}</strong><span>ligne(s) main-d’œuvre</span></div>
+        <div><strong>{assetCount}</strong><span>ligne(s) actif</span></div>
+        <div><strong>{Number(totalHours.toFixed(2))}</strong><span>heure(s) humaines projetées</span></div>
+        <small>{totalDays} jour(s) actif(s) humain(s). Un éventuel budget d’usage d’un actif reste distinct des heures de main-d’œuvre.</small>
       </div>
 
       <div className="request-lines-grid">
@@ -266,6 +313,32 @@ export default function DemandLinesEditor({
             )}
 
             <div className="request-line-fields">
+              <label>
+                <span>Type de besoin</span>
+                <select
+                  value={line.kind}
+                  onChange={(event) => {
+                    const kind = event.target.value === "ASSET" ? "ASSET" : "WORKFORCE";
+                    updateLine(index, kind === "ASSET" ? {
+                      kind,
+                      required_resource_class: "",
+                      required_competency_ids: [],
+                      desired_active_days: "",
+                      proposed_resource_id: "",
+                    } : {
+                      kind,
+                      asset_type_id: "",
+                      proposed_asset_id: "",
+                    });
+                  }}
+                  disabled={disabled}
+                  aria-label={`Type de besoin — ligne ${index + 1}`}
+                >
+                  <option value="WORKFORCE">Main-d’œuvre</option>
+                  <option value="ASSET">Actif physique</option>
+                </select>
+              </label>
+
               <label>
                 <span>WorkPackage</span>
                 <select
@@ -337,81 +410,153 @@ export default function DemandLinesEditor({
                 </select>
               </label>
 
-              <label>
-                <span>Classe de ressource</span>
-                <select
-                  value={line.required_resource_class}
-                  onChange={(event) => updateLine(index, { required_resource_class: event.target.value })}
-                  disabled={disabled}
-                >
-                  <option value="">Aucune classe imposée</option>
-                  {line.required_resource_class && !resourceClasses.includes(line.required_resource_class) && (
-                    <option value={line.required_resource_class}>{line.required_resource_class} — historique</option>
-                  )}
-                  {resourceClasses.map((resourceClass) => (
-                    <option value={resourceClass} key={resourceClass}>{resourceClass}</option>
-                  ))}
-                </select>
-              </label>
+              {line.kind === "ASSET" ? (
+                <>
+                  <label>
+                    <span>Type d’actif</span>
+                    <select
+                      value={line.asset_type_id}
+                      onChange={(event) => updateLine(index, {
+                        asset_type_id: event.target.value,
+                        proposed_asset_id: assets.some((asset) => (
+                          asset.id === line.proposed_asset_id
+                          && asset.asset_type_id === event.target.value
+                        )) ? line.proposed_asset_id : "",
+                      })}
+                      disabled={disabled}
+                      aria-label={`Type d’actif — ligne ${index + 1}`}
+                    >
+                      <option value="">Sélectionner un type…</option>
+                      {line.asset_type_id && !assetTypes.some((row) => row.id === line.asset_type_id) && (
+                        <option value={line.asset_type_id}>{line.asset_type_id} — historique</option>
+                      )}
+                      {assetTypes
+                        .filter((row) => row.active || row.id === line.asset_type_id)
+                        .map((row) => (
+                          <option value={row.id} key={row.id}>{row.code} — {row.label}</option>
+                        ))}
+                    </select>
+                  </label>
 
-              <CompetencyPicker
-                competencies={competencies}
-                selectedIds={line.required_competency_ids}
-                onChange={(ids) => updateLine(index, { required_competency_ids: ids })}
-                disabled={disabled}
-                label={`Compétences requises — ligne ${index + 1}`}
-                placeholder="Rechercher une compétence…"
-              />
+                  <label>
+                    <span>Unité proposée</span>
+                    <select
+                      value={line.proposed_asset_id}
+                      onChange={(event) => updateLine(index, { proposed_asset_id: event.target.value })}
+                      disabled={disabled || !line.asset_type_id}
+                      aria-label={`Unité proposée — ligne ${index + 1}`}
+                    >
+                      <option value="">Aucune — décision au planning</option>
+                      {line.proposed_asset_id && !assets.some((row) => row.id === line.proposed_asset_id) && (
+                        <option value={line.proposed_asset_id}>{line.proposed_asset_id} — historique</option>
+                      )}
+                      {assets
+                        .filter((row) => (
+                          row.asset_type_id === line.asset_type_id
+                          && (row.active || row.id === line.proposed_asset_id)
+                        ))
+                        .map((row) => (
+                          <option value={row.id} key={row.id}>{row.code} — {row.label}</option>
+                        ))}
+                    </select>
+                    <small>Suggestion seulement : aucune unité n’est affectée automatiquement.</small>
+                  </label>
 
-              <label>
-                <span>Ressource proposée</span>
-                <select
-                  value={line.proposed_resource_id}
-                  onChange={(event) => updateLine(index, { proposed_resource_id: event.target.value })}
+                  <label>
+                    <span>Budget d’usage (h, optionnel)</span>
+                    <input
+                      type="number"
+                      min="0.25"
+                      step="0.25"
+                      value={line.estimated_hours}
+                      onChange={(event) => updateLine(index, { estimated_hours: event.target.value, estimated_hours_source: event.target.value ? "EXPLICIT" : null })}
+                      disabled={disabled}
+                      placeholder="Aucun budget si vide"
+                    />
+                    <small>Ce budget d’usage reste distinct de la capacité humaine.</small>
+                  </label>
+                </>
+              ) : (
+                <>
+                <label>
+                  <span>Classe de ressource</span>
+                  <select
+                    value={line.required_resource_class}
+                    onChange={(event) => updateLine(index, { required_resource_class: event.target.value })}
+                    disabled={disabled}
+                  >
+                    <option value="">Aucune classe imposée</option>
+                    {line.required_resource_class && !resourceClasses.includes(line.required_resource_class) && (
+                      <option value={line.required_resource_class}>{line.required_resource_class} — historique</option>
+                    )}
+                    {resourceClasses.map((resourceClass) => (
+                      <option value={resourceClass} key={resourceClass}>{resourceClass}</option>
+                    ))}
+                  </select>
+                </label>
+  
+                <CompetencyPicker
+                  competencies={competencies}
+                  selectedIds={line.required_competency_ids}
+                  onChange={(ids) => updateLine(index, { required_competency_ids: ids })}
                   disabled={disabled}
-                >
-                  <option value="">Aucune ressource proposée</option>
-                  {line.proposed_resource_id && !resources.some((row) => row.id === line.proposed_resource_id) && (
-                    <option value={line.proposed_resource_id}>{line.proposed_resource_id} — inactive/historique</option>
-                  )}
-                  {resources.map((resource) => (
-                    <option value={resource.id} key={resource.id}>
-                      {resource.name}{resource.resource_class ? ` — ${resource.resource_class}` : ""}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <label>
-                <span>Jours actifs</span>
-                <input
-                  type="number"
-                  min="1"
-                  step="1"
-                  value={line.desired_active_days}
-                  onChange={(event) => updateLine(index, { desired_active_days: event.target.value })}
-                  disabled={disabled}
-                  placeholder="Ex. 3"
+                  label={`Compétences requises — ligne ${index + 1}`}
+                  placeholder="Rechercher une compétence…"
                 />
-              </label>
-
-              <label>
-                <span>Heures</span>
-                <input
-                  type="number"
-                  min="0.25"
-                  step="0.25"
-                  value={line.estimated_hours}
-                  onChange={(event) => updateLine(index, { estimated_hours: event.target.value, estimated_hours_source: event.target.value ? "EXPLICIT" : null })}
-                  disabled={disabled}
-                  placeholder="8 h/j si vide"
-                />
-                <small>
-                  {line.estimated_hours
-                    ? "Heures explicites."
-                    : "Vide : le backend applique et persiste 8 h par jour actif."}
-                </small>
-              </label>
+  
+                <label>
+                  <span>Ressource proposée</span>
+                  <select
+                    value={line.proposed_resource_id}
+                    onChange={(event) => updateLine(index, { proposed_resource_id: event.target.value })}
+                    disabled={disabled}
+                  >
+                    <option value="">Aucune ressource proposée</option>
+                    {line.proposed_resource_id && !resources.some((row) => row.id === line.proposed_resource_id) && (
+                      <option value={line.proposed_resource_id}>{line.proposed_resource_id} — inactive/historique</option>
+                    )}
+                    {resources.map((resource) => (
+                      <option value={resource.id} key={resource.id}>
+                        {resource.name}{resource.resource_class ? ` — ${resource.resource_class}` : ""}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+  
+                <label>
+                  <span>Jours actifs</span>
+                  <input
+                    type="number"
+                    min="1"
+                    step="1"
+                    value={line.desired_active_days}
+                    onChange={(event) => updateLine(index, { desired_active_days: event.target.value })}
+                    disabled={disabled}
+                    placeholder="Ex. 3"
+                  />
+                </label>
+  
+                <label>
+                  <span>Heures</span>
+                  <input
+                    type="number"
+                    min="0.25"
+                    step="0.25"
+                    value={line.estimated_hours}
+                    onChange={(event) => updateLine(index, { estimated_hours: event.target.value, estimated_hours_source: event.target.value ? "EXPLICIT" : null })}
+                    disabled={disabled}
+                    placeholder="8 h/j si vide"
+                  />
+                  <small>
+                    {line.estimated_hours
+                      ? "Heures explicites."
+                      : "Vide : le backend applique et persiste 8 h par jour actif."}
+                  </small>
+                </label>
+  
+  
+                </>
+              )}
 
               <label className="span-2">
                 <span>Description spécifique</span>
