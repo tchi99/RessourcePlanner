@@ -240,9 +240,13 @@ class ConfirmationInheritanceApiTests(unittest.TestCase):
                 )
                 self.assertEqual(created.status_code, 201, created.text)
                 number = created.json()["demand_number"]
+                request_version = client.get(
+                    f"/api/v1/demands/{number}"
+                ).json()["version"]
                 replaced = client.put(
                     f"/api/v1/demands/{number}/periods",
                     json={
+                        "expected_request_version": request_version,
                         "periods": [
                             {
                                 "period_id": "PER-1",
