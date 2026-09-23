@@ -52,6 +52,7 @@ Voir :
 - `ADR-005-canonical-demand-requester-identity.md`
 - `ADR-006-global-planning-mutation-version.md`
 - `ADR-007-reservable-non-human-resources.md`
+- `ADR-008-delivery-planning-boundary.md`
 
 Chaîne métier actuelle :
 
@@ -115,13 +116,14 @@ Voir :
 - les modules sous `app/infrastructure/m365/`
 - les modules sous `app/infrastructure/smtp/`
 
-### Vision produit / domaines futurs
+### Delivery / Verification
 
 Voir :
 
 - `../FUTURE_DELIVERY_VERIFICATION.md`
+- `ADR-008-delivery-planning-boundary.md`
 
-Ce document décrit une direction future autour de `WorkPackage → Delivery → Verification` et de l’intégration éventuelle Microsoft Planner/Teams. Il s’agit d’une **vision stratégique**, pas d’un ADR accepté ni d’un état déjà implémenté. Toute décision structurante nécessaire à son implémentation devra être formalisée au moment où la tranche devient active.
+La vision long terme reste décrite dans `FUTURE_DELIVERY_VERIFICATION.md`, mais la frontière structurante de #362 est désormais acceptée dans ADR-008 : Delivery reste distinct de Planning, les Shift représentent de la capacité réservée plutôt que des actuals, les heures actuelles du WorkPackage ne sont pas un budget approuvé, et Delivery possède sa propre progression, concurrence et autorisation. Verification (#363) reste une tranche distincte à construire après Delivery.
 
 ---
 
@@ -166,8 +168,9 @@ Exemples qui ne nécessitent normalement pas d'ADR :
 | ADR-005 | identité canonique du demandeur distincte de l'acteur authentifié |
 | ADR-006 | sérialiser les mutations concurrentes du planning par une révision globale persistante/CAS SQL tant que le rebuild reste global |
 | ADR-007 | séparer les actifs réservables des ressources humaines tout en partageant l'orchestration Planning; occupation initiale exclusive à la journée |
+| ADR-008 | séparer Delivery de Planning; WorkPackage comme jonction, capacité Planning read-only, progression/forecast et concurrence Delivery propres |
 
-Ces sept ADR sont en statut `Accepted`. ADR-006 reste le socle de concurrence globale. ADR-007 guide #291 : modèles persistants humains/actifs distincts, lignes `ASSET`, `AssetRequirement → AssetAllocation`, occupation exclusive quotidienne et orchestration Planning commune.
+Ces huit ADR sont en statut `Accepted`. ADR-006 reste le socle de concurrence globale. ADR-007 guide #291 pour les actifs réservables. ADR-008 guide #362 : `DeliveryPlan`/Epics/Stories restent distincts des `Shift`, les heures WorkPackage actuelles sont une référence de planification et non un budget approuvé, et Delivery consomme une projection read-only du plan actif/approuvé.
 
 ---
 
