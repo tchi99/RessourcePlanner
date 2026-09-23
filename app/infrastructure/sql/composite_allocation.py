@@ -16,6 +16,7 @@ from ...application.commands import (
 )
 from ...application.errors import ApplicationConflictError, ApplicationValidationError
 from ...application.repository_ports import PlanningAuthorizationPort, PlanningMutationVersionPort
+from ...domain.approval_envelope import envelope_entry_identity_from_stable_key
 from ...domain.manual_overallocation import (
     INCREASE_PLANNED,
     KEEP_EXCEPTION,
@@ -385,6 +386,8 @@ class SqlCompositeAllocationCommandAdapter(CompositeAllocationCommandPort):
 
         approval_revision_id: str | None = None
         approved_entry_key: str | None = None
+        request_line_id: str | None = None
+        period_key: str | None = None
         approved_start = None
         approved_end = None
         within_authorization = requirement.origin != ORIGIN_REQUEST
@@ -404,6 +407,10 @@ class SqlCompositeAllocationCommandAdapter(CompositeAllocationCommandPort):
                 approved_entry_key = _text(
                     decision.get("approved_entry_key")
                 ) or None
+                if approved_entry_key:
+                    identity = envelope_entry_identity_from_stable_key(approved_entry_key)
+                    request_line_id = identity.line_id
+                    period_key = identity.period_key
                 approved_start = decision.get("approved_start")
                 approved_end = decision.get("approved_end")
                 within_authorization = bool(decision.get("authorized"))
@@ -508,6 +515,8 @@ class SqlCompositeAllocationCommandAdapter(CompositeAllocationCommandPort):
             "planning_version": self._versioning.current_version(),
             "approval_revision_id": approval_revision_id,
             "approved_entry_key": approved_entry_key,
+            "request_line_id": request_line_id,
+            "period_key": period_key,
             "approved_window": (
                 {
                     "start": approved_start.isoformat(),
