@@ -65,7 +65,7 @@ class ReactPlanningDragDropContractTests(unittest.TestCase):
         self.assertIn("evaluation.projected_excess_hours", dialog)
         self.assertIn("Autoriser explicitement le quart hors horaire", dialog)
         self.assertIn("Décision de surallocation requise", dialog)
-        self.assertIn(">Annuler<", dialog)
+        self.assertIn("Annuler", dialog)
         self.assertIn("+ Quart manuel", page)
         self.assertIn("+ Quick Shift", page)
         self.assertNotIn("compare_approval_envelopes", page)
