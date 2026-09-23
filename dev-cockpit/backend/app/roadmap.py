@@ -11,7 +11,7 @@ ACTIVE_PATTERNS = [
     re.compile(r"tranche\s+(?:produit\s+)?active\s*[:=]\s*\*{0,2}`?#?(\d+[A-Z]?)", re.IGNORECASE),
 ]
 
-DONE_WORDS = re.compile(r"\b(?:termin[ée]e?s?|compl[ée]t[ée]e?s?|livr[ée]e?s?)\b", re.IGNORECASE)
+DONE_WORDS = re.compile(r"\b(?:done|termin[ée]e?s?|compl[ée]t[ée]e?s?|livr[ée]e?s?)\b", re.IGNORECASE)
 GATE_DONE_WORDS = re.compile(
     r"\b(?:satisfait(?:e|es|s)?|termin(?:é|ée|és|ées)|complét(?:é|ée|és|ées)|effectu(?:é|ée|és|ées)|valid(?:é|ée|és|ées))\b",
     re.IGNORECASE,
@@ -447,7 +447,13 @@ def subitems_from_text(body: str, parent: int | str) -> list[WorkItem]:
             checked = match.groupdict().get("checked")
             done = marker == "✅" or checked in {"x", "X"}
             title = match.group("title").strip()
-            if DONE_WORDS.search(title) and re.search(r"\b(?:PR\s*#?\d+|CI\s*#?\d+|termin|complét|livr)", title, re.IGNORECASE):
+            if re.search(r"\bDONE\b", title, re.IGNORECASE):
+                done = True
+            elif DONE_WORDS.search(title) and re.search(
+                r"\b(?:PR\s*#?\d+|CI\s*#?\d+|termin|complét|livr)",
+                title,
+                re.IGNORECASE,
+            ):
                 done = True
             if key not in items:
                 items[key] = WorkItem(key=key, title=title, done=done, marker="✅" if done else marker, issue_number=int(parent_text))

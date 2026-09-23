@@ -115,6 +115,20 @@ class RoadmapTests(unittest.TestCase):
         self.assertFalse(items[1].done)
         self.assertEqual(first_unfinished(items).key, "13B")
 
+
+    def test_done_keyword_marks_subitems_completed(self):
+        body = """
+### #291A — contrats — DONE (PR #394, CI #801)
+### #291B — catalogue — DONE
+### #291C — projections — READY
+"""
+        items = subitems_from_text(body, 291)
+        self.assertEqual([item.key for item in items], ["291A", "291B", "291C"])
+        self.assertTrue(items[0].done)
+        self.assertTrue(items[1].done)
+        self.assertFalse(items[2].done)
+        self.assertEqual(first_unfinished(items).key, "291C")
+
     def test_merge_preserves_secondary_in_progress_marker(self):
         primary = subitems_from_text("### #13G — contrats de lecture", 13)
         secondary = subitems_from_text("- 🟡 13G — contrats de lecture", 13)
