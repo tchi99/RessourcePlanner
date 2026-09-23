@@ -961,9 +961,18 @@ export default function PlanningPage({ onOpenDemands }: { onOpenDemands?: () => 
         <ShiftEditor
           shift={editingShift}
           resources={catalogResources}
+          planningVersion={snapshot.planning_version}
           onClose={() => setEditingShift(null)}
           onSaved={() => {
             setEditingShift(null);
+            setRefreshKey((value) => value + 1);
+          }}
+          onStale={() => {
+            setEditingShift(null);
+            setDragFeedback({
+              tone: "info",
+              message: "Le planning a changé depuis l'ouverture du quart. Le snapshot a été rafraîchi; rouvre le quart pour réessayer.",
+            });
             setRefreshKey((value) => value + 1);
           }}
         />

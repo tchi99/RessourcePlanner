@@ -5,20 +5,38 @@ import {
   ApiError,
   ResourceReadModel,
   ShiftReadModel,
+  getDemandDetail,
 } from "./api";
 import {
   OverallocationApiError,
   OverallocationContext,
   OverallocationPolicy,
+  duplicateAllocationAtomic,
   deleteManualAllocation,
   overallocationContext,
   releaseManualAllocation,
+  splitAllocationAtomic,
   updateAllocationWithOverallocation,
 } from "./manualOverallocationApi";
 import PlanningHistoryPanel from "./PlanningHistoryPanel";
 import SegmentEditor from "./SegmentEditor";
 
 type ConfirmationChoice = "inherit" | "Tentative" | "Confirmée";
+type AtomicMode = "split" | "duplicate";
+type OverallocationSource = "edit" | "atomic";
+type AtomicAction = {
+  mode: AtomicMode;
+  idempotencyKey: string;
+  expectedPlanningVersion: number;
+  expectedApprovalRevisionId: string | null;
+  expectedOperationalVersion: number | null;
+  resourceId: string;
+  day: string;
+  transferHours: string;
+  outsideStandardHours: boolean;
+  retryPolicy: OverallocationPolicy | null;
+  ambiguousRetry: boolean;
+};
 type OverallocationShift = ShiftReadModel & {
   segment_planned_hours?: number;
   segment_locked_hours?: number;
@@ -35,16 +53,27 @@ function hoursLabel(value: number | null | undefined) {
   return new Intl.NumberFormat("fr-CA", { maximumFractionDigits: 2 }).format(Number(value ?? 0));
 }
 
+function newAtomicIdempotencyKey() {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return `atomic-allocation-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
 export default function ShiftEditor({
   shift,
   resources,
+  planningVersion,
   onClose,
   onSaved,
+  onStale,
 }: {
   shift: ShiftReadModel;
   resources: ResourceReadModel[];
+  planningVersion: number;
   onClose: () => void;
   onSaved: () => void;
+  onStale: () => void;
 }) {
   const { can } = useAuth();
   const canManagePlanning = can("manage_planning");
@@ -58,6 +87,9 @@ export default function ShiftEditor({
   const [error, setError] = useState<string | null>(null);
   const [segmentOpen, setSegmentOpen] = useState(false);
   const [overallocationChoice, setOverallocationChoice] = useState<OverallocationContext | null>(null);
+  const [overallocationSource, setOverallocationSource] = useState<OverallocationSource | null>(null);
+  const [atomicAction, setAtomicAction] = useState<AtomicAction | null>(null);
+  const [atomicPreparing, setAtomicPreparing] = useState(false);
   const overallocationShift = shift as OverallocationShift;
   const currentExcess = Number(overallocationShift.segment_overallocated_hours ?? 0);
 
@@ -104,6 +136,7 @@ export default function ShiftEditor({
         policy,
       );
       setOverallocationChoice(null);
+      setOverallocationSource(null);
       onSaved();
     } catch (reason) {
       const context = overallocationContext(reason);
@@ -113,12 +146,15 @@ export default function ShiftEditor({
         && context
       ) {
         setOverallocationChoice(context);
+        setOverallocationSource("edit");
         setError(null);
       } else if (reason instanceof ApiError) {
         setOverallocationChoice(null);
+        setOverallocationSource(null);
         setError(`${reason.message}${reason.code ? ` (${reason.code})` : ""}`);
       } else {
         setOverallocationChoice(null);
+        setOverallocationSource(null);
         setError(reason instanceof Error ? reason.message : "Impossible d'enregistrer le quart.");
       }
     } finally {
@@ -129,6 +165,143 @@ export default function ShiftEditor({
   async function submit(event: FormEvent) {
     event.preventDefault();
     await save(null);
+  }
+
+
+  async function openAtomic(mode: AtomicMode) {
+    if (saving || atomicPreparing || !canManagePlanning) return;
+    setAtomicPreparing(true);
+    setError(null);
+    setOverallocationChoice(null);
+    setOverallocationSource(null);
+    try {
+      let approvalRevisionId: string | null = null;
+      let operationalVersion: number | null = null;
+      if (shift.demand_number) {
+        const detail = await getDemandDetail(shift.demand_number);
+        approvalRevisionId = detail.approval_state?.active_revision_id ?? null;
+        operationalVersion = detail.approval_state?.operational_version ?? null;
+        if (!approvalRevisionId) {
+          setError("Aucune révision approuvée active n'est disponible pour ce quart. Rafraîchis le planning avant de continuer.");
+          return;
+        }
+      }
+      const half = Math.max(Math.round((Number(shift.hours) / 2) * 100) / 100, 0.01);
+      setAtomicAction({
+        mode,
+        idempotencyKey: newAtomicIdempotencyKey(),
+        expectedPlanningVersion: planningVersion,
+        expectedApprovalRevisionId: approvalRevisionId,
+        expectedOperationalVersion: operationalVersion,
+        resourceId: shift.resource_id,
+        day: shift.work_date,
+        transferHours: String(half),
+        outsideStandardHours: shift.outside_standard_hours,
+        retryPolicy: null,
+        ambiguousRetry: false,
+      });
+    } catch (reason: unknown) {
+      if (reason instanceof ApiError) {
+        setError(`${reason.message}${reason.code ? ` (${reason.code})` : ""}`);
+      } else {
+        setError(reason instanceof Error ? reason.message : "Impossible de préparer l'action sur ce quart.");
+      }
+    } finally {
+      setAtomicPreparing(false);
+    }
+  }
+
+  function updateAtomic(patch: Partial<AtomicAction>) {
+    setAtomicAction((current) => current ? { ...current, ...patch } : current);
+    setOverallocationChoice(null);
+    setOverallocationSource(null);
+    setError(null);
+  }
+
+  async function executeAtomic(policy: OverallocationPolicy | null = null) {
+    if (!atomicAction || saving || !canManagePlanning) return;
+    const transferHours = Number(atomicAction.transferHours);
+    if (!atomicAction.resourceId.trim() || !atomicAction.day) {
+      setError("Choisis une ressource et une date pour le nouveau quart.");
+      return;
+    }
+    if (
+      atomicAction.mode === "split"
+      && (!Number.isFinite(transferHours) || transferHours <= 0 || transferHours >= Number(shift.hours))
+    ) {
+      setError("Les heures transférées doivent être supérieures à zéro et inférieures aux heures du quart source.");
+      return;
+    }
+
+    setSaving(true);
+    setError(null);
+    setAtomicAction((current) => current ? {
+      ...current,
+      retryPolicy: policy,
+      ambiguousRetry: false,
+    } : current);
+    try {
+      const common = {
+        resource_id: atomicAction.resourceId,
+        day: atomicAction.day,
+        expected_planning_version: atomicAction.expectedPlanningVersion,
+        outside_standard_hours: atomicAction.outsideStandardHours,
+        expected_approval_revision_id: atomicAction.expectedApprovalRevisionId,
+        expected_operational_version: policy === "INCREASE_PLANNED"
+          ? atomicAction.expectedOperationalVersion
+          : null,
+        overallocation_policy: policy,
+      };
+      if (atomicAction.mode === "split") {
+        await splitAllocationAtomic(
+          shift.allocation_id,
+          { ...common, transfer_hours: transferHours },
+          atomicAction.idempotencyKey,
+        );
+      } else {
+        await duplicateAllocationAtomic(
+          shift.allocation_id,
+          common,
+          atomicAction.idempotencyKey,
+        );
+      }
+      setOverallocationChoice(null);
+      setOverallocationSource(null);
+      setAtomicAction(null);
+      onSaved();
+    } catch (reason: unknown) {
+      const context = overallocationContext(reason);
+      if (
+        reason instanceof OverallocationApiError
+        && reason.code === "allocation_overallocation_choice_required"
+        && context
+      ) {
+        setOverallocationChoice(context);
+        setOverallocationSource("atomic");
+        setError(null);
+      } else if (
+        reason instanceof OverallocationApiError
+        && (
+          reason.code === "planning_version_conflict"
+          || reason.code === "operational_choice_version_conflict"
+          || reason.code === "planning_authorization_unknown"
+        )
+      ) {
+        setOverallocationChoice(null);
+        setOverallocationSource(null);
+        setAtomicAction(null);
+        onStale();
+      } else if (reason instanceof TypeError) {
+        setAtomicAction((current) => current ? { ...current, ambiguousRetry: true } : current);
+        setError("La réponse n'a pas été reçue. Réessaie la même commande : la clé idempotente et les versions capturées seront réutilisées.");
+      } else if (reason instanceof ApiError) {
+        setError(`${reason.message}${reason.code ? ` (${reason.code})` : ""}`);
+      } else {
+        setError(reason instanceof Error ? reason.message : "Impossible d'exécuter l'action sur le quart.");
+      }
+    } finally {
+      setSaving(false);
+    }
   }
 
   async function releaseManual() {
@@ -234,7 +407,11 @@ export default function ShiftEditor({
                   type="button"
                   className="primary-button"
                   disabled={saving}
-                  onClick={() => void save("INCREASE_PLANNED")}
+                  onClick={() => void (
+                    overallocationSource === "atomic"
+                      ? executeAtomic("INCREASE_PLANNED")
+                      : save("INCREASE_PLANNED")
+                  )}
                 >
                   Augmenter les heures prévues à {hoursLabel(overallocationChoice.projected_locked_hours)} h
                 </button>
@@ -242,7 +419,11 @@ export default function ShiftEditor({
                   type="button"
                   className="secondary-button"
                   disabled={saving}
-                  onClick={() => void save("KEEP_EXCEPTION")}
+                  onClick={() => void (
+                    overallocationSource === "atomic"
+                      ? executeAtomic("KEEP_EXCEPTION")
+                      : save("KEEP_EXCEPTION")
+                  )}
                 >
                   Conserver la dérogation (+{hoursLabel(overallocationChoice.excess_hours)} h)
                 </button>
@@ -275,6 +456,128 @@ export default function ShiftEditor({
             <label><span>Confirmation</span><select value={confirmation} onChange={(event) => setConfirmation(event.target.value as ConfirmationChoice)}><option value="inherit">Héritée du segment</option><option value="Tentative">Tentative</option><option value="Confirmée">Confirmée</option></select></label>
             <label className="checkbox-field"><input type="checkbox" checked={outsideStandardHours} onChange={(event) => setOutsideStandardHours(event.target.checked)} /><span>Autoriser / marquer hors horaire standard</span></label>
             <label className="span-2"><span>Note</span><textarea value={note} onChange={(event) => setNote(event.target.value)} rows={3} /></label>
+          </div>
+
+          <div className="atomic-action-section" data-testid="atomic-allocation-actions">
+            <div className="atomic-action-heading">
+              <div>
+                <strong>Partager ou dupliquer ce quart</strong>
+                <span>Le nouveau quart reste sous le même besoin. Le backend valide le budget, les versions et le reliquat avant de recalculer.</span>
+              </div>
+              {!atomicAction && (
+                <div className="atomic-action-buttons">
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    disabled={saving || atomicPreparing}
+                    onClick={() => void openAtomic("split")}
+                  >
+                    Partager
+                  </button>
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    disabled={saving || atomicPreparing}
+                    onClick={() => void openAtomic("duplicate")}
+                  >
+                    Dupliquer
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {atomicPreparing && <small>Chargement du contexte d'autorisation…</small>}
+
+            {atomicAction && (
+              <div className="atomic-action-panel" data-testid={`atomic-${atomicAction.mode}-panel`}>
+                <div className="atomic-action-title">
+                  <strong>{atomicAction.mode === "split" ? "Partager le quart" : "Dupliquer le quart"}</strong>
+                  <span>Version du planning capturée : {atomicAction.expectedPlanningVersion}</span>
+                </div>
+                <div className="dialog-form-grid">
+                  <label>
+                    <span>Ressource du nouveau quart</span>
+                    <select
+                      value={atomicAction.resourceId}
+                      disabled={saving || atomicAction.ambiguousRetry}
+                      onChange={(event) => updateAtomic({ resourceId: event.target.value })}
+                    >
+                      {sortedResources.map((resource) => (
+                        <option value={resource.id} key={resource.id}>
+                          {resource.name}{resource.resource_class ? ` — ${resource.resource_class}` : ""}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    <span>Date du nouveau quart</span>
+                    <input
+                      type="date"
+                      value={atomicAction.day}
+                      disabled={saving || atomicAction.ambiguousRetry}
+                      onChange={(event) => updateAtomic({ day: event.target.value })}
+                    />
+                  </label>
+                  {atomicAction.mode === "split" && (
+                    <label>
+                      <span>Heures à transférer</span>
+                      <input
+                        type="number"
+                        min="0.01"
+                        step="0.01"
+                        max={Math.max(Number(shift.hours) - 0.01, 0.01)}
+                        value={atomicAction.transferHours}
+                        disabled={saving || atomicAction.ambiguousRetry}
+                        onChange={(event) => updateAtomic({ transferHours: event.target.value })}
+                      />
+                    </label>
+                  )}
+                  <label className="checkbox-field">
+                    <input
+                      type="checkbox"
+                      checked={atomicAction.outsideStandardHours}
+                      disabled={saving || atomicAction.ambiguousRetry}
+                      onChange={(event) => updateAtomic({ outsideStandardHours: event.target.checked })}
+                    />
+                    <span>Autoriser / marquer le nouveau quart hors horaire standard</span>
+                  </label>
+                </div>
+                {atomicAction.ambiguousRetry && (
+                  <div className="atomic-retry-note" role="status">
+                    Le résultat réseau est incertain. Les champs sont figés afin de réessayer exactement la même commande avec la même clé idempotente.
+                  </div>
+                )}
+                <div className="atomic-action-buttons">
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    disabled={saving}
+                    onClick={() => {
+                      setAtomicAction(null);
+                      setOverallocationChoice(null);
+                      setOverallocationSource(null);
+                      setError(null);
+                    }}
+                  >
+                    {atomicAction.ambiguousRetry ? "Annuler et recommencer" : "Annuler"}
+                  </button>
+                  <button
+                    type="button"
+                    className="primary-button"
+                    disabled={saving}
+                    onClick={() => void executeAtomic(atomicAction.retryPolicy)}
+                  >
+                    {saving
+                      ? "Traitement…"
+                      : atomicAction.ambiguousRetry
+                        ? "Réessayer la même commande"
+                        : atomicAction.mode === "split"
+                          ? "Partager le quart"
+                          : "Dupliquer le quart"}
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="confirmation-help">

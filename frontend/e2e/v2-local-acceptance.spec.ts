@@ -625,6 +625,154 @@ test("V2 local acceptance path runs through React, Chromium, FastAPI and SQLite"
 });
 
 
+test("coordinator splits and duplicates a shift atomically from React", async ({ browser }) => {
+  test.setTimeout(120_000);
+  const { d1, d2, d5 } = acceptanceDates();
+  const { context, page } = await openAs(browser, "COORDINATOR");
+
+  await navigateMain(page, "Planning opérationnel");
+  await page.getByRole("button", { name: /Suivante/ }).click();
+
+  await page.getByRole("button", { name: /Quick Shift/ }).click();
+  const quickShift = page.getByRole("dialog", { name: "Créer un Quick Shift" });
+  await labelled(quickShift, "Projet", "select").selectOption("P-251");
+  await labelled(quickShift, "Technicien", "select").selectOption("Alice");
+  await labelled(quickShift, "Date", "input").fill(d2);
+  await labelled(quickShift, "Heures", "input").fill("4");
+  await labelled(quickShift, "Confirmation", "select").selectOption("Confirmée");
+  await labelled(quickShift, "Description", "textarea").fill("Validation partage et duplication #332");
+  await labelled(quickShift, "Note", "textarea").fill("Atomic #332");
+  await quickShift.getByRole("button", { name: "Créer le Quick Shift" }).click();
+  await expect(quickShift).toBeHidden();
+
+  const createdResponse = await page.request.get(
+    `/api/v1/shifts?start=${d1}&end=${d5}`,
+  );
+  expect(createdResponse.ok()).toBeTruthy();
+  const createdRows = await createdResponse.json() as Array<{
+    allocation_id: string;
+    segment_id: string;
+    resource_id: string;
+    work_date: string;
+    hours: number;
+    note: string | null;
+    locked: boolean;
+    source: string;
+  }>;
+  const sourceShift = createdRows.find((row) => row.note === "Atomic #332");
+  expect(sourceShift, "Quart source #332 introuvable").toBeDefined();
+  const segmentId = sourceShift!.segment_id;
+
+  const aliceRow = page.locator(".resource-identity").filter({ hasText: "Alice" }).first().locator("..");
+  const sourceCard = aliceRow
+    .locator(`.planning-drop-day[data-day="${d2}"]`)
+    .locator(`.shift-card[data-allocation-id="${sourceShift!.allocation_id}"]`);
+  await expect(sourceCard).toBeVisible();
+  await sourceCard.click();
+
+  const editor = page.getByRole("dialog", { name: "Modifier le quart" });
+  await expect(editor).toBeVisible();
+  await editor.getByRole("button", { name: "Partager", exact: true }).click();
+  const splitPanel = editor.getByTestId("atomic-split-panel");
+  await expect(splitPanel).toBeVisible();
+  await labelled(splitPanel, "Ressource du nouveau quart", "select").selectOption("R-BOB");
+  await labelled(splitPanel, "Date du nouveau quart", "input").fill(d2);
+  await labelled(splitPanel, "Heures à transférer", "input").fill("1.5");
+
+  const splitResponsePromise = page.waitForResponse((response) => (
+    response.request().method() === "POST"
+    && response.url().includes(`/api/v1/allocations/${encodeURIComponent(sourceShift!.allocation_id)}/split`)
+  ));
+  await splitPanel.getByRole("button", { name: "Partager le quart", exact: true }).click();
+  const splitResponse = await splitResponsePromise;
+  expect(splitResponse.status(), await splitResponse.text()).toBe(201);
+  const splitRequest = splitResponse.request();
+  expect(splitRequest.headers()["idempotency-key"]).toBeTruthy();
+  const splitBody = splitRequest.postDataJSON() as Record<string, unknown>;
+  expect(typeof splitBody.expected_planning_version).toBe("number");
+  expect(splitBody.resource_id).toBe("R-BOB");
+  expect(splitBody.transfer_hours).toBe(1.5);
+  await expect(editor).toBeHidden();
+
+  const afterSplitResponse = await page.request.get(
+    `/api/v1/shifts?start=${d1}&end=${d5}`,
+  );
+  expect(afterSplitResponse.ok()).toBeTruthy();
+  const afterSplitRows = (await afterSplitResponse.json() as Array<{
+    allocation_id: string;
+    segment_id: string;
+    resource_id: string;
+    work_date: string;
+    hours: number;
+    locked: boolean;
+    source: string;
+  }>).filter((row) => row.segment_id === segmentId);
+  expect(afterSplitRows).toHaveLength(2);
+  expect(afterSplitRows.reduce((sum, row) => sum + row.hours, 0)).toBeCloseTo(4, 2);
+  expect(afterSplitRows.every((row) => row.locked && row.source === "MANUAL")).toBeTruthy();
+  const bobShift = afterSplitRows.find((row) => row.resource_id === "R-BOB");
+  expect(bobShift?.hours).toBeCloseTo(1.5, 2);
+
+  const bobRow = page.locator(".resource-identity").filter({ hasText: "Bob" }).first().locator("..");
+  const bobCard = bobRow
+    .locator(`.planning-drop-day[data-day="${d2}"]`)
+    .locator(`.shift-card[data-allocation-id="${bobShift!.allocation_id}"]`);
+  await expect(bobCard).toBeVisible();
+  await bobCard.click();
+
+  const duplicateEditor = page.getByRole("dialog", { name: "Modifier le quart" });
+  await duplicateEditor.getByRole("button", { name: "Dupliquer", exact: true }).click();
+  const duplicatePanel = duplicateEditor.getByTestId("atomic-duplicate-panel");
+  await expect(duplicatePanel).toBeVisible();
+
+  const firstDuplicatePromise = page.waitForResponse((response) => (
+    response.request().method() === "POST"
+    && response.url().includes(`/api/v1/allocations/${encodeURIComponent(bobShift!.allocation_id)}/duplicate`)
+  ));
+  await duplicatePanel.getByRole("button", { name: "Dupliquer le quart", exact: true }).click();
+  const firstDuplicate = await firstDuplicatePromise;
+  expect(firstDuplicate.status(), await firstDuplicate.text()).toBe(422);
+  const firstKey = firstDuplicate.request().headers()["idempotency-key"];
+  expect(firstKey).toBeTruthy();
+  await expect(duplicateEditor.locator(".overallocation-choice")).toContainText(
+    "dépasse les heures prévues",
+  );
+
+  const keptDuplicatePromise = page.waitForResponse((response) => (
+    response.request().method() === "POST"
+    && response.url().includes(`/api/v1/allocations/${encodeURIComponent(bobShift!.allocation_id)}/duplicate`)
+  ));
+  await duplicateEditor.getByRole("button", { name: /Conserver la dérogation/ }).click();
+  const keptDuplicate = await keptDuplicatePromise;
+  expect(keptDuplicate.status(), await keptDuplicate.text()).toBe(201);
+  expect(keptDuplicate.request().headers()["idempotency-key"]).toBe(firstKey);
+  expect(
+    (keptDuplicate.request().postDataJSON() as Record<string, unknown>).overallocation_policy,
+  ).toBe("KEEP_EXCEPTION");
+  await expect(duplicateEditor).toBeHidden();
+
+  const finalResponse = await page.request.get(
+    `/api/v1/shifts?start=${d1}&end=${d5}`,
+  );
+  expect(finalResponse.ok()).toBeTruthy();
+  const finalRows = (await finalResponse.json() as Array<{
+    segment_id: string;
+    resource_id: string;
+    hours: number;
+    locked: boolean;
+    source: string;
+    segment_overallocated_hours?: number;
+  }>).filter((row) => row.segment_id === segmentId);
+  expect(finalRows).toHaveLength(3);
+  expect(finalRows.reduce((sum, row) => sum + row.hours, 0)).toBeCloseTo(5.5, 2);
+  expect(finalRows.every((row) => row.locked && row.source === "MANUAL")).toBeTruthy();
+  expect(finalRows.filter((row) => row.resource_id === "R-BOB")).toHaveLength(2);
+  expect(finalRows.some((row) => Number(row.segment_overallocated_hours ?? 0) > 0)).toBeTruthy();
+
+  await closeContext(context);
+});
+
+
 test("multi-line demand editor generates independent RequestLines and materializes them", async ({ browser }) => {
   const { d1, d2 } = acceptanceDates();
   const projectManager = await openAs(browser, "PROJECT_MANAGER");

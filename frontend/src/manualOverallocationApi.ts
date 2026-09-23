@@ -1,7 +1,41 @@
 import { ApiError, ManualAllocationUpdate } from "./api";
+import { csrfHeaders } from "./csrf";
 import { SegmentMutationResult, SegmentUpdateWrite } from "./segments-api";
 
 export type OverallocationPolicy = "KEEP_EXCEPTION" | "INCREASE_PLANNED";
+
+export type AtomicAllocationResult = {
+  operation: "SPLIT" | "DUPLICATE";
+  source_allocation_id: string;
+  target_allocation_id: string;
+  source_shift_id: string;
+  target_shift_id: string;
+  segment_id: string;
+  requirement_id: string;
+  source_hours: number;
+  target_hours: number;
+  planned_hours: number;
+  locked_hours: number;
+  excess_hours: number;
+  planning_version: number;
+  approval_revision_id: string | null;
+  operational_version: number | null;
+  auto_source_converted: boolean;
+};
+
+export type AtomicAllocationWrite = {
+  resource_id: string;
+  day: string;
+  expected_planning_version: number;
+  outside_standard_hours: boolean | null;
+  expected_approval_revision_id: string | null;
+  expected_operational_version: number | null;
+  overallocation_policy: OverallocationPolicy | null;
+};
+
+export type AtomicAllocationSplitWrite = AtomicAllocationWrite & {
+  transfer_hours: number;
+};
 
 export type OverallocationContext = {
   segment_id: string;
@@ -60,9 +94,11 @@ async function sendJson<T>(
     headers: {
       Accept: "application/json",
       "Content-Type": "application/json",
+      ...csrfHeaders(),
       ...headers,
     },
     body: JSON.stringify(body),
+    credentials: "include",
   });
   if (!response.ok) throw await errorFromResponse(response);
   return response.json() as Promise<T>;
@@ -95,10 +131,40 @@ export function createManualAllocationWithOverallocation(
   );
 }
 
+export function splitAllocationAtomic(
+  allocationId: string,
+  payload: AtomicAllocationSplitWrite,
+  idempotencyKey: string,
+) {
+  return sendJson<AtomicAllocationResult>(
+    `/api/v1/allocations/${encodeURIComponent(allocationId)}/split`,
+    "POST",
+    payload,
+    { "Idempotency-Key": idempotencyKey },
+  );
+}
+
+export function duplicateAllocationAtomic(
+  allocationId: string,
+  payload: AtomicAllocationWrite,
+  idempotencyKey: string,
+) {
+  return sendJson<AtomicAllocationResult>(
+    `/api/v1/allocations/${encodeURIComponent(allocationId)}/duplicate`,
+    "POST",
+    payload,
+    { "Idempotency-Key": idempotencyKey },
+  );
+}
+
 export async function releaseManualAllocation(allocationId: string) {
   const response = await fetch(
     `${API_BASE}/api/v1/allocations/${encodeURIComponent(allocationId)}/release`,
-    { method: "POST", headers: { Accept: "application/json" } },
+    {
+      method: "POST",
+      headers: { Accept: "application/json", ...csrfHeaders() },
+      credentials: "include",
+    },
   );
   if (!response.ok) throw await errorFromResponse(response);
   return response.json() as Promise<Record<string, unknown>>;
@@ -107,7 +173,11 @@ export async function releaseManualAllocation(allocationId: string) {
 export async function deleteManualAllocation(allocationId: string) {
   const response = await fetch(
     `${API_BASE}/api/v1/allocations/${encodeURIComponent(allocationId)}`,
-    { method: "DELETE", headers: { Accept: "application/json" } },
+    {
+      method: "DELETE",
+      headers: { Accept: "application/json", ...csrfHeaders() },
+      credentials: "include",
+    },
   );
   if (!response.ok) throw await errorFromResponse(response);
   return response.json() as Promise<Record<string, unknown>>;
