@@ -110,6 +110,20 @@ class SecurityPolicyTests(unittest.TestCase):
         )
         self.assertEqual(
             required_permission(
+                "PUT",
+                "/api/v1/assets/requirements/AR-1/operator",
+            ),
+            PERMISSION_MANAGE_PLANNING,
+        )
+        self.assertEqual(
+            required_permission(
+                "PUT",
+                "/api/v1/assets/types/AT-1/qualification",
+            ),
+            PERMISSION_MANAGE_RESOURCES,
+        )
+        self.assertEqual(
+            required_permission(
                 "PATCH",
                 "/api/v1/task-catalog/T1/business-contacts",
             ),
