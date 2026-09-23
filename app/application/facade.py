@@ -3,7 +3,9 @@ from __future__ import annotations
 from .allocation_service import AllocationService
 from .composite_allocation_service import CompositeAllocationService
 from .commands import (
+    AllocationDropEvaluateCommand,
     AllocationDuplicateCommand,
+    AllocationExtendMoveCommand,
     AllocationSplitCommand,
     DemandAlternativeSelectCommand,
     DemandOperationalConfirmationCommand,
@@ -50,6 +52,7 @@ from .results import (
     DemandMutationResult,
     DemandOperationalConfirmationResult,
     DemandPeriodsMutationResult,
+    PlanningDropEvaluationResult,
     PlanningResult,
     QuickShiftCreatedResult,
     SegmentMutationResult,
@@ -317,6 +320,18 @@ class ApplicationFacade:
         self._acquire_planning_version()
         self._allocations.delete_manual_command(command)
         return AllocationMutationResult(_identifier(command.allocation_id), action="deleted")
+
+    def evaluate_allocation_drop(
+        self,
+        command: AllocationDropEvaluateCommand,
+    ) -> PlanningDropEvaluationResult:
+        return self._composite_allocation_service().evaluate_drop_command(command)
+
+    def extend_and_move_allocation(
+        self,
+        command: AllocationExtendMoveCommand,
+    ) -> CompositeAllocationMutationResult:
+        return self._composite_allocation_service().extend_and_move_command(command)
 
     def split_allocation(
         self,

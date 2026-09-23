@@ -111,6 +111,90 @@ class QuickShiftCreatedResult(ApplicationResult):
 
 
 @dataclass(frozen=True, slots=True)
+class PlanningDropEvaluationResult(ApplicationResult):
+    allocation_id: str
+    source_shift_id: str
+    segment_id: str
+    requirement_id: str
+    origin: str
+    source_resource_id: str
+    target_resource_id: str
+    target_day: str
+    current_window: Mapping[str, Any]
+    proposed_window: Mapping[str, Any]
+    planning_version: int
+    approval_revision_id: str | None = None
+    approved_entry_key: str | None = None
+    approved_window: Mapping[str, Any] | None = None
+    request_number: str | None = None
+    request_version: int | None = None
+    operational_version: int | None = None
+    authorization_decision: str = ""
+    availability_hours: float = 0.0
+    planned_hours: float = 0.0
+    current_locked_hours: float = 0.0
+    projected_locked_hours: float = 0.0
+    projected_excess_hours: float = 0.0
+    actions: tuple[Mapping[str, Any], ...] = ()
+    warnings: tuple[Mapping[str, Any], ...] = ()
+
+    @classmethod
+    def from_mapping(cls, values: Mapping[str, Any]) -> "PlanningDropEvaluationResult":
+        source = dict(values)
+        return cls(
+            allocation_id=str(source.get("allocation_id") or ""),
+            source_shift_id=str(source.get("source_shift_id") or ""),
+            segment_id=str(source.get("segment_id") or ""),
+            requirement_id=str(source.get("requirement_id") or ""),
+            origin=str(source.get("origin") or ""),
+            source_resource_id=str(source.get("source_resource_id") or ""),
+            target_resource_id=str(source.get("target_resource_id") or ""),
+            target_day=str(source.get("target_day") or ""),
+            current_window=dict(source.get("current_window") or {}),
+            proposed_window=dict(source.get("proposed_window") or {}),
+            planning_version=_integer(source.get("planning_version")),
+            approval_revision_id=(
+                str(source.get("approval_revision_id"))
+                if source.get("approval_revision_id") is not None
+                else None
+            ),
+            approved_entry_key=(
+                str(source.get("approved_entry_key"))
+                if source.get("approved_entry_key") is not None
+                else None
+            ),
+            approved_window=(
+                dict(source.get("approved_window") or {})
+                if source.get("approved_window") is not None
+                else None
+            ),
+            request_number=(
+                str(source.get("request_number"))
+                if source.get("request_number") is not None
+                else None
+            ),
+            request_version=(
+                int(source["request_version"])
+                if source.get("request_version") is not None
+                else None
+            ),
+            operational_version=(
+                int(source["operational_version"])
+                if source.get("operational_version") is not None
+                else None
+            ),
+            authorization_decision=str(source.get("authorization_decision") or ""),
+            availability_hours=_number(source.get("availability_hours")),
+            planned_hours=_number(source.get("planned_hours")),
+            current_locked_hours=_number(source.get("current_locked_hours")),
+            projected_locked_hours=_number(source.get("projected_locked_hours")),
+            projected_excess_hours=_number(source.get("projected_excess_hours")),
+            actions=tuple(source.get("actions") or ()),
+            warnings=tuple(source.get("warnings") or ()),
+        )
+
+
+@dataclass(frozen=True, slots=True)
 class CompositeAllocationMutationResult(ApplicationResult):
     operation: str
     source_allocation_id: str
