@@ -175,3 +175,66 @@ class SegmentAssignCommand:
     segment_id: str
     technician: str
     resource_id: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class AllocationSplitCommand:
+    allocation_id: str
+    resource_id: str
+    day: date
+    transfer_hours: float
+    expected_planning_version: int
+    outside_standard_hours: bool | None = None
+    overallocation_policy: str | None = None
+    expected_approval_revision_id: str | None = None
+    expected_operational_version: int | None = None
+    correlation_id: str | None = None
+
+    def __post_init__(self) -> None:
+        if float(self.transfer_hours) <= 0:
+            raise ApplicationValidationError(
+                "Les heures transférées doivent être supérieures à zéro.",
+                code="allocation_split_hours_invalid",
+                context={"transfer_hours": self.transfer_hours},
+            )
+        if int(self.expected_planning_version) < 1:
+            raise ApplicationValidationError(
+                "La version attendue du planning doit être au moins 1.",
+                code="planning_version_invalid",
+                context={"expected_planning_version": self.expected_planning_version},
+            )
+        if self.expected_operational_version is not None and int(self.expected_operational_version) < 1:
+            raise ApplicationValidationError(
+                "La version opérationnelle attendue doit être au moins 1.",
+                code="operational_choice_version_invalid",
+            )
+        if self.overallocation_policy is not None:
+            _overallocation_policy(self.overallocation_policy)
+
+
+@dataclass(frozen=True, slots=True)
+class AllocationDuplicateCommand:
+    allocation_id: str
+    resource_id: str
+    day: date
+    expected_planning_version: int
+    outside_standard_hours: bool | None = None
+    overallocation_policy: str | None = None
+    expected_approval_revision_id: str | None = None
+    expected_operational_version: int | None = None
+    correlation_id: str | None = None
+
+    def __post_init__(self) -> None:
+        if int(self.expected_planning_version) < 1:
+            raise ApplicationValidationError(
+                "La version attendue du planning doit être au moins 1.",
+                code="planning_version_invalid",
+                context={"expected_planning_version": self.expected_planning_version},
+            )
+        if self.expected_operational_version is not None and int(self.expected_operational_version) < 1:
+            raise ApplicationValidationError(
+                "La version opérationnelle attendue doit être au moins 1.",
+                code="operational_choice_version_invalid",
+            )
+        if self.overallocation_policy is not None:
+            _overallocation_policy(self.overallocation_policy)

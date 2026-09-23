@@ -108,3 +108,52 @@ class AllocationMutationResult(ApplicationResult):
 class QuickShiftCreatedResult(ApplicationResult):
     segment_id: str
     allocation_id: str
+
+
+@dataclass(frozen=True, slots=True)
+class CompositeAllocationMutationResult(ApplicationResult):
+    operation: str
+    source_allocation_id: str
+    target_allocation_id: str
+    source_shift_id: str
+    target_shift_id: str
+    segment_id: str
+    requirement_id: str
+    source_hours: float
+    target_hours: float
+    planned_hours: float
+    locked_hours: float
+    excess_hours: float
+    planning_version: int
+    approval_revision_id: str | None = None
+    operational_version: int | None = None
+    auto_source_converted: bool = False
+
+    @classmethod
+    def from_mapping(cls, values: Mapping[str, Any]) -> "CompositeAllocationMutationResult":
+        source = dict(values)
+        operational = source.get("operational_version")
+        return cls(
+            operation=str(source.get("operation") or ""),
+            source_allocation_id=str(source.get("source_allocation_id") or ""),
+            target_allocation_id=str(source.get("target_allocation_id") or ""),
+            source_shift_id=str(source.get("source_shift_id") or ""),
+            target_shift_id=str(source.get("target_shift_id") or ""),
+            segment_id=str(source.get("segment_id") or ""),
+            requirement_id=str(source.get("requirement_id") or ""),
+            source_hours=_number(source.get("source_hours")),
+            target_hours=_number(source.get("target_hours")),
+            planned_hours=_number(source.get("planned_hours")),
+            locked_hours=_number(source.get("locked_hours")),
+            excess_hours=_number(source.get("excess_hours")),
+            planning_version=_integer(source.get("planning_version")),
+            approval_revision_id=(
+                str(source.get("approval_revision_id"))
+                if source.get("approval_revision_id") is not None
+                else None
+            ),
+            operational_version=(
+                int(operational) if operational is not None else None
+            ),
+            auto_source_converted=bool(source.get("auto_source_converted")),
+        )

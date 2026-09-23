@@ -168,6 +168,7 @@ class PlanningAuthorizationPort(Protocol):
         planned_hours: float,
         *,
         explicit_increase: bool = False,
+        expected_operational_version: int | None = None,
     ) -> None: ...
 
 

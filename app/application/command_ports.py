@@ -3,6 +3,8 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any, Protocol
 
+from .commands import AllocationDuplicateCommand, AllocationSplitCommand
+
 
 class PlanningCommandPort(Protocol):
     """Command boundary for one authoritative planning rebuild."""
@@ -49,6 +51,14 @@ class AllocationCommandPort(Protocol):
     def delete_manual(self, allocation_id: str) -> None: ...
 
     def assign_segment(self, segment_id: str, technician: str) -> Mapping[str, Any]: ...
+
+
+class CompositeAllocationCommandPort(Protocol):
+    """Atomic split/duplicate command boundary for one Shift transaction."""
+
+    def split(self, command: AllocationSplitCommand) -> Mapping[str, Any]: ...
+
+    def duplicate(self, command: AllocationDuplicateCommand) -> Mapping[str, Any]: ...
 
 
 class ApprovedDemandSyncPort(Protocol):
