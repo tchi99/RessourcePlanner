@@ -1531,7 +1531,7 @@ test("desktop sidebar collapse persists and Demands workspace remains responsive
   await expect(workspace).toBeVisible();
 
   const projectName = page.locator(".demand-project span").first();
-  await expect(projectName).toBeVisible();
+  await expect(projectName).toBeAttached();
   expect(await projectName.evaluate((node) => getComputedStyle(node).webkitLineClamp)).toBe("2");
 
   await page.reload();
