@@ -49,7 +49,8 @@ Voir :
 - `ADR-002-request-line-periods-and-identities.md`
 - `ADR-003-immutable-approved-authorization.md`
 - `ADR-004-candidate-approval-and-active-plan.md`
-- `ADR-005-global-planning-mutation-version.md`
+- `ADR-005-canonical-demand-requester-identity.md`
+- `ADR-006-global-planning-mutation-version.md`
 
 Chaîne métier actuelle :
 
@@ -69,7 +70,7 @@ Depuis #13, la demande candidate, la révision approuvée immuable et le plan ac
 
 Voir :
 
-- `ADR-005-global-planning-mutation-version.md`
+- `ADR-006-global-planning-mutation-version.md`
 
 Tant que `rebuild()` reste global, les mutations concurrentes pertinentes du planning participent à une révision persistante globale acquise par CAS SQL **avant** leurs lectures décisionnelles. Cette garde protège la cohérence transactionnelle des opérations composites comme #332; elle ne remplace pas les versions métier plus locales lorsqu'elles portent une sémantique distincte.
 
@@ -152,9 +153,10 @@ Exemples qui ne nécessitent normalement pas d'ADR :
 | ADR-002 | périodes métier par `RequestLine` et identités stables |
 | ADR-003 | révision approuvée immuable comme preuve d'autorisation |
 | ADR-004 | séparer demande candidate, autorisation approuvée et plan actif |
-| ADR-005 | sérialiser les mutations concurrentes du planning par une révision globale persistante/CAS SQL tant que le rebuild reste global |
+| ADR-005 | identité canonique du demandeur distincte de l'acteur authentifié |
+| ADR-006 | sérialiser les mutations concurrentes du planning par une révision globale persistante/CAS SQL tant que le rebuild reste global |
 
-Ces cinq ADR sont en statut `Accepted`. ADR-005 est le préalable architectural de #332A et complète, sans les remplacer, les versions/CAS plus locaux existants.
+Ces six ADR sont en statut `Accepted`. ADR-006 est le socle de concurrence livré par #332A et réutilisé par #333; il complète, sans les remplacer, les versions/CAS plus locaux existants.
 
 ---
 
