@@ -1199,11 +1199,15 @@ export function updateDemand(number: string, payload: DemandWrite, comment: stri
   );
 }
 
-export function replaceDemandPeriods(number: string, periods: DemandPeriodWrite[]) {
+export function replaceDemandPeriods(
+  number: string,
+  periods: DemandPeriodWrite[],
+  expectedRequestVersion: number,
+) {
   return sendJson<DemandPeriodsMutationResult>(
     `/api/v1/demands/${encodeURIComponent(number)}/periods`,
     "PUT",
-    { periods },
+    { periods, expected_request_version: expectedRequestVersion },
   );
 }
 
@@ -1211,11 +1215,12 @@ export function replaceDemandLinePeriods(
   number: string,
   lineId: string,
   periods: DemandPeriodWrite[],
+  expectedRequestVersion: number,
 ) {
   return sendJson<DemandPeriodsMutationResult>(
     `/api/v1/demands/${encodeURIComponent(number)}/lines/${encodeURIComponent(lineId)}/periods`,
     "PUT",
-    { periods },
+    { periods, expected_request_version: expectedRequestVersion },
   );
 }
 
