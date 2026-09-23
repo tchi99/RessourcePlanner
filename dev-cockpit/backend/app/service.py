@@ -7,7 +7,7 @@ from urllib.parse import quote
 
 from .config import Settings
 from .derive import build_next_action_and_prompt, commit_summary, derive_states, matches_work_key
-from .github import GitHubClient
+from .github import GitHubClient, GitHubError
 from .roadmap import (
     active_block,
     agents_allow_chaining,
@@ -214,6 +214,50 @@ def _pipeline_next_action_and_prompt(
     return None
 
 
+def _documentation_only_pull(files: list[dict[str, Any]]) -> bool:
+    if not files:
+        return False
+    for entry in files:
+        path = str(entry.get("filename") or "").strip()
+        if not path:
+            return False
+        if path.startswith("docs/") or path.lower().endswith(".md"):
+            continue
+        return False
+    return True
+
+
+async def _pull_is_dev_work(
+    client: GitHubClient,
+    repo: str,
+    pr: dict[str, Any],
+) -> bool:
+    number = pr.get("number")
+    if not isinstance(number, int):
+        return True
+    try:
+        files = await client.list_pull_files(repo, number)
+    except GitHubError:
+        # Fail conservative: an unavailable files projection must not hide
+        # a real implementation PR from the Developer workflow.
+        return True
+    return not _documentation_only_pull(files)
+
+
+async def _first_matching_dev_pr(
+    client: GitHubClient,
+    repo: str,
+    prs: list[dict[str, Any]],
+    key: str,
+) -> dict[str, Any] | None:
+    for pr in prs:
+        if not matches_work_key(pr, key):
+            continue
+        if await _pull_is_dev_work(client, repo, pr):
+            return pr
+    return None
+
+
 def _merged_pr_summary(pr: dict[str, Any] | None) -> dict[str, Any] | None:
     if not pr:
         return None
@@ -282,15 +326,32 @@ async def build_dashboard(client: GitHubClient, settings: Settings, repo: str) -
     )
 
     open_prs = await asyncio.gather(*[_pr_summary(client, repo, pr) for pr in open_raw[:12]]) if open_raw else []
-    primary_pr = next((pr for pr in open_prs if matches_work_key(pr, active_key)), None)
+    primary_pr = await _first_matching_dev_pr(
+        client,
+        repo,
+        open_prs,
+        active_key,
+    )
     if not primary_pr and active_subitem is None:
-        primary_pr = next((pr for pr in open_prs if matches_work_key(pr, str(parent_issue))), None)
+        primary_pr = await _first_matching_dev_pr(
+            client,
+            repo,
+            open_prs,
+            str(parent_issue),
+        )
 
     merged_but_unmarked_raw = None
     if not block_done and active_subitem and not primary_pr:
-        merged_but_unmarked_raw = next(
-            (pr for pr in closed_raw if pr.get("merged_at") and matches_work_key(pr, active_key)),
-            None,
+        merged_candidates = [
+            pr
+            for pr in closed_raw
+            if pr.get("merged_at") and matches_work_key(pr, active_key)
+        ]
+        merged_but_unmarked_raw = await _first_matching_dev_pr(
+            client,
+            repo,
+            merged_candidates,
+            active_key,
         )
     merged_but_unmarked = _merged_pr_summary(merged_but_unmarked_raw)
 
@@ -353,6 +414,7 @@ async def build_dashboard(client: GitHubClient, settings: Settings, repo: str) -
         derived=derived,
         roadmap_issue=settings.roadmap_issue,
         merged_but_unmarked_pr=merged_but_unmarked,
+        remaining_subitems=[item.key for item in subitems if not item.done],
     )
     pipeline_prompt = _pipeline_next_action_and_prompt(
         pipeline_now=pipeline_projection.get("now"),
