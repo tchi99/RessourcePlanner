@@ -1,3 +1,17 @@
+export type PipelineKind =
+  | 'WORK'
+  | 'ARCHITECTURE_GATE'
+  | 'ENVIRONMENT_GATE'
+
+export type PipelineStep = {
+  key: string
+  title: string
+  kind: PipelineKind
+  done: boolean
+  marker: string | null
+  issue_number: number | null
+}
+
 export type Job = {
   id: number | null
   name: string
@@ -92,6 +106,13 @@ export type Dashboard = {
     roadmap_issue: number
     stalled_after_minutes: number
     token_configured: boolean
+  }
+  pipeline: {
+    steps: PipelineStep[]
+    completed_count: number
+    now: PipelineStep | null
+    next: PipelineStep[]
+    later: PipelineStep[]
   }
   roadmap: {
     number: number

@@ -15,8 +15,11 @@ from .roadmap import (
     first_unfinished,
     focus_items,
     has_explicit_block_order,
+    merge_pipeline_work_status,
     merge_subitems,
     numeric_issue,
+    pipeline_window,
+    product_pipeline,
     referenced_adrs,
     referenced_issue_numbers,
     subitems_from_text,
@@ -161,6 +164,56 @@ async def _most_recent_matching_branch(
     return max(scored, key=lambda row: (row[0], row[1]))[2]
 
 
+def _pipeline_next_action_and_prompt(
+    *,
+    pipeline_now: dict[str, Any] | None,
+    block_done: bool,
+    active_key: str,
+    roadmap_issue: int,
+) -> tuple[str, str] | None:
+    if not pipeline_now:
+        return None
+
+    kind = str(pipeline_now.get("kind") or "")
+    title = str(pipeline_now.get("title") or pipeline_now.get("key") or "étape suivante")
+    key = str(pipeline_now.get("key") or "")
+
+    if kind == "ARCHITECTURE_GATE":
+        return (
+            f"Gate d'architecture requise : {title}.",
+            (
+                "Aucune tranche DEV ne doit être démarrée à cette étape. "
+                f"Le pipeline GitHub #{roadmap_issue} exige d'abord la gate d'architecture « {title} ». "
+                f"Attends qu'elle soit explicitement documentée comme satisfaite dans #{roadmap_issue}; "
+                "ne l'exécute pas comme une tranche d'implémentation."
+            ),
+        )
+
+    if kind == "ENVIRONMENT_GATE":
+        return (
+            f"Gate environnementale requise : {title}.",
+            (
+                "Aucune tranche DEV produit ne doit être inventée à cette étape. "
+                f"Le pipeline GitHub #{roadmap_issue} indique la gate environnementale « {title} ». "
+                f"Son état doit rester porté par GitHub/#{roadmap_issue}; "
+                "ne transforme pas cette validation d'environnement en travail applicatif implicite."
+            ),
+        )
+
+    if block_done and kind == "WORK" and key and key != active_key:
+        return (
+            f"Prochaine tranche DEV du pipeline : {title}.",
+            (
+                f"Le bloc actif précédent est terminé. Le pipeline GitHub #{roadmap_issue} "
+                f"place maintenant « {title} » comme prochain travail DEV. "
+                "Synchronise l'issue et le roadmap si nécessaire, puis poursuis selon AGENTS.md "
+                "sans sauter une gate précédente."
+            ),
+        )
+
+    return None
+
+
 def _merged_pr_summary(pr: dict[str, Any] | None) -> dict[str, Any] | None:
     if not pr:
         return None
@@ -199,6 +252,11 @@ async def build_dashboard(client: GitHubClient, settings: Settings, repo: str) -
     issue_subitems = subitems_from_text(issue_body, parent_issue)
     roadmap_subitems = subitems_from_text(roadmap_block, parent_issue)
     subitems = merge_subitems(issue_subitems, roadmap_subitems)
+    pipeline_steps = merge_pipeline_work_status(
+        product_pipeline(roadmap_body),
+        subitems,
+    )
+    pipeline_projection = pipeline_window(pipeline_steps)
 
     parent_item = next((item for item in top_items if item.key == str(parent_issue)), None)
     block_done = bool(
@@ -296,6 +354,14 @@ async def build_dashboard(client: GitHubClient, settings: Settings, repo: str) -
         roadmap_issue=settings.roadmap_issue,
         merged_but_unmarked_pr=merged_but_unmarked,
     )
+    pipeline_prompt = _pipeline_next_action_and_prompt(
+        pipeline_now=pipeline_projection.get("now"),
+        block_done=block_done,
+        active_key=active_key,
+        roadmap_issue=settings.roadmap_issue,
+    )
+    if pipeline_prompt:
+        next_action, dev_prompt = pipeline_prompt
 
     issue_refs = referenced_issue_numbers(roadmap_body, parent_issue)
     related_raw = await asyncio.gather(
@@ -333,6 +399,10 @@ async def build_dashboard(client: GitHubClient, settings: Settings, repo: str) -
             "roadmap_issue": settings.roadmap_issue,
             "stalled_after_minutes": settings.stalled_after_minutes,
             "token_configured": bool(settings.github_token),
+        },
+        "pipeline": {
+            "steps": [step.to_dict() for step in pipeline_steps],
+            **pipeline_projection,
         },
         "roadmap": {
             "number": roadmap_raw.get("number"),

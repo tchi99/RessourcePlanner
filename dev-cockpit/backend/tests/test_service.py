@@ -42,6 +42,45 @@ Ordre obligatoire :
 ### #13C — préparation commune et protection des verrous
 """
 
+
+
+PIPELINE_ROADMAP_DONE_333 = """
+**#332 est terminé. #333 est la tranche produit active.**
+
+Ordre actif :
+
+1. **#333 — extension de fenêtre contrôlée**
+   - ✅ **333A — décision contextuelle**
+   - ✅ **333B — proposition hors enveloppe**
+   - ✅ **333C — dialogue React + acceptation**
+
+### Suite produit après #333 — bloc P1 puis préparation environnementale
+
+Chemin principal retenu :
+
+```text
+#333A → #333B → #333C
+  ↓
+ASTRA ciblé #901 sur main post-#333
+  ↓
+#901 actifs réservables
+  ↓
+#902 qualifications
+  ↓
+#903 validation VM Ubuntu réelle avec SQLite
+```
+
+**Gates et logique :**
+
+| Étape | État / gate | Pourquoi maintenant |
+|---|---|---|
+| #333 | terminé | bloc DEV stabilisé |
+| analyse ASTRA #901 | après fusion complète de #333 | vérifier l'architecture |
+| #901 | NEXT après analyse | travail DEV |
+| #902 | après #901 | travail DEV |
+| #903 | après P1 ou en parallèle infra | valider la vraie VM Ubuntu |
+"""
+
 AGENTS = """
 ## 20. Chained execution
 Automatic chaining is allowed only when the next item belongs to the same approved work block.
@@ -261,6 +300,104 @@ class ServiceTests(unittest.IsolatedAsyncioTestCase):
             dashboard["active_work"]["last_commit"]["sha"],
             dashboard["latest_commit"]["sha"],
         )
+
+
+    async def _pipeline_dashboard(self, *, gate_done: bool):
+        roadmap_body = PIPELINE_ROADMAP_DONE_333
+        if gate_done:
+            roadmap_body = roadmap_body.replace(
+                "| analyse ASTRA #901 | après fusion complète de #333 |",
+                "| analyse ASTRA #901 | ✅ terminée |",
+            )
+
+        issue_body = """
+# #333 — extension de fenêtre contrôlée
+### ✅ #333A — décision contextuelle
+### ✅ #333B — proposition hors enveloppe
+### ✅ #333C — dialogue React + acceptation
+"""
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            path = request.url.path
+            query = dict(request.url.params)
+            if path == "/repos/tchi99/RessourcePlanner/issues/55":
+                return response({
+                    "number": 55,
+                    "title": "Roadmap maître",
+                    "body": roadmap_body,
+                    "html_url": "https://github.test/issues/55",
+                    "updated_at": "2026-09-23T01:00:00Z",
+                    "state": "open",
+                })
+            if path == "/repos/tchi99/RessourcePlanner/issues/333":
+                return response({
+                    "number": 333,
+                    "title": "Extension de fenêtre",
+                    "body": issue_body,
+                    "state": "open",
+                    "html_url": "https://github.test/issues/333",
+                    "updated_at": "2026-09-23T01:00:00Z",
+                })
+            if path == "/repos/tchi99/RessourcePlanner/pulls":
+                return response([])
+            if path == "/repos/tchi99/RessourcePlanner/commits":
+                return response([{
+                    "sha": "main-pipeline",
+                    "html_url": "https://github.test/commit/main-pipeline",
+                    "commit": {
+                        "message": "main",
+                        "author": {"date": "2026-09-23T00:59:00Z"},
+                    },
+                }])
+            if path == "/repos/tchi99/RessourcePlanner/contents/AGENTS.md":
+                return response(encoded_file(AGENTS))
+            if path == "/repos/tchi99/RessourcePlanner/contents/docs/architecture":
+                return response([])
+            if path == "/repos/tchi99/RessourcePlanner/branches":
+                return response([{"name": "main", "commit": {"sha": "main-pipeline"}}])
+            if path.startswith("/repos/tchi99/RessourcePlanner/issues/"):
+                number = int(path.rsplit("/", 1)[-1])
+                return response({
+                    "number": number,
+                    "title": f"Issue {number}",
+                    "body": "",
+                    "state": "open",
+                    "html_url": f"https://github.test/issues/{number}",
+                    "updated_at": "2026-09-23T01:00:00Z",
+                })
+            if path == "/repos/tchi99/RessourcePlanner/actions/runs":
+                return response({"workflow_runs": []})
+            raise AssertionError(f"Unexpected request: {request.method} {request.url} {query}")
+
+        settings = Settings(
+            github_token="test",
+            repository="tchi99/RessourcePlanner",
+            roadmap_issue=55,
+            stalled_after_minutes=20,
+            github_api_url="https://api.github.test",
+        )
+        client = GitHubClient(settings, transport=httpx.MockTransport(handler))
+        try:
+            return await build_dashboard(client, settings, "tchi99/RessourcePlanner")
+        finally:
+            await client.close()
+
+    async def test_architecture_gate_stops_dev_prompt_after_completed_block(self):
+        dashboard = await self._pipeline_dashboard(gate_done=False)
+        self.assertTrue(dashboard["active_work"]["block_done"])
+        self.assertEqual(dashboard["pipeline"]["now"]["kind"], "ARCHITECTURE_GATE")
+        self.assertEqual(dashboard["pipeline"]["now"]["issue_number"], 901)
+        self.assertIn("Gate d'architecture requise", dashboard["next_action"])
+        self.assertIn("Aucune tranche DEV", dashboard["dev_prompt"])
+        self.assertIn("ne l'exécute pas comme une tranche", dashboard["dev_prompt"])
+        self.assertNotIn("Démarrer/reprendre", dashboard["dev_prompt"])
+
+    async def test_satisfied_architecture_gate_releases_next_work_prompt(self):
+        dashboard = await self._pipeline_dashboard(gate_done=True)
+        self.assertEqual(dashboard["pipeline"]["now"]["key"], "901")
+        self.assertEqual(dashboard["pipeline"]["now"]["kind"], "WORK")
+        self.assertIn("Prochaine tranche DEV du pipeline", dashboard["next_action"])
+        self.assertIn("prochain travail DEV", dashboard["dev_prompt"])
 
     async def test_merged_pr_does_not_mark_unupdated_subitem_done(self):
         dashboard = await self._dashboard([
