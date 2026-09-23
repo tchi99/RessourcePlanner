@@ -22,7 +22,7 @@ PIPELINE_WORK = "WORK"
 PIPELINE_MAIN = "MAIN"
 PIPELINE_PARALLEL = "PARALLEL"
 ARCHITECTURE_GATE_WORDS = re.compile(
-    r"\b(?:ASTRA|analyse\s+architecturale|revue\s+architecturale|architecture\s+gate)\b",
+    r"\b(?:ASTRA|analyse\s+architectur(?:e|ale)|revue\s+architecturale|architecture\s+gate)\b",
     re.IGNORECASE,
 )
 ENVIRONMENT_GATE_WORDS = re.compile(
