@@ -15,7 +15,7 @@ from .operational_contacts import (
     RequestLineContactResolution,
 )
 from .plan_delta import DemandApprovalStateReadModel
-from .query_models import DemandMaterializedRequirementReadModel
+from .query_models import AssetRequirementReadModel, DemandMaterializedRequirementReadModel
 from .query_ports import PlannerQueryPort
 from .read_models import DemandLineReadModel, DemandPeriodReadModel, DemandReadModel
 
@@ -52,6 +52,11 @@ class DemandMaterializedPlanSummaryReadModel:
     covered_hours: float
     locked_hours: float
     requirements: tuple[DemandMaterializedRequirementReadModel, ...] = ()
+    asset_requirement_count: int = 0
+    asset_assigned_count: int = 0
+    asset_usage_hours: float = 0.0
+    asset_unbudgeted_requirement_count: int = 0
+    asset_requirements: tuple[AssetRequirementReadModel, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -211,12 +216,31 @@ class DemandDetailService:
             diagnostics.extend(approval_state.diagnostics)
 
         requirements = tuple(self._queries.list_demand_requirements(demand.number))
+        asset_requirements = tuple(
+            self._queries.list_demand_asset_requirements(demand.number)
+        )
         materialized_plan = DemandMaterializedPlanSummaryReadModel(
             requirement_count=len(requirements),
             planned_hours=round(sum(row.planned_hours for row in requirements), 2),
             covered_hours=round(sum(row.covered_hours for row in requirements), 2),
             locked_hours=round(sum(row.locked_hours for row in requirements), 2),
             requirements=requirements,
+            asset_requirement_count=len(asset_requirements),
+            asset_assigned_count=sum(
+                1 for row in asset_requirements if row.asset_id is not None
+            ),
+            asset_usage_hours=round(
+                sum(
+                    row.usage_hours
+                    for row in asset_requirements
+                    if row.usage_hours is not None
+                ),
+                2,
+            ),
+            asset_unbudgeted_requirement_count=sum(
+                1 for row in asset_requirements if row.usage_hours is None
+            ),
+            asset_requirements=asset_requirements,
         )
 
         workflow_state = demand_workflow_state(
