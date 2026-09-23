@@ -7,16 +7,45 @@ ACTIVE_PATTERNS = [
     re.compile(r"prochaine tranche active est\s+\*{0,2}`?#?(\d+[A-Z]?)", re.IGNORECASE),
     re.compile(r"prochaine tranche(?: produit)?\s+(?:est|:)\s+\*{0,2}`?#?(\d+[A-Z]?)", re.IGNORECASE),
     re.compile(r"#?(\d+[A-Z]?)\s+est\s+maintenant\s+la\s+tranche\s+active", re.IGNORECASE),
-    re.compile(r"tranche\s+active\s*[:=]\s*\*{0,2}`?#?(\d+[A-Z]?)", re.IGNORECASE),
+    re.compile(r"#?(\d+[A-Z]?)\s+est\s+(?:maintenant\s+)?la\s+tranche\s+produit\s+active", re.IGNORECASE),
+    re.compile(r"tranche\s+(?:produit\s+)?active\s*[:=]\s*\*{0,2}`?#?(\d+[A-Z]?)", re.IGNORECASE),
 ]
 
 DONE_WORDS = re.compile(r"\b(?:termin[ée]e?s?|compl[ée]t[ée]e?s?|livr[ée]e?s?)\b", re.IGNORECASE)
+GATE_DONE_WORDS = re.compile(
+    r"\b(?:satisfait(?:e|es|s)?|termin(?:é|ée|és|ées)|complét(?:é|ée|és|ées)|effectu(?:é|ée|és|ées)|valid(?:é|ée|és|ées))\b",
+    re.IGNORECASE,
+)
+PIPELINE_ARCHITECTURE = "ARCHITECTURE_GATE"
+PIPELINE_ENVIRONMENT = "ENVIRONMENT_GATE"
+PIPELINE_WORK = "WORK"
+ARCHITECTURE_GATE_WORDS = re.compile(
+    r"\b(?:ASTRA|analyse\s+architecturale|revue\s+architecturale|architecture\s+gate)\b",
+    re.IGNORECASE,
+)
+ENVIRONMENT_GATE_WORDS = re.compile(
+    r"\b(?:environnement(?:al|ale|aux)?|infra(?:structure)?|validation\s+(?:VM|environnementale|infrastructure)|VM\s+Ubuntu|déploiement\s+réel)\b",
+    re.IGNORECASE,
+)
 
 
 @dataclass
 class WorkItem:
     key: str
     title: str
+    done: bool
+    marker: str | None = None
+    issue_number: int | None = None
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+
+@dataclass
+class PipelineStep:
+    key: str
+    title: str
+    kind: str
     done: bool
     marker: str | None = None
     issue_number: int | None = None
@@ -56,6 +85,281 @@ def _active_order_section(body: str) -> str:
     section = body[marker.start():]
     stop = re.search(r"\n###\s+", section)
     return section[: stop.start()] if stop else section
+
+
+def _heading_level(line: str) -> int | None:
+    match = re.match(r"^(?P<marks>#{1,6})\s+", line.strip())
+    return len(match.group("marks")) if match else None
+
+
+def _product_pipeline_section(body: str) -> str:
+    lines = body.splitlines()
+    start = None
+    level = None
+    for index, raw in enumerate(lines):
+        cleaned = _clean_markdown(raw)
+        heading_level = _heading_level(cleaned)
+        if (
+            heading_level is not None
+            and re.search(r"\b(?:suite|pipeline)\s+produit\b", cleaned, re.IGNORECASE)
+        ):
+            start = index
+            level = heading_level
+            break
+    if start is None or level is None:
+        return ""
+
+    end = len(lines)
+    for index in range(start + 1, len(lines)):
+        next_level = _heading_level(_clean_markdown(lines[index]))
+        if next_level is not None and next_level <= level:
+            end = index
+            break
+    return "\n".join(lines[start:end])
+
+
+def _pipeline_code_block(section: str) -> str:
+    for match in re.finditer(
+        r"```(?:text)?\s*\n(?P<body>.*?)\n```",
+        section,
+        re.IGNORECASE | re.DOTALL,
+    ):
+        block = match.group("body")
+        if re.search(r"#\d+[A-Z]?\b", block):
+            return block
+    return ""
+
+
+def _pipeline_kind(text: str) -> str:
+    if ARCHITECTURE_GATE_WORDS.search(text):
+        return PIPELINE_ARCHITECTURE
+    if ENVIRONMENT_GATE_WORDS.search(text):
+        return PIPELINE_ENVIRONMENT
+    return PIPELINE_WORK
+
+
+def _pipeline_done(text: str, kind: str) -> bool:
+    if "✅" in text:
+        return True
+    if kind == PIPELINE_WORK:
+        return bool(DONE_WORDS.search(text))
+    return bool(GATE_DONE_WORDS.search(text))
+
+
+def _pipeline_identity(kind: str, issue_number: int, key: str) -> str:
+    if kind == PIPELINE_ARCHITECTURE:
+        return f"ASTRA-{issue_number}"
+    return key
+
+
+def _parse_pipeline_fragment(fragment: str) -> PipelineStep | None:
+    cleaned = _clean_markdown(fragment).strip(" -")
+    match = re.search(r"#(?P<key>\d+[A-Z]?)\b", cleaned, re.IGNORECASE)
+    if not match:
+        return None
+    key = normalize_key(match.group("key"))
+    issue_number = numeric_issue(key)
+    if issue_number is None:
+        return None
+    kind = _pipeline_kind(cleaned)
+    marker = "✅" if "✅" in cleaned else None
+    return PipelineStep(
+        key=_pipeline_identity(kind, issue_number, key),
+        title=cleaned,
+        kind=kind,
+        done=_pipeline_done(cleaned, kind),
+        marker=marker,
+        issue_number=issue_number,
+    )
+
+
+def _pipeline_table_rows(section: str) -> list[list[str]]:
+    rows: list[list[str]] = []
+    for raw in section.splitlines():
+        line = raw.strip()
+        if not (line.startswith("|") and line.endswith("|")):
+            continue
+        cells = [cell.strip() for cell in line.strip("|").split("|")]
+        if not cells or all(re.fullmatch(r":?-{3,}:?", cell) for cell in cells):
+            continue
+        if cells[0].lower() in {"étape", "etape"}:
+            continue
+        rows.append(cells)
+    return rows
+
+
+def _matching_pipeline_step(
+    steps: list[PipelineStep],
+    label: str,
+) -> PipelineStep | None:
+    parsed = _parse_pipeline_fragment(label)
+    if not parsed:
+        return None
+    for step in steps:
+        if (
+            step.issue_number == parsed.issue_number
+            and step.kind == parsed.kind
+            and (
+                step.kind != PIPELINE_WORK
+                or step.key == parsed.key
+                or (step.key.isdigit() and parsed.key.isdigit())
+            )
+        ):
+            return step
+    return None
+
+
+def _explicit_work_done(body: str, key: str) -> bool:
+    normalized = normalize_key(key)
+    issue = numeric_issue(normalized)
+    if issue is None:
+        return False
+    if re.search(r"[A-Z]$", normalized):
+        return any(
+            item.key == normalized and item.done
+            for item in subitems_from_text(body, issue)
+        )
+    patterns = [
+        rf"(?:^|\n)[^\n]*✅[^\n]*#{re.escape(normalized)}\b",
+        rf"#{re.escape(normalized)}\b[^\n]*(?:termin(?:é|ée|és|ées)|complét(?:é|ée|és|ées)|livr(?:é|ée|és|ées))",
+    ]
+    return any(re.search(pattern, body, re.IGNORECASE) for pattern in patterns)
+
+
+def _explicit_gate_done(body: str, step: PipelineStep) -> bool:
+    if step.issue_number is None:
+        return step.done
+    if step.kind == PIPELINE_ARCHITECTURE:
+        pattern = (
+            rf"[^\n]*(?:ASTRA|architectur)[^\n]*#{step.issue_number}\b"
+            rf"[^\n]*(?:satisfait(?:e)?|termin(?:é|ée)|complét(?:é|ée)|effectu(?:é|ée)|valid(?:é|ée))"
+        )
+        reverse = (
+            rf"[^\n]*(?:satisfait(?:e)?|termin(?:é|ée)|complét(?:é|ée)|effectu(?:é|ée)|valid(?:é|ée))"
+            rf"[^\n]*(?:ASTRA|architectur)[^\n]*#{step.issue_number}\b"
+        )
+        return bool(
+            re.search(pattern, body, re.IGNORECASE)
+            or re.search(reverse, body, re.IGNORECASE)
+        )
+    if step.kind == PIPELINE_ENVIRONMENT:
+        pattern = (
+            rf"[^\n]*#{step.issue_number}\b[^\n]*"
+            rf"(?:VM\s+Ubuntu|environnement|infra(?:structure)?|déploiement)"
+            rf"[^\n]*(?:termin(?:é|ée)|complét(?:é|ée)|effectu(?:é|ée)|valid(?:é|ée))"
+        )
+        return bool(re.search(pattern, body, re.IGNORECASE))
+    return False
+
+
+def product_pipeline(body: str) -> list[PipelineStep]:
+    section = _product_pipeline_section(body)
+    if not section:
+        return []
+    block = _pipeline_code_block(section)
+    if not block:
+        return []
+
+    steps: list[PipelineStep] = []
+    seen: set[tuple[str, int | None]] = set()
+    for raw in block.splitlines():
+        line = raw.strip()
+        if not line or re.fullmatch(r"(?:↓|→|->|\s)+", line):
+            continue
+        fragments = re.split(r"\s*(?:→|->)\s*", line)
+        for fragment in fragments:
+            step = _parse_pipeline_fragment(fragment)
+            if not step:
+                continue
+            identity = (step.key, step.issue_number)
+            if identity in seen:
+                continue
+            seen.add(identity)
+            steps.append(step)
+
+    for cells in _pipeline_table_rows(section):
+        label = cells[0]
+        status = cells[1] if len(cells) > 1 else ""
+        rationale = cells[2] if len(cells) > 2 else ""
+        step = _matching_pipeline_step(steps, label)
+        if not step:
+            continue
+        combined = " | ".join((label, status, rationale))
+        explicit_kind = _pipeline_kind(combined)
+        if explicit_kind != PIPELINE_WORK or step.kind == PIPELINE_WORK:
+            if step.kind != explicit_kind:
+                step.kind = explicit_kind
+                step.key = _pipeline_identity(
+                    explicit_kind,
+                    int(step.issue_number or 0),
+                    normalize_key(re.search(r"#(\d+[A-Z]?)", label, re.IGNORECASE).group(1)),
+                )
+        if len(label.strip()) > len(step.title):
+            step.title = _clean_markdown(label)
+        if _pipeline_done(label + " | " + status, step.kind):
+            step.done = True
+            step.marker = "✅"
+
+    for step in steps:
+        if step.done:
+            continue
+        if step.kind == PIPELINE_WORK and _explicit_work_done(body, step.key):
+            step.done = True
+            step.marker = "✅"
+        elif step.kind != PIPELINE_WORK and _explicit_gate_done(body, step):
+            step.done = True
+            step.marker = "✅"
+    return steps
+
+
+def merge_pipeline_work_status(
+    pipeline: list[PipelineStep],
+    work_items: list[WorkItem],
+) -> list[PipelineStep]:
+    by_key = {item.key: item for item in work_items}
+    merged = [PipelineStep(**step.to_dict()) for step in pipeline]
+    for step in merged:
+        if step.kind != PIPELINE_WORK:
+            continue
+        work = by_key.get(step.key)
+        if not work:
+            continue
+        if work.done:
+            step.done = True
+            step.marker = "✅"
+        elif step.marker is None and work.marker is not None:
+            step.marker = work.marker
+    return merged
+
+
+def pipeline_window(
+    pipeline: list[PipelineStep],
+    *,
+    next_count: int = 3,
+) -> dict:
+    pending_index = next(
+        (index for index, step in enumerate(pipeline) if not step.done),
+        None,
+    )
+    if pending_index is None:
+        return {
+            "completed_count": len(pipeline),
+            "now": None,
+            "next": [],
+            "later": [],
+        }
+    return {
+        "completed_count": pending_index,
+        "now": pipeline[pending_index].to_dict(),
+        "next": [
+            step.to_dict()
+            for step in pipeline[pending_index + 1 : pending_index + 1 + next_count]
+        ],
+        "later": [
+            step.to_dict()
+            for step in pipeline[pending_index + 1 + next_count :]
+        ],
+    }
 
 
 def top_level_items(body: str) -> list[WorkItem]:
