@@ -108,6 +108,8 @@ Chemin principal retenu :
 
 En parallèle dès maintenant : #398 UX sidebar + liste Demandes
 ```
+
+#291A–#291F sont maintenant terminés; le flux principal poursuit avec **#292 → #399 → #276 → #278**.
 """
 
 
