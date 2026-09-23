@@ -228,3 +228,74 @@
   .dialog-form-grid { grid-template-columns: 1fr; }
   .dialog-form-grid .span-2, .checkbox-field { grid-column: auto; }
 }
+
+
+.atomic-action-section {
+  display: grid;
+  gap: .65rem;
+  margin-top: .85rem;
+  padding: .75rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #fbfcfe;
+}
+
+.atomic-action-heading,
+.atomic-action-title,
+.atomic-action-buttons {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .65rem;
+}
+
+.atomic-action-heading > div,
+.atomic-action-title {
+  min-width: 0;
+}
+
+.atomic-action-heading strong,
+.atomic-action-heading span,
+.atomic-action-title strong,
+.atomic-action-title span {
+  display: block;
+}
+
+.atomic-action-heading span,
+.atomic-action-title span,
+.atomic-action-section > small {
+  margin-top: .12rem;
+  color: var(--muted);
+  font-size: .64rem;
+  line-height: 1.35;
+}
+
+.atomic-action-panel {
+  display: grid;
+  gap: .65rem;
+  padding-top: .65rem;
+  border-top: 1px solid var(--border);
+}
+
+.atomic-action-buttons {
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+.atomic-retry-note {
+  padding: .6rem .65rem;
+  border: 1px solid #dfc27b;
+  border-radius: 9px;
+  background: #fff9e8;
+  color: #765a15;
+  font-size: .66rem;
+  line-height: 1.4;
+}
+
+@media (max-width: 680px) {
+  .atomic-action-heading,
+  .atomic-action-title {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}

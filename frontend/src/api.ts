@@ -638,6 +638,7 @@ export type PlanningCapacityGridReadModel = {
 export type PlanningSnapshotReadModel = {
   start: string;
   end: string;
+  planning_version: number;
   resources: ResourceReadModel[];
   demands: DemandReadModel[];
   segments: SegmentReadModel[];
