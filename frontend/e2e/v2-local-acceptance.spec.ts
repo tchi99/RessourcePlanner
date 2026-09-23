@@ -763,11 +763,6 @@ test("REQUEST window proposal never replays the original drag after direct appro
   expect(created.status(), await created.text()).toBe(201);
   const demandNumber = (await created.json()).demand_number as string;
 
-  const demandBeforeApproval = await page.request.get(
-    `/api/v1/demands/${encodeURIComponent(demandNumber)}`,
-  );
-  expect(demandBeforeApproval.ok()).toBeTruthy();
-  const demandVersion = (await demandBeforeApproval.json()).version as number;
   const snapshotBeforeApproval = await page.request.get(
     `/api/v1/planning/snapshot?start=${d1}&end=${d5}&scope=global`,
   );
@@ -779,7 +774,6 @@ test("REQUEST window proposal never replays the original drag after direct appro
     {
       data: {
         comment: "Approbation initiale DnD #333C",
-        expected_version: demandVersion,
         expected_planning_version: planningVersion,
       },
     },
