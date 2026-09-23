@@ -311,7 +311,7 @@ export default function AssetPlanningPanel({
               <div className="asset-empty">Aucun besoin d’actif approuvé dans cette fenêtre.</div>
             ) : snapshot.asset_requirements.map((requirement) => (
               <AssetRequirementCard
-                key={requirement.requirement_id}
+                key={`${requirement.requirement_id}:${requirement.asset_id ?? "unassigned"}`}
                 requirement={requirement}
                 snapshot={snapshot}
                 canManage={canManage}
