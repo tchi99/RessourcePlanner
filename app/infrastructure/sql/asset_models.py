@@ -20,8 +20,22 @@ class AssetType(TimestampMixin, Base):
     label: Mapped[str] = mapped_column(String(255), nullable=False)
     category: Mapped[str] = mapped_column(String(32), nullable=False)
     occupancy_policy: Mapped[str] = mapped_column(String(32), nullable=False, server_default=text("'EXCLUSIVE_DAY'"))
+    qualification_policy: Mapped[str] = mapped_column(
+        String(32), nullable=False, server_default=text("'ANY_ASSIGNED_WORKFORCE'")
+    )
     active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=true())
     metadata_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class AssetTypeCompetency(Base):
+    __tablename__ = "asset_type_competencies"
+
+    asset_type_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("asset_types.id"), primary_key=True
+    )
+    competency_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("competencies.id"), primary_key=True
+    )
 
 
 class Asset(TimestampMixin, Base):
@@ -82,6 +96,9 @@ class AssetAllocation(TimestampMixin, Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
     asset_requirement_id: Mapped[str] = mapped_column(String(36), ForeignKey("asset_requirements.id"), nullable=False, index=True)
     asset_id: Mapped[str] = mapped_column(String(36), ForeignKey("assets.id"), nullable=False)
+    operator_resource_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("resources.id"), nullable=True, index=True
+    )
     start_date: Mapped[date] = mapped_column(Date, nullable=False)
     end_date: Mapped[date] = mapped_column(Date, nullable=False)
     locked: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=false())
