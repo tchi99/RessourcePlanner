@@ -588,8 +588,10 @@ class ServiceTests(unittest.IsolatedAsyncioTestCase):
         dashboard = await self._pipeline_dashboard(gate_done=True)
         self.assertEqual(dashboard["pipeline"]["now"]["key"], "901")
         self.assertEqual(dashboard["pipeline"]["now"]["kind"], "WORK")
-        self.assertIn("Prochaine tranche DEV du pipeline", dashboard["next_action"])
-        self.assertIn("prochain travail DEV", dashboard["dev_prompt"])
+        self.assertEqual(dashboard["roadmap"]["active_issue"], 901)
+        self.assertEqual(dashboard["roadmap"]["effective_active"], "901")
+        self.assertIn("Démarrer/reprendre 901", dashboard["next_action"])
+        self.assertIn("#901", dashboard["dev_prompt"])
 
 
     async def _dashboard_291_with_architecture_pr(self, *, merged: bool):
