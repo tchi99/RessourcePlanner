@@ -25,6 +25,7 @@ DIAGNOSTIC_TO_INACTIVE = "PROJECT_TO_INACTIVE"
 DIAGNOSTIC_CC_EMAIL_MISSING = "PROJECT_CC_EMAIL_MISSING"
 DIAGNOSTIC_CC_INACTIVE = "PROJECT_CC_INACTIVE"
 DIAGNOSTIC_SOURCE = "PROJECT_SOURCE_DIAGNOSTIC"
+ASSET_QUALIFICATION_DIAGNOSTIC_PREFIX = "ASSET_QUALIFICATION_"
 
 SEVERITY_BLOCKING = "BLOCKING"
 SEVERITY_WARNING = "WARNING"
@@ -266,14 +267,32 @@ def _recipient_diagnostics(
                 )
             )
 
+    asset_qualification_messages = {
+        "ASSET_QUALIFICATION_MISSING_OPERATOR": (
+            "Une réservation d'actif confirmée exige un opérateur qualifié."
+        ),
+        "ASSET_QUALIFICATION_SKILL_MISMATCH": (
+            "L'opérateur lié à une réservation d'actif ne possède plus la qualification requise."
+        ),
+        "ASSET_QUALIFICATION_NO_OVERLAP": (
+            "L'opérateur qualifié n'a plus d'affectation humaine compatible avec la réservation d'actif."
+        ),
+    }
     for source_code in project.diagnostics:
+        is_asset_qualification = source_code.startswith(
+            ASSET_QUALIFICATION_DIAGNOSTIC_PREFIX
+        )
         diagnostics.append(
             _diagnostic(
-                code=DIAGNOSTIC_SOURCE,
-                severity=SEVERITY_WARNING,
+                code=source_code if is_asset_qualification else DIAGNOSTIC_SOURCE,
+                severity=(
+                    SEVERITY_BLOCKING
+                    if is_asset_qualification
+                    else SEVERITY_WARNING
+                ),
                 entity_type="project",
                 entity_id=project.project_id,
-                message=source_code,
+                message=asset_qualification_messages.get(source_code, source_code),
             )
         )
     return tuple(diagnostics)
