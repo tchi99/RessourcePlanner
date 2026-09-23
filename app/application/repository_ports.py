@@ -43,6 +43,17 @@ class DemandRepositoryPort(Protocol):
         comment: str = "",
     ) -> None: ...
 
+    def extend_candidate_window(
+        self,
+        number: str,
+        target_day: date,
+        *,
+        request_line_id: str | None = None,
+        expected_version: int,
+        action: str,
+        comment: str = "",
+    ) -> bool: ...
+
 
 class DemandPeriodRepositoryPort(Protocol):
     """Persistence contract for requested periods and exclusive option selection."""
@@ -62,6 +73,15 @@ class DemandPeriodRepositoryPort(Protocol):
         *,
         request_line_id: str | None = None,
     ) -> Sequence[DemandPeriodReadModel]: ...
+
+    def extend_window(
+        self,
+        demand_number: str,
+        period_id: str,
+        target_day: date,
+        *,
+        request_line_id: str | None = None,
+    ) -> bool: ...
 
     def select_alternative(
         self,
