@@ -80,7 +80,8 @@ export default function DemandDetail({
           <h3>{detail.demand.number} · {detail.demand.project_number || "Sans projet"}</h3>
           <p>
             Version {detail.version} · {activeLines.length} besoin(s) ·
-            {" "}{detail.materialized_plan.requirement_count} besoin(s) matérialisé(s)
+            {" "}{detail.materialized_plan.requirement_count} besoin(s) humain(s) matérialisé(s) ·
+            {" "}{detail.materialized_plan.asset_requirement_count} besoin(s) d’actif matérialisé(s)
           </p>
         </div>
         <div className="demand-detail-statuses">
@@ -93,9 +94,18 @@ export default function DemandDetail({
 
       <div className="demand-detail-summary-grid">
         <article>
-          <span>Plan actif</span>
+          <span>Plan humain actif</span>
           <strong>{hours(detail.materialized_plan.covered_hours)} / {hours(detail.materialized_plan.planned_hours)} h</strong>
           <small>{hours(detail.materialized_plan.locked_hours)} h verrouillées</small>
+        </article>
+        <article>
+          <span>Actifs réservables</span>
+          <strong>{detail.materialized_plan.asset_assigned_count} / {detail.materialized_plan.asset_requirement_count} réservé(s)</strong>
+          <small>
+            {detail.materialized_plan.asset_unbudgeted_requirement_count > 0
+              ? `${detail.materialized_plan.asset_unbudgeted_requirement_count} sans budget d’usage`
+              : `${hours(detail.materialized_plan.asset_usage_hours)} h d’usage budgétées`}
+          </small>
         </article>
         <article>
           <span>Autorisation</span>
@@ -108,6 +118,37 @@ export default function DemandDetail({
           <small>{availableActions.length ? availableActions.join(" · ") : "Aucune action"}</small>
         </article>
       </div>
+
+      {detail.materialized_plan.asset_requirements.length > 0 && (
+        <details className="demand-detail-section asset-detail-section" open>
+          <summary>
+            <span>Actifs matérialisés</span>
+            <small>Types requis, fenêtre approuvée et réservation réelle de chaque unité.</small>
+          </summary>
+          <div className="asset-detail-list">
+            {detail.materialized_plan.asset_requirements.map((requirement) => (
+              <article className="asset-detail-row" key={requirement.requirement_id}>
+                <div>
+                  <strong>{requirement.asset_type_code} — {requirement.asset_type_label}</strong>
+                  <span>{requirement.start_date} → {requirement.end_date}</span>
+                </div>
+                <div>
+                  <strong>{requirement.asset_label || "À réserver"}</strong>
+                  <span>
+                    {requirement.asset_code || requirement.status}
+                    {requirement.allocation_locked ? " · verrouillée" : ""}
+                  </span>
+                </div>
+                <small>
+                  {requirement.usage_hours == null
+                    ? "Occupation par unité/jour — aucun budget d’usage horaire."
+                    : `Budget d’usage : ${hours(requirement.usage_hours)} h (distinct de la capacité humaine).`}
+                </small>
+              </article>
+            ))}
+          </div>
+        </details>
+      )}
 
       {detail.diagnostics.length > 0 && (
         <details className="demand-detail-diagnostics">
