@@ -187,6 +187,8 @@ Pour la tranche active, la résolution suit cet ordre :
 3. la recherche parcourt **toutes les pages de branches GitHub**, et non seulement les 100 premières;
 4. si plusieurs branches correspondent, celle dont le HEAD a le commit le plus récent est retenue.
 
+La clé de travail active vient d'abord de l'état documenté dans l'issue/roadmap. Les sous-tranches marquées `✅` ou explicitement `DONE` sont considérées terminées; le resolver avance donc vers la première sous-tranche restante avant de rechercher sa branche.
+
 Le commit de `main` affiché dans le footer est uniquement une référence sur l'état du dépôt. Les états `IN_PROGRESS`, `STALLED`, la dernière activité, les workflows associés et le détail Developer utilisent le HEAD de la branche active ou de la PR active.
 
 ## Pipeline produit explicite du roadmap #55
