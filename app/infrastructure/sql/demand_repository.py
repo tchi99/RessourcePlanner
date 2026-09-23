@@ -7,7 +7,7 @@ import json
 import re
 from typing import Any
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, update
 from sqlalchemy.orm import Session, aliased
 
 from ...application.errors import ApplicationConflictError
@@ -63,6 +63,39 @@ class SqlDemandRepository(DemandRepositoryPort):
         self._session = session
         self._actor_name = _text(actor_name)
         self._actor_user_id = _optional_text(actor_user_id)
+
+    def _acquire_request_version(
+        self,
+        request: WorkforceRequest,
+        expected_version: int,
+    ) -> int:
+        expected = int(expected_version)
+        result = self._session.execute(
+            update(WorkforceRequest)
+            .where(
+                WorkforceRequest.id == request.id,
+                WorkforceRequest.aggregate_version == expected,
+            )
+            .values(aggregate_version=WorkforceRequest.aggregate_version + 1)
+        )
+        if int(result.rowcount or 0) != 1:
+            actual = self._session.scalar(
+                select(WorkforceRequest.aggregate_version).where(
+                    WorkforceRequest.id == request.id
+                )
+            )
+            raise ApplicationConflictError(
+                "La demande a été modifiée depuis sa lecture.",
+                code="demand_version_conflict",
+                context={
+                    "demand_number": _text(request.legacy_demand_number) or request.id,
+                    "expected_version": expected,
+                    "current_version": int(actual or request.aggregate_version or 1),
+                },
+            )
+        self._session.flush()
+        self._session.refresh(request, attribute_names=["aggregate_version"])
+        return int(request.aggregate_version or expected + 1)
 
     def _read_model(
         self,
@@ -770,16 +803,7 @@ class SqlDemandRepository(DemandRepositoryPort):
     ) -> bool:
         request = self._request(number)
         current_version = int(request.aggregate_version or 1)
-        if int(expected_version) != current_version:
-            raise ApplicationConflictError(
-                "La demande a été modifiée depuis sa lecture.",
-                code="demand_version_conflict",
-                context={
-                    "demand_number": _text(request.legacy_demand_number) or request.id,
-                    "expected_version": int(expected_version),
-                    "current_version": current_version,
-                },
-            )
+        self._acquire_request_version(request, expected_version)
 
         previous_status = request.status
         changed_fields: tuple[str, ...]
@@ -826,7 +850,6 @@ class SqlDemandRepository(DemandRepositoryPort):
             self._sync_legacy_request_line(request)
             changed_fields = ("DateDebutSouhaitee", "DateFinSouhaitee")
 
-        request.aggregate_version = current_version + 1
         self._session.flush()
         self._append_history(
             request,
@@ -850,16 +873,9 @@ class SqlDemandRepository(DemandRepositoryPort):
         previous_status = request.status
         request_lines = updates.get("RequestLines")
         expected_version = updates.get("ExpectedVersion")
-        if expected_version is not None and int(expected_version) != int(request.aggregate_version or 1):
-            raise ApplicationConflictError(
-                "La demande a été modifiée depuis sa lecture.",
-                code="demand_version_conflict",
-                context={
-                    "demand_number": _text(request.legacy_demand_number) or request.id,
-                    "expected_version": int(expected_version),
-                    "current_version": int(request.aggregate_version or 1),
-                },
-            )
+        guarded_version = expected_version is not None
+        if expected_version is not None:
+            self._acquire_request_version(request, int(expected_version))
 
         line_owned_flat_fields = {
             "SourceEffortID",
@@ -980,7 +996,8 @@ class SqlDemandRepository(DemandRepositoryPort):
                 request,
                 hours_source=_optional_text(updates.get("RequestLineHoursSource")),
             )
-        request.aggregate_version = int(request.aggregate_version or 1) + 1
+        if not guarded_version:
+            request.aggregate_version = int(request.aggregate_version or 1) + 1
         self._session.flush()
         self._append_history(
             request,
