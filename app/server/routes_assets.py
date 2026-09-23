@@ -17,7 +17,6 @@ from ..infrastructure.sql.asset_models import (
     AssetAllocation,
     AssetRequirement,
     AssetType,
-    AssetTypeCompetency,
     AssetUnavailability,
 )
 from ..infrastructure.sql.asset_qualification import (
