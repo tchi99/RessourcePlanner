@@ -1,7 +1,7 @@
 # Vision long terme — Delivery, Kanban, commissioning et documentation
 
-> **Statut : vision produit / architecture future.**  
-> Ce document décrit une direction stratégique après stabilisation de la gestion de main-d'œuvre et des actifs. Il ne remplace pas le roadmap maître #55 et ne constitue pas à lui seul une autorisation d'implémentation.
+> **Statut : vision produit / architecture future, avec frontière Delivery stabilisée par ADR-008.**  
+> Ce document décrit la direction stratégique Delivery → Verification → intégrations. Le roadmap maître #55 conserve l'ordre d'activation. Pour #362, les décisions structurantes Planning/Delivery sont désormais acceptées dans ADR-008.
 
 ## 1. Problème à résoudre
 
@@ -96,9 +96,11 @@ Delivery peut lire la capacité planifiée d'un WorkPackage et la comparer au tr
 
 Issue de référence : #362.
 
-### 4.1 Modèle minimal envisagé
+### 4.1 Modèle minimal retenu pour #362
 
-Le MVP peut rester volontairement petit :
+L'analyse de #362 sur `main@4fb40665` confirme une extension additive du monolithe, sans refonte du moteur Planning.
+
+Le MVP reste volontairement petit :
 
 ```text
 WorkPackage
@@ -110,6 +112,13 @@ WorkPackage
 ```
 
 Un modèle hiérarchique `DeliveryItem` avec un `type` peut suffire au départ plutôt que de créer plusieurs agrégats spécialisés.
+
+Décisions stabilisées :
+- un seul `DeliveryPlan` non archivé par WorkPackage dans le MVP;
+- cycle du plan `DRAFT → ACTIVE → ARCHIVED`;
+- responsables liés à `AppUser`;
+- version de concurrence Delivery indépendante de `planning_version`;
+- aucune Story ne crée ou modifie automatiquement un Shift.
 
 Champs indicatifs :
 
@@ -182,14 +191,25 @@ Le WorkPackage peut alors exposer séparément :
 
 ### Progression
 
-Lorsque des estimations existent, privilégier une progression **pondérée par l'effort** plutôt qu'un simple ratio « nombre de Stories terminées / total ».
+Décision #362 / ADR-008 : le MVP n'utilise pas de pourcentage manuel par Story. Une Story contribue à la progression uniquement lorsqu'elle est `DONE`.
+
+La progression est pondérée par une **estimation de référence stable** :
+
+```text
+progression =
+somme(estimation_reference des Stories DONE)
+/
+somme(estimation_reference des Stories incluses)
+```
+
+Les Stories non estimées doivent être signalées dans la couverture de l'indicateur. Une réestimation modifie le forecast/travail restant sans réécrire silencieusement l'historique de progression.
 
 Exemple :
 
 ```text
 WP Programmation
 
-Budget autorisé       240 h
+Référence WP          240 h
 Capacité planifiée    232 h
 Estimation équipe     252 h
 Travail restant       136 h
@@ -202,7 +222,7 @@ Forecast équipe      1 déc.
 ⚠ risque budget / échéancier
 ```
 
-Les détails de calcul devront être stabilisés avant implémentation et ne doivent pas mélanger budget autorisé, capacité planifiée et forecast technique.
+Les heures actuelles du WorkPackage sont une **référence de planification**, pas un budget autorisé. Un vrai budget autoritaire pourra être ajouté plus tard depuis une source canonique/versionnée, notamment Acumatica. Capacité planifiée, estimation technique, travail restant et éventuel budget autorisé futur restent des valeurs distinctes.
 
 ## 6. Communication bidirectionnelle PM ↔ équipe
 
@@ -381,7 +401,7 @@ La génération de document est une **projection** des données métier. Le docu
 
 ## 9. Comparaison capacité ↔ backlog
 
-Une capacité particulièrement intéressante à long terme est de comparer le travail restant au temps réellement réservé dans le planning.
+Une capacité de #362 est de comparer le travail restant au temps réservé dans le Planning via une projection backend read-only du plan actif/approuvé. Une modification candidate ne doit pas déplacer silencieusement cette capacité avant approbation/activation.
 
 Exemple :
 
@@ -447,7 +467,9 @@ RessourcePlanner doit conserver :
 Autoritaire pour :
 - rattachement projet;
 - contexte/portée projet;
-- budget et échéances de référence selon le modèle retenu.
+- heures/dates de **référence de planification** selon le modèle actuel.
+
+Les heures actuelles du WorkPackage ne constituent pas un budget approuvé/versionné. Un futur budget canonique devra rester distinct.
 
 ### Planning
 
@@ -457,14 +479,21 @@ Autoritaire pour :
 - quarts/allocations réels;
 - capacité réservée.
 
+Un `Shift` n'est pas un actual de travail réalisé. Delivery lit la capacité du WorkPackage du plan actif/approuvé; il ne suit pas une modification candidate non activée.
+
 ### Delivery
 
 Autoritaire pour :
 - découpage technique;
 - statut des Epics/Stories;
-- estimation et travail restant;
+- estimation courante et estimation de référence;
+- travail restant;
+- progression technique;
 - forecast technique;
-- organisation Kanban/Sprint.
+- organisation Kanban/Sprint;
+- concurrence propre du board.
+
+Les responsables sont des `AppUser`. Les permissions Delivery sont distinctes des permissions Planning.
 
 ### Verification
 
@@ -514,17 +543,23 @@ projections avancées capacité ↔ backlog ↔ forecast
 
 Le roadmap maître #55 conserve l'ordre opérationnel réel. Cette séquence future ne doit pas déplacer les tranches actives tant que le socle actuel n'est pas stabilisé.
 
-## 14. Questions à résoudre avant implémentation
+## 14. Décisions Delivery stabilisées / questions restantes
 
-Avant de lancer Delivery, une analyse dédiée devra notamment trancher :
+L'analyse #362 a tranché avant implémentation :
 
-- statut et cycle de vie exacts d'un `DeliveryItem`;
-- relation Team Lead / AppUser / Resource;
-- règle de calcul de progression et forecast;
-- rôle exact du budget WorkPackage par rapport aux estimations Delivery;
-- granularité des sprints;
-- concurrence et historique;
-- politique d'archivage.
+- `DeliveryPlan` par WorkPackage, cycle `DRAFT → ACTIVE → ARCHIVED`;
+- `DeliveryItem` à IDs stables avec `EPIC/STORY`;
+- responsables liés à `AppUser`;
+- statuts Story `BACKLOG/TODO/IN_PROGRESS/BLOCKED/DONE/CANCELLED`;
+- progression pondérée par estimation de référence des Stories `DONE`;
+- forecast séparé basé sur le travail restant;
+- heures actuelles du WorkPackage = référence, pas budget approuvé;
+- Shift = capacité réservée, pas actual;
+- capacité Delivery issue du plan actif/approuvé;
+- concurrence et permissions Delivery distinctes de Planning;
+- sprints facultatifs.
+
+Le découpage retenu est **362A → 362B → 362C → 362D → 362E → 362F**. Le roadmap #55 détermine quand #362 devient active.
 
 Avant Verification :
 
@@ -551,4 +586,5 @@ Avant Planner :
 - #363 — Verification : FAT/SAT/commissioning, preuves et documentation;
 - #364 — intégration Microsoft Planner/Teams;
 - #13 — séparation autorisation approuvée / état opérationnel;
-- #291/#292 — actifs réservables et qualifications.
+- #291/#292 — actifs réservables et qualifications;
+- ADR-008 — frontière Delivery / Planning, progression technique et projection de capacité WorkPackage.
