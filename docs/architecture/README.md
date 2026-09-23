@@ -51,6 +51,7 @@ Voir :
 - `ADR-004-candidate-approval-and-active-plan.md`
 - `ADR-005-canonical-demand-requester-identity.md`
 - `ADR-006-global-planning-mutation-version.md`
+- `ADR-007-reservable-non-human-resources.md`
 
 Chaîne métier actuelle :
 
@@ -73,6 +74,15 @@ Voir :
 - `ADR-006-global-planning-mutation-version.md`
 
 Tant que `rebuild()` reste global, les mutations concurrentes pertinentes du planning participent à une révision persistante globale acquise par CAS SQL **avant** leurs lectures décisionnelles. Cette garde protège la cohérence transactionnelle des opérations composites comme #332; elle ne remplace pas les versions métier plus locales lorsqu'elles portent une sémantique distincte.
+
+
+### Ressources réservables non humaines
+
+Voir :
+
+- `ADR-007-reservable-non-human-resources.md`
+
+ADR-007 est la décision structurante de #291. L'implémentation n'est pas encore livrée au moment de l'acceptation de l'ADR : elle doit conserver les modèles persistants humains et actifs distincts, utiliser des lignes `RequestLine[ASSET]`, matérialiser `AssetRequirement → AssetAllocation` et réutiliser la même orchestration d'approbation, de concurrence, d'idempotence et d'audit. La première granularité retenue est une occupation exclusive à la journée, sans partage intrajournalier ni sélection automatique d'une unité.
 
 ### Authentification et autorisation
 
@@ -155,8 +165,9 @@ Exemples qui ne nécessitent normalement pas d'ADR :
 | ADR-004 | séparer demande candidate, autorisation approuvée et plan actif |
 | ADR-005 | identité canonique du demandeur distincte de l'acteur authentifié |
 | ADR-006 | sérialiser les mutations concurrentes du planning par une révision globale persistante/CAS SQL tant que le rebuild reste global |
+| ADR-007 | séparer les actifs réservables des ressources humaines tout en partageant l'orchestration Planning; occupation initiale exclusive à la journée |
 
-Ces six ADR sont en statut `Accepted`. ADR-006 est le socle de concurrence livré par #332A et réutilisé par #333; il complète, sans les remplacer, les versions/CAS plus locaux existants.
+Ces sept ADR sont en statut `Accepted`. ADR-006 reste le socle de concurrence globale. ADR-007 guide #291 : modèles persistants humains/actifs distincts, lignes `ASSET`, `AssetRequirement → AssetAllocation`, occupation exclusive quotidienne et orchestration Planning commune.
 
 ---
 
