@@ -333,6 +333,7 @@ def build_command_router(
         command = DemandPeriodsReplaceCommand(
             number=number,
             periods=tuple(DemandPeriodInput(**period.model_dump()) for period in body.periods),
+            expected_request_version=body.expected_request_version,
         )
         return _payload(facade.replace_demand_periods(command))
 
