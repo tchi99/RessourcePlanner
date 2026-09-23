@@ -8,7 +8,7 @@ import unittest
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 
-from app.application.security import AuthPrincipal, ROLE_ADMIN
+from app.application.security import AuthPrincipal, ROLE_ADMIN, ROLE_PROJECT_MANAGER
 from app.domain.planning_engine import MISSING_ALLOCATION_TYPE
 from app.infrastructure.sql import (
     Base,
@@ -43,13 +43,27 @@ def _auth(display_name: str):
     )
 
 
+def _pm_auth(display_name: str = "Chargé de projet atomique"):
+    return static_auth_resolver(
+        AuthPrincipal.from_roles(
+            local_user_id="USER-PM-ATOMIC-1",
+            issuer="urn:resourceplanner:test",
+            subject="atomic-project-manager",
+            display_name=display_name,
+            email=None,
+            roles=(ROLE_PROJECT_MANAGER,),
+            auth_mode="test",
+        )
+    )
+
+
 class AtomicAllocationCommandHttpTests(unittest.TestCase):
     @staticmethod
     def _database(
         directory: str,
         *,
-        planned_hours: float,
-        source_hours: float,
+        planned_hours: float | None = None,
+        source_hours: float | None = None,
         source: str = "MANUAL",
         locked: bool = True,
         allocation_type: str = "Flexible",
@@ -82,39 +96,40 @@ class AtomicAllocationCommandHttpTests(unittest.TestCase):
                         active=True,
                     )
                 )
-            session.add(
-                ResourceRequirement(
-                    id="REQ1",
-                    legacy_segment_id="SEG-1",
-                    project_id="P1",
-                    workforce_request_id=None,
-                    assigned_resource_id="R1",
-                    start_date=WORK_DAY,
-                    end_date=WORK_DAY,
-                    planned_hours=planned_hours,
-                    status="Planifié",
-                    planning_type="Flexible",
-                    confirmation="Confirmée",
-                    origin=ORIGIN_AD_HOC,
+            if planned_hours is not None and source_hours is not None:
+                session.add(
+                    ResourceRequirement(
+                        id="REQ1",
+                        legacy_segment_id="SEG-1",
+                        project_id="P1",
+                        workforce_request_id=None,
+                        assigned_resource_id="R1",
+                        start_date=WORK_DAY,
+                        end_date=WORK_DAY,
+                        planned_hours=planned_hours,
+                        status="Planifié",
+                        planning_type="Flexible",
+                        confirmation="Confirmée",
+                        origin=ORIGIN_AD_HOC,
+                    )
                 )
-            )
-            session.flush()
-            session.add(
-                Shift(
-                    id="SHIFT-SOURCE",
-                    legacy_allocation_id="ALLOC-SOURCE",
-                    resource_requirement_id="REQ1",
-                    resource_id="R1",
-                    work_date=WORK_DAY,
-                    hours=source_hours,
-                    allocation_type=allocation_type,
-                    source=source,
-                    locked=locked,
-                    outside_standard_hours=False,
-                    confirmation=confirmation,
-                    note=note,
+                session.flush()
+                session.add(
+                    Shift(
+                        id="SHIFT-SOURCE",
+                        legacy_allocation_id="ALLOC-SOURCE",
+                        resource_requirement_id="REQ1",
+                        resource_id="R1",
+                        work_date=WORK_DAY,
+                        hours=source_hours,
+                        allocation_type=allocation_type,
+                        source=source,
+                        locked=locked,
+                        outside_standard_hours=False,
+                        confirmation=confirmation,
+                        note=note,
+                    )
                 )
-            )
         engine.dispose()
         return url
 
@@ -261,6 +276,19 @@ class AtomicAllocationCommandHttpTests(unittest.TestCase):
             # Failed preflight rolled the planning CAS back; successful retry starts at 1.
             self.assertEqual(payload["planning_version"], 2)
 
+            engine = create_sql_engine(url)
+            factory = create_session_factory(engine)
+            with factory() as session:
+                actions = set(
+                    session.scalars(
+                        select(PlanningChangeHistory.action).where(
+                            PlanningChangeHistory.entity_reference == "SEG-1"
+                        )
+                    ).all()
+                )
+                self.assertIn("Dérogation surallocation manuelle", actions)
+            engine.dispose()
+
     def test_duplicate_converts_counted_auto_source_without_losing_nullable_override(self) -> None:
         with TemporaryDirectory() as directory:
             url = self._database(
@@ -303,6 +331,157 @@ class AtomicAllocationCommandHttpTests(unittest.TestCase):
                 self.assertEqual(sum(float(row.hours) for row in rows), 8.0)
                 self.assertTrue(all(row.locked for row in rows))
             engine.dispose()
+
+    def test_project_manager_increase_uses_active_revision_and_non_compounded_twenty_percent_limit(self) -> None:
+        with TemporaryDirectory() as directory:
+            url = self._database(directory)
+            admin_app = create_api_app(
+                url,
+                actor_name="admin-atomic",
+                auth_resolver=_auth("Administrateur atomique"),
+            )
+            with TestClient(admin_app, raise_server_exceptions=False) as client:
+                created = client.post(
+                    "/api/v1/demands",
+                    json={
+                        "project_number": "P-1",
+                        "desired_start": WORK_DAY.isoformat(),
+                        "desired_end": WORK_DAY.isoformat(),
+                        "estimated_hours": 10,
+                        "proposed_technician": "Alice",
+                        "submit": True,
+                    },
+                )
+                self.assertEqual(created.status_code, 201, created.text)
+                number = created.json()["demand_number"]
+                approved = client.post(
+                    f"/api/v1/demands/{number}/approve",
+                    json={"comment": "Autorisation atomique"},
+                )
+                self.assertEqual(approved.status_code, 200, approved.text)
+                approval_state = client.get(
+                    f"/api/v1/demands/{number}/approval-state"
+                )
+                self.assertEqual(approval_state.status_code, 200, approval_state.text)
+                revision_id = approval_state.json()["active_revision_id"]
+                operational_version = approval_state.json()["operational_version"]
+                self.assertTrue(revision_id)
+                self.assertEqual(operational_version, 1)
+
+                shifts = client.get(
+                    "/api/v1/shifts",
+                    params={"start": WORK_DAY.isoformat(), "end": WORK_DAY.isoformat()},
+                )
+                self.assertEqual(shifts.status_code, 200, shifts.text)
+                approved_auto = next(
+                    row
+                    for row in shifts.json()
+                    if row["demand_number"] == number and row["source"] == "AUTO"
+                )
+                segment_id = approved_auto["segment_id"]
+
+                manual = client.post(
+                    f"/api/v1/segments/{segment_id}/allocations",
+                    json={
+                        "resource_id": "R1",
+                        "day": WORK_DAY.isoformat(),
+                        "hours": 9,
+                        "outside_standard_hours": False,
+                        "confirmation": None,
+                    },
+                    headers={"Idempotency-Key": "atomic-pm-manual-9"},
+                )
+                self.assertEqual(manual.status_code, 201, manual.text)
+
+                snapshot = client.get(
+                    "/api/v1/planning/snapshot",
+                    params={"start": WORK_DAY.isoformat(), "end": WORK_DAY.isoformat()},
+                )
+                self.assertEqual(snapshot.status_code, 200, snapshot.text)
+                planning_version = snapshot.json()["planning_version"]
+
+                shifts = client.get(
+                    "/api/v1/shifts",
+                    params={"start": WORK_DAY.isoformat(), "end": WORK_DAY.isoformat()},
+                )
+                source = next(
+                    row
+                    for row in shifts.json()
+                    if row["demand_number"] == number
+                    and row["source"] == "AUTO"
+                    and abs(float(row["hours"]) - 1.0) < 0.001
+                )
+
+            pm_app = create_api_app(
+                url,
+                actor_name="pm-atomic",
+                auth_resolver=_pm_auth(),
+            )
+            with TestClient(pm_app, raise_server_exceptions=False) as client:
+                first = client.post(
+                    f"/api/v1/allocations/{source['allocation_id']}/duplicate",
+                    json={
+                        "resource_id": "R1",
+                        "day": WORK_DAY.isoformat(),
+                        "expected_planning_version": planning_version,
+                        "overallocation_policy": "INCREASE_PLANNED",
+                        "expected_approval_revision_id": revision_id,
+                        "expected_operational_version": operational_version,
+                    },
+                    headers={"Idempotency-Key": "atomic-pm-increase-11"},
+                )
+                self.assertEqual(first.status_code, 201, first.text)
+                first_body = first.json()
+                self.assertEqual(first_body["planned_hours"], 11.0)
+                self.assertEqual(first_body["locked_hours"], 11.0)
+                self.assertEqual(first_body["operational_version"], 2)
+
+                second = client.post(
+                    f"/api/v1/allocations/{first_body['target_allocation_id']}/duplicate",
+                    json={
+                        "resource_id": "R1",
+                        "day": WORK_DAY.isoformat(),
+                        "expected_planning_version": first_body["planning_version"],
+                        "overallocation_policy": "INCREASE_PLANNED",
+                        "expected_approval_revision_id": revision_id,
+                        "expected_operational_version": first_body["operational_version"],
+                    },
+                    headers={"Idempotency-Key": "atomic-pm-increase-12"},
+                )
+                self.assertEqual(second.status_code, 201, second.text)
+                second_body = second.json()
+                self.assertEqual(second_body["planned_hours"], 12.0)
+                self.assertEqual(second_body["locked_hours"], 12.0)
+                self.assertEqual(second_body["operational_version"], 3)
+
+                blocked = client.post(
+                    f"/api/v1/allocations/{first_body['target_allocation_id']}/duplicate",
+                    json={
+                        "resource_id": "R1",
+                        "day": WORK_DAY.isoformat(),
+                        "expected_planning_version": second_body["planning_version"],
+                        "overallocation_policy": "INCREASE_PLANNED",
+                        "expected_approval_revision_id": revision_id,
+                        "expected_operational_version": second_body["operational_version"],
+                    },
+                    headers={"Idempotency-Key": "atomic-pm-increase-13"},
+                )
+                self.assertEqual(blocked.status_code, 409, blocked.text)
+                self.assertEqual(
+                    blocked.json()["error"]["code"],
+                    "planning_authorization_revision_required",
+                )
+
+                final_state = client.get(
+                    f"/api/v1/demands/{number}/approval-state"
+                )
+                self.assertEqual(final_state.status_code, 200, final_state.text)
+                self.assertEqual(final_state.json()["active_revision_id"], revision_id)
+                self.assertEqual(final_state.json()["operational_version"], 3)
+                self.assertEqual(
+                    list(final_state.json()["active_budget_overrides"].values()),
+                    [12.0],
+                )
 
     def test_non_counted_auto_proposal_and_full_split_are_rejected(self) -> None:
         with TemporaryDirectory() as directory:
