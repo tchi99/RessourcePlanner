@@ -238,3 +238,67 @@ class AllocationDuplicateCommand:
             )
         if self.overallocation_policy is not None:
             _overallocation_policy(self.overallocation_policy)
+
+
+@dataclass(frozen=True, slots=True)
+class AllocationDropEvaluateCommand:
+    allocation_id: str
+    resource_id: str
+    day: date
+    outside_standard_hours: bool = False
+
+    def __post_init__(self) -> None:
+        required_text(
+            self.allocation_id,
+            field="allocation_id",
+            message="Un identifiant d'allocation est requis.",
+        )
+        required_text(
+            self.resource_id,
+            field="allocation_resource",
+            message="Une ressource cible est requise.",
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class AllocationExtendMoveCommand:
+    allocation_id: str
+    resource_id: str
+    day: date
+    expected_planning_version: int
+    confirm_window_extension: bool
+    outside_standard_hours: bool = False
+    expected_approval_revision_id: str | None = None
+    expected_operational_version: int | None = None
+    correlation_id: str | None = None
+
+    def __post_init__(self) -> None:
+        required_text(
+            self.allocation_id,
+            field="allocation_id",
+            message="Un identifiant d'allocation est requis.",
+        )
+        required_text(
+            self.resource_id,
+            field="allocation_resource",
+            message="Une ressource cible est requise.",
+        )
+        if not self.confirm_window_extension:
+            raise ApplicationValidationError(
+                "L'élargissement de fenêtre doit être confirmé explicitement.",
+                code="allocation_window_extension_confirmation_required",
+            )
+        if int(self.expected_planning_version) < 1:
+            raise ApplicationValidationError(
+                "La version attendue du planning doit être au moins 1.",
+                code="planning_version_invalid",
+                context={"expected_planning_version": self.expected_planning_version},
+            )
+        if (
+            self.expected_operational_version is not None
+            and int(self.expected_operational_version) < 1
+        ):
+            raise ApplicationValidationError(
+                "La version opérationnelle attendue doit être au moins 1.",
+                code="operational_choice_version_invalid",
+            )
