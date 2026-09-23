@@ -163,7 +163,8 @@ def _pipeline_table_done(label: str, status: str, kind: str) -> bool:
         return True
 
     # For WORK rows, completion words in dependency prose must not complete
-    # the row itself. Example: "NEXT — #292 terminée" describes #292, not #407.
+    # the row itself. A NEXT row may mention a completed dependency without
+    # being complete itself.
     return bool(
         re.match(
             r"^\s*(?:[🟢🟠🟡🔵🟦]\s*)?"
