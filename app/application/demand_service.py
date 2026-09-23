@@ -819,7 +819,10 @@ class DemandService:
             call_application_port(
                 lambda: self._demands.update(
                     number,
-                    status_update,
+                    {
+                        **status_update,
+                        "ExpectedVersion": command.expected_request_version,
+                    },
                     action="Modification périodes",
                     comment=comment,
                 ),
