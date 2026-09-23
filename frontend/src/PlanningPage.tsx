@@ -1085,7 +1085,7 @@ export default function PlanningPage({ onOpenDemands }: { onOpenDemands?: () => 
       {snapshot && (
         <AssetPlanningPanel
           snapshot={snapshot}
-          canManage={canManagePlanning}
+          canManage={canManagePlanning && !loading}
           onRefresh={() => setRefreshKey((value) => value + 1)}
         />
       )}
