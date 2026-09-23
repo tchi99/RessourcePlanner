@@ -15,7 +15,9 @@ from .business_contact_admin import (
     DemandOverrideMutationResult,
 )
 from .commands import (
+    AllocationDropEvaluateCommand,
     AllocationDuplicateCommand,
+    AllocationExtendMoveCommand,
     AllocationSplitCommand,
     DemandAlternativeSelectCommand,
     DemandOperationalConfirmationCommand,
@@ -214,6 +216,7 @@ from .results import (
     DemandMutationResult,
     DemandOperationalConfirmationResult,
     DemandPeriodsMutationResult,
+    PlanningDropEvaluationResult,
     PlanningResult,
     QuickShiftCreatedResult,
     SegmentMutationResult,
@@ -223,7 +226,9 @@ from .work_package_service import WorkPackageService
 
 __all__ = [
     "AVAILABILITY_HOLIDAY",
+    "AllocationDropEvaluateCommand",
     "AllocationDuplicateCommand",
+    "AllocationExtendMoveCommand",
     "AllocationSplitCommand",
     "AVAILABILITY_STANDARD",
     "AVAILABILITY_TYPES",
@@ -329,6 +334,7 @@ __all__ = [
     "PlanningCommandPort",
     "PlanningReadRepositoryPort",
     "PlanningRebuildCommand",
+    "PlanningDropEvaluationResult",
     "PlanningResult",
     "PlanningService",
     "PlanningSnapshotReadModel",

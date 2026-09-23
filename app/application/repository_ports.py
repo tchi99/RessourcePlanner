@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from datetime import date
 from typing import Any, Protocol
 
 from ..domain.approval_envelope import EnvelopeDecision
@@ -170,6 +171,14 @@ class PlanningAuthorizationPort(Protocol):
         explicit_increase: bool = False,
         expected_operational_version: int | None = None,
     ) -> None: ...
+
+    def operational_window_authorization(
+        self,
+        segment_id: str,
+        target_day: date,
+        *,
+        expected_approval_revision_id: str | None = None,
+    ) -> Mapping[str, Any]: ...
 
 
 class SegmentRepositoryPort(Protocol):

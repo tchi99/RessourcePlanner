@@ -360,6 +360,12 @@ class ManualAllocationRequest(ResourceReferenceRequest):
     overallocation_policy: OverallocationPolicy | None = None
 
 
+class AllocationDropEvaluateRequest(StrictRequest):
+    resource_id: str = Field(min_length=1)
+    day: date
+    outside_standard_hours: bool = False
+
+
 class AtomicAllocationBaseRequest(StrictRequest):
     resource_id: str = Field(min_length=1)
     day: date
@@ -368,6 +374,11 @@ class AtomicAllocationBaseRequest(StrictRequest):
     overallocation_policy: OverallocationPolicy | None = None
     expected_approval_revision_id: str | None = Field(default=None, min_length=1)
     expected_operational_version: int | None = Field(default=None, ge=1)
+
+
+class AllocationExtendMoveRequest(AtomicAllocationBaseRequest):
+    confirm_window_extension: bool
+    outside_standard_hours: bool = False
 
 
 class AllocationSplitRequest(AtomicAllocationBaseRequest):

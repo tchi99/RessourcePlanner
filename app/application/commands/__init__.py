@@ -1,5 +1,7 @@
 from .allocation import (
+    AllocationDropEvaluateCommand,
     AllocationDuplicateCommand,
+    AllocationExtendMoveCommand,
     AllocationSplitCommand,
     ManualAllocationCreateCommand,
     ManualAllocationDeleteCommand,
@@ -29,7 +31,9 @@ from .segment import SegmentCancelCommand, SegmentCreateCommand, SegmentUpdateCo
 from .work_package import WorkPackageCreateCommand, WorkPackageUpdateCommand
 
 __all__ = [
+    "AllocationDropEvaluateCommand",
     "AllocationDuplicateCommand",
+    "AllocationExtendMoveCommand",
     "AllocationSplitCommand",
     "DemandAlternativeSelectCommand",
     "DemandOperationalConfirmationCommand",

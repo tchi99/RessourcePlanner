@@ -8,10 +8,20 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ...application.command_ports import CompositeAllocationCommandPort, PlanningCommandPort
-from ...application.commands import AllocationDuplicateCommand, AllocationSplitCommand
+from ...application.commands import (
+    AllocationDropEvaluateCommand,
+    AllocationDuplicateCommand,
+    AllocationExtendMoveCommand,
+    AllocationSplitCommand,
+)
 from ...application.errors import ApplicationConflictError, ApplicationValidationError
 from ...application.repository_ports import PlanningAuthorizationPort, PlanningMutationVersionPort
-from ...domain.manual_overallocation import INCREASE_PLANNED, normalize_overallocation_policy
+from ...domain.manual_overallocation import (
+    INCREASE_PLANNED,
+    KEEP_EXCEPTION,
+    TOLERANCE_HOURS,
+    normalize_overallocation_policy,
+)
 from ...domain.planning_engine import MISSING_ALLOCATION_TYPE
 from .approval_revision_models import (
     APPROVAL_REFERENCE_CAPTURED,
@@ -19,11 +29,12 @@ from .approval_revision_models import (
 )
 from .base import new_id
 from .command_adapters import INACTIVE_REQUIREMENT_STATUSES, SqlPlanningCommandAdapter
-from .models import ORIGIN_REQUEST, Resource, ResourceRequirement, Shift
+from .models import ORIGIN_REQUEST, Resource, ResourceRequirement, Shift, WorkforceRequest
 from .operational_choice_models import RequestOperationalState
 from .overallocation import (
     _segment_metrics,
     append_overallocation_audit,
+    evaluate_projected_manual_state,
     validate_projected_manual_state,
 )
 from .planning_audit import ENTITY_SHIFT, SqlPlanningAuditJournal
@@ -319,6 +330,412 @@ class SqlCompositeAllocationCommandAdapter(CompositeAllocationCommandPort):
             "approval_revision_id": approval_revision_id,
             "operational_version": self._current_operational_version(requirement),
             "auto_source_converted": auto_source_converted,
+        }
+
+    def _drop_request_context(
+        self,
+        requirement: ResourceRequirement,
+    ) -> tuple[str | None, int | None]:
+        if not requirement.workforce_request_id:
+            return None, None
+        request = self._session.get(WorkforceRequest, requirement.workforce_request_id)
+        if request is None:
+            return None, None
+        return (
+            _text(request.legacy_demand_number) or request.id,
+            max(int(request.aggregate_version or 1), 1),
+        )
+
+    def evaluate_drop(
+        self,
+        command: AllocationDropEvaluateCommand,
+    ) -> Mapping[str, Any]:
+        """Read-only backend classification for one DnD target."""
+
+        source = self._shift(command.allocation_id)
+        requirement = self._requirement(source)
+        self._validate_source(source)
+        target_resource = self._resource(command.resource_id)
+        target_day = command.day
+
+        current_start = requirement.start_date
+        current_end = requirement.end_date
+        proposed_start = min(current_start, target_day)
+        proposed_end = max(current_end, target_day)
+        before_locked = self._locked_hours(requirement.id)
+        source_hours = _hours(source.hours)
+        projected_locked = (
+            before_locked
+            - (source_hours if source.locked else Decimal("0"))
+            + source_hours
+        )
+
+        _day, impact, available_hours = evaluate_projected_manual_state(
+            self._session,
+            requirement,
+            target_resource,
+            target_day,
+            True,
+            current_locked_hours=before_locked,
+            projected_locked_hours=projected_locked,
+            window_start=proposed_start,
+            window_end=proposed_end,
+        )
+        demand_number, request_version = self._drop_request_context(requirement)
+
+        approval_revision_id: str | None = None
+        approved_entry_key: str | None = None
+        approved_start = None
+        approved_end = None
+        within_authorization = requirement.origin != ORIGIN_REQUEST
+        authorization_reason = "NOT_APPLICABLE"
+
+        if requirement.origin == ORIGIN_REQUEST:
+            if self._authorization is None:
+                authorization_reason = "APPROVAL_REFERENCE_UNKNOWN"
+            else:
+                decision = self._authorization.operational_window_authorization(
+                    self._segment_reference(requirement),
+                    target_day,
+                )
+                approval_revision_id = _text(
+                    decision.get("approval_revision_id")
+                ) or None
+                approved_entry_key = _text(
+                    decision.get("approved_entry_key")
+                ) or None
+                approved_start = decision.get("approved_start")
+                approved_end = decision.get("approved_end")
+                within_authorization = bool(decision.get("authorized"))
+                authorization_reason = (
+                    "WITHIN_APPROVED_ENTRY"
+                    if within_authorization
+                    else "WINDOW_EXTENSION_REAPPROVAL_REQUIRED"
+                )
+
+        inside_current = current_start <= target_day <= current_end
+        actions: list[dict[str, object]] = []
+        if inside_current:
+            actions.extend(
+                (
+                    {
+                        "code": "MOVE",
+                        "label": "Déplacer",
+                        "enabled": True,
+                        "required_parameters": [],
+                    },
+                    {
+                        "code": "SPLIT",
+                        "label": "Partager",
+                        "enabled": True,
+                        "required_parameters": ["transfer_hours"],
+                    },
+                    {
+                        "code": "DUPLICATE",
+                        "label": "Dupliquer",
+                        "enabled": True,
+                        "required_parameters": [],
+                    },
+                )
+            )
+        elif within_authorization:
+            actions.append(
+                {
+                    "code": "EXTEND_AND_MOVE",
+                    "label": "Étendre la période et déplacer",
+                    "enabled": True,
+                    "required_parameters": ["confirm_window_extension"],
+                }
+            )
+        else:
+            actions.append(
+                {
+                    "code": "PROPOSE_WINDOW_EXTENSION",
+                    "label": "Soumettre l'extension de période",
+                    "enabled": True,
+                    "required_parameters": ["expected_request_version"],
+                }
+            )
+        actions.append(
+            {
+                "code": "CANCEL",
+                "label": "Annuler",
+                "enabled": True,
+                "required_parameters": [],
+            }
+        )
+
+        warnings: list[dict[str, object]] = []
+        if available_hours <= 0 and not command.outside_standard_hours:
+            warnings.append(
+                {
+                    "code": "OUTSIDE_STANDARD_HOURS_REQUIRED",
+                    "message": (
+                        "La ressource n'est pas disponible selon son horaire standard "
+                        "cette journée; une autorisation hors horaire est requise."
+                    ),
+                }
+            )
+        if impact.increases_exception:
+            warnings.append(
+                {
+                    "code": "OVERALLOCATION_CHOICE_REQUIRED",
+                    "message": (
+                        "Le verrouillage final augmenterait la surallocation; une "
+                        "politique explicite est requise à l'exécution."
+                    ),
+                    "excess_hours": impact.projected_excess_hours,
+                }
+            )
+
+        return {
+            "allocation_id": self._reference(source),
+            "source_shift_id": source.id,
+            "segment_id": self._segment_reference(requirement),
+            "requirement_id": requirement.id,
+            "origin": requirement.origin,
+            "source_resource_id": source.resource_id,
+            "target_resource_id": target_resource.id,
+            "target_day": target_day.isoformat(),
+            "current_window": {
+                "start": current_start.isoformat(),
+                "end": current_end.isoformat(),
+            },
+            "proposed_window": {
+                "start": proposed_start.isoformat(),
+                "end": proposed_end.isoformat(),
+            },
+            "planning_version": self._versioning.current_version(),
+            "approval_revision_id": approval_revision_id,
+            "approved_entry_key": approved_entry_key,
+            "approved_window": (
+                {
+                    "start": approved_start.isoformat(),
+                    "end": approved_end.isoformat(),
+                }
+                if approved_start is not None and approved_end is not None
+                else None
+            ),
+            "request_number": demand_number,
+            "request_version": request_version,
+            "operational_version": self._current_operational_version(requirement),
+            "authorization_decision": authorization_reason,
+            "availability_hours": available_hours,
+            "planned_hours": float(requirement.planned_hours),
+            "current_locked_hours": float(before_locked),
+            "projected_locked_hours": float(projected_locked),
+            "projected_excess_hours": impact.projected_excess_hours,
+            "actions": actions,
+            "warnings": warnings,
+        }
+
+    def extend_and_move(
+        self,
+        command: AllocationExtendMoveCommand,
+    ) -> Mapping[str, Any]:
+        """Atomically widen an already-authorized window and execute the move."""
+
+        self._versioning.acquire(command.expected_planning_version)
+        source = self._shift(command.allocation_id)
+        requirement = self._requirement(source)
+        self._validate_source(source)
+        target_resource = self._resource(command.resource_id)
+        target_day = command.day
+        if requirement.start_date <= target_day <= requirement.end_date:
+            raise ApplicationValidationError(
+                "La cible est déjà dans la fenêtre du besoin; utilise le déplacement simple.",
+                code="allocation_window_extension_not_required",
+                context={"allocation_id": self._reference(source)},
+            )
+
+        before_start = requirement.start_date
+        before_end = requirement.end_date
+        proposed_start = min(before_start, target_day)
+        proposed_end = max(before_end, target_day)
+        before_locked = self._locked_hours(requirement.id)
+        source_hours = _hours(source.hours)
+        projected_locked = (
+            before_locked
+            - (source_hours if source.locked else Decimal("0"))
+            + source_hours
+        )
+        policy = normalize_overallocation_policy(command.overallocation_policy)
+
+        approval_revision_id: str | None = None
+        if requirement.origin == ORIGIN_REQUEST:
+            approval_revision_id, _ = self._authorization_context(
+                requirement,
+                expected_approval_revision_id=command.expected_approval_revision_id,
+                expected_operational_version=command.expected_operational_version,
+                require_operational_version=policy == INCREASE_PLANNED,
+            )
+            if self._authorization is None:
+                raise ApplicationConflictError(
+                    "L'autorisation de fenêtre n'est pas disponible.",
+                    code="planning_authorization_unknown",
+                )
+            decision = self._authorization.operational_window_authorization(
+                self._segment_reference(requirement),
+                target_day,
+                expected_approval_revision_id=command.expected_approval_revision_id,
+            )
+            if not bool(decision.get("authorized")):
+                raise ApplicationConflictError(
+                    "La date cible dépasse l'entrée approuvée active. "
+                    "L'extension doit passer par la demande candidate.",
+                    code="planning_authorization_revision_required",
+                    context={
+                        "segment_id": self._segment_reference(requirement),
+                        "approval_revision_id": decision.get("approval_revision_id"),
+                        "approved_entry_key": decision.get("approved_entry_key"),
+                        "target_day": target_day.isoformat(),
+                    },
+                )
+
+        _day, impact, _available = evaluate_projected_manual_state(
+            self._session,
+            requirement,
+            target_resource,
+            target_day,
+            command.outside_standard_hours,
+            current_locked_hours=before_locked,
+            projected_locked_hours=projected_locked,
+            window_start=proposed_start,
+            window_end=proposed_end,
+        )
+        if impact.increases_exception and policy is None:
+            raise ApplicationValidationError(
+                "Ce déplacement augmenterait la surallocation. Choisis explicitement "
+                "de conserver l'exception ou d'augmenter les heures prévues.",
+                code="allocation_overallocation_choice_required",
+                context={
+                    "segment_id": self._segment_reference(requirement),
+                    "planned_hours": impact.planned_hours,
+                    "projected_locked_hours": impact.projected_locked_hours,
+                    "excess_hours": impact.projected_excess_hours,
+                },
+            )
+        if (
+            policy == INCREASE_PLANNED
+            and impact.projected_excess_hours > TOLERANCE_HOURS
+        ):
+            if self._authorization is not None:
+                self._authorization.authorize_planned_hours(
+                    self._segment_reference(requirement),
+                    impact.projected_locked_hours,
+                    explicit_increase=True,
+                    expected_operational_version=command.expected_operational_version,
+                )
+            requirement.planned_hours = _hours(impact.projected_locked_hours)
+        elif impact.increases_exception and policy != KEEP_EXCEPTION:
+            raise ApplicationValidationError(
+                "Une décision explicite est requise pour la surallocation manuelle.",
+                code="allocation_overallocation_choice_required",
+            )
+
+        shift_before_row = self._journal.shift_snapshot(source.id)
+        requirement_before_row = self._journal.requirement_snapshot(requirement.id)
+        requirement_before_metrics = _segment_metrics(self._session, requirement.id)
+        if shift_before_row is None or requirement_before_row is None:
+            raise RuntimeError("L'état initial du déplacement atomique est introuvable.")
+
+        shift_before = dict(shift_before_row[3])
+        requirement_before = dict(requirement_before_row[2])
+        requirement.start_date = proposed_start
+        requirement.end_date = proposed_end
+        source.resource_id = target_resource.id
+        source.work_date = target_day
+        source.source = "MANUAL"
+        source.locked = True
+        source.outside_standard_hours = bool(command.outside_standard_hours)
+        self._session.flush()
+        self._planning.rebuild()
+
+        persisted = self._session.get(Shift, source.id)
+        if persisted is None:
+            raise RuntimeError("Le recalcul a perdu le quart déplacé.")
+        if (
+            persisted.resource_requirement_id != requirement.id
+            or persisted.resource_id != target_resource.id
+            or persisted.work_date != target_day
+            or not persisted.locked
+            or _text(persisted.source).upper() != "MANUAL"
+            or requirement.start_date != proposed_start
+            or requirement.end_date != proposed_end
+        ):
+            raise RuntimeError("Les invariants de l'extension + déplacement ne sont pas respectés.")
+
+        append_overallocation_audit(
+            self._session,
+            self._journal,
+            self._segment_reference(requirement),
+            requirement_before_row,
+            requirement_before_metrics,
+            policy=policy,
+        )
+        current_req = self._journal.requirement_snapshot(requirement.id)
+        current_shift = self._journal.shift_snapshot(persisted.id)
+        if current_req is not None:
+            req_after = dict(current_req[2])
+            req_after.update(
+                {
+                    "correlation_id": _text(command.correlation_id) or None,
+                    "expected_planning_version": command.expected_planning_version,
+                    "planning_version": self._versioning.current_version(),
+                    "approval_revision_id": approval_revision_id,
+                }
+            )
+            self._journal.append(
+                entity_type="SEGMENT",
+                entity_id=current_req[0],
+                entity_reference=current_req[1],
+                action="Extension atomique de fenêtre",
+                before=requirement_before,
+                after=req_after,
+            )
+        if current_shift is not None:
+            shift_after = dict(current_shift[3])
+            shift_after.update(
+                {
+                    "correlation_id": _text(command.correlation_id) or None,
+                    "expected_planning_version": command.expected_planning_version,
+                    "planning_version": self._versioning.current_version(),
+                    "approval_revision_id": approval_revision_id,
+                }
+            )
+            self._journal.append(
+                entity_type=ENTITY_SHIFT,
+                entity_id=current_shift[0],
+                entity_reference=current_shift[1],
+                parent_reference=current_shift[2],
+                action="Déplacement atomique après extension",
+                before=shift_before,
+                after=shift_after,
+            )
+
+        return {
+            "operation": "EXTEND_AND_MOVE",
+            "source_allocation_id": self._reference(persisted),
+            "target_allocation_id": self._reference(persisted),
+            "source_shift_id": persisted.id,
+            "target_shift_id": persisted.id,
+            "segment_id": self._segment_reference(requirement),
+            "requirement_id": requirement.id,
+            "source_hours": float(persisted.hours),
+            "target_hours": float(persisted.hours),
+            "planned_hours": float(requirement.planned_hours),
+            "locked_hours": float(self._locked_hours(requirement.id)),
+            "excess_hours": round(
+                max(
+                    float(self._locked_hours(requirement.id) - _hours(requirement.planned_hours)),
+                    0.0,
+                ),
+                2,
+            ),
+            "planning_version": self._versioning.current_version(),
+            "approval_revision_id": approval_revision_id,
+            "operational_version": self._current_operational_version(requirement),
+            "auto_source_converted": _text(shift_before.get("source")).upper() == "AUTO",
         }
 
     def split(self, command: AllocationSplitCommand) -> Mapping[str, Any]:

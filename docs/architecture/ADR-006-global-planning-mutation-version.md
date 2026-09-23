@@ -151,3 +151,27 @@ La validation réelle multi-session sur SQL Server cible est complétée dans #1
 - ADR-001
 - ADR-003
 - ADR-004
+
+
+## Extension #333 — fenêtre + déplacement
+
+#333 applique la même frontière transactionnelle aux gestes DnD qui peuvent élargir la
+fenêtre d'un besoin. L'évaluation préalable est strictement en lecture seule et ne
+réserve aucune capacité. La commande d'exécution :
+
+1. rejoue d'abord un reçu idempotent existant;
+2. acquiert le `planning_version` global avant toute lecture décisionnelle;
+3. relit le `Shift`, le `ResourceRequirement`, la ressource cible et, pour une
+   origine `REQUEST`, l'entrée locale de la révision approuvée active;
+4. n'autorise l'extension immédiate que si la date cible appartient à cette entrée
+   approuvée exacte; une fenêtre globale min/max de la demande ne constitue pas une
+   autorisation;
+5. écrit l'élargissement minimal de fenêtre et le déplacement comme une seule mutation;
+6. convertit le quart déplacé en décision manuelle verrouillée, reconstruit exactement
+   une fois, vérifie les invariants, journalise la fenêtre et le quart, puis produit le
+   reçu idempotent dans la transaction englobante.
+
+Une cible hors enveloppe approuvée n'exécute jamais l'ancien geste après approbation :
+elle modifie uniquement la proposition candidate via ADR-004. Aucun intent de
+déplacement durable n'est créé; après approbation, l'utilisateur initie un nouveau geste
+contre le `planning_version`, la révision approuvée et la version opérationnelle frais.

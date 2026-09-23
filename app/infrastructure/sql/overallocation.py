@@ -270,6 +270,49 @@ class SqlSegmentRepositoryWithAllocationMetrics(SqlSegmentRepository):
         return self._enrich(row, _segment_projection_metrics(self._overallocation_session, row.segment_id))
 
 
+def evaluate_projected_manual_state(
+    session: Session,
+    requirement: ResourceRequirement,
+    resource: Resource,
+    day_value: Any,
+    outside_standard_hours: bool,
+    *,
+    current_locked_hours: Decimal,
+    projected_locked_hours: Decimal,
+    window_start: date | None = None,
+    window_end: date | None = None,
+) -> tuple[date, ManualOverallocationImpact, float]:
+    """Pure #333 projected validation used by DnD previews and atomic execution.
+
+    It validates the supplied final window and availability but never changes the
+    requirement, operational choices, approval state, or planning version.
+    """
+
+    day = date_from_value(day_value)
+    if day is None:
+        raise ValueError("La date du quart est requise.")
+    lower = window_start or requirement.start_date
+    upper = window_end or requirement.end_date
+    if day < lower or day > upper:
+        raise ValueError("Le quart manuel doit demeurer dans la fenêtre projetée du segment.")
+
+    impact = manual_overallocation_impact(
+        planned_hours=float(requirement.planned_hours),
+        current_locked_hours=float(current_locked_hours),
+        projected_locked_hours=float(projected_locked_hours),
+    )
+    snapshot = SqlPlanningReadRepository(session).capture()
+    available_hours = float(
+        availability_hours_for_day(snapshot.availability, resource.name, day)
+    )
+    if available_hours <= 0 and not outside_standard_hours:
+        raise ValueError(
+            "La ressource n'est pas disponible selon son horaire standard cette journée. "
+            "Autorise explicitement le quart hors horaire pour continuer."
+        )
+    return day, impact, available_hours
+
+
 def validate_projected_manual_state(
     session: Session,
     requirement: ResourceRequirement,
