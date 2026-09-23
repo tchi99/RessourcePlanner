@@ -36,6 +36,7 @@ from .communication_models import (
     SmtpConfigurationRow,
 )
 from .communication_repository import SqlCommunicationRepository
+from .composite_allocation import SqlCompositeAllocationCommandAdapter
 from .smtp_settings_repository import SqlSmtpConfigurationRepository
 from .competency_catalog_repository import SqlCompetencyCatalogRepository
 from .demand_period_models import (
@@ -160,6 +161,7 @@ __all__ = [
     "SqlBusinessContactAdminRepository",
     "SqlCommandIdempotencyAdapter",
     "SqlCommunicationRepository",
+    "SqlCompositeAllocationCommandAdapter",
     "SqlSmtpConfigurationRepository",
     "SqlCompetencyCatalogRepository",
     "SqlDemandApprovalEnvelopePolicyRepository",

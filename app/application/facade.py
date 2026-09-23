@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 from .allocation_service import AllocationService
+from .composite_allocation_service import CompositeAllocationService
 from .commands import (
+    AllocationDuplicateCommand,
+    AllocationSplitCommand,
     DemandAlternativeSelectCommand,
     DemandOperationalConfirmationCommand,
     DemandApproveCommand,
@@ -42,6 +45,7 @@ from .resource_admin import (
 )
 from .results import (
     AllocationMutationResult,
+    CompositeAllocationMutationResult,
     DemandAlternativeSelectionResult,
     DemandMutationResult,
     DemandOperationalConfirmationResult,
@@ -69,6 +73,7 @@ class ApplicationFacade:
         segments: SegmentService,
         allocations: AllocationService,
         quick_shifts: QuickShiftService,
+        composite_allocations: CompositeAllocationService | None = None,
         planning: PlanningService,
         work_packages: WorkPackageService | None = None,
         resource_admin: ResourceAdminService | None = None,
@@ -78,6 +83,7 @@ class ApplicationFacade:
         self._segments = segments
         self._allocations = allocations
         self._quick_shifts = quick_shifts
+        self._composite_allocations = composite_allocations
         self._planning = planning
         self._work_packages = work_packages
         self._resource_admin = resource_admin
@@ -95,6 +101,14 @@ class ApplicationFacade:
                 code="work_package_commands_unavailable",
             )
         return self._work_packages
+
+    def _composite_allocation_service(self) -> CompositeAllocationService:
+        if self._composite_allocations is None:
+            raise ApplicationOperationError(
+                "Les commandes composites de quart ne sont pas configurées.",
+                code="composite_allocation_commands_unavailable",
+            )
+        return self._composite_allocations
 
     def _resource_admin_service(self) -> ResourceAdminService:
         if self._resource_admin is None:
@@ -303,6 +317,18 @@ class ApplicationFacade:
         self._acquire_planning_version()
         self._allocations.delete_manual_command(command)
         return AllocationMutationResult(_identifier(command.allocation_id), action="deleted")
+
+    def split_allocation(
+        self,
+        command: AllocationSplitCommand,
+    ) -> CompositeAllocationMutationResult:
+        return self._composite_allocation_service().split_command(command)
+
+    def duplicate_allocation(
+        self,
+        command: AllocationDuplicateCommand,
+    ) -> CompositeAllocationMutationResult:
+        return self._composite_allocation_service().duplicate_command(command)
 
     def create_quick_shift(
         self,

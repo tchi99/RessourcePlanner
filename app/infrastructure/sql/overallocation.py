@@ -21,6 +21,7 @@ from ...domain.planning_engine import MISSING_ALLOCATION_TYPE
 from ...domain.manual_overallocation import (
     INCREASE_PLANNED,
     KEEP_EXCEPTION,
+    ManualOverallocationImpact,
     TOLERANCE_HOURS,
     manual_overallocation_impact,
     normalize_overallocation_policy,
@@ -269,6 +270,95 @@ class SqlSegmentRepositoryWithAllocationMetrics(SqlSegmentRepository):
         return self._enrich(row, _segment_projection_metrics(self._overallocation_session, row.segment_id))
 
 
+def validate_projected_manual_state(
+    session: Session,
+    requirement: ResourceRequirement,
+    resource: Resource,
+    day_value: Any,
+    outside_standard_hours: bool,
+    *,
+    current_locked_hours: Decimal,
+    projected_locked_hours: Decimal,
+    overallocation_policy: str | None,
+    authorization: PlanningAuthorizationPort | None,
+    expected_operational_version: int | None = None,
+) -> tuple[date, ManualOverallocationImpact]:
+    """Validate one final projected locked state and apply the shared #13/#38 policy."""
+
+    day = date_from_value(day_value)
+    if day is None:
+        raise ValueError("La date du quart est requise.")
+    if day < requirement.start_date or day > requirement.end_date:
+        raise ValueError("Le quart manuel doit demeurer dans la fenêtre du segment.")
+
+    try:
+        policy = normalize_overallocation_policy(overallocation_policy)
+    except ValueError as exc:
+        raise ApplicationValidationError(
+            str(exc),
+            code="allocation_overallocation_policy_invalid",
+            context={"value": overallocation_policy},
+        ) from exc
+
+    impact = manual_overallocation_impact(
+        planned_hours=float(requirement.planned_hours),
+        current_locked_hours=float(current_locked_hours),
+        projected_locked_hours=float(projected_locked_hours),
+    )
+
+    if impact.increases_exception and policy is None:
+        reference = _text(requirement.legacy_segment_id) or requirement.id
+        raise ApplicationValidationError(
+            "Ce quart ferait dépasser les heures prévues du segment. Choisis explicitement d'augmenter les heures prévues ou de conserver la surallocation comme dérogation.",
+            code="allocation_overallocation_choice_required",
+            context={
+                "segment_id": reference,
+                "planned_hours": impact.planned_hours,
+                "current_locked_hours": impact.current_locked_hours,
+                "projected_locked_hours": impact.projected_locked_hours,
+                "current_excess_hours": impact.current_excess_hours,
+                "excess_hours": impact.projected_excess_hours,
+            },
+        )
+
+    if policy == INCREASE_PLANNED and impact.projected_excess_hours > TOLERANCE_HOURS:
+        if authorization is not None:
+            authorization.authorize_planned_hours(
+                _text(requirement.legacy_segment_id) or requirement.id,
+                impact.projected_locked_hours,
+                explicit_increase=True,
+                expected_operational_version=expected_operational_version,
+            )
+        requirement.planned_hours = _decimal(impact.projected_locked_hours).quantize(
+            Decimal("0.01")
+        )
+        session.flush()
+    elif impact.increases_exception and policy != KEEP_EXCEPTION:
+        raise ApplicationValidationError(
+            "Une décision explicite est requise pour la surallocation manuelle.",
+            code="allocation_overallocation_choice_required",
+            context={
+                "segment_id": _text(requirement.legacy_segment_id) or requirement.id,
+                "planned_hours": impact.planned_hours,
+                "current_locked_hours": impact.current_locked_hours,
+                "projected_locked_hours": impact.projected_locked_hours,
+                "current_excess_hours": impact.current_excess_hours,
+                "excess_hours": impact.projected_excess_hours,
+            },
+        )
+
+    snapshot = SqlPlanningReadRepository(session).capture()
+    if (
+        availability_hours_for_day(snapshot.availability, resource.name, day) <= 0
+        and not outside_standard_hours
+    ):
+        raise ValueError(
+            "La ressource n'est pas disponible selon son horaire standard cette journée. "
+            "Autorise explicitement le quart hors horaire pour continuer."
+        )
+    return day, impact
+
+
 class SqlOverallocationAllocationCommandAdapter(SqlAllocationCommandAdapter):
     """Manual allocation adapter that requires an explicit decision to increase excess."""
 
@@ -306,14 +396,9 @@ class SqlOverallocationAllocationCommandAdapter(SqlAllocationCommandAdapter):
         *,
         exclude_shift_id: str | None = None,
     ) -> tuple[date, Decimal]:
-        day = date_from_value(day_value)
-        if day is None:
-            raise ValueError("La date du quart est requise.")
         hours = _decimal(hours_value)
         if hours <= 0:
             raise ValueError("Les heures doivent être supérieures à zéro.")
-        if day < requirement.start_date or day > requirement.end_date:
-            raise ValueError("Le quart manuel doit demeurer dans la fenêtre du segment.")
 
         current_locked = Decimal(
             str(
@@ -336,60 +421,17 @@ class SqlOverallocationAllocationCommandAdapter(SqlAllocationCommandAdapter):
             str(self._overallocation_session.scalar(other_statement) or 0)
         )
         projected_locked = other_locked + hours
-        impact = manual_overallocation_impact(
-            planned_hours=float(requirement.planned_hours),
-            current_locked_hours=float(current_locked),
-            projected_locked_hours=float(projected_locked),
+        day, _impact = validate_projected_manual_state(
+            self._overallocation_session,
+            requirement,
+            resource,
+            day_value,
+            outside_standard_hours,
+            current_locked_hours=current_locked,
+            projected_locked_hours=projected_locked,
+            overallocation_policy=self._active_policy,
+            authorization=self._authorization,
         )
-        policy = self._active_policy
-
-        if impact.increases_exception and policy is None:
-            reference = _text(requirement.legacy_segment_id) or requirement.id
-            raise ApplicationValidationError(
-                "Ce quart ferait dépasser les heures prévues du segment. Choisis explicitement d'augmenter les heures prévues ou de conserver la surallocation comme dérogation.",
-                code="allocation_overallocation_choice_required",
-                context={
-                    "segment_id": reference,
-                    "planned_hours": impact.planned_hours,
-                    "current_locked_hours": impact.current_locked_hours,
-                    "projected_locked_hours": impact.projected_locked_hours,
-                    "current_excess_hours": impact.current_excess_hours,
-                    "excess_hours": impact.projected_excess_hours,
-                },
-            )
-
-        if policy == INCREASE_PLANNED and impact.projected_excess_hours > TOLERANCE_HOURS:
-            if self._authorization is not None:
-                self._authorization.authorize_planned_hours(
-                    _text(requirement.legacy_segment_id) or requirement.id,
-                    impact.projected_locked_hours,
-                    explicit_increase=True,
-                )
-            requirement.planned_hours = _decimal(impact.projected_locked_hours)
-            self._overallocation_session.flush()
-        elif impact.increases_exception and policy != KEEP_EXCEPTION:
-            raise ApplicationValidationError(
-                "Une décision explicite est requise pour la surallocation manuelle.",
-                code="allocation_overallocation_choice_required",
-                context={
-                    "segment_id": _text(requirement.legacy_segment_id) or requirement.id,
-                    "planned_hours": impact.planned_hours,
-                    "current_locked_hours": impact.current_locked_hours,
-                    "projected_locked_hours": impact.projected_locked_hours,
-                    "current_excess_hours": impact.current_excess_hours,
-                    "excess_hours": impact.projected_excess_hours,
-                },
-            )
-
-        snapshot = SqlPlanningReadRepository(self._overallocation_session).capture()
-        if (
-            availability_hours_for_day(snapshot.availability, resource.name, day) <= 0
-            and not outside_standard_hours
-        ):
-            raise ValueError(
-                "La ressource n'est pas disponible selon son horaire standard cette journée. "
-                "Autorise explicitement le quart hors horaire pour continuer."
-            )
         return day, hours
 
     def create_manual(
@@ -443,6 +485,54 @@ class SqlOverallocationAllocationCommandAdapter(SqlAllocationCommandAdapter):
             self._active_policy = None
 
 
+def append_overallocation_audit(
+    session: Session,
+    journal: SqlPlanningAuditJournal,
+    reference: str | None,
+    before_snapshot: tuple[str, str, dict[str, object]] | None,
+    before_metrics: Mapping[str, float] | None,
+    *,
+    policy: str | None = None,
+) -> None:
+    """Append the canonical #38 segment audit for a completed mutation."""
+
+    if not reference or before_snapshot is None:
+        return
+    after_snapshot = journal.requirement_snapshot(reference)
+    after_metrics = _segment_metrics(session, reference)
+    if after_snapshot is None or after_metrics is None or before_metrics is None:
+        return
+
+    before_excess = float(before_metrics.get("overallocated_hours", 0.0))
+    after_excess = float(after_metrics.get("overallocated_hours", 0.0))
+    before_planned = float(before_metrics.get("planned_hours", 0.0))
+    after_planned = float(after_metrics.get("planned_hours", 0.0))
+    action: str | None = None
+    if policy == INCREASE_PLANNED and after_planned > before_planned + TOLERANCE_HOURS:
+        action = "Augmentation heures prévues depuis quart manuel"
+    elif after_excess > before_excess + TOLERANCE_HOURS:
+        action = "Dérogation surallocation manuelle"
+    elif before_excess > after_excess + TOLERANCE_HOURS:
+        action = (
+            "Régularisation surallocation manuelle"
+            if after_excess <= TOLERANCE_HOURS
+            else "Réduction surallocation manuelle"
+        )
+    if action is None:
+        return
+
+    entity_id, entity_reference, before_values = before_snapshot
+    _, _, after_values = after_snapshot
+    journal.append(
+        entity_type=ENTITY_SEGMENT,
+        entity_id=entity_id,
+        entity_reference=entity_reference,
+        action=action,
+        before=_snapshot_with_metrics(before_values, before_metrics),
+        after=_snapshot_with_metrics(after_values, after_metrics),
+    )
+
+
 class OverallocationAuditedAllocationCommandAdapter(AuditedAllocationCommandAdapter):
     """Planning audit extended with explicit overallocation/regularization events."""
 
@@ -474,40 +564,13 @@ class OverallocationAuditedAllocationCommandAdapter(AuditedAllocationCommandAdap
         *,
         policy: str | None = None,
     ) -> None:
-        if not reference or before_snapshot is None:
-            return
-        after_snapshot = self._journal.requirement_snapshot(reference)
-        after_metrics = _segment_metrics(self._overallocation_session, reference)
-        if after_snapshot is None or after_metrics is None or before_metrics is None:
-            return
-
-        before_excess = float(before_metrics.get("overallocated_hours", 0.0))
-        after_excess = float(after_metrics.get("overallocated_hours", 0.0))
-        before_planned = float(before_metrics.get("planned_hours", 0.0))
-        after_planned = float(after_metrics.get("planned_hours", 0.0))
-        action: str | None = None
-        if policy == INCREASE_PLANNED and after_planned > before_planned + TOLERANCE_HOURS:
-            action = "Augmentation heures prévues depuis quart manuel"
-        elif after_excess > before_excess + TOLERANCE_HOURS:
-            action = "Dérogation surallocation manuelle"
-        elif before_excess > after_excess + TOLERANCE_HOURS:
-            action = (
-                "Régularisation surallocation manuelle"
-                if after_excess <= TOLERANCE_HOURS
-                else "Réduction surallocation manuelle"
-            )
-        if action is None:
-            return
-
-        entity_id, entity_reference, before_values = before_snapshot
-        _, _, after_values = after_snapshot
-        self._journal.append(
-            entity_type=ENTITY_SEGMENT,
-            entity_id=entity_id,
-            entity_reference=entity_reference,
-            action=action,
-            before=_snapshot_with_metrics(before_values, before_metrics),
-            after=_snapshot_with_metrics(after_values, after_metrics),
+        append_overallocation_audit(
+            self._overallocation_session,
+            self._journal,
+            reference,
+            before_snapshot,
+            before_metrics,
+            policy=policy,
         )
 
     def create_manual(

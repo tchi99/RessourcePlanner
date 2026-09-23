@@ -6,6 +6,7 @@ historical implementation modules.
 """
 
 from .allocation_service import AllocationService
+from .composite_allocation_service import CompositeAllocationService
 from .business_contact_admin import (
     BusinessContactAdminRepositoryPort,
     BusinessContactAdminService,
@@ -14,6 +15,8 @@ from .business_contact_admin import (
     DemandOverrideMutationResult,
 )
 from .commands import (
+    AllocationDuplicateCommand,
+    AllocationSplitCommand,
     DemandAlternativeSelectCommand,
     DemandOperationalConfirmationCommand,
     DemandApproveCommand,
@@ -41,6 +44,7 @@ from .commands import (
 )
 from .command_ports import (
     AllocationCommandPort,
+    CompositeAllocationCommandPort,
     ApprovedDemandSyncPort,
     PlanningCommandPort,
 )
@@ -204,6 +208,7 @@ from .resource_admin import (
 )
 from .results import (
     AllocationMutationResult,
+    CompositeAllocationMutationResult,
     ApplicationResult,
     DemandAlternativeSelectionResult,
     DemandMutationResult,
@@ -218,12 +223,17 @@ from .work_package_service import WorkPackageService
 
 __all__ = [
     "AVAILABILITY_HOLIDAY",
+    "AllocationDuplicateCommand",
+    "AllocationSplitCommand",
     "AVAILABILITY_STANDARD",
     "AVAILABILITY_TYPES",
     "AVAILABILITY_VACATION",
     "AllocationCommandPort",
     "AllocationMutationResult",
     "AllocationService",
+    "CompositeAllocationCommandPort",
+    "CompositeAllocationMutationResult",
+    "CompositeAllocationService",
     "ApplicationAuthorizationError",
     "ApplicationConflictError",
     "ApplicationError",
