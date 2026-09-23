@@ -10,6 +10,8 @@ export type PipelineStep = {
   done: boolean
   marker: string | null
   issue_number: number | null
+  status: string | null
+  rationale: string | null
 }
 
 export type Job = {

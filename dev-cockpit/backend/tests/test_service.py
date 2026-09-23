@@ -81,6 +81,39 @@ ASTRA ciblé #901 sur main post-#333
 | #903 | après P1 ou en parallèle infra | valider la vraie VM Ubuntu |
 """
 
+
+
+ROADMAP_291_READY = """
+**L'analyse ASTRA est terminée. La prochaine tranche active est #291, avec 291A READY.**
+
+Ordre actif :
+
+1. **#291 — ressources réservables non humaines — ACTIF**
+   - **291A — contrats et frontières pures — READY**
+   - **291B — catalogue et persistance**
+   - **291C — demande, approbation et matérialisation**
+   - **291D — réservations et concurrence**
+   - **291E — projections et delta**
+   - **291F — React et acceptation**
+"""
+
+ISSUE_291_READY = """
+# #291 — ressources réservables non humaines
+
+Analyse ASTRA terminée. ADR-007 accepté via une PR documentaire avant DEV.
+
+## Découpage d'implémentation
+
+Ordre obligatoire : **291A → 291B → 291C → 291D → 291E → 291F**.
+
+### #291A — contrats et frontières pures — READY
+### #291B — catalogue et persistance
+### #291C — demande, approbation et matérialisation
+### #291D — réservations et concurrence
+### #291E — projections et delta
+### #291F — React et acceptation
+"""
+
 AGENTS = """
 ## 20. Chained execution
 Automatic chaining is allowed only when the next item belongs to the same approved work block.
@@ -108,6 +141,10 @@ class ServiceTests(unittest.IsolatedAsyncioTestCase):
                 return response([])
             if path == "/repos/tchi99/RessourcePlanner/pulls" and query.get("state") == "closed":
                 return response(closed_pulls or [])
+            if path.startswith("/repos/tchi99/RessourcePlanner/pulls/") and path.endswith("/files"):
+                return response([
+                    {"filename": "app/domain/implementation.py", "status": "modified"}
+                ])
             if path == "/repos/tchi99/RessourcePlanner/commits":
                 return response([{"sha": "def456", "html_url": "https://github.test/commit/def456", "commit": {"message": "main", "author": {"date": "2026-09-22T14:55:00Z"}}}])
             if path == "/repos/tchi99/RessourcePlanner/contents/AGENTS.md":
@@ -398,6 +435,118 @@ class ServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(dashboard["pipeline"]["now"]["kind"], "WORK")
         self.assertIn("Prochaine tranche DEV du pipeline", dashboard["next_action"])
         self.assertIn("prochain travail DEV", dashboard["dev_prompt"])
+
+
+    async def _dashboard_291_with_architecture_pr(self, *, merged: bool):
+        pr = {
+            "number": 392,
+            "title": "docs: add architecture ADR for reservable assets",
+            "body": "Architecture analysis for #291 completed before 291A. No business code is modified.",
+            "html_url": "https://github.test/pull/392",
+            "merged_at": "2026-09-23T14:17:04Z" if merged else None,
+            "updated_at": "2026-09-23T14:17:04Z",
+            "state": "closed" if merged else "open",
+            "draft": False,
+            "mergeable": True,
+            "mergeable_state": "clean",
+            "head": {"ref": "docs/291-architecture", "sha": "docs392"},
+            "base": {"ref": "main"},
+        }
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            path = request.url.path
+            query = dict(request.url.params)
+            if path == "/repos/tchi99/RessourcePlanner/issues/55":
+                return response({
+                    "number": 55,
+                    "title": "Roadmap maître",
+                    "body": ROADMAP_291_READY,
+                    "html_url": "https://github.test/issues/55",
+                    "updated_at": "2026-09-23T14:18:00Z",
+                    "state": "open",
+                })
+            if path == "/repos/tchi99/RessourcePlanner/issues/291":
+                return response({
+                    "number": 291,
+                    "title": "Ressources réservables",
+                    "body": ISSUE_291_READY,
+                    "state": "open",
+                    "html_url": "https://github.test/issues/291",
+                    "updated_at": "2026-09-23T14:18:00Z",
+                })
+            if path == "/repos/tchi99/RessourcePlanner/pulls":
+                state = query.get("state")
+                if merged:
+                    return response([pr] if state == "closed" else [])
+                return response([pr] if state == "open" else [])
+            if path == "/repos/tchi99/RessourcePlanner/pulls/392":
+                return response(pr)
+            if path == "/repos/tchi99/RessourcePlanner/pulls/392/files":
+                return response([
+                    {
+                        "filename": "docs/architecture/ADR-099-reservable-assets.md",
+                        "status": "added",
+                    },
+                    {
+                        "filename": "docs/architecture/README.md",
+                        "status": "modified",
+                    },
+                ])
+            if path == "/repos/tchi99/RessourcePlanner/actions/runs":
+                return response({"workflow_runs": []})
+            if path == "/repos/tchi99/RessourcePlanner/commits":
+                return response([{
+                    "sha": "main291",
+                    "html_url": "https://github.test/commit/main291",
+                    "commit": {
+                        "message": "main",
+                        "author": {"date": "2026-09-23T14:18:00Z"},
+                    },
+                }])
+            if path == "/repos/tchi99/RessourcePlanner/contents/AGENTS.md":
+                return response(encoded_file(AGENTS))
+            if path == "/repos/tchi99/RessourcePlanner/contents/docs/architecture":
+                return response([])
+            if path == "/repos/tchi99/RessourcePlanner/branches":
+                return response([{"name": "main", "commit": {"sha": "main291"}}])
+            raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+        settings = Settings(
+            github_token="test",
+            repository="tchi99/RessourcePlanner",
+            roadmap_issue=55,
+            stalled_after_minutes=20,
+            github_api_url="https://api.github.test",
+        )
+        client = GitHubClient(settings, transport=httpx.MockTransport(handler))
+        try:
+            return await build_dashboard(client, settings, "tchi99/RessourcePlanner")
+        finally:
+            await client.close()
+
+    async def test_open_architecture_docs_pr_is_not_dev_work(self):
+        dashboard = await self._dashboard_291_with_architecture_pr(merged=False)
+
+        self.assertEqual(dashboard["active_work"]["subitem_key"], "291A")
+        self.assertIsNone(dashboard["active_work"]["primary_pr"])
+        self.assertEqual(dashboard["open_prs"][0]["number"], 392)
+        self.assertIn("Démarrer/reprendre 291A", dashboard["next_action"])
+        self.assertIn(
+            "291A → 291B → 291C → 291D → 291E → 291F",
+            dashboard["dev_prompt"],
+        )
+
+    async def test_merged_architecture_docs_pr_does_not_block_ready_dev_slice(self):
+        dashboard = await self._dashboard_291_with_architecture_pr(merged=True)
+
+        self.assertEqual(dashboard["active_work"]["subitem_key"], "291A")
+        self.assertIsNone(dashboard["active_work"]["merged_but_unmarked_pr"])
+        self.assertNotIn("fusionnée, mais la tranche", dashboard["dev_prompt"])
+        self.assertIn("Démarrer/reprendre 291A", dashboard["next_action"])
+        self.assertIn(
+            "291A → 291B → 291C → 291D → 291E → 291F",
+            dashboard["dev_prompt"],
+        )
 
     async def test_merged_pr_does_not_mark_unupdated_subitem_done(self):
         dashboard = await self._dashboard([

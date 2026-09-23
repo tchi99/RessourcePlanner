@@ -49,6 +49,8 @@ class PipelineStep:
     done: bool
     marker: str | None = None
     issue_number: int | None = None
+    status: str | None = None
+    rationale: str | None = None
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -170,6 +172,8 @@ def _parse_pipeline_fragment(fragment: str) -> PipelineStep | None:
         done=_pipeline_done(cleaned, kind),
         marker=marker,
         issue_number=issue_number,
+        status=None,
+        rationale=None,
     )
 
 
@@ -297,6 +301,8 @@ def product_pipeline(body: str) -> list[PipelineStep]:
         if not step:
             continue
         combined = " | ".join((label, status, rationale))
+        step.status = _clean_markdown(status) or None
+        step.rationale = _clean_markdown(rationale) or None
         explicit_kind = _pipeline_kind(combined)
         if explicit_kind != PIPELINE_WORK or step.kind == PIPELINE_WORK:
             if step.kind != explicit_kind:

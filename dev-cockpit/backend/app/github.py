@@ -75,6 +75,25 @@ class GitHubClient:
     async def get_pull(self, repo: str, number: int) -> dict[str, Any]:
         return await self._get(f"/repos/{repo}/pulls/{number}")
 
+    async def list_pull_files(
+        self,
+        repo: str,
+        number: int,
+        *,
+        per_page: int = 100,
+        max_pages: int = 5,
+    ) -> list[dict[str, Any]]:
+        files: list[dict[str, Any]] = []
+        for page in range(1, max_pages + 1):
+            batch = await self._get(
+                f"/repos/{repo}/pulls/{number}/files",
+                {"per_page": per_page, "page": page},
+            )
+            files.extend(batch)
+            if len(batch) < per_page:
+                break
+        return files
+
     async def workflow_runs_for_sha(self, repo: str, sha: str, per_page: int = 10) -> list[dict[str, Any]]:
         payload = await self._get(
             f"/repos/{repo}/actions/runs",

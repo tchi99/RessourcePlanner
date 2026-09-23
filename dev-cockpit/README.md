@@ -217,13 +217,28 @@ WORK → WORK → WORK
 ENVIRONMENT_GATE
 ```
 
-Le dashboard expose cette trajectoire en trois horizons :
+La trajectoire n'est plus affichée sur le dashboard principal. Elle appartient au panneau **Product Owner**, où elle est organisée en groupes rétractables **Maintenant / Ensuite / Plus tard**.
 
-- **Maintenant** : premier step non terminé;
-- **Ensuite** : les trois steps immédiatement suivants;
-- **Plus tard** : jusqu'à six steps supplémentaires, avec compteur si la trajectoire est plus longue.
+Chaque step y est lui-même rétractable :
+- une sous-tranche DEV charge la section exacte de son issue parent;
+- une issue DEV charge son contenu GitHub;
+- une gate affiche son type, son état et sa justification tirés de #55, avec le contexte de l'issue cible et la documentation associée.
 
 Une gate d'architecture ou d'environnement n'est jamais transformée en tranche DEV. Si elle devient le step courant, le prompt Developer indique explicitement qu'aucune implémentation ne doit démarrer avant que GitHub/#55 documente la gate comme satisfaite.
+
+
+### PR d'architecture vs travail Developer
+
+Une PR liée à l'issue active n'est pas automatiquement considérée comme une PR d'implémentation. Le Cockpit inspecte les fichiers changés des PR qui correspondent à la tranche active :
+
+- une PR dont tous les fichiers sont documentaires (`docs/**` ou fichiers Markdown) reste visible dans les listes générales mais n'est pas utilisée comme `primary_pr` du Developer;
+- une PR docs-only fusionnée ne déclenche pas l'état « PR fusionnée mais tranche non terminée »;
+- une PR qui touche du code, des tests, des migrations, de la configuration ou tout autre fichier non documentaire reste une PR DEV;
+- si la liste des fichiers d'une PR n'est pas disponible, le Cockpit reste conservateur et la considère comme potentiellement DEV plutôt que de masquer un vrai travail.
+
+Cela permet à une analyse d'architecture de matérialiser un ADR dans une PR sans faire croire que la première sous-tranche DEV a commencé ou a été livrée.
+
+Quand `AGENTS.md` autorise l'enchaînement et que l'issue documente un ordre obligatoire, le prompt Developer énumère désormais explicitement la chaîne restante (par exemple `291A → 291B → …`) au lieu d'un simple « poursuivre le bloc ».
 
 ## Détection du travail interrompu
 
