@@ -24,6 +24,7 @@ from app.infrastructure.sql import (
 )
 from app.server import create_api_app
 from app.server.security import static_auth_resolver
+from tests.http_test_auth import TEST_ADMIN_AUTH_RESOLVER
 
 
 WORK_DAY = date(2026, 9, 22)
@@ -338,7 +339,7 @@ class AtomicAllocationCommandHttpTests(unittest.TestCase):
             admin_app = create_api_app(
                 url,
                 actor_name="admin-atomic",
-                auth_resolver=_auth("Administrateur atomique"),
+                auth_resolver=TEST_ADMIN_AUTH_RESOLVER,
             )
             with TestClient(admin_app, raise_server_exceptions=False) as client:
                 created = client.post(
