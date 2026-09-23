@@ -37,6 +37,9 @@ class DemandApprovalStateReadModel:
     active_budget_overrides: Mapping[str, float] = field(default_factory=dict)
     active_requirement_count: int = 0
     active_planned_hours: float = 0.0
+    active_asset_requirement_count: int = 0
+    active_asset_usage_hours: float = 0.0
+    active_asset_unbudgeted_requirement_count: int = 0
     active_approved_entry_keys: tuple[str, ...] = ()
     active_matches_approved_revision: bool | None = None
     diagnostics: tuple[str, ...] = ()
@@ -62,6 +65,26 @@ class DemandPlanDeltaItemReadModel:
 
 
 @dataclass(frozen=True, slots=True)
+class DemandAssetPlanDeltaItemReadModel:
+    change: str
+    approved_entry_key: str
+    slot_index: int
+    current_requirement_id: str | None = None
+    current_asset_type_id: str | None = None
+    proposed_asset_type_id: str | None = None
+    current_start_date: date | None = None
+    current_end_date: date | None = None
+    proposed_start_date: date | None = None
+    proposed_end_date: date | None = None
+    current_usage_hours: float | None = None
+    proposed_usage_hours: float | None = None
+    current_asset_id: str | None = None
+    proposed_asset_id: str | None = None
+    allocation_preserved: bool = False
+    locked: bool = False
+
+
+@dataclass(frozen=True, slots=True)
 class DemandPlanDeltaReadModel:
     demand_number: str
     available: bool
@@ -75,6 +98,10 @@ class DemandPlanDeltaReadModel:
     proposed_hours: float = 0.0
     net_hours: float = 0.0
     items: tuple[DemandPlanDeltaItemReadModel, ...] = ()
+    asset_add_count: int = 0
+    asset_modify_count: int = 0
+    asset_cancel_count: int = 0
+    asset_items: tuple[DemandAssetPlanDeltaItemReadModel, ...] = ()
     approval_reference_status: str | None = None
     active_revision_id: str | None = None
     approved_request_version: int | None = None
