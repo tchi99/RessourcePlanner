@@ -268,6 +268,7 @@ class AllocationExtendMoveCommand:
     expected_planning_version: int
     confirm_window_extension: bool
     outside_standard_hours: bool = False
+    overallocation_policy: str | None = None
     expected_approval_revision_id: str | None = None
     expected_operational_version: int | None = None
     correlation_id: str | None = None
@@ -302,3 +303,5 @@ class AllocationExtendMoveCommand:
                 "La version opérationnelle attendue doit être au moins 1.",
                 code="operational_choice_version_invalid",
             )
+        if self.overallocation_policy is not None:
+            _overallocation_policy(self.overallocation_policy)
