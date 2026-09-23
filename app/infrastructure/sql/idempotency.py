@@ -140,3 +140,12 @@ class SqlCommandIdempotencyAdapter(CommandIdempotencyPort):
                     context={"command_scope": command_scope},
                 ) from exc
             return self._replay(winner, request_fingerprint)
+        except ApplicationConflictError:
+            # A same-key concurrent command can lose a business CAS (notably the
+            # global planning version) after the winner committed its mutation and
+            # receipt. Once the SAVEPOINT has rolled this attempt back, prefer that
+            # durable winner over surfacing a stale-version conflict.
+            winner = self._find(command_scope, key)
+            if winner is None:
+                raise
+            return self._replay(winner, request_fingerprint)

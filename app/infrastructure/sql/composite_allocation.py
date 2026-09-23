@@ -21,7 +21,11 @@ from .base import new_id
 from .command_adapters import INACTIVE_REQUIREMENT_STATUSES, SqlPlanningCommandAdapter
 from .models import ORIGIN_REQUEST, Resource, ResourceRequirement, Shift
 from .operational_choice_models import RequestOperationalState
-from .overallocation import validate_projected_manual_state
+from .overallocation import (
+    _segment_metrics,
+    append_overallocation_audit,
+    validate_projected_manual_state,
+)
 from .planning_audit import ENTITY_SHIFT, SqlPlanningAuditJournal
 from .planning_version import SqlPlanningMutationVersionRepository
 
@@ -328,6 +332,8 @@ class SqlCompositeAllocationCommandAdapter(CompositeAllocationCommandPort):
         if source_before_row is None:
             raise RuntimeError("Le quart source est introuvable avant le partage.")
         source_before = dict(source_before_row[3])
+        requirement_before_snapshot = self._journal.requirement_snapshot(requirement.id)
+        requirement_before_metrics = _segment_metrics(self._session, requirement.id)
         source_hours = _hours(source.hours)
         transfer = _hours(command.transfer_hours)
         if transfer <= 0 or transfer >= source_hours:
@@ -410,6 +416,14 @@ class SqlCompositeAllocationCommandAdapter(CompositeAllocationCommandPort):
 
         after_locked = self._locked_hours(requirement.id)
         operational_version = self._current_operational_version(requirement)
+        append_overallocation_audit(
+            self._session,
+            self._journal,
+            self._segment_reference(requirement),
+            requirement_before_snapshot,
+            requirement_before_metrics,
+            policy=policy,
+        )
         self._audit(
             operation="SPLIT",
             source_before=source_before,
@@ -447,6 +461,8 @@ class SqlCompositeAllocationCommandAdapter(CompositeAllocationCommandPort):
         if source_before_row is None:
             raise RuntimeError("Le quart source est introuvable avant la duplication.")
         source_before = dict(source_before_row[3])
+        requirement_before_snapshot = self._journal.requirement_snapshot(requirement.id)
+        requirement_before_metrics = _segment_metrics(self._session, requirement.id)
         source_hours = _hours(source.hours)
         before_planned = _hours(requirement.planned_hours)
         before_locked = self._locked_hours(requirement.id)
@@ -519,6 +535,14 @@ class SqlCompositeAllocationCommandAdapter(CompositeAllocationCommandPort):
 
         after_locked = self._locked_hours(requirement.id)
         operational_version = self._current_operational_version(requirement)
+        append_overallocation_audit(
+            self._session,
+            self._journal,
+            self._segment_reference(requirement),
+            requirement_before_snapshot,
+            requirement_before_metrics,
+            policy=policy,
+        )
         self._audit(
             operation="DUPLICATE",
             source_before=source_before,

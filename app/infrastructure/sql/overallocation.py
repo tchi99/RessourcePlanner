@@ -485,6 +485,54 @@ class SqlOverallocationAllocationCommandAdapter(SqlAllocationCommandAdapter):
             self._active_policy = None
 
 
+def append_overallocation_audit(
+    session: Session,
+    journal: SqlPlanningAuditJournal,
+    reference: str | None,
+    before_snapshot: tuple[str, str, dict[str, object]] | None,
+    before_metrics: Mapping[str, float] | None,
+    *,
+    policy: str | None = None,
+) -> None:
+    """Append the canonical #38 segment audit for a completed mutation."""
+
+    if not reference or before_snapshot is None:
+        return
+    after_snapshot = journal.requirement_snapshot(reference)
+    after_metrics = _segment_metrics(session, reference)
+    if after_snapshot is None or after_metrics is None or before_metrics is None:
+        return
+
+    before_excess = float(before_metrics.get("overallocated_hours", 0.0))
+    after_excess = float(after_metrics.get("overallocated_hours", 0.0))
+    before_planned = float(before_metrics.get("planned_hours", 0.0))
+    after_planned = float(after_metrics.get("planned_hours", 0.0))
+    action: str | None = None
+    if policy == INCREASE_PLANNED and after_planned > before_planned + TOLERANCE_HOURS:
+        action = "Augmentation heures prévues depuis quart manuel"
+    elif after_excess > before_excess + TOLERANCE_HOURS:
+        action = "Dérogation surallocation manuelle"
+    elif before_excess > after_excess + TOLERANCE_HOURS:
+        action = (
+            "Régularisation surallocation manuelle"
+            if after_excess <= TOLERANCE_HOURS
+            else "Réduction surallocation manuelle"
+        )
+    if action is None:
+        return
+
+    entity_id, entity_reference, before_values = before_snapshot
+    _, _, after_values = after_snapshot
+    journal.append(
+        entity_type=ENTITY_SEGMENT,
+        entity_id=entity_id,
+        entity_reference=entity_reference,
+        action=action,
+        before=_snapshot_with_metrics(before_values, before_metrics),
+        after=_snapshot_with_metrics(after_values, after_metrics),
+    )
+
+
 class OverallocationAuditedAllocationCommandAdapter(AuditedAllocationCommandAdapter):
     """Planning audit extended with explicit overallocation/regularization events."""
 
@@ -516,40 +564,13 @@ class OverallocationAuditedAllocationCommandAdapter(AuditedAllocationCommandAdap
         *,
         policy: str | None = None,
     ) -> None:
-        if not reference or before_snapshot is None:
-            return
-        after_snapshot = self._journal.requirement_snapshot(reference)
-        after_metrics = _segment_metrics(self._overallocation_session, reference)
-        if after_snapshot is None or after_metrics is None or before_metrics is None:
-            return
-
-        before_excess = float(before_metrics.get("overallocated_hours", 0.0))
-        after_excess = float(after_metrics.get("overallocated_hours", 0.0))
-        before_planned = float(before_metrics.get("planned_hours", 0.0))
-        after_planned = float(after_metrics.get("planned_hours", 0.0))
-        action: str | None = None
-        if policy == INCREASE_PLANNED and after_planned > before_planned + TOLERANCE_HOURS:
-            action = "Augmentation heures prévues depuis quart manuel"
-        elif after_excess > before_excess + TOLERANCE_HOURS:
-            action = "Dérogation surallocation manuelle"
-        elif before_excess > after_excess + TOLERANCE_HOURS:
-            action = (
-                "Régularisation surallocation manuelle"
-                if after_excess <= TOLERANCE_HOURS
-                else "Réduction surallocation manuelle"
-            )
-        if action is None:
-            return
-
-        entity_id, entity_reference, before_values = before_snapshot
-        _, _, after_values = after_snapshot
-        self._journal.append(
-            entity_type=ENTITY_SEGMENT,
-            entity_id=entity_id,
-            entity_reference=entity_reference,
-            action=action,
-            before=_snapshot_with_metrics(before_values, before_metrics),
-            after=_snapshot_with_metrics(after_values, after_metrics),
+        append_overallocation_audit(
+            self._overallocation_session,
+            self._journal,
+            reference,
+            before_snapshot,
+            before_metrics,
+            policy=policy,
         )
 
     def create_manual(
