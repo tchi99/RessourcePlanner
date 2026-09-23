@@ -8,6 +8,8 @@ from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from ...application.query_models import (
+    AssetPlanningWindowReadModel,
+    AssetRequirementReadModel,
     DemandMaterializedRequirementReadModel,
     DemandMaterializedResourceReadModel,
     MediumTermUnlinkedSegmentReadModel,
@@ -40,6 +42,7 @@ from ...domain.workload import (
     pending_load_mode,
     workload_kind,
 )
+from .asset_query import SqlAssetPlanningQuery
 from .demand_period_repository import SqlDemandPeriodRepository
 from .demand_repository import SqlDemandRepository
 from .models import (
@@ -458,6 +461,25 @@ class SqlPlannerQueryRepository(PlannerQueryPort):
                 )
             )
         return tuple(result)
+
+    def list_demand_asset_requirements(
+        self,
+        number: str,
+    ) -> tuple[AssetRequirementReadModel, ...]:
+        return SqlAssetPlanningQuery(self._session).list_demand_requirements(number)
+
+    def asset_planning_window(
+        self,
+        *,
+        start: date,
+        end: date,
+        project_ids: Sequence[str] | None = None,
+    ) -> AssetPlanningWindowReadModel:
+        return SqlAssetPlanningQuery(self._session).planning_window(
+            start=start,
+            end=end,
+            project_ids=project_ids,
+        )
 
     def list_pending_loads(
         self,
@@ -1489,6 +1511,11 @@ class SqlPlannerQueryRepository(PlannerQueryPort):
             ),
             2,
         )
+        asset_window = self.asset_planning_window(
+            start=start,
+            end=end,
+            project_ids=project_ids,
+        )
         return PlanningSnapshotReadModel(
             start=start,
             end=end,
@@ -1500,6 +1527,13 @@ class SqlPlannerQueryRepository(PlannerQueryPort):
                 self._session
             ).current_version(),
             pending_loads=pending_loads,
+            asset_types=asset_window.asset_types,
+            assets=asset_window.assets,
+            asset_requirements=asset_window.requirements,
+            asset_allocations=asset_window.allocations,
+            asset_unavailability=asset_window.unavailability,
+            asset_capacity=asset_window.capacity,
+            asset_diagnostics=asset_window.diagnostics,
             firm_hours=totals.firm_hours,
             potential_hours=round(totals.potential_hours + additive_pending, 2),
             replacement_proposal_hours=replacement_proposals,

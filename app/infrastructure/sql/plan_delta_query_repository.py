@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from ...application.plan_delta import (
     DemandApprovalStateReadModel,
+    DemandAssetPlanDeltaItemReadModel,
     DemandPlanDeltaDiagnosticReadModel,
     DemandPlanDeltaItemReadModel,
     DemandPlanDeltaReadModel,
@@ -31,6 +32,7 @@ from .approval_revision_models import (
     RequestApprovalRevision,
 )
 from .approval_revision_repository import SqlRequestApprovalRevisionRepository
+from .asset_models import Asset, AssetAllocation, AssetRequirement, AssetType
 from .approval_envelope_policy_repository import (
     SqlDemandApprovalEnvelopePolicyRepository,
 )
@@ -233,6 +235,22 @@ class SqlPlannerQueryRepositoryWithPlanDelta(SqlPlannerQueryRepositoryWeb):
                     ResourceRequirement.status != "Annulé",
                 )
                 .order_by(ResourceRequirement.created_at, ResourceRequirement.id)
+            ).all()
+        )
+
+    def _current_asset_requirements(self, request_id: str) -> list[AssetRequirement]:
+        return list(
+            self._delta_session.scalars(
+                select(AssetRequirement)
+                .where(
+                    AssetRequirement.workforce_request_id == request_id,
+                    AssetRequirement.status != "Annulé",
+                )
+                .order_by(
+                    AssetRequirement.approved_entry_key,
+                    AssetRequirement.slot_index,
+                    AssetRequirement.id,
+                )
             ).all()
         )
 
@@ -658,6 +676,256 @@ class SqlPlannerQueryRepositoryWithPlanDelta(SqlPlannerQueryRepositoryWeb):
             )
         return proposed
 
+    def _asset_delta(
+        self,
+        request: WorkforceRequest,
+    ) -> tuple[
+        tuple[DemandAssetPlanDeltaItemReadModel, ...],
+        tuple[DemandPlanDeltaDiagnosticReadModel, ...],
+        bool,
+    ]:
+        """Preview exactly what asset materialization would retain, add or remove."""
+
+        current = self._current_asset_requirements(request.id)
+        allocations = {
+            row.asset_requirement_id: row
+            for row in self._delta_session.scalars(
+                select(AssetAllocation).where(
+                    AssetAllocation.asset_requirement_id.in_(
+                        tuple(item.id for item in current)
+                    )
+                )
+            ).all()
+        } if current else {}
+
+        try:
+            envelope = SqlRequestApprovalRevisionRepository(
+                self._delta_session
+            ).candidate_envelope(request)
+        except ValueError as exc:
+            return (
+                (),
+                (
+                    DemandPlanDeltaDiagnosticReadModel(
+                        code="ASSET_CANDIDATE_INVALID",
+                        message=str(exc),
+                    ),
+                ),
+                True,
+            )
+
+        entries = tuple(
+            entry
+            for entry in envelope.entries
+            if entry.line_kind == "ASSET"
+            and (entry.group is None or entry.selected)
+        )
+        target_by_key = {
+            (entry.identity.stable_key, slot): entry
+            for entry in entries
+            for slot in range(entry.slot_count)
+        }
+        current_by_key = {
+            (row.approved_entry_key, int(row.slot_index or 0)): row
+            for row in current
+        }
+
+        type_ids = {
+            entry.asset_type_id
+            for entry in entries
+            if entry.asset_type_id
+        }
+        type_ids.update(row.asset_type_id for row in current)
+        asset_types = {
+            row.id: row
+            for row in self._delta_session.scalars(
+                select(AssetType).where(AssetType.id.in_(tuple(type_ids)))
+            ).all()
+        } if type_ids else {}
+
+        asset_ids = {row.asset_id for row in allocations.values()}
+        assets = {
+            row.id: row
+            for row in self._delta_session.scalars(
+                select(Asset).where(Asset.id.in_(tuple(asset_ids)))
+            ).all()
+        } if asset_ids else {}
+
+        diagnostics: list[DemandPlanDeltaDiagnosticReadModel] = []
+        items: list[DemandAssetPlanDeltaItemReadModel] = []
+        blocked = False
+
+        for key, entry in sorted(
+            target_by_key.items(),
+            key=lambda item: (item[0][0], item[0][1]),
+        ):
+            entry_key, slot_index = key
+            target_type = asset_types.get(entry.asset_type_id or "")
+            if (
+                target_type is None
+                or not target_type.active
+                or target_type.occupancy_policy != entry.occupancy_policy
+            ):
+                diagnostics.append(
+                    DemandPlanDeltaDiagnosticReadModel(
+                        code="ASSET_TYPE_INACTIVE_OR_INCOMPATIBLE",
+                        message=(
+                            "Le type d'actif candidat est absent, inactif ou "
+                            "incompatible avec l'occupation approuvée."
+                        ),
+                        spec_key=("ASSET", entry_key, str(slot_index)),
+                    )
+                )
+                blocked = True
+
+            existing = current_by_key.get(key)
+            if existing is None:
+                items.append(
+                    DemandAssetPlanDeltaItemReadModel(
+                        change="ADD",
+                        approved_entry_key=entry_key,
+                        slot_index=slot_index,
+                        proposed_asset_type_id=entry.asset_type_id,
+                        proposed_start_date=entry.start_date,
+                        proposed_end_date=entry.end_date,
+                        proposed_usage_hours=(
+                            float(entry.hours) if entry.hours is not None else None
+                        ),
+                    )
+                )
+                continue
+
+            allocation = allocations.get(existing.id)
+            asset = (
+                assets.get(allocation.asset_id)
+                if allocation is not None
+                else None
+            )
+            allocation_compatible = bool(
+                allocation is not None
+                and asset is not None
+                and asset.active
+                and asset.asset_type_id == entry.asset_type_id
+                and entry.start_date <= allocation.start_date
+                and allocation.end_date <= entry.end_date
+            )
+            if (
+                allocation is not None
+                and allocation.locked
+                and not allocation_compatible
+            ):
+                diagnostics.append(
+                    DemandPlanDeltaDiagnosticReadModel(
+                        code="LOCKED_ASSET_ALLOCATION_INCOMPATIBLE",
+                        message=(
+                            "La réapprobation rendrait une réservation d'actif "
+                            "verrouillée incompatible."
+                        ),
+                        requirement_id=existing.id,
+                        spec_key=("ASSET", entry_key, str(slot_index)),
+                    )
+                )
+                blocked = True
+
+            current_hours = (
+                float(existing.usage_hours)
+                if existing.usage_hours is not None
+                else None
+            )
+            proposed_hours = (
+                float(entry.hours) if entry.hours is not None else None
+            )
+            changed = (
+                existing.asset_type_id != entry.asset_type_id
+                or existing.start_date != entry.start_date
+                or existing.end_date != entry.end_date
+                or current_hours != proposed_hours
+            )
+            if changed:
+                items.append(
+                    DemandAssetPlanDeltaItemReadModel(
+                        change="MODIFY",
+                        approved_entry_key=entry_key,
+                        slot_index=slot_index,
+                        current_requirement_id=existing.id,
+                        current_asset_type_id=existing.asset_type_id,
+                        proposed_asset_type_id=entry.asset_type_id,
+                        current_start_date=existing.start_date,
+                        current_end_date=existing.end_date,
+                        proposed_start_date=entry.start_date,
+                        proposed_end_date=entry.end_date,
+                        current_usage_hours=current_hours,
+                        proposed_usage_hours=proposed_hours,
+                        current_asset_id=(
+                            allocation.asset_id if allocation is not None else None
+                        ),
+                        proposed_asset_id=(
+                            allocation.asset_id
+                            if allocation_compatible and allocation is not None
+                            else None
+                        ),
+                        allocation_preserved=allocation_compatible,
+                        locked=bool(allocation is not None and allocation.locked),
+                    )
+                )
+
+        for key, existing in sorted(
+            current_by_key.items(),
+            key=lambda item: (item[0][0], item[0][1]),
+        ):
+            if key in target_by_key:
+                continue
+            allocation = allocations.get(existing.id)
+            if allocation is not None and allocation.locked:
+                diagnostics.append(
+                    DemandPlanDeltaDiagnosticReadModel(
+                        code="LOCKED_ASSET_REQUIREMENT_REMOVAL",
+                        message=(
+                            "Une réservation d'actif verrouillée empêche de retirer "
+                            "le besoin lors de la réapprobation."
+                        ),
+                        requirement_id=existing.id,
+                        spec_key=("ASSET", key[0], str(key[1])),
+                    )
+                )
+                blocked = True
+            items.append(
+                DemandAssetPlanDeltaItemReadModel(
+                    change="CANCEL",
+                    approved_entry_key=key[0],
+                    slot_index=key[1],
+                    current_requirement_id=existing.id,
+                    current_asset_type_id=existing.asset_type_id,
+                    current_start_date=existing.start_date,
+                    current_end_date=existing.end_date,
+                    current_usage_hours=(
+                        float(existing.usage_hours)
+                        if existing.usage_hours is not None
+                        else None
+                    ),
+                    current_asset_id=(
+                        allocation.asset_id if allocation is not None else None
+                    ),
+                    locked=bool(allocation is not None and allocation.locked),
+                )
+            )
+
+        order = {"CANCEL": 0, "MODIFY": 1, "ADD": 2}
+        return (
+            tuple(
+                sorted(
+                    items,
+                    key=lambda item: (
+                        order.get(item.change, 9),
+                        item.approved_entry_key,
+                        item.slot_index,
+                    ),
+                )
+            ),
+            tuple(diagnostics),
+            blocked,
+        )
+
     @staticmethod
     def _decoded_mapping(value: str) -> dict[str, str]:
         decoded = json.loads(value or "{}")
@@ -750,22 +1018,34 @@ class SqlPlannerQueryRepositoryWithPlanDelta(SqlPlannerQueryRepositoryWeb):
             for row in self._current_requirements(request.id)
             if row.origin == ORIGIN_REQUEST
         ]
+        current_assets = self._current_asset_requirements(request.id)
         active_keys = tuple(
             sorted(
                 {
-                    _text(row.approved_entry_key)
-                    for row in current
-                    if _text(row.approved_entry_key)
+                    *(
+                        _text(row.approved_entry_key)
+                        for row in current
+                        if _text(row.approved_entry_key)
+                    ),
+                    *(
+                        _text(row.approved_entry_key)
+                        for row in current_assets
+                        if _text(row.approved_entry_key)
+                    ),
                 }
             )
         )
         active_matches: bool | None = None
         if revision is not None:
-            active_matches = bool(current) and all(
+            active_matches = bool(current or current_assets) and all(
                 row.approval_revision_id == revision.id
                 and row.approval_reference_status == APPROVAL_REFERENCE_CAPTURED
                 and bool(_text(row.approved_entry_key))
                 for row in current
+            ) and all(
+                row.approval_revision_id == revision.id
+                and bool(_text(row.approved_entry_key))
+                for row in current_assets
             )
 
         approved_fingerprint = (
@@ -822,6 +1102,18 @@ class SqlPlannerQueryRepositoryWithPlanDelta(SqlPlannerQueryRepositoryWeb):
                 sum(float(row.planned_hours) for row in current),
                 2,
             ),
+            active_asset_requirement_count=len(current_assets),
+            active_asset_usage_hours=round(
+                sum(
+                    float(row.usage_hours)
+                    for row in current_assets
+                    if row.usage_hours is not None
+                ),
+                2,
+            ),
+            active_asset_unbudgeted_requirement_count=sum(
+                1 for row in current_assets if row.usage_hours is None
+            ),
             active_approved_entry_keys=active_keys,
             active_matches_approved_revision=active_matches,
             diagnostics=tuple(diagnostics),
@@ -872,6 +1164,7 @@ class SqlPlannerQueryRepositoryWithPlanDelta(SqlPlannerQueryRepositoryWeb):
             return DemandPlanDeltaReadModel(**values)
 
         current_requirements = self._current_requirements(request.id)
+        current_asset_requirements = self._current_asset_requirements(request.id)
         if request.status != "Soumise":
             return delta(
                 demand_number=demand_number,
@@ -879,12 +1172,55 @@ class SqlPlannerQueryRepositoryWithPlanDelta(SqlPlannerQueryRepositoryWeb):
                 reason="NOT_SUBMITTED",
                 has_changes=False,
             )
-        if not current_requirements:
+        if not current_requirements and not current_asset_requirements:
             return delta(
                 demand_number=demand_number,
                 available=False,
                 reason="NO_CURRENT_PLAN",
                 has_changes=False,
+            )
+
+        asset_items, asset_diagnostics, asset_blocked = self._asset_delta(request)
+        asset_counts = {
+            name: sum(1 for item in asset_items if item.change == name)
+            for name in ("ADD", "MODIFY", "CANCEL")
+        }
+        if asset_blocked:
+            return delta(
+                demand_number=demand_number,
+                available=False,
+                reason=(
+                    asset_diagnostics[0].code
+                    if asset_diagnostics
+                    else "ASSET_PLAN_INCOMPATIBLE"
+                ),
+                has_changes=bool(asset_items),
+                asset_add_count=asset_counts["ADD"],
+                asset_modify_count=asset_counts["MODIFY"],
+                asset_cancel_count=asset_counts["CANCEL"],
+                asset_items=asset_items,
+                diagnostics=asset_diagnostics,
+            )
+
+        try:
+            prepared = self._plan_preparer.prepare(
+                request,
+                current=current_requirements,
+            )
+        except ValueError:
+            prepared = None
+
+        if prepared is not None and not current_requirements and not prepared.specs:
+            return delta(
+                demand_number=demand_number,
+                available=True,
+                reason=None,
+                has_changes=bool(asset_items),
+                asset_add_count=asset_counts["ADD"],
+                asset_modify_count=asset_counts["MODIFY"],
+                asset_cancel_count=asset_counts["CANCEL"],
+                asset_items=asset_items,
+                diagnostics=asset_diagnostics,
             )
 
         snapshot = SqlPlanningReadRepository(self._delta_session).capture()
@@ -897,13 +1233,6 @@ class SqlPlannerQueryRepositoryWithPlanDelta(SqlPlannerQueryRepositoryWeb):
                 has_changes=False,
             )
 
-        try:
-            prepared = self._plan_preparer.prepare(
-                request,
-                current=current_requirements,
-            )
-        except ValueError:
-            prepared = None
         if prepared is not None:
             locked_conflicts = self._plan_preparer.locked_conflicts(
                 request,
@@ -989,7 +1318,7 @@ class SqlPlannerQueryRepositoryWithPlanDelta(SqlPlannerQueryRepositoryWeb):
             demand_number=demand_number,
             available=True,
             reason=None,
-            has_changes=bool(items),
+            has_changes=bool(items or asset_items),
             add_count=counts["ADD"],
             modify_count=counts["MODIFY"],
             move_count=counts["MOVE"],
@@ -998,4 +1327,9 @@ class SqlPlannerQueryRepositoryWithPlanDelta(SqlPlannerQueryRepositoryWeb):
             proposed_hours=proposed_hours,
             net_hours=round(proposed_hours - current_hours, 2),
             items=items,
+            asset_add_count=asset_counts["ADD"],
+            asset_modify_count=asset_counts["MODIFY"],
+            asset_cancel_count=asset_counts["CANCEL"],
+            asset_items=asset_items,
+            diagnostics=asset_diagnostics,
         )
