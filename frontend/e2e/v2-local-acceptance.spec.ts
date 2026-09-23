@@ -785,7 +785,7 @@ test("REQUEST window proposal never replays the original drag after direct appro
   expect(approved.status(), await approved.text()).toBe(200);
 
   const shiftsResponse = await page.request.get(
-    `/api/v1/shifts?start=${d1}&end=${d5}`,
+    `/api/v1/shifts?start=${sourceDay}&end=${weekEnd}`,
   );
   expect(shiftsResponse.ok()).toBeTruthy();
   const shift = (await shiftsResponse.json() as Array<{
@@ -810,7 +810,7 @@ test("REQUEST window proposal never replays the original drag after direct appro
   const aliceRow = page.locator(".resource-identity").filter({ hasText: "Alice" }).first().locator("..");
   const bobRow = page.locator(".resource-identity").filter({ hasText: "Bob" }).first().locator("..");
   const source = aliceRow
-    .locator(`.planning-drop-day[data-day="${d2}"]`)
+    .locator(`.planning-drop-day[data-day="${sourceDay}"]`)
     .locator(`.shift-card[data-allocation-id="${shift!.allocation_id}"]`);
   const target = bobRow.locator(`.planning-drop-day[data-day="${targetDay}"]`);
   await expect(source).toBeVisible();
@@ -861,7 +861,7 @@ test("REQUEST window proposal never replays the original drag after direct appro
     work_date: string;
   }>).find((row) => row.allocation_id === shift!.allocation_id);
   expect(unchangedShift?.resource_name).toBe("Alice");
-  expect(unchangedShift?.work_date).toBe(d2);
+  expect(unchangedShift?.work_date).toBe(sourceDay);
 
   const segmentAfterProposal = await page.request.get(
     `/api/v1/segments/${encodeURIComponent(shift!.segment_id)}`,
