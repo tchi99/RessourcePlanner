@@ -35,6 +35,8 @@ from app.application.security import (
 )
 from app.infrastructure.smtp import FernetSecretCipher
 from app.infrastructure.sql import (
+    Asset,
+    AssetType,
     Base,
     Competency,
     Project,
@@ -179,6 +181,30 @@ def _seed(database_url: str) -> None:
                     time_entry_enabled=True,
                     expenses_enabled=False,
                 )
+            )
+            session.add(
+                AssetType(
+                    id="AT-LIFT",
+                    code="LIFT",
+                    label="Nacelle",
+                    category="EQUIPMENT",
+                )
+            )
+            session.add_all(
+                [
+                    Asset(
+                        id="A-LIFT-1",
+                        code="NAC-01",
+                        label="Nacelle 01",
+                        asset_type_id="AT-LIFT",
+                    ),
+                    Asset(
+                        id="A-LIFT-2",
+                        code="NAC-02",
+                        label="Nacelle 02",
+                        asset_type_id="AT-LIFT",
+                    ),
+                ]
             )
             session.add_all(
                 [
