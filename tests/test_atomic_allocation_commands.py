@@ -1,0 +1,358 @@
+from __future__ import annotations
+
+from datetime import date, time
+from pathlib import Path
+from tempfile import TemporaryDirectory
+import unittest
+
+from fastapi.testclient import TestClient
+from sqlalchemy import func, select
+
+from app.application.security import AuthPrincipal, ROLE_ADMIN
+from app.domain.planning_engine import MISSING_ALLOCATION_TYPE
+from app.infrastructure.sql import (
+    Base,
+    ORIGIN_AD_HOC,
+    PlanningChangeHistory,
+    Project,
+    Resource,
+    ResourceAvailabilityRule,
+    ResourceRequirement,
+    Shift,
+    create_session_factory,
+    create_sql_engine,
+)
+from app.server import create_api_app
+from app.server.security import static_auth_resolver
+
+
+WORK_DAY = date(2026, 9, 22)
+
+
+def _auth(display_name: str):
+    return static_auth_resolver(
+        AuthPrincipal.from_roles(
+            local_user_id="USER-ATOMIC-1",
+            issuer="urn:resourceplanner:test",
+            subject="atomic-user",
+            display_name=display_name,
+            email=None,
+            roles=(ROLE_ADMIN,),
+            auth_mode="test",
+        )
+    )
+
+
+class AtomicAllocationCommandHttpTests(unittest.TestCase):
+    @staticmethod
+    def _database(
+        directory: str,
+        *,
+        planned_hours: float,
+        source_hours: float,
+        source: str = "MANUAL",
+        locked: bool = True,
+        allocation_type: str = "Flexible",
+        note: str | None = "note-source",
+        confirmation: str | None = None,
+    ) -> str:
+        path = Path(directory) / "atomic-allocation.db"
+        url = f"sqlite:///{path.as_posix()}"
+        engine = create_sql_engine(url)
+        Base.metadata.create_all(engine)
+        factory = create_session_factory(engine)
+        with factory.begin() as session:
+            session.add(Project(id="P1", number="P-1", name="Projet atomique"))
+            session.add_all(
+                [
+                    Resource(id="R1", name="Alice", active=True),
+                    Resource(id="R2", name="Bob", active=True),
+                ]
+            )
+            session.flush()
+            for resource_id in ("R1", "R2"):
+                session.add(
+                    ResourceAvailabilityRule(
+                        id=f"STD-{resource_id}",
+                        resource_id=resource_id,
+                        availability_type="Horaire standard",
+                        weekdays="Lun,Mar,Mer,Jeu,Ven,Sam,Dim",
+                        start_time=time(8, 0),
+                        end_time=time(20, 0),
+                        active=True,
+                    )
+                )
+            session.add(
+                ResourceRequirement(
+                    id="REQ1",
+                    legacy_segment_id="SEG-1",
+                    project_id="P1",
+                    workforce_request_id=None,
+                    assigned_resource_id="R1",
+                    start_date=WORK_DAY,
+                    end_date=WORK_DAY,
+                    planned_hours=planned_hours,
+                    status="Planifié",
+                    planning_type="Flexible",
+                    confirmation="Confirmée",
+                    origin=ORIGIN_AD_HOC,
+                )
+            )
+            session.flush()
+            session.add(
+                Shift(
+                    id="SHIFT-SOURCE",
+                    legacy_allocation_id="ALLOC-SOURCE",
+                    resource_requirement_id="REQ1",
+                    resource_id="R1",
+                    work_date=WORK_DAY,
+                    hours=source_hours,
+                    allocation_type=allocation_type,
+                    source=source,
+                    locked=locked,
+                    outside_standard_hours=False,
+                    confirmation=confirmation,
+                    note=note,
+                )
+            )
+        engine.dispose()
+        return url
+
+    @staticmethod
+    def _split_body(version: int = 1) -> dict[str, object]:
+        return {
+            "resource_id": "R2",
+            "day": WORK_DAY.isoformat(),
+            "transfer_hours": 3,
+            "expected_planning_version": version,
+        }
+
+    @staticmethod
+    def _duplicate_body(
+        version: int = 1,
+        policy: str | None = None,
+    ) -> dict[str, object]:
+        body: dict[str, object] = {
+            "resource_id": "R2",
+            "day": WORK_DAY.isoformat(),
+            "expected_planning_version": version,
+        }
+        if policy is not None:
+            body["overallocation_policy"] = policy
+        return body
+
+    def test_split_is_exact_atomic_and_replays_before_stale_version_check(self) -> None:
+        with TemporaryDirectory() as directory:
+            url = self._database(
+                directory,
+                planned_hours=8,
+                source_hours=8,
+            )
+            headers = {"Idempotency-Key": "split-retry-1"}
+            app = create_api_app(
+                url,
+                actor_name="fallback",
+                auth_resolver=_auth("Nom avant"),
+            )
+            with TestClient(app, raise_server_exceptions=False) as client:
+                first = client.post(
+                    "/api/v1/allocations/ALLOC-SOURCE/split",
+                    json=self._split_body(),
+                    headers=headers,
+                )
+            self.assertEqual(first.status_code, 201, first.text)
+            payload = first.json()
+            self.assertEqual(payload["operation"], "SPLIT")
+            self.assertEqual(payload["source_hours"], 5.0)
+            self.assertEqual(payload["target_hours"], 3.0)
+            self.assertEqual(payload["planned_hours"], 8.0)
+            self.assertEqual(payload["locked_hours"], 8.0)
+            self.assertEqual(payload["excess_hours"], 0.0)
+            self.assertEqual(payload["planning_version"], 2)
+
+            # Same stable authenticated identity, different display name. The old
+            # expected version is intentionally stale: replay must win first.
+            replay_app = create_api_app(
+                url,
+                actor_name="fallback",
+                auth_resolver=_auth("Nom après"),
+            )
+            with TestClient(replay_app, raise_server_exceptions=False) as client:
+                replay = client.post(
+                    "/api/v1/allocations/ALLOC-SOURCE/split",
+                    json=self._split_body(),
+                    headers=headers,
+                )
+                stale_other_key = client.post(
+                    "/api/v1/allocations/ALLOC-SOURCE/split",
+                    json=self._split_body(),
+                    headers={"Idempotency-Key": "split-stale-other-key"},
+                )
+            self.assertEqual(replay.status_code, 201, replay.text)
+            self.assertEqual(replay.json(), payload)
+            self.assertEqual(stale_other_key.status_code, 409, stale_other_key.text)
+            self.assertEqual(
+                stale_other_key.json()["error"]["code"],
+                "planning_version_conflict",
+            )
+
+            engine = create_sql_engine(url)
+            factory = create_session_factory(engine)
+            with factory() as session:
+                rows = session.scalars(
+                    select(Shift)
+                    .where(Shift.resource_requirement_id == "REQ1")
+                    .order_by(Shift.id)
+                ).all()
+                self.assertEqual(len(rows), 2)
+                self.assertEqual(
+                    sum(float(row.hours) for row in rows if row.locked),
+                    8.0,
+                )
+                self.assertTrue(all(row.source == "MANUAL" for row in rows))
+                audits = int(
+                    session.scalar(
+                        select(func.count())
+                        .select_from(PlanningChangeHistory)
+                        .where(
+                            PlanningChangeHistory.action
+                            == "Partage atomique de quart"
+                        )
+                    )
+                    or 0
+                )
+                self.assertEqual(audits, 1)
+            engine.dispose()
+
+    def test_duplicate_requires_explicit_choice_when_exception_increases(self) -> None:
+        with TemporaryDirectory() as directory:
+            url = self._database(
+                directory,
+                planned_hours=4,
+                source_hours=4,
+            )
+            app = create_api_app(
+                url,
+                auth_resolver=_auth("Coordonnateur"),
+            )
+            with TestClient(app, raise_server_exceptions=False) as client:
+                blocked = client.post(
+                    "/api/v1/allocations/ALLOC-SOURCE/duplicate",
+                    json=self._duplicate_body(),
+                    headers={"Idempotency-Key": "duplicate-blocked"},
+                )
+                kept = client.post(
+                    "/api/v1/allocations/ALLOC-SOURCE/duplicate",
+                    json=self._duplicate_body(policy="KEEP_EXCEPTION"),
+                    headers={"Idempotency-Key": "duplicate-kept"},
+                )
+            self.assertEqual(blocked.status_code, 422, blocked.text)
+            self.assertEqual(
+                blocked.json()["error"]["code"],
+                "allocation_overallocation_choice_required",
+            )
+            self.assertEqual(kept.status_code, 201, kept.text)
+            payload = kept.json()
+            self.assertEqual(payload["source_hours"], 4.0)
+            self.assertEqual(payload["target_hours"], 4.0)
+            self.assertEqual(payload["planned_hours"], 4.0)
+            self.assertEqual(payload["locked_hours"], 8.0)
+            self.assertEqual(payload["excess_hours"], 4.0)
+            # Failed preflight rolled the planning CAS back; successful retry starts at 1.
+            self.assertEqual(payload["planning_version"], 2)
+
+    def test_duplicate_converts_counted_auto_source_without_losing_nullable_override(self) -> None:
+        with TemporaryDirectory() as directory:
+            url = self._database(
+                directory,
+                planned_hours=8,
+                source_hours=4,
+                source="AUTO",
+                locked=False,
+                note="note-auto",
+                confirmation=None,
+            )
+            app = create_api_app(url, auth_resolver=_auth("Coordonnateur"))
+            with TestClient(app, raise_server_exceptions=False) as client:
+                duplicated = client.post(
+                    "/api/v1/allocations/ALLOC-SOURCE/duplicate",
+                    json=self._duplicate_body(),
+                    headers={"Idempotency-Key": "duplicate-auto"},
+                )
+                self.assertEqual(duplicated.status_code, 201, duplicated.text)
+                self.assertTrue(duplicated.json()["auto_source_converted"])
+                rebuilt = client.post("/api/v1/planning/rebuild")
+                self.assertEqual(rebuilt.status_code, 200, rebuilt.text)
+
+            engine = create_sql_engine(url)
+            factory = create_session_factory(engine)
+            with factory() as session:
+                source = session.get(Shift, "SHIFT-SOURCE")
+                self.assertIsNotNone(source)
+                self.assertEqual(source.resource_id, "R1")
+                self.assertEqual(source.work_date, WORK_DAY)
+                self.assertEqual(float(source.hours), 4.0)
+                self.assertEqual(source.note, "note-auto")
+                self.assertIsNone(source.confirmation)
+                self.assertEqual(source.source, "MANUAL")
+                self.assertTrue(source.locked)
+                rows = session.scalars(
+                    select(Shift).where(Shift.resource_requirement_id == "REQ1")
+                ).all()
+                self.assertEqual(len(rows), 2)
+                self.assertEqual(sum(float(row.hours) for row in rows), 8.0)
+                self.assertTrue(all(row.locked for row in rows))
+            engine.dispose()
+
+    def test_non_counted_auto_proposal_and_full_split_are_rejected(self) -> None:
+        with TemporaryDirectory() as directory:
+            url = self._database(
+                directory,
+                planned_hours=8,
+                source_hours=8,
+                source="AUTO",
+                locked=False,
+                allocation_type=MISSING_ALLOCATION_TYPE,
+            )
+            app = create_api_app(url, auth_resolver=_auth("Coordonnateur"))
+            with TestClient(app, raise_server_exceptions=False) as client:
+                duplicate = client.post(
+                    "/api/v1/allocations/ALLOC-SOURCE/duplicate",
+                    json=self._duplicate_body(),
+                    headers={"Idempotency-Key": "duplicate-missing"},
+                )
+            self.assertEqual(duplicate.status_code, 422, duplicate.text)
+            self.assertEqual(
+                duplicate.json()["error"]["code"],
+                "allocation_source_not_counted",
+            )
+
+        with TemporaryDirectory() as directory:
+            url = self._database(
+                directory,
+                planned_hours=8,
+                source_hours=8,
+            )
+            app = create_api_app(url, auth_resolver=_auth("Coordonnateur"))
+            full = self._split_body()
+            full["transfer_hours"] = 8
+            with TestClient(app, raise_server_exceptions=False) as client:
+                response = client.post(
+                    "/api/v1/allocations/ALLOC-SOURCE/split",
+                    json=full,
+                    headers={"Idempotency-Key": "split-full"},
+                )
+                missing_key = client.post(
+                    "/api/v1/allocations/ALLOC-SOURCE/split",
+                    json=self._split_body(),
+                )
+            self.assertEqual(response.status_code, 422, response.text)
+            self.assertEqual(
+                response.json()["error"]["code"],
+                "allocation_split_hours_invalid",
+            )
+            self.assertEqual(missing_key.status_code, 422, missing_key.text)
+
+
+if __name__ == "__main__":
+    unittest.main()
