@@ -219,11 +219,23 @@ def _explicit_work_done(body: str, key: str) -> bool:
             item.key == normalized and item.done
             for item in subitems_from_text(body, issue)
         )
-    patterns = [
-        rf"(?:^|\n)[^\n]*✅[^\n]*#{re.escape(normalized)}\b",
-        rf"#{re.escape(normalized)}\b[^\n]*(?:termin(?:é|ée|és|ées)|complét(?:é|ée|és|ées)|livr(?:é|ée|és|ées))",
-    ]
-    return any(re.search(pattern, body, re.IGNORECASE) for pattern in patterns)
+
+    reference = re.compile(rf"#{re.escape(normalized)}\b", re.IGNORECASE)
+    done_word = re.compile(
+        r"\b(?:termin(?:é|ée|és|ées)|complét(?:é|ée|és|ées)|livr(?:é|ée|és|ées))\b",
+        re.IGNORECASE,
+    )
+    for raw in body.splitlines():
+        line = _clean_markdown(raw)
+        if not reference.search(line):
+            continue
+        # A gate may target the same issue number as the following WORK.
+        # Its completion must never mark that WORK complete.
+        if _pipeline_kind(line) != PIPELINE_WORK:
+            continue
+        if "✅" in line or done_word.search(line):
+            return True
+    return False
 
 
 def _explicit_gate_done(body: str, step: PipelineStep) -> bool:
