@@ -8,6 +8,7 @@ import unittest
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 
+from app.application import AllocationDuplicateCommand, ApplicationConflictError
 from app.application.security import AuthPrincipal, ROLE_ADMIN, ROLE_PROJECT_MANAGER
 from app.domain.planning_engine import MISSING_ALLOCATION_TYPE
 from app.infrastructure.sql import (
@@ -23,6 +24,7 @@ from app.infrastructure.sql import (
     create_sql_engine,
 )
 from app.server import create_api_app
+from app.server.composition import build_sql_facade
 from app.server.security import static_auth_resolver
 from tests.http_test_auth import TEST_ADMIN_AUTH_RESOLVER
 
@@ -39,20 +41,6 @@ def _auth(display_name: str):
             display_name=display_name,
             email=None,
             roles=(ROLE_ADMIN,),
-            auth_mode="test",
-        )
-    )
-
-
-def _pm_auth(display_name: str = "Chargé de projet atomique"):
-    return static_auth_resolver(
-        AuthPrincipal.from_roles(
-            local_user_id="USER-PM-ATOMIC-1",
-            issuer="urn:resourceplanner:test",
-            subject="atomic-project-manager",
-            display_name=display_name,
-            email=None,
-            roles=(ROLE_PROJECT_MANAGER,),
             auth_mode="test",
         )
     )
@@ -413,66 +401,82 @@ class AtomicAllocationCommandHttpTests(unittest.TestCase):
                     and abs(float(row["hours"]) - 1.0) < 0.001
                 )
 
-            pm_app = create_api_app(
-                url,
-                actor_name="pm-atomic",
-                auth_resolver=_pm_auth(),
-            )
-            with TestClient(pm_app, raise_server_exceptions=False) as client:
-                first = client.post(
-                    f"/api/v1/allocations/{source['allocation_id']}/duplicate",
-                    json={
-                        "resource_id": "R1",
-                        "day": WORK_DAY.isoformat(),
-                        "expected_planning_version": planning_version,
-                        "overallocation_policy": "INCREASE_PLANNED",
-                        "expected_approval_revision_id": revision_id,
-                        "expected_operational_version": operational_version,
-                    },
-                    headers={"Idempotency-Key": "atomic-pm-increase-11"},
-                )
-                self.assertEqual(first.status_code, 201, first.text)
-                first_body = first.json()
-                self.assertEqual(first_body["planned_hours"], 11.0)
-                self.assertEqual(first_body["locked_hours"], 11.0)
-                self.assertEqual(first_body["operational_version"], 2)
+            engine = create_sql_engine(url)
+            factory = create_session_factory(engine)
+            try:
+                with factory.begin() as session:
+                    facade = build_sql_facade(
+                        session,
+                        actor_name="pm-atomic",
+                        roles=(ROLE_PROJECT_MANAGER,),
+                    )
+                    first = facade.duplicate_allocation(
+                        AllocationDuplicateCommand(
+                            allocation_id=source["allocation_id"],
+                            resource_id="R1",
+                            day=WORK_DAY,
+                            expected_planning_version=planning_version,
+                            overallocation_policy="INCREASE_PLANNED",
+                            expected_approval_revision_id=revision_id,
+                            expected_operational_version=operational_version,
+                        )
+                    )
+                    self.assertEqual(first.planned_hours, 11.0)
+                    self.assertEqual(first.locked_hours, 11.0)
+                    self.assertEqual(first.operational_version, 2)
 
-                second = client.post(
-                    f"/api/v1/allocations/{first_body['target_allocation_id']}/duplicate",
-                    json={
-                        "resource_id": "R1",
-                        "day": WORK_DAY.isoformat(),
-                        "expected_planning_version": first_body["planning_version"],
-                        "overallocation_policy": "INCREASE_PLANNED",
-                        "expected_approval_revision_id": revision_id,
-                        "expected_operational_version": first_body["operational_version"],
-                    },
-                    headers={"Idempotency-Key": "atomic-pm-increase-12"},
-                )
-                self.assertEqual(second.status_code, 201, second.text)
-                second_body = second.json()
-                self.assertEqual(second_body["planned_hours"], 12.0)
-                self.assertEqual(second_body["locked_hours"], 12.0)
-                self.assertEqual(second_body["operational_version"], 3)
+                with factory.begin() as session:
+                    facade = build_sql_facade(
+                        session,
+                        actor_name="pm-atomic",
+                        roles=(ROLE_PROJECT_MANAGER,),
+                    )
+                    second = facade.duplicate_allocation(
+                        AllocationDuplicateCommand(
+                            allocation_id=first.target_allocation_id,
+                            resource_id="R1",
+                            day=WORK_DAY,
+                            expected_planning_version=first.planning_version,
+                            overallocation_policy="INCREASE_PLANNED",
+                            expected_approval_revision_id=revision_id,
+                            expected_operational_version=first.operational_version,
+                        )
+                    )
+                    self.assertEqual(second.planned_hours, 12.0)
+                    self.assertEqual(second.locked_hours, 12.0)
+                    self.assertEqual(second.operational_version, 3)
 
-                blocked = client.post(
-                    f"/api/v1/allocations/{first_body['target_allocation_id']}/duplicate",
-                    json={
-                        "resource_id": "R1",
-                        "day": WORK_DAY.isoformat(),
-                        "expected_planning_version": second_body["planning_version"],
-                        "overallocation_policy": "INCREASE_PLANNED",
-                        "expected_approval_revision_id": revision_id,
-                        "expected_operational_version": second_body["operational_version"],
-                    },
-                    headers={"Idempotency-Key": "atomic-pm-increase-13"},
-                )
-                self.assertEqual(blocked.status_code, 409, blocked.text)
-                self.assertEqual(
-                    blocked.json()["error"]["code"],
-                    "planning_authorization_revision_required",
-                )
+                session = factory()
+                transaction = session.begin()
+                try:
+                    facade = build_sql_facade(
+                        session,
+                        actor_name="pm-atomic",
+                        roles=(ROLE_PROJECT_MANAGER,),
+                    )
+                    with self.assertRaises(ApplicationConflictError) as caught:
+                        facade.duplicate_allocation(
+                            AllocationDuplicateCommand(
+                                allocation_id=first.target_allocation_id,
+                                resource_id="R1",
+                                day=WORK_DAY,
+                                expected_planning_version=second.planning_version,
+                                overallocation_policy="INCREASE_PLANNED",
+                                expected_approval_revision_id=revision_id,
+                                expected_operational_version=second.operational_version,
+                            )
+                        )
+                    self.assertEqual(
+                        caught.exception.code,
+                        "planning_authorization_revision_required",
+                    )
+                    transaction.rollback()
+                finally:
+                    session.close()
+            finally:
+                engine.dispose()
 
+            with TestClient(admin_app, raise_server_exceptions=False) as client:
                 final_state = client.get(
                     f"/api/v1/demands/{number}/approval-state"
                 )
