@@ -114,6 +114,33 @@ Ordre obligatoire : **291A → 291B → 291C → 291D → 291E → 291F**.
 ### #291F — React et acceptation
 """
 
+
+
+ROADMAP_291E_ACTIVE = """
+# Roadmap maître
+
+**#291 est la tranche produit active. 291A–291D terminées; 291E READY.**
+
+Ordre actif :
+
+1. **#291 — ressources réservables non humaines — ACTIF**
+"""
+
+ISSUE_291E_ACTIVE = """
+# #291 — ressources réservables non humaines
+
+## Découpage d'implémentation
+
+Ordre obligatoire : **291A → 291B → 291C → 291D → 291E → 291F**.
+
+### #291A — contrats et frontières pures — DONE (PR #394, CI #801)
+### #291B — catalogue et persistance — DONE (PR #394, CI #801)
+### #291C — demande, approbation et matérialisation — DONE (PR #394, CI #801)
+### #291D — réservations et concurrence — DONE (PR #394, CI #801)
+### #291E — projections et delta — READY
+### #291F — React et acceptation
+"""
+
 AGENTS = """
 ## 20. Chained execution
 Automatic chaining is allowed only when the next item belongs to the same approved work block.
@@ -235,6 +262,106 @@ class ServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(dashboard["active_work"]["primary_pr"])
         self.assertIn("STALLED", dashboard["active_work"]["states"])
         self.assertIn("branche issue-13a", dashboard["dev_prompt"])
+
+
+    async def test_done_subitems_advance_active_branch_to_291e_head(self):
+        def handler(request: httpx.Request) -> httpx.Response:
+            path = request.url.path
+            query = dict(request.url.params)
+
+            if path == "/repos/tchi99/RessourcePlanner/issues/55":
+                return response({
+                    "number": 55,
+                    "title": "Roadmap maître",
+                    "body": ROADMAP_291E_ACTIVE,
+                    "html_url": "https://github.test/issues/55",
+                    "updated_at": "2026-09-23T15:00:00Z",
+                    "state": "open",
+                })
+            if path == "/repos/tchi99/RessourcePlanner/issues/291":
+                return response({
+                    "number": 291,
+                    "title": "Ressources réservables",
+                    "body": ISSUE_291E_ACTIVE,
+                    "state": "open",
+                    "html_url": "https://github.test/issues/291",
+                    "updated_at": "2026-09-23T15:00:00Z",
+                })
+            if path == "/repos/tchi99/RessourcePlanner/pulls":
+                return response([])
+            if path == "/repos/tchi99/RessourcePlanner/commits":
+                return response([{
+                    "sha": "394e755bef94fb0fd7a4663e15e50380b8aee094",
+                    "html_url": "https://github.test/commit/394e755",
+                    "commit": {
+                        "message": "feat: add reservable assets through approval and planning commands",
+                        "author": {"date": "2026-09-23T14:50:00Z"},
+                    },
+                }])
+            if path == "/repos/tchi99/RessourcePlanner/commits/f16d52f":
+                return response({
+                    "sha": "f16d52f",
+                    "html_url": "https://github.test/commit/f16d52f",
+                    "commit": {
+                        "message": "test(291E): cover asset planning projections and delta",
+                        "author": {"date": "2026-09-23T15:01:23Z"},
+                    },
+                })
+            if path == "/repos/tchi99/RessourcePlanner/actions/runs":
+                self.assertEqual(query.get("head_sha"), "f16d52f")
+                return response({"workflow_runs": []})
+            if path == "/repos/tchi99/RessourcePlanner/contents/AGENTS.md":
+                return response(encoded_file(AGENTS))
+            if path == "/repos/tchi99/RessourcePlanner/contents/docs/architecture":
+                return response([])
+            if path == "/repos/tchi99/RessourcePlanner/branches":
+                return response([
+                    {
+                        "name": "main",
+                        "commit": {
+                            "sha": "394e755bef94fb0fd7a4663e15e50380b8aee094"
+                        },
+                    },
+                    {
+                        "name": "feat/291a-d-reservable-assets",
+                        "commit": {"sha": "old291ad"},
+                    },
+                    {
+                        "name": "feat/291e-asset-planning-projections",
+                        "commit": {"sha": "f16d52f"},
+                    },
+                ])
+            raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+        settings = Settings(
+            github_token="test",
+            repository="tchi99/RessourcePlanner",
+            roadmap_issue=55,
+            stalled_after_minutes=20,
+            github_api_url="https://api.github.test",
+        )
+        client = GitHubClient(settings, transport=httpx.MockTransport(handler))
+        try:
+            dashboard = await build_dashboard(client, settings, "tchi99/RessourcePlanner")
+        finally:
+            await client.close()
+
+        self.assertEqual(dashboard["roadmap"]["effective_active"], "291E")
+        self.assertEqual(dashboard["active_work"]["subitem_key"], "291E")
+        self.assertEqual(
+            dashboard["active_work"]["active_branch"]["name"],
+            "feat/291e-asset-planning-projections",
+        )
+        self.assertEqual(
+            dashboard["active_work"]["last_commit"]["sha"],
+            "f16d52f",
+        )
+        self.assertEqual(
+            dashboard["latest_commit"]["sha"],
+            "394e755bef94fb0fd7a4663e15e50380b8aee094",
+        )
+        self.assertIn("IN_PROGRESS", dashboard["active_work"]["states"])
+        self.assertIn("feat/291e-asset-planning-projections", dashboard["dev_prompt"])
 
     async def test_active_branch_can_be_on_later_page_and_newest_match_wins(self):
         def handler(request: httpx.Request) -> httpx.Response:
