@@ -77,6 +77,19 @@ class ServerDemandPeriodRouteTests(unittest.TestCase):
         return self._database_template.copy_to(directory)
 
     @staticmethod
+    def _with_request_version(
+        client: TestClient,
+        number: str,
+        payload: dict,
+    ) -> dict:
+        demand = client.get(f"/api/v1/demands/{number}")
+        assert demand.status_code == 200, demand.text
+        return {
+            **payload,
+            "expected_request_version": demand.json()["version"],
+        }
+
+    @staticmethod
     def _alternatives(*, second_hours: float = 8) -> dict:
         return {
             "periods": [
@@ -120,7 +133,11 @@ class ServerDemandPeriodRouteTests(unittest.TestCase):
 
                 replaced = client.put(
                     f"/api/v1/demands/{number}/periods",
-                    json=self._alternatives(),
+                    json=self._with_request_version(
+                        client,
+                        number,
+                        self._alternatives(),
+                    ),
                 )
                 self.assertEqual(replaced.status_code, 200, replaced.text)
                 self.assertEqual(replaced.json()["period_count"], 2)
@@ -200,7 +217,11 @@ class ServerDemandPeriodRouteTests(unittest.TestCase):
                 self.assertEqual(
                     client.put(
                         f"/api/v1/demands/{number}/periods",
-                        json=self._alternatives(),
+                        json=self._with_request_version(
+                            client,
+                            number,
+                            self._alternatives(),
+                        ),
                     ).status_code,
                     200,
                 )
@@ -226,7 +247,11 @@ class ServerDemandPeriodRouteTests(unittest.TestCase):
                 with TestClient(pm_app, raise_server_exceptions=False) as pm_client:
                     changed = pm_client.put(
                         f"/api/v1/demands/{number}/periods",
-                        json=self._alternatives(second_hours=10),
+                        json=self._with_request_version(
+                            pm_client,
+                            number,
+                            self._alternatives(second_hours=10),
+                        ),
                     )
                 self.assertEqual(changed.status_code, 200, changed.text)
                 self.assertTrue(changed.json()["reapproval_required"])
