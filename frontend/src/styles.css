@@ -658,3 +658,225 @@ h1 { font-size: 1.6rem; }
   .topbar-status { display: none; }
   h1 { font-size: 1.3rem; }
 }
+
+
+/* #291 — reservable physical assets */
+.asset-planning-panel {
+  display: grid;
+  gap: .8rem;
+  margin: .8rem 0;
+  padding: .9rem;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--panel);
+}
+.asset-planning-heading,
+.asset-section-heading,
+.asset-requirement-heading,
+.asset-current-allocation,
+.asset-unavailability-list article {
+  display: flex;
+  justify-content: space-between;
+  gap: .7rem;
+  align-items: flex-start;
+}
+.asset-planning-heading h2 { margin: .08rem 0 .2rem; font-size: 1.05rem; }
+.asset-planning-heading p,
+.asset-section-heading span,
+.asset-requirement-heading span,
+.asset-requirement-heading small,
+.asset-current-allocation span,
+.asset-unavailability-list span,
+.asset-unavailability-list small {
+  color: var(--muted);
+  font-size: .64rem;
+}
+.asset-planning-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .35rem;
+  justify-content: flex-end;
+}
+.asset-planning-metrics span {
+  padding: .28rem .48rem;
+  border-radius: 999px;
+  background: #eef3f9;
+  font-size: .62rem;
+}
+.asset-planning-feedback {
+  padding: .58rem .7rem;
+  border-radius: 8px;
+  font-size: .7rem;
+  font-weight: 700;
+}
+.asset-planning-feedback.is-success { background: var(--good-soft); color: var(--good); }
+.asset-planning-feedback.is-info { background: var(--accent-soft); color: var(--accent); }
+.asset-planning-feedback.is-error { background: var(--danger-soft); color: var(--danger); }
+.asset-diagnostic-list { display: grid; gap: .35rem; }
+.asset-diagnostic {
+  display: grid;
+  gap: .1rem;
+  padding: .48rem .58rem;
+  border-left: 3px solid #d7a338;
+  border-radius: 7px;
+  background: var(--warn-soft);
+}
+.asset-diagnostic.is-danger { border-left-color: var(--danger); background: var(--danger-soft); }
+.asset-diagnostic strong { font-size: .64rem; }
+.asset-diagnostic span { font-size: .62rem; color: #5f6672; }
+.asset-planning-columns {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(280px, .75fr);
+  gap: .75rem;
+}
+.asset-requirements-panel,
+.asset-unavailability-panel,
+.asset-capacity-panel {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #fbfcfe;
+  overflow: hidden;
+}
+.asset-section-heading { padding: .62rem .7rem; border-bottom: 1px solid var(--border); }
+.asset-section-heading strong { font-size: .75rem; }
+.asset-requirement-list,
+.asset-unavailability-list { display: grid; gap: .45rem; padding: .6rem; }
+.asset-requirement-card {
+  display: grid;
+  gap: .55rem;
+  padding: .65rem;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: white;
+}
+.asset-requirement-heading strong,
+.asset-current-allocation strong { display: block; margin-top: .08rem; font-size: .72rem; }
+.asset-status {
+  flex: 0 0 auto;
+  padding: .16rem .4rem;
+  border-radius: 999px;
+  background: var(--warn-soft);
+  color: var(--warn);
+  font-size: .6rem;
+  font-weight: 800;
+}
+.asset-status.is-assigned { background: var(--good-soft); color: var(--good); }
+.asset-usage-budget { color: #5b6473; font-size: .61rem; }
+.asset-reservation-controls {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) auto;
+  gap: .5rem;
+  align-items: end;
+}
+.asset-reservation-controls label,
+.asset-unavailability-form label {
+  display: grid;
+  gap: .22rem;
+}
+.asset-reservation-controls label span,
+.asset-unavailability-form label span {
+  color: var(--muted);
+  font-size: .61rem;
+  font-weight: 700;
+}
+.asset-reservation-controls select,
+.asset-unavailability-form select,
+.asset-unavailability-form input {
+  width: 100%;
+  min-height: 36px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: white;
+  padding: .42rem .52rem;
+  font: inherit;
+  font-size: .68rem;
+}
+.asset-current-allocation {
+  padding: .45rem .52rem;
+  border-radius: 7px;
+  background: #f2f6fb;
+}
+.asset-unavailability-form {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: .45rem;
+  padding: .6rem;
+  border-bottom: 1px solid var(--border);
+}
+.asset-unavailability-form .span-2 { grid-column: 1 / -1; }
+.asset-unavailability-list article {
+  padding: .5rem .55rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: white;
+}
+.asset-unavailability-list article strong,
+.asset-unavailability-list article span,
+.asset-unavailability-list article small { display: block; }
+.asset-empty {
+  padding: .9rem;
+  color: var(--muted);
+  text-align: center;
+  font-size: .68rem;
+}
+.asset-capacity-scroll { overflow-x: auto; }
+.asset-capacity-grid { display: grid; min-width: 760px; }
+.asset-capacity-row { display: contents; }
+.asset-capacity-header,
+.asset-capacity-identity,
+.asset-capacity-cell {
+  min-height: 54px;
+  padding: .48rem;
+  border-right: 1px solid #e6eaf0;
+  border-bottom: 1px solid #e6eaf0;
+}
+.asset-capacity-header {
+  background: #f0f3f8;
+  color: #536076;
+  font-size: .62rem;
+  font-weight: 800;
+}
+.asset-capacity-identity { background: white; }
+.asset-capacity-identity strong,
+.asset-capacity-identity span { display: block; }
+.asset-capacity-identity strong { font-size: .68rem; }
+.asset-capacity-identity span { color: var(--muted); font-size: .58rem; margin-top: .08rem; }
+.asset-capacity-cell { display: grid; place-content: center; text-align: center; background: white; }
+.asset-capacity-cell strong { font-size: .62rem; }
+.asset-capacity-cell small { color: var(--danger); font-size: .55rem; }
+.asset-capacity-cell.is-free { background: var(--good-soft); color: var(--good); }
+.asset-capacity-cell.is-occupied { background: var(--accent-soft); color: var(--accent); }
+.asset-capacity-cell.is-unavailable { background: #eef1f5; color: #6b7280; }
+
+.asset-detail-list { display: grid; gap: .45rem; padding: .7rem; }
+.asset-detail-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: .5rem;
+  padding: .58rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fbfcfe;
+}
+.asset-detail-row strong,
+.asset-detail-row span,
+.asset-detail-row small { display: block; }
+.asset-detail-row strong { font-size: .68rem; }
+.asset-detail-row span,
+.asset-detail-row small { color: var(--muted); font-size: .6rem; }
+.asset-detail-row > small { grid-column: 1 / -1; }
+
+@media (max-width: 980px) {
+  .asset-planning-columns { grid-template-columns: 1fr; }
+}
+@media (max-width: 650px) {
+  .asset-planning-heading,
+  .asset-requirement-heading,
+  .asset-current-allocation { flex-direction: column; }
+  .asset-planning-metrics { justify-content: flex-start; }
+  .asset-reservation-controls,
+  .asset-unavailability-form,
+  .asset-detail-row { grid-template-columns: 1fr; }
+  .asset-unavailability-form .span-2,
+  .asset-detail-row > small { grid-column: auto; }
+}
