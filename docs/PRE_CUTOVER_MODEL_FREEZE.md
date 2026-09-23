@@ -30,10 +30,12 @@ Il est aligné sur le modèle actuel après #13, #328, #329 et #331. Les ADR sou
 - Un groupe `ALTERNATIVE` ne matérialise qu'une option active; les alternatives non sélectionnées restent néanmoins représentées dans la révision approuvée.
 - La demande candidate, la `RequestApprovalRevision` active et le plan opérationnel actif sont trois états distincts.
 - Une modification candidate hors enveloppe ne modifie pas le plan actif avant approbation.
+- Une proposition d'extension de fenêtre issue d'un DnD ne persiste pas le geste de déplacement : l'approbation autorise la nouvelle fenêtre, puis tout déplacement ultérieur est une nouvelle commande opérationnelle revalidée contre l'état frais.
 - La révision approuvée immuable est la preuve d'autorisation; les `ResourceRequirement` ne suffisent pas à reconstruire toutes les alternatives approuvées.
 - `Tentative` / `Confirmée` reste distinct de l'approbation et peut évoluer opérationnellement lorsque l'enveloppe l'autorise.
 - Les mutations opérationnelles sensibles utilisent des versions attendues et signalent les conflits.
-- Tant que le rebuild reste global, les écritures concurrentes pertinentes du planning participent à la révision globale/CAS définie par ADR-005; l'acquisition se fait avant les lectures décisionnelles et couvre la transaction jusqu'au commit/rollback.
+- Le remplacement versionné des périodes doit vérifier une version candidate attendue afin qu'une proposition Planning ne puisse pas écraser silencieusement une édition concurrente.
+- Tant que le rebuild reste global, les écritures concurrentes pertinentes du planning participent à la révision globale/CAS définie par ADR-006; l'acquisition se fait avant les lectures décisionnelles et couvre la transaction jusqu'au commit/rollback.
 
 ## Capacité, cible et ressources réelles
 
@@ -73,4 +75,4 @@ La prochaine validation environnementale structurante reste #162 : driver ODBC, 
 
 - #13, #162, #208, #288, #328, #329, #331, #332, #336;
 - `docs/DEMANDS_V2_ARCHITECTURE.md`;
-- ADR-001 à ADR-005.
+- ADR-001 à ADR-006.
