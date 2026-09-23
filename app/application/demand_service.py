@@ -65,6 +65,7 @@ from .repository_ports import (
     DemandOperationalChoiceRepositoryPort,
     DemandPeriodRepositoryPort,
     DemandRepositoryPort,
+    PlanningMutationVersionPort,
 )
 
 
@@ -117,6 +118,7 @@ class DemandService:
         current_user_id: str | None = None,
         permissions: Sequence[str] | None = None,
         roles: Sequence[str] | None = None,
+        planning_versions: PlanningMutationVersionPort | None = None,
         batch: Callable[[str], ContextManager[Any]] | None = None,
     ) -> None:
         self._demands = demands
@@ -133,6 +135,7 @@ class DemandService:
             PERMISSION_APPROVE_DEMANDS,
         )
         self._roles = tuple(str(role).strip().upper() for role in (roles or ()) if str(role).strip())
+        self._planning_versions = planning_versions
         self._batch = batch
 
     def _context(self, label: str) -> ContextManager[Any]:
@@ -432,6 +435,68 @@ class DemandService:
             context={"demand_number": number},
         )
 
+    def _candidate_decision_mutates_active_plan(
+        self,
+        decision: EnvelopeDecision,
+        *,
+        legacy_unknown_requires_reapproval: bool,
+    ) -> bool:
+        needs_approval = decision.decision == DECISION_REAPPROVAL_REQUIRED
+        if decision.decision == DECISION_APPROVAL_REFERENCE_UNKNOWN:
+            needs_approval = legacy_unknown_requires_reapproval
+        if needs_approval and PERMISSION_APPROVE_DEMANDS in self._permissions:
+            return True
+        return (
+            decision.reason == REASON_DELEGATED_TOLERANCE
+            and any(
+                change.code == REASON_DELEGATED_TOLERANCE
+                and change.entry_key
+                and change.candidate_hours is not None
+                for change in decision.changes
+            )
+        )
+
+    def _evaluate_candidate_for_handling(
+        self,
+        number: str,
+        *,
+        code_prefix: str,
+        context: Mapping[str, Any],
+        legacy_unknown_requires_reapproval: bool,
+    ) -> EnvelopeDecision:
+        policy = self._approval_envelope_policy
+        if policy is None:
+            raise ApplicationOperationError(
+                "La politique d'enveloppe approuvée n'est pas disponible.",
+                code="approval_envelope_policy_unavailable",
+                context={"demand_number": number},
+            )
+        decision = call_application_port(
+            lambda: policy.evaluate_candidate(
+                number,
+                actor_role=self._envelope_actor_role(),
+            ),
+            code_prefix=code_prefix,
+            context=context,
+        )
+        if (
+            self._planning_versions is not None
+            and self._candidate_decision_mutates_active_plan(
+                decision,
+                legacy_unknown_requires_reapproval=legacy_unknown_requires_reapproval,
+            )
+        ):
+            self._planning_versions.acquire()
+            decision = call_application_port(
+                lambda: policy.evaluate_candidate(
+                    number,
+                    actor_role=self._envelope_actor_role(),
+                ),
+                code_prefix=f"{code_prefix}_guarded",
+                context=context,
+            )
+        return decision
+
     def _handle_candidate_envelope_decision(
         self,
         number: str,
@@ -632,13 +697,11 @@ class DemandService:
                 and envelope_relevant_change
                 and self._approval_envelope_policy is not None
             ):
-                decision = call_application_port(
-                    lambda: self._approval_envelope_policy.evaluate_candidate(
-                        number,
-                        actor_role=self._envelope_actor_role(),
-                    ),
+                decision = self._evaluate_candidate_for_handling(
+                    number,
                     code_prefix="approval_envelope_compare",
                     context={"demand_number": number},
+                    legacy_unknown_requires_reapproval=legacy_unknown_requires_reapproval,
                 )
                 return self._handle_candidate_envelope_decision(
                     number,
@@ -769,16 +832,14 @@ class DemandService:
                 },
             )
             if was_approved and self._approval_envelope_policy is not None:
-                decision = call_application_port(
-                    lambda: self._approval_envelope_policy.evaluate_candidate(
-                        number,
-                        actor_role=self._envelope_actor_role(),
-                    ),
+                decision = self._evaluate_candidate_for_handling(
+                    number,
                     code_prefix="approval_envelope_period_compare",
                     context={
                         "demand_number": number,
                         "request_line_id": request_line_id,
                     },
+                    legacy_unknown_requires_reapproval=True,
                 )
                 reapproval_required = self._handle_candidate_envelope_decision(
                     number,
