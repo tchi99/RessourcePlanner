@@ -190,6 +190,7 @@ def _seed(database_url: str) -> None:
                     category="EQUIPMENT",
                 )
             )
+            session.flush()
             session.add_all(
                 [
                     Asset(
