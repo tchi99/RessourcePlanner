@@ -50,6 +50,7 @@ import {
   proposeAllocationWindowExtension,
   splitAllocationAtomic,
 } from "./manualOverallocationApi";
+import AssetPlanningPanel from "./AssetPlanningPanel";
 import DemandDetail from "./DemandDetail";
 import ManualAllocationEditor from "./ManualAllocationEditor";
 import PlanningActionPanel from "./PlanningActionPanel";
@@ -1074,6 +1075,14 @@ export default function PlanningPage({ onOpenDemands }: { onOpenDemands?: () => 
             })}
           </div>
         </section>
+      )}
+
+      {snapshot && (
+        <AssetPlanningPanel
+          snapshot={snapshot}
+          canManage={canManagePlanning}
+          onRefresh={() => setRefreshKey((value) => value + 1)}
+        />
       )}
 
       <div className="planning-layout">
