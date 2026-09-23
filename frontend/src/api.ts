@@ -223,7 +223,7 @@ export type AvailabilityRuleMutationResult = {
 export type DemandLineReadModel = {
   line_id: string;
   position: number;
-  kind: "WORKFORCE";
+  kind: "WORKFORCE" | "ASSET";
   slot_count: number;
   required_resource_class: string | null;
   required_competencies: string | null;
@@ -243,6 +243,8 @@ export type DemandLineReadModel = {
   proposed_resource: string | null;
   description: string | null;
   active: boolean;
+  asset_type_id: string | null;
+  proposed_asset_id: string | null;
 };
 
 export type DemandRequesterReadModel = {
@@ -332,6 +334,32 @@ export type DemandDetailMaterializedRequirementReadModel = {
   approval_reference_status: string | null;
 };
 
+export type DemandDetailAssetRequirementReadModel = {
+  requirement_id: string;
+  demand_number: string;
+  project_id: string;
+  project_number: string;
+  source_request_line_id: string;
+  source_period_id: string | null;
+  approval_revision_id: string | null;
+  approved_entry_key: string;
+  slot_index: number;
+  asset_type_id: string;
+  asset_type_code: string;
+  asset_type_label: string;
+  start_date: string;
+  end_date: string;
+  usage_hours: number | null;
+  status: string;
+  allocation_id: string | null;
+  asset_id: string | null;
+  asset_code: string | null;
+  asset_label: string | null;
+  allocation_start_date: string | null;
+  allocation_end_date: string | null;
+  allocation_locked: boolean;
+};
+
 export type DemandDetailReadModel = {
   demand: DemandReadModel;
   version: number;
@@ -343,6 +371,11 @@ export type DemandDetailReadModel = {
     covered_hours: number;
     locked_hours: number;
     requirements: DemandDetailMaterializedRequirementReadModel[];
+    asset_requirement_count: number;
+    asset_assigned_count: number;
+    asset_usage_hours: number;
+    asset_unbudgeted_requirement_count: number;
+    asset_requirements: DemandDetailAssetRequirementReadModel[];
   };
   workflow: {
     demand_number: string;
@@ -635,6 +668,64 @@ export type PlanningCapacityGridReadModel = {
   segment_diagnostics: PlanningSegmentCapacityDiagnosticReadModel[];
 };
 
+export type AssetTypePlanningReadModel = {
+  id: string;
+  code: string;
+  label: string;
+  category: string;
+  occupancy_policy: string;
+  active: boolean;
+};
+
+export type AssetPlanningReadModel = {
+  id: string;
+  code: string;
+  label: string;
+  asset_type_id: string;
+  active: boolean;
+};
+
+export type AssetRequirementPlanningReadModel = DemandDetailAssetRequirementReadModel;
+
+export type AssetAllocationPlanningReadModel = {
+  allocation_id: string;
+  requirement_id: string;
+  asset_id: string;
+  asset_code: string;
+  asset_label: string;
+  start_date: string;
+  end_date: string;
+  locked: boolean;
+  source: string;
+};
+
+export type AssetUnavailabilityPlanningReadModel = {
+  id: string;
+  asset_id: string;
+  start_date: string;
+  end_date: string;
+  reason: string | null;
+};
+
+export type AssetDayCapacityPlanningReadModel = {
+  asset_id: string;
+  day: string;
+  capacity_units: number;
+  occupied_units: number;
+  remaining_units: number;
+  unavailable: boolean;
+  available: boolean;
+};
+
+export type AssetPlanningDiagnosticReadModel = {
+  code: string;
+  message: string;
+  requirement_id: string | null;
+  allocation_id: string | null;
+  asset_id: string | null;
+  day: string | null;
+};
+
 export type PlanningSnapshotReadModel = {
   start: string;
   end: string;
@@ -645,6 +736,13 @@ export type PlanningSnapshotReadModel = {
   shifts: ShiftReadModel[];
   pending_loads: PendingDemandLoadReadModel[];
   capacity_buckets: MediumTermCapacityBucketReadModel[];
+  asset_types: AssetTypePlanningReadModel[];
+  assets: AssetPlanningReadModel[];
+  asset_requirements: AssetRequirementPlanningReadModel[];
+  asset_allocations: AssetAllocationPlanningReadModel[];
+  asset_unavailability: AssetUnavailabilityPlanningReadModel[];
+  asset_capacity: AssetDayCapacityPlanningReadModel[];
+  asset_diagnostics: AssetPlanningDiagnosticReadModel[];
   firm_hours: number;
   potential_hours: number;
   replacement_proposal_hours: number;
@@ -653,7 +751,7 @@ export type PlanningSnapshotReadModel = {
 export type DemandLineWrite = {
   id?: string;
   position?: number;
-  kind?: "WORKFORCE";
+  kind?: "WORKFORCE" | "ASSET";
   required_resource_class: string | null;
   required_competency_ids: string[];
   desired_start: string | null;
@@ -663,6 +761,8 @@ export type DemandLineWrite = {
   work_package_ref: string | null;
   task_code: string | null;
   proposed_resource_id: string | null;
+  asset_type_id?: string | null;
+  proposed_asset_id?: string | null;
   confirmation: "Tentative" | "Confirmée";
   description: string | null;
 };

@@ -1078,7 +1078,7 @@ test("multi-line demand editor generates independent RequestLines and materializ
   const cards = editor.locator(".request-line-card");
   await expect(cards).toHaveCount(2);
   await expect(editor.locator(".request-lines-summary")).toContainText("16");
-  await expect(editor.locator(".request-lines-summary")).toContainText("heure(s) projetées");
+  await expect(editor.locator(".request-lines-summary")).toContainText("heure(s) humaines projetées");
 
   const generationCount = editor.getByLabel("Quantité de lignes à générer");
   await generationCount.fill("3");
@@ -1224,6 +1224,236 @@ test("multi-line demand editor generates independent RequestLines and materializ
   await closeContext(coordinator.context);
 });
 
+
+
+test("mixed asset demand uses authoritative reservations, conflicts, refresh and reapproval", async ({ browser }) => {
+  test.setTimeout(180_000);
+  const { d1, d2, d3, d4, d5 } = acceptanceDates();
+  let demandNumber = "";
+
+  const projectManager = await openAs(browser, "PROJECT_MANAGER");
+  await navigateMain(projectManager.page, "Demandes");
+  await projectManager.page.getByRole("button", { name: /Nouvelle demande/ }).click();
+  let editor = projectManager.page.locator(".demand-editor-form");
+  await labelled(editor, "Projet", "select").selectOption("P-251");
+  await labelled(editor, "Description / contexte de la demande", "textarea").fill(
+    "Demande mixte main-d’œuvre + nacelle #291F",
+  );
+  await editor.getByRole("button", { name: "Passer aux lignes multiples" }).click();
+
+  let cards = editor.locator(".request-line-card");
+  await expect(cards).toHaveCount(1);
+  let assetLine = cards.nth(0);
+  await assetLine.getByLabel("Type de besoin — ligne 1").selectOption("ASSET");
+  await labelled(assetLine, "Début", "input").fill(d1);
+  await labelled(assetLine, "Fin", "input").fill(d2);
+  await assetLine.getByLabel("Type d’actif — ligne 1").selectOption("AT-LIFT");
+  await assetLine.getByLabel("Unité proposée — ligne 1").selectOption("A-LIFT-1");
+  await labelled(assetLine, "Budget d’usage (h, optionnel)", "input").fill("4");
+  await labelled(assetLine, "Description spécifique", "textarea").fill("Nacelle suggérée sans affectation automatique");
+
+  await editor.getByRole("button", { name: "+ Ajouter une ligne" }).click();
+  cards = editor.locator(".request-line-card");
+  await expect(cards).toHaveCount(2);
+  const workforceLine = cards.nth(1);
+  await expect(workforceLine.getByLabel("Type de besoin — ligne 2")).toHaveValue("WORKFORCE");
+  await labelled(workforceLine, "Début", "input").fill(d1);
+  await labelled(workforceLine, "Fin", "input").fill(d2);
+  await labelled(workforceLine, "Classe de ressource", "select").selectOption("Programmation");
+  await labelled(workforceLine, "Ressource proposée", "select").selectOption("R-ALICE");
+  await labelled(workforceLine, "Heures", "input").fill("8");
+  await labelled(workforceLine, "Description spécifique", "textarea").fill("Support humain associé à la nacelle");
+
+  const summary = editor.locator(".request-lines-summary");
+  await expect(summary).toContainText("1ligne(s) main-d’œuvre");
+  await expect(summary).toContainText("1ligne(s) actif");
+  await expect(summary).toContainText("8heure(s) humaines projetées");
+
+  await editor.getByRole("button", { name: "Créer le brouillon" }).click();
+  const createdNotice = projectManager.page.locator(".demand-notice");
+  await expect(createdNotice).toContainText("créée en brouillon");
+  demandNumber = demandNumberFrom(await createdNotice.textContent());
+
+  const draftResponse = await projectManager.page.request.get(
+    "/api/v1/demands/" + encodeURIComponent(demandNumber),
+  );
+  expect(draftResponse.ok()).toBeTruthy();
+  const draft = await draftResponse.json() as {
+    lines: Array<{
+      kind: "WORKFORCE" | "ASSET";
+      asset_type_id: string | null;
+      proposed_asset_id: string | null;
+      proposed_resource_id: string | null;
+      estimated_hours: number | null;
+    }>;
+  };
+  const activeAsset = draft.lines.find((line) => line.kind === "ASSET");
+  const activeWorkforce = draft.lines.find((line) => line.kind === "WORKFORCE");
+  expect(activeAsset).toMatchObject({
+    asset_type_id: "AT-LIFT",
+    proposed_asset_id: "A-LIFT-1",
+    estimated_hours: 4,
+  });
+  expect(activeWorkforce).toMatchObject({
+    proposed_resource_id: "R-ALICE",
+    estimated_hours: 8,
+  });
+
+  await workflowSelect(projectManager.page, demandNumber);
+  await projectManager.page.getByRole("button", { name: "Soumettre", exact: true }).click();
+  await expect(projectManager.page.locator(".demand-notice").filter({ hasText: "soumise pour approbation" })).toContainText(
+    "soumise pour approbation",
+  );
+  await closeContext(projectManager.context);
+
+  const coordinator = await openAs(browser, "COORDINATOR");
+  await navigateMain(coordinator.page, "Demandes");
+  await workflowSelect(coordinator.page, demandNumber);
+  await coordinator.page.getByLabel(/Commentaire d’approbation/).fill("Approbation demande mixte #291F");
+  await coordinator.page.getByRole("button", { name: "Approuver", exact: true }).click();
+  await expect(coordinator.page.locator(".demand-notice").filter({ hasText: "Demande approuvée" })).toContainText(
+    "Demande approuvée",
+  );
+
+  const materializedAsset = coordinator.page.locator(".asset-detail-row").filter({ hasText: "LIFT — Nacelle" }).first();
+  await expect(materializedAsset).toBeVisible();
+  await expect(materializedAsset).toContainText("À réserver");
+  await expect(materializedAsset).toContainText("Budget d’usage : 4 h");
+  await expect(materializedAsset).not.toContainText("Nacelle 01");
+
+  await navigateMain(coordinator.page, "Planning opérationnel");
+  await coordinator.page.getByRole("button", { name: /Suivante/ }).click();
+  const assetPanel = coordinator.page.locator(".asset-planning-panel");
+  await expect(assetPanel.getByRole("heading", { name: "Actifs et réservations" })).toBeVisible();
+  let requirementCard = assetPanel.locator(".asset-requirement-card").filter({ hasText: demandNumber }).first();
+  await expect(requirementCard).toContainText("À réserver");
+
+  const catalogResponse = await coordinator.page.request.get("/api/v1/assets/catalog");
+  expect(catalogResponse.ok()).toBeTruthy();
+  const catalog = await catalogResponse.json() as { planning_version: number };
+  const bumpVersion = await coordinator.page.request.post("/api/v1/assets/A-LIFT-2/unavailability", {
+    data: {
+      start_date: d5,
+      end_date: d5,
+      reason: "Bump version E2E",
+      expected_planning_version: catalog.planning_version,
+    },
+  });
+  expect(bumpVersion.status(), await bumpVersion.text()).toBe(201);
+
+  let unitSelect = requirementCard.getByRole("combobox");
+  await unitSelect.selectOption("A-LIFT-1");
+  await requirementCard.getByRole("button", { name: "Réserver cette unité" }).click();
+  await expect(assetPanel.locator(".asset-planning-feedback")).toContainText(
+    "Le planning a changé depuis l’ouverture de cette vue",
+  );
+
+  requirementCard = assetPanel.locator(".asset-requirement-card").filter({ hasText: demandNumber }).first();
+  await expect(requirementCard).toBeVisible();
+  unitSelect = requirementCard.getByRole("combobox");
+  await unitSelect.selectOption("A-LIFT-1");
+  await requirementCard.getByRole("button", { name: "Réserver cette unité" }).click();
+  await expect(assetPanel.locator(".asset-planning-feedback")).toContainText("Réservation enregistrée");
+  requirementCard = assetPanel.locator(".asset-requirement-card").filter({ hasText: demandNumber }).first();
+  await expect(requirementCard).toContainText("NAC-01 — Nacelle 01");
+  await expect(requirementCard).toContainText("décision manuelle verrouillée");
+
+  const unavailabilityForm = assetPanel.locator(".asset-unavailability-form");
+  await labelled(unavailabilityForm, "Actif", "select").selectOption("A-LIFT-2");
+  await labelled(unavailabilityForm, "Début", "input").fill(d4);
+  await labelled(unavailabilityForm, "Fin", "input").fill(d4);
+  await labelled(unavailabilityForm, "Raison", "input").fill("Entretien E2E");
+  await unavailabilityForm.getByRole("button", { name: "Ajouter l’indisponibilité" }).click();
+  const maintenance = assetPanel.locator(".asset-unavailability-list article").filter({ hasText: "Entretien E2E" }).first();
+  await expect(maintenance).toContainText("NAC-02 — Nacelle 02");
+  await maintenance.getByRole("button", { name: "Retirer" }).click();
+  await expect(assetPanel.locator(".asset-unavailability-list article").filter({ hasText: "Entretien E2E" })).toHaveCount(0);
+
+  const conflictCreated = await coordinator.page.request.post("/api/v1/demands", {
+    data: {
+      project_number: "P-251",
+      priority: "Normale",
+      description: "Deuxième besoin d’actif en conflit #291F",
+      lines: [{
+        position: 0,
+        kind: "ASSET",
+        required_resource_class: null,
+        required_competency_ids: [],
+        desired_start: d1,
+        desired_end: d2,
+        desired_active_days: null,
+        estimated_hours: null,
+        work_package_ref: null,
+        task_code: null,
+        proposed_resource_id: null,
+        asset_type_id: "AT-LIFT",
+        proposed_asset_id: null,
+        confirmation: "Confirmée",
+        description: "Conflit exclusif attendu",
+      }],
+      submit: true,
+    },
+  });
+  expect(conflictCreated.status(), await conflictCreated.text()).toBe(201);
+  const conflictNumber = (await conflictCreated.json()).demand_number as string;
+  const approvalSnapshot = await coordinator.page.request.get(
+    "/api/v1/planning/snapshot?start=" + d1 + "&end=" + d5 + "&scope=global",
+  );
+  expect(approvalSnapshot.ok()).toBeTruthy();
+  const approvalVersion = (await approvalSnapshot.json()).planning_version as number;
+  const conflictApproved = await coordinator.page.request.post(
+    "/api/v1/demands/" + encodeURIComponent(conflictNumber) + "/approve",
+    { data: { comment: "Approbation conflit actif #291F", expected_planning_version: approvalVersion } },
+  );
+  expect(conflictApproved.status(), await conflictApproved.text()).toBe(200);
+
+  await coordinator.page.reload();
+  await navigateMain(coordinator.page, "Planning opérationnel");
+  await coordinator.page.getByRole("button", { name: /Suivante/ }).click();
+  const refreshedAssetPanel = coordinator.page.locator(".asset-planning-panel");
+  let conflictCard = refreshedAssetPanel.locator(".asset-requirement-card").filter({ hasText: conflictNumber }).first();
+  await expect(conflictCard).toBeVisible();
+  await conflictCard.getByRole("combobox").selectOption("A-LIFT-1");
+  await conflictCard.getByRole("button", { name: "Réserver cette unité" }).click();
+  await expect(refreshedAssetPanel.locator(".asset-planning-feedback")).toContainText("Actif déjà réservé");
+  await expect(refreshedAssetPanel.locator(".asset-planning-feedback")).toContainText("asset_double_booking");
+
+  conflictCard = refreshedAssetPanel.locator(".asset-requirement-card").filter({ hasText: conflictNumber }).first();
+  await conflictCard.getByRole("combobox").selectOption("A-LIFT-2");
+  await conflictCard.getByRole("button", { name: "Réserver cette unité" }).click();
+  await expect(refreshedAssetPanel.locator(".asset-planning-feedback")).toContainText("Réservation enregistrée");
+  await expect(
+    refreshedAssetPanel.locator(".asset-requirement-card").filter({ hasText: conflictNumber }).first(),
+  ).toContainText("NAC-02 — Nacelle 02");
+  await closeContext(coordinator.context);
+
+  const editorContext = await openAs(browser, "PROJECT_MANAGER");
+  await navigateMain(editorContext.page, "Demandes");
+  const demandCard = editorContext.page.locator(".demand-card").filter({ hasText: demandNumber }).first();
+  await demandCard.click();
+  editor = editorContext.page.locator(".demand-editor-form");
+  await expect(editor.getByRole("heading", { name: demandNumber })).toBeVisible();
+  assetLine = editor.locator(".request-line-card").nth(0);
+  await expect(assetLine.getByLabel("Type de besoin — ligne 1")).toHaveValue("ASSET");
+  await labelled(assetLine, "Fin", "input").fill(d3);
+  await editor.getByRole("button", { name: "Enregistrer les modifications" }).click();
+  await expect(editorContext.page.locator(".demand-notice")).toContainText("doit être approuvée de nouveau");
+  await closeContext(editorContext.context);
+
+  const reapprover = await openAs(browser, "COORDINATOR");
+  await navigateMain(reapprover.page, "Demandes");
+  await workflowSelect(reapprover.page, demandNumber);
+  await reapprover.page.getByLabel(/Commentaire d’approbation/).fill("Réapprobation actif étendu #291F");
+  await reapprover.page.getByRole("button", { name: "Approuver", exact: true }).click();
+  await expect(reapprover.page.locator(".demand-notice").filter({ hasText: "Demande approuvée" })).toContainText(
+    "Demande approuvée",
+  );
+  const preservedAsset = reapprover.page.locator(".asset-detail-row").filter({ hasText: "LIFT — Nacelle" }).first();
+  await expect(preservedAsset).toContainText(d1 + " → " + d3);
+  await expect(preservedAsset).toContainText("Nacelle 01");
+  await expect(preservedAsset).toContainText("NAC-01 · verrouillée");
+  await closeContext(reapprover.context);
+});
 
 test("development identity selector switches real local users and technician schedules", async ({ browser }) => {
   const context = await browser.newContext({

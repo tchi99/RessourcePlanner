@@ -76,6 +76,40 @@ class ReservableAssetApiTests(unittest.TestCase):
         self.assertEqual(len(state["allocations"]), 2)
         self.assertEqual(state["planning_version"], version + 2)
 
+    def test_draft_asset_request_can_be_submitted_through_workflow(self) -> None:
+        created = self.client.post("/api/v1/demands", json={
+            "project_number": "P-1",
+            "lines": [
+                {
+                    "kind": "ASSET",
+                    "asset_type_id": self.type_id,
+                    "proposed_asset_id": self.asset_ids[0],
+                    "desired_start": "2026-09-24",
+                    "desired_end": "2026-09-26",
+                    "estimated_hours": 4,
+                },
+                {
+                    "kind": "WORKFORCE",
+                    "desired_start": "2026-09-24",
+                    "estimated_hours": 8,
+                },
+            ],
+        })
+        self.assertEqual(created.status_code, 201, created.text)
+        number = created.json()["demand_number"]
+        draft = self.client.get(f"/api/v1/demands/{number}").json()
+
+        submitted = self.client.post(
+            f"/api/v1/demands/{number}/submit",
+            json={"expected_version": draft["version"]},
+        )
+
+        self.assertEqual(submitted.status_code, 200, submitted.text)
+        self.assertEqual(
+            self.client.get(f"/api/v1/demands/{number}").json()["status"],
+            "Soumise",
+        )
+
     def test_mixed_request_unbudgeted_asset_and_human_hours(self) -> None:
         number = self.approve(mixed=True)
         state = self.client.get("/api/v1/assets/requirements").json()

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
   ApiError,
@@ -50,6 +50,7 @@ import {
   proposeAllocationWindowExtension,
   splitAllocationAtomic,
 } from "./manualOverallocationApi";
+import AssetPlanningPanel from "./AssetPlanningPanel";
 import DemandDetail from "./DemandDetail";
 import ManualAllocationEditor from "./ManualAllocationEditor";
 import PlanningActionPanel from "./PlanningActionPanel";
@@ -503,6 +504,8 @@ export default function PlanningPage({ onOpenDemands }: { onOpenDemands?: () => 
   const days = useMemo(() => weekDays(weekStart), [weekStart]);
   const start = toIsoDate(weekStart);
   const end = toIsoDate(addDays(weekStart, 6));
+  const snapshotQueryKey = `${start}|${end}|${scope}`;
+  const snapshotQueryKeyRef = useRef("");
   const today = toIsoDate(new Date());
   const quickShiftDefaultDay = today >= start && today <= end ? today : start;
 
@@ -519,7 +522,9 @@ export default function PlanningPage({ onOpenDemands }: { onOpenDemands?: () => 
     const controller = new AbortController();
     setLoading(true);
     setError(null);
-    setSnapshot(null);
+    if (snapshotQueryKeyRef.current !== snapshotQueryKey) {
+      setSnapshot(null);
+    }
     setActions([]);
     setCapacityGrid(null);
     Promise.all([
@@ -529,6 +534,7 @@ export default function PlanningPage({ onOpenDemands }: { onOpenDemands?: () => 
       getResources(true, controller.signal),
     ])
       .then(([planning, planningActions, capacity, resourceRows]) => {
+        snapshotQueryKeyRef.current = snapshotQueryKey;
         setSnapshot(planning);
         setActions(planningActions);
         setCapacityGrid(capacity);
@@ -546,7 +552,7 @@ export default function PlanningPage({ onOpenDemands }: { onOpenDemands?: () => 
         if (!controller.signal.aborted) setLoading(false);
       });
     return () => controller.abort();
-  }, [start, end, refreshKey, scope, scopeLoading, scopeError]);
+  }, [start, end, refreshKey, scope, scopeLoading, scopeError, snapshotQueryKey]);
 
   const projectOptions = useMemo(() => {
     if (!snapshot) return [];
@@ -1074,6 +1080,14 @@ export default function PlanningPage({ onOpenDemands }: { onOpenDemands?: () => 
             })}
           </div>
         </section>
+      )}
+
+      {snapshot && (
+        <AssetPlanningPanel
+          snapshot={snapshot}
+          canManage={canManagePlanning && !loading}
+          onRefresh={() => setRefreshKey((value) => value + 1)}
+        />
       )}
 
       <div className="planning-layout">

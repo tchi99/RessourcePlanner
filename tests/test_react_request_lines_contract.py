@@ -36,7 +36,8 @@ class ReactRequestLinesContractTests(unittest.TestCase):
         self.assertIn("WorkPackage", source)
         self.assertIn("Tâche ERP", source)
         self.assertIn("Récapitulatif des lignes", source)
-        self.assertIn("heure(s) projetées", source)
+        self.assertIn("heure(s) humaines projetées", source)
+        self.assertIn("ligne(s) actif", source)
         self.assertIn("days * 8", source)
         self.assertIn("le backend demeure autoritaire", source)
 

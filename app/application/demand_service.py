@@ -1147,9 +1147,9 @@ class DemandService:
         )
         if active_lines:
             for line in active_lines:
-                if line.kind != "WORKFORCE":
+                if line.kind not in {"WORKFORCE", "ASSET"}:
                     raise ApplicationValidationError(
-                        "Seules les lignes WORKFORCE peuvent être soumises dans cette tranche.",
+                        "Type de ligne non supporté.",
                         code="demand_line_kind_unsupported",
                         context={"line_id": line.line_id, "kind": line.kind},
                     )
@@ -1159,10 +1159,18 @@ class DemandService:
                         code="demand_line_start_required",
                         context={"line_id": line.line_id},
                     )
-                if line.estimated_hours is None or line.estimated_hours <= 0:
+                if line.kind == "WORKFORCE" and (
+                    line.estimated_hours is None or line.estimated_hours <= 0
+                ):
                     raise ApplicationValidationError(
-                        "Chaque ligne doit avoir un effort résolu avant soumission.",
+                        "Chaque ligne WORKFORCE doit avoir un effort résolu avant soumission.",
                         code="demand_line_effort_required",
+                        context={"line_id": line.line_id},
+                    )
+                if line.kind == "ASSET" and not str(line.asset_type_id or "").strip():
+                    raise ApplicationValidationError(
+                        "Chaque ligne ASSET doit préciser un type d'actif avant soumission.",
+                        code="demand_asset_type_required",
                         context={"line_id": line.line_id},
                     )
         submit_updates: dict[str, Any] = {"Statut": "Soumise"}
