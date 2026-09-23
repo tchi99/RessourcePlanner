@@ -74,7 +74,7 @@
 
 .demands-workspace {
   display: grid;
-  grid-template-columns: minmax(280px, 360px) minmax(0, 1fr);
+  grid-template-columns: clamp(360px, 31vw, 420px) minmax(0, 1fr);
   gap: .8rem;
   align-items: start;
 }
@@ -142,6 +142,7 @@
 
 .demand-card {
   width: 100%;
+  overflow: hidden;
   border: 1px solid transparent;
   border-radius: 10px;
   background: #f8fafc;
@@ -213,20 +214,24 @@
 
 .demand-project strong,
 .demand-project span {
-  display: block;
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow-wrap: anywhere;
 }
 
 .demand-project strong {
   font-size: .8rem;
+  line-height: 1.25;
 }
 
 .demand-project span {
   margin-top: .08rem;
   color: var(--muted);
   font-size: .66rem;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
+  line-height: 1.3;
 }
 
 .demand-card-meta {
@@ -656,7 +661,7 @@
 
 @media (max-width: 1050px) {
   .demands-workspace {
-    grid-template-columns: 300px minmax(0, 1fr);
+    grid-template-columns: minmax(300px, 340px) minmax(0, 1fr);
   }
 
   .request-line-fields {
