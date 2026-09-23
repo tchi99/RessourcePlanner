@@ -39,9 +39,21 @@ import {
   writeShiftDrag,
 } from "./planningDragDrop";
 import { assignSegment } from "./segments-api";
+import {
+  OverallocationApiError,
+  OverallocationContext,
+  PlanningDropEvaluation,
+  duplicateAllocationAtomic,
+  evaluateAllocationDrop,
+  extendAndMoveAllocationAtomic,
+  overallocationContext,
+  proposeAllocationWindowExtension,
+  splitAllocationAtomic,
+} from "./manualOverallocationApi";
 import DemandDetail from "./DemandDetail";
 import ManualAllocationEditor from "./ManualAllocationEditor";
 import PlanningActionPanel from "./PlanningActionPanel";
+import PlanningDropDialog, { PlanningDropExecutionRequest } from "./PlanningDropDialog";
 import QuickShiftEditor from "./QuickShiftEditor";
 import SegmentEditor from "./SegmentEditor";
 import ShiftEditor from "./ShiftEditor";
@@ -53,6 +65,41 @@ type OverallocationShiftReadModel = ShiftReadModel & {
   segment_locked_hours?: number;
   segment_overallocated_hours?: number;
 };
+
+type DropDialogState = {
+  payload: ShiftDragPayload;
+  targetResource: ResourceReadModel;
+  targetDay: string;
+  evaluation: PlanningDropEvaluation;
+  error: string | null;
+  overallocationPrompt: OverallocationContext | null;
+  actionKeys: Record<string, string>;
+};
+
+const STALE_DROP_CODES = new Set([
+  "planning_version_conflict",
+  "operational_choice_version_conflict",
+  "planning_authorization_unknown",
+  "planning_authorization_revision_conflict",
+  "planning_authorization_revision_required",
+  "demand_version_conflict",
+  "allocation_window_proposal_stale",
+]);
+
+function newDropIdempotencyKey() {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return `planning-drop-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function dropActionKeys(evaluation: PlanningDropEvaluation) {
+  return Object.fromEntries(
+    evaluation.actions
+      .filter((action) => action.code !== "MOVE" && action.code !== "CANCEL")
+      .map((action) => [action.code, newDropIdempotencyKey()]),
+  );
+}
 
 function normalize(value: string | null | undefined) {
   return (value ?? "").trim().toLocaleLowerCase("fr-CA");
@@ -446,6 +493,7 @@ export default function PlanningPage({ onOpenDemands }: { onOpenDemands?: () => 
   const [detailDemandNumber, setDetailDemandNumber] = useState<string | null>(null);
   const [detailContextDirty, setDetailContextDirty] = useState(false);
   const [dropBusy, setDropBusy] = useState<string | null>(null);
+  const [dropDialog, setDropDialog] = useState<DropDialogState | null>(null);
   const [dragFeedback, setDragFeedback] = useState<{
     tone: "success" | "error" | "info";
     message: string;
@@ -653,18 +701,23 @@ export default function PlanningPage({ onOpenDemands }: { onOpenDemands?: () => 
       return;
     }
 
-    setDropBusy(`shift:${payload.allocation_id}`);
+    setDropBusy(`evaluate:${payload.allocation_id}`);
     setDragFeedback(null);
     try {
-      await moveAllocation(payload.allocation_id, {
+      const evaluation = await evaluateAllocationDrop(payload.allocation_id, {
         resource_id: targetResource.id,
         day: targetDay,
+        outside_standard_hours: false,
       });
-      setDragFeedback({
-        tone: "success",
-        message: `Quart déplacé vers ${targetResource.name} le ${targetDay} et verrouillé comme décision manuelle.`,
+      setDropDialog({
+        payload,
+        targetResource,
+        targetDay,
+        evaluation,
+        error: null,
+        overallocationPrompt: null,
+        actionKeys: dropActionKeys(evaluation),
       });
-      setRefreshKey((value) => value + 1);
     } catch (reason: unknown) {
       if (reason instanceof ApiError) {
         setDragFeedback({
@@ -674,8 +727,165 @@ export default function PlanningPage({ onOpenDemands }: { onOpenDemands?: () => 
       } else {
         setDragFeedback({
           tone: "error",
-          message: reason instanceof Error ? reason.message : "Impossible de déplacer le quart.",
+          message: reason instanceof Error ? reason.message : "Impossible d’évaluer ce déplacement.",
         });
+      }
+    } finally {
+      setDropBusy(null);
+    }
+  }
+
+  async function reevaluateDrop(outsideStandardHours: boolean) {
+    if (!dropDialog || dropBusy) return;
+    setDropBusy(`evaluate:${dropDialog.payload.allocation_id}`);
+    try {
+      const evaluation = await evaluateAllocationDrop(dropDialog.payload.allocation_id, {
+        resource_id: dropDialog.targetResource.id,
+        day: dropDialog.targetDay,
+        outside_standard_hours: outsideStandardHours,
+      });
+      setDropDialog((current) => current ? {
+        ...current,
+        evaluation,
+        error: null,
+        overallocationPrompt: null,
+      } : null);
+    } catch (reason: unknown) {
+      const message = reason instanceof ApiError
+        ? `${reason.message}${reason.code ? ` (${reason.code})` : ""}`
+        : reason instanceof Error ? reason.message : "Impossible de réévaluer ce déplacement.";
+      setDropDialog((current) => current ? { ...current, error: message } : null);
+    } finally {
+      setDropBusy(null);
+    }
+  }
+
+  async function executeDropAction(request: PlanningDropExecutionRequest) {
+    if (!dropDialog || dropBusy) return;
+    const current = dropDialog;
+    const actionCode = request.code;
+    const idempotencyKey = current.actionKeys[actionCode];
+    setDropBusy(`execute:${current.payload.allocation_id}:${actionCode}`);
+    setDropDialog((value) => value ? { ...value, error: null } : null);
+
+    try {
+      const common = {
+        resource_id: current.targetResource.id,
+        day: current.targetDay,
+        expected_planning_version: current.evaluation.planning_version,
+        outside_standard_hours: request.outsideStandardHours,
+        overallocation_policy: request.overallocationPolicy,
+        expected_approval_revision_id: current.evaluation.approval_revision_id,
+        expected_operational_version: (
+          request.overallocationPolicy === "INCREASE_PLANNED"
+            ? current.evaluation.operational_version
+            : null
+        ),
+      };
+
+      if (actionCode === "MOVE") {
+        await moveAllocation(current.payload.allocation_id, {
+          resource_id: current.targetResource.id,
+          day: current.targetDay,
+        });
+        setDragFeedback({
+          tone: "success",
+          message: `Quart déplacé vers ${current.targetResource.name} le ${current.targetDay} et verrouillé comme décision manuelle.`,
+        });
+      } else if (actionCode === "SPLIT") {
+        if (!idempotencyKey || request.transferHours === null) {
+          throw new Error("Le partage ne possède pas tous ses paramètres d’exécution.");
+        }
+        await splitAllocationAtomic(
+          current.payload.allocation_id,
+          { ...common, transfer_hours: request.transferHours },
+          idempotencyKey,
+        );
+        setDragFeedback({
+          tone: "success",
+          message: `Quart partagé vers ${current.targetResource.name} le ${current.targetDay}.`,
+        });
+      } else if (actionCode === "DUPLICATE") {
+        if (!idempotencyKey) throw new Error("La duplication ne possède pas de clé d’idempotence.");
+        await duplicateAllocationAtomic(current.payload.allocation_id, common, idempotencyKey);
+        setDragFeedback({
+          tone: "success",
+          message: `Quart dupliqué vers ${current.targetResource.name} le ${current.targetDay}.`,
+        });
+      } else if (actionCode === "EXTEND_AND_MOVE") {
+        if (!idempotencyKey) throw new Error("L’extension ne possède pas de clé d’idempotence.");
+        await extendAndMoveAllocationAtomic(
+          current.payload.allocation_id,
+          { ...common, outside_standard_hours: request.outsideStandardHours, confirm_window_extension: true },
+          idempotencyKey,
+        );
+        setDragFeedback({
+          tone: "success",
+          message: `Période étendue et quart déplacé vers ${current.targetResource.name} le ${current.targetDay}.`,
+        });
+      } else if (actionCode === "PROPOSE_WINDOW_EXTENSION") {
+        if (
+          !idempotencyKey
+          || current.evaluation.request_version === null
+          || !current.evaluation.approval_revision_id
+        ) {
+          throw new Error("La proposition d’extension ne possède plus une référence candidate/approuvée complète.");
+        }
+        const result = await proposeAllocationWindowExtension(
+          current.payload.allocation_id,
+          {
+            resource_id: current.targetResource.id,
+            day: current.targetDay,
+            outside_standard_hours: request.outsideStandardHours,
+            expected_request_version: current.evaluation.request_version,
+            expected_approval_revision_id: current.evaluation.approval_revision_id,
+          },
+          idempotencyKey,
+        );
+        setDragFeedback({
+          tone: "success",
+          message: result.reapproval_required
+            ? "Extension soumise pour approbation. Aucun quart n’a été déplacé."
+            : "Extension approuvée et autorisation mise à jour. Aucun quart n’a été déplacé; effectue un nouveau déplacement contre le planning actualisé.",
+        });
+      } else {
+        throw new Error(`Action de drop non supportée: ${actionCode}`);
+      }
+
+      setDropDialog(null);
+      setRefreshKey((value) => value + 1);
+    } catch (reason: unknown) {
+      if (
+        reason instanceof OverallocationApiError
+        && reason.code === "allocation_overallocation_choice_required"
+      ) {
+        setDropDialog((value) => value ? {
+          ...value,
+          error: reason.message,
+          overallocationPrompt: overallocationContext(reason),
+        } : null);
+      } else if (reason instanceof ApiError && reason.code && STALE_DROP_CODES.has(reason.code)) {
+        setDropDialog(null);
+        setDragFeedback({
+          tone: "info",
+          message: "Le planning ou la demande a changé depuis l’évaluation. Le snapshot a été actualisé; recommence le drag-and-drop.",
+        });
+        setRefreshKey((value) => value + 1);
+      } else if (reason instanceof ApiError) {
+        setDropDialog((value) => value ? {
+          ...value,
+          error: `${reason.message}${reason.code ? ` (${reason.code})` : ""}`,
+        } : null);
+      } else if (reason instanceof TypeError) {
+        setDropDialog((value) => value ? {
+          ...value,
+          error: "La réponse de l’action est incertaine. Réessaie la même action : la même clé d’idempotence sera réutilisée.",
+        } : null);
+      } else {
+        setDropDialog((value) => value ? {
+          ...value,
+          error: reason instanceof Error ? reason.message : "Impossible d’exécuter l’action choisie.",
+        } : null);
       }
     } finally {
       setDropBusy(null);
@@ -712,6 +922,10 @@ export default function PlanningPage({ onOpenDemands }: { onOpenDemands?: () => 
       setDropBusy(null);
     }
   }
+
+  const dropSourceShift = dropDialog && snapshot
+    ? snapshot.shifts.find((shift) => shift.allocation_id === dropDialog.payload.allocation_id) ?? null
+    : null;
 
   return (
     <section className="planning-page">
@@ -956,6 +1170,23 @@ export default function PlanningPage({ onOpenDemands }: { onOpenDemands?: () => 
           )}
         </aside>
       </div>
+
+      {dropDialog && dropSourceShift && (
+        <PlanningDropDialog
+          evaluation={dropDialog.evaluation}
+          shift={dropSourceShift}
+          targetResource={dropDialog.targetResource}
+          busy={Boolean(dropBusy)}
+          error={dropDialog.error}
+          overallocationPrompt={dropDialog.overallocationPrompt}
+          onClose={() => {
+            if (dropBusy) return;
+            setDropDialog(null);
+          }}
+          onReevaluate={reevaluateDrop}
+          onExecute={executeDropAction}
+        />
+      )}
 
       {editingShift && snapshot && (
         <ShiftEditor
