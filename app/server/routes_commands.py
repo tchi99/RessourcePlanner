@@ -4,7 +4,9 @@ from typing import Any, Callable
 
 from fastapi import APIRouter, Depends, Header, status
 from ..application import (
+    AllocationDropEvaluateCommand,
     AllocationDuplicateCommand,
+    AllocationExtendMoveCommand,
     AllocationSplitCommand,
     ApplicationFacade,
     AvailabilityRuleCreateCommand,
@@ -40,7 +42,9 @@ from ..application import (
     WorkPackageUpdateCommand,
 )
 from .schemas import (
+    AllocationDropEvaluateRequest,
     AllocationDuplicateRequest,
+    AllocationExtendMoveRequest,
     AllocationMoveRequest,
     AllocationSplitRequest,
     AvailabilityRuleCreateRequest,
@@ -671,6 +675,52 @@ def build_command_router(
                     **values,
                 )
             )
+        )
+
+    @router.post("/allocations/{allocation_id}/evaluate-drop")
+    def evaluate_allocation_drop(
+        allocation_id: str,
+        body: AllocationDropEvaluateRequest,
+        facade: ApplicationFacade = Depends(facade_dependency),
+    ) -> dict[str, Any]:
+        return _payload(
+            facade.evaluate_allocation_drop(
+                AllocationDropEvaluateCommand(
+                    allocation_id=allocation_id,
+                    **body.model_dump(),
+                )
+            )
+        )
+
+    @router.post(
+        "/allocations/{allocation_id}/extend-and-move",
+        status_code=status.HTTP_200_OK,
+    )
+    def extend_and_move_allocation(
+        allocation_id: str,
+        body: AllocationExtendMoveRequest,
+        idempotency_key: str = Header(alias="Idempotency-Key"),
+        facade: ApplicationFacade = Depends(facade_dependency),
+        idempotency: IdempotentCommandExecutor = Depends(stable_idempotency),
+    ) -> dict[str, Any]:
+        request_payload = {
+            "operation": "EXTEND_AND_MOVE",
+            "allocation_id": allocation_id,
+            "body": _json_body(body),
+        }
+        return idempotency.execute(
+            scope="manual_allocation.extend_and_move",
+            key=idempotency_key,
+            request_payload=request_payload,
+            action=lambda: _payload(
+                facade.extend_and_move_allocation(
+                    AllocationExtendMoveCommand(
+                        allocation_id=allocation_id,
+                        correlation_id=idempotency_key,
+                        **body.model_dump(),
+                    )
+                )
+            ),
         )
 
     @router.post(
