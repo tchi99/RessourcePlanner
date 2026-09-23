@@ -151,6 +151,29 @@ def _pipeline_done(text: str, kind: str) -> bool:
     return bool(GATE_DONE_WORDS.search(text))
 
 
+def _pipeline_table_done(label: str, status: str, kind: str) -> bool:
+    if kind != PIPELINE_WORK:
+        return _pipeline_done(f"{label} | {status}", kind)
+
+    cleaned_label = _clean_markdown(label)
+    cleaned_status = _clean_markdown(status)
+    if "✅" in cleaned_label or "✅" in cleaned_status:
+        return True
+    if DONE_WORDS.search(cleaned_label):
+        return True
+
+    # For WORK rows, completion words in dependency prose must not complete
+    # the row itself. Example: "NEXT — #292 terminée" describes #292, not #407.
+    return bool(
+        re.match(
+            r"^\s*(?:[🟢🟠🟡🔵🟦]\s*)?"
+            r"(?:done|termin[ée]e?s?|compl[ée]t[ée]e?s?|livr[ée]e?s?)\b",
+            cleaned_status,
+            re.IGNORECASE,
+        )
+    )
+
+
 def _pipeline_identity(kind: str, issue_number: int, key: str) -> str:
     if kind == PIPELINE_ARCHITECTURE:
         return f"ASTRA-{issue_number}"
@@ -346,7 +369,7 @@ def product_pipeline(body: str) -> list[PipelineStep]:
                 )
         if len(label.strip()) > len(step.title):
             step.title = _clean_markdown(label)
-        if _pipeline_done(label + " | " + status, step.kind):
+        if _pipeline_table_done(label, status, step.kind):
             step.done = True
             step.marker = "✅"
 
