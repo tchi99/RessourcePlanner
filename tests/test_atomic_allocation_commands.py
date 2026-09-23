@@ -26,7 +26,10 @@ from app.infrastructure.sql import (
 from app.server import create_api_app
 from app.server.composition import build_sql_facade
 from app.server.security import static_auth_resolver
-from tests.http_test_auth import TEST_ADMIN_AUTH_RESOLVER
+from tests.http_test_auth import (
+    TEST_ADMIN_AUTH_RESOLVER,
+    TEST_PROJECT_MANAGER_AUTH_RESOLVER,
+)
 
 
 WORK_DAY = date(2026, 9, 22)
@@ -487,6 +490,44 @@ class AtomicAllocationCommandHttpTests(unittest.TestCase):
                     list(final_state.json()["active_budget_overrides"].values()),
                     [12.0],
                 )
+
+    def test_atomic_routes_require_manage_planning_and_expected_planning_version(self) -> None:
+        with TemporaryDirectory() as directory:
+            url = self._database(
+                directory,
+                planned_hours=8,
+                source_hours=4,
+            )
+            pm_app = create_api_app(
+                url,
+                auth_resolver=TEST_PROJECT_MANAGER_AUTH_RESOLVER,
+            )
+            with TestClient(pm_app, raise_server_exceptions=False) as client:
+                denied = client.post(
+                    "/api/v1/allocations/ALLOC-SOURCE/duplicate",
+                    json=self._duplicate_body(),
+                    headers={"Idempotency-Key": "atomic-permission-denied"},
+                )
+            self.assertEqual(denied.status_code, 403, denied.text)
+            self.assertEqual(denied.json()["error"]["code"], "permission_denied")
+            self.assertEqual(
+                denied.json()["error"]["context"]["required_permission"],
+                "manage_planning",
+            )
+
+            admin_app = create_api_app(
+                url,
+                auth_resolver=TEST_ADMIN_AUTH_RESOLVER,
+            )
+            missing_version = self._duplicate_body()
+            missing_version.pop("expected_planning_version")
+            with TestClient(admin_app, raise_server_exceptions=False) as client:
+                invalid = client.post(
+                    "/api/v1/allocations/ALLOC-SOURCE/duplicate",
+                    json=missing_version,
+                    headers={"Idempotency-Key": "atomic-version-required"},
+                )
+            self.assertEqual(invalid.status_code, 422, invalid.text)
 
     def test_non_counted_auto_proposal_and_full_split_are_rejected(self) -> None:
         with TemporaryDirectory() as directory:
