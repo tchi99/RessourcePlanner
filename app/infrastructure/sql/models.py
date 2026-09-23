@@ -334,6 +334,12 @@ class RequestLine(TimestampMixin, Base):
         nullable=True,
         index=True,
     )
+    asset_type_id: Mapped[str | None] = mapped_column(
+        String(ID_LENGTH), ForeignKey("asset_types.id"), nullable=True, index=True
+    )
+    proposed_asset_id: Mapped[str | None] = mapped_column(
+        String(ID_LENGTH), ForeignKey("assets.id"), nullable=True, index=True
+    )
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     active: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default=true(), index=True

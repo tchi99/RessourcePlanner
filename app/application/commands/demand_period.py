@@ -19,7 +19,7 @@ class DemandPeriodInput:
     period_id: str
     start_date: date
     end_date: date
-    hours: float
+    hours: float | None
     kind: str = "CUMULATIVE"
     alternative_group: str | None = None
     confirmation: str = "Tentative"

@@ -25,7 +25,7 @@ class DemandPeriodDefinition:
     period_id: str
     start_date: date
     end_date: date
-    hours: float
+    hours: float | None
     kind: str = PERIOD_KIND_CUMULATIVE
     alternative_group: str | None = None
     confirmation: str = "Tentative"
@@ -39,7 +39,7 @@ def _text(value: object) -> str:
     return str(value or "").strip()
 
 
-def validate_period_definitions(periods: Sequence[DemandPeriodDefinition]) -> None:
+def validate_period_definitions(periods: Sequence[DemandPeriodDefinition], *, allow_unbudgeted: bool = False) -> None:
     ids: set[str] = set()
     group_counts: dict[str, int] = {}
     for period in periods:
@@ -53,7 +53,7 @@ def validate_period_definitions(periods: Sequence[DemandPeriodDefinition]) -> No
             raise ValueError(
                 f"La période {identifier} se termine avant sa date de début."
             )
-        if period.hours <= 0:
+        if (period.hours is None and not allow_unbudgeted) or (period.hours is not None and period.hours <= 0):
             raise ValueError(f"Les heures de la période {identifier} doivent être positives.")
         if period.resource_count < 1:
             raise ValueError(
@@ -137,7 +137,7 @@ def projected_hours_without_double_counting(
     alternatives: dict[str, list[DemandPeriodDefinition]] = {}
     for period in periods:
         if period.kind.upper() == PERIOD_KIND_CUMULATIVE:
-            total += float(period.hours)
+            total += float(period.hours or 0)
         else:
             alternatives.setdefault(_text(period.alternative_group), []).append(period)
 
@@ -145,9 +145,9 @@ def projected_hours_without_double_counting(
         selected_id = chosen.get(group)
         if selected_id:
             selected = next(period for period in options if period.period_id == selected_id)
-            total += float(selected.hours)
+            total += float(selected.hours or 0)
         else:
-            total += max(float(period.hours) for period in options)
+            total += max(float(period.hours or 0) for period in options)
     return round(total, 2)
 
 
@@ -208,7 +208,7 @@ def projected_period_hours_in_window_without_double_counting(
 
     def contribution(period: DemandPeriodDefinition) -> float:
         return projected_hours_in_window(
-            float(period.hours),
+            float(period.hours or 0),
             period.start_date,
             period.end_date,
             window_start,

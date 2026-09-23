@@ -38,7 +38,7 @@ from .models import (
 )
 
 
-APPROVAL_SNAPSHOT_FORMAT_VERSION = 1
+APPROVAL_SNAPSHOT_FORMAT_VERSION = 2
 APPROVAL_PROVENANCE_STANDARD = "APPROVAL"
 
 
@@ -221,6 +221,9 @@ class SqlRequestApprovalRevisionRepository:
                     proposed_resource_id=_optional_text(
                         line.proposed_resource_id
                     ),
+                    asset_type_id=_optional_text(line.asset_type_id),
+                    occupancy_policy=("EXCLUSIVE_DAY" if line.kind == "ASSET" else None),
+                    proposed_asset_id=_optional_text(line.proposed_asset_id),
                     desired_active_days=(
                         int(line.desired_active_days)
                         if line.desired_active_days is not None
@@ -295,7 +298,7 @@ class SqlRequestApprovalRevisionRepository:
             else None
         )
         payload = {
-            "format_version": APPROVAL_SNAPSHOT_FORMAT_VERSION,
+            "format_version": envelope.to_snapshot_payload()["format_version"],
             "request": {
                 "request_id": request.id,
                 "request_version": max(int(request.aggregate_version or 1), 1),
@@ -317,7 +320,7 @@ class SqlRequestApprovalRevisionRepository:
             approved_by_name=_optional_text(request.approved_by_name),
             approved_at=approved_at,
             provenance=_text(provenance) or APPROVAL_PROVENANCE_STANDARD,
-            payload_format_version=APPROVAL_SNAPSHOT_FORMAT_VERSION,
+            payload_format_version=envelope.to_snapshot_payload()["format_version"],
             payload_text=json.dumps(
                 payload,
                 ensure_ascii=False,

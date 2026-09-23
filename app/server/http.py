@@ -66,6 +66,7 @@ from .performance import (
 )
 from .readiness import DatabaseReadinessError, check_database_readiness
 from .routes_admin_settings import build_admin_settings_router
+from .routes_assets import build_asset_router
 from .routes_auth import build_auth_router
 from .routes_business_contacts import build_business_contact_router
 from .routes_commands import build_command_router
@@ -632,6 +633,7 @@ def create_api_app(
         )
     )
     app.include_router(build_task_catalog_router(session_dependency))
+    app.include_router(build_asset_router(session_dependency))
     app.include_router(
         build_me_router(
             query_dependency,

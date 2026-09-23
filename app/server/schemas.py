@@ -123,7 +123,7 @@ class WorkPackageUpdateRequest(StrictRequest):
 class DemandLineRequest(StrictRequest):
     id: str | None = None
     position: int | None = Field(default=None, ge=0)
-    kind: Literal["WORKFORCE"] = "WORKFORCE"
+    kind: Literal["WORKFORCE", "ASSET"] = "WORKFORCE"
     required_resource_class: str | None = None
     required_competency_ids: list[str] = Field(default_factory=list)
     desired_start: date | None = None
@@ -133,6 +133,8 @@ class DemandLineRequest(StrictRequest):
     work_package_ref: str | None = None
     task_code: str | None = None
     proposed_resource_id: str | None = None
+    asset_type_id: str | None = None
+    proposed_asset_id: str | None = None
     confirmation: str = "Confirmée"
     description: str | None = None
 
@@ -237,7 +239,7 @@ class DemandPeriodRequest(StrictRequest):
     period_id: str = Field(min_length=1)
     start_date: date
     end_date: date
-    hours: float = Field(gt=0)
+    hours: float | None = Field(default=None, gt=0)
     kind: Literal["CUMULATIVE", "ALTERNATIVE"] = "CUMULATIVE"
     alternative_group: str | None = None
     confirmation: str = "Tentative"

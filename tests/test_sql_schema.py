@@ -19,6 +19,11 @@ DOMAIN_ENGINE = ROOT / "app" / "domain" / "planning_engine.py"
 DAY = date(2026, 8, 26)
 
 EXPECTED_TABLES = {
+    "asset_types",
+    "assets",
+    "asset_unavailability",
+    "asset_requirements",
+    "asset_allocations",
     "app_users",
     "business_contacts",
     "auth_login_transactions",
@@ -68,6 +73,8 @@ class SqlSchemaTests(unittest.TestCase):
         resources = Base.metadata.tables["resources"].c
         business_contacts = Base.metadata.tables["business_contacts"].c
         periods = Base.metadata.tables["workforce_request_periods"].c
+        asset_requirements = Base.metadata.tables["asset_requirements"].c
+        asset_allocations = Base.metadata.tables["asset_allocations"].c
         period_requirements = Base.metadata.tables["workforce_request_period_requirements"].c
         availability = Base.metadata.tables["resource_availability_rules"].c
         idempotency = Base.metadata.tables["command_idempotency_receipts"].c
@@ -146,6 +153,10 @@ class SqlSchemaTests(unittest.TestCase):
         self.assertFalse(selections.request_line_id.nullable)
         self.assertFalse(periods.start_date.nullable)
         self.assertFalse(periods.end_date.nullable)
+        self.assertTrue(periods.hours.nullable)
+        self.assertTrue(asset_requirements.usage_hours.nullable)
+        self.assertFalse(asset_requirements.asset_type_id.nullable)
+        self.assertFalse(asset_allocations.asset_id.nullable)
         self.assertEqual(
             [column.name for column in Base.metadata.tables["workforce_request_period_selections"].primary_key.columns],
             ["request_line_id", "alternative_group"],

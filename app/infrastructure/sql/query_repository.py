@@ -514,6 +514,8 @@ class SqlPlannerQueryRepository(PlannerQueryPort):
                 for line in demand.lines:
                     if not line.active:
                         continue
+                    if line.kind == "ASSET":
+                        continue  # A physical reservation is not human workload.
                     line_periods = periods_by_line.get(line.line_id, [])
                     if line_periods:
                         definitions = tuple(

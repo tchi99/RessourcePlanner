@@ -186,7 +186,7 @@ class SqlDemandPeriodRepository(DemandPeriodRepositoryPort):
                 alternative_group=row.alternative_group,
                 start_date=row.start_date,
                 end_date=row.end_date,
-                hours=float(row.hours),
+                hours=float(row.hours) if row.hours is not None else None,
                 confirmation=(
                     operational.confirmations.get(
                         EnvelopeEntryIdentity(
@@ -269,7 +269,10 @@ class SqlDemandPeriodRepository(DemandPeriodRepositoryPort):
         *,
         request_line_id: str | None = None,
     ) -> Sequence[DemandPeriodReadModel]:
-        validate_period_definitions(periods)
+        scoped_kind = self._session.scalar(select(RequestLine.kind).where(RequestLine.id == request_line_id)) if request_line_id else None
+        validate_period_definitions(periods, allow_unbudgeted=scoped_kind == "ASSET")
+        if scoped_kind == "ASSET" and any(period.proposed_resource for period in periods):
+            raise ValueError("Une période matérielle ne peut pas proposer un technicien.")
         request = self._request(demand_number)
         scoped_line_id = self._scope_line_id(request, request_line_id)
 
@@ -305,7 +308,7 @@ class SqlDemandPeriodRepository(DemandPeriodRepositoryPort):
                     alternative_group=_text(period.alternative_group) or None,
                     start_date=period.start_date,
                     end_date=period.end_date,
-                    hours=Decimal(str(period.hours)),
+                    hours=Decimal(str(period.hours)) if period.hours is not None else None,
                     confirmation=normalize_confirmation(period.confirmation),
                     proposed_resource_id=resource.id if resource is not None else None,
                     resource_count=int(period.resource_count),

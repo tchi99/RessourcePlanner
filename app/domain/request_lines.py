@@ -35,6 +35,8 @@ class NormalizedRequestLine:
     proposed_resource_id: str | None
     confirmation: str
     description: str | None
+    asset_type_id: str | None = None
+    proposed_asset_id: str | None = None
 
     def to_repository_values(self) -> dict[str, object]:
         return {
@@ -54,6 +56,8 @@ class NormalizedRequestLine:
             "work_package_ref": self.work_package_ref,
             "task_code": self.task_code,
             "proposed_resource_id": self.proposed_resource_id,
+            "asset_type_id": self.asset_type_id,
+            "proposed_asset_id": self.proposed_asset_id,
             "confirmation": self.confirmation,
             "description": self.description,
         }
@@ -82,14 +86,23 @@ def normalize_request_line(
     confirmation: str,
     description: str | None,
     require_complete: bool,
+    asset_type_id: str | None = None,
+    proposed_asset_id: str | None = None,
 ) -> NormalizedRequestLine:
     normalized_kind = str(kind or "WORKFORCE").strip().upper()
-    if normalized_kind != "WORKFORCE":
+    if normalized_kind not in {"WORKFORCE", "ASSET"}:
         raise RequestLinePolicyError(
-            "Seules les lignes WORKFORCE sont supportées dans cette tranche.",
+            "Type de ligne non supporté.",
             code="demand_line_kind_unsupported",
             context={"kind": normalized_kind},
         )
+    if normalized_kind == "ASSET":
+        if require_complete and not _clean_optional(asset_type_id):
+            raise RequestLinePolicyError("Le type d'actif est requis.", code="demand_asset_type_required")
+        if any((required_resource_class, required_competencies, proposed_resource_id)) or tuple(required_competency_ids):
+            raise RequestLinePolicyError("Une ligne ASSET ne peut pas contenir de critères humains.", code="demand_asset_human_fields")
+    elif asset_type_id or proposed_asset_id:
+        raise RequestLinePolicyError("Une ligne WORKFORCE ne peut pas contenir d'actif.", code="demand_workforce_asset_fields")
     if position < 0:
         raise RequestLinePolicyError(
             "La position de ligne ne peut pas être négative.",
@@ -146,12 +159,12 @@ def normalize_request_line(
             )
         normalized_hours = float(hours)
         hours_source = "EXPLICIT"
-    elif desired_active_days is not None:
+    elif desired_active_days is not None and normalized_kind == "WORKFORCE":
         hours = (Decimal(int(desired_active_days)) * DEFAULT_WORKDAY_HOURS).quantize(CENT)
         normalized_hours = float(hours)
         hours_source = "DEFAULT_8H"
         default_hours_per_day = float(DEFAULT_WORKDAY_HOURS)
-    elif require_complete:
+    elif require_complete and normalized_kind == "WORKFORCE":
         raise RequestLinePolicyError(
             "Chaque ligne doit préciser des heures ou un nombre de jours actifs.",
             code="demand_line_effort_required",
@@ -179,6 +192,8 @@ def normalize_request_line(
         proposed_resource_id=_clean_optional(proposed_resource_id),
         confirmation=str(confirmation or "Confirmée").strip() or "Confirmée",
         description=_clean_optional(description),
+        asset_type_id=_clean_optional(asset_type_id),
+        proposed_asset_id=_clean_optional(proposed_asset_id),
     )
 
 
