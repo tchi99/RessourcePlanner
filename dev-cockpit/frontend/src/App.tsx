@@ -5,6 +5,7 @@ import type {
   CockpitConfig,
   Dashboard,
   Job,
+  PipelineStep,
   PullRequest,
   Run,
 } from './types'
@@ -44,6 +45,40 @@ function StateBadge({ value }: { value: string }) {
           : 'neutral'
 
   return <span className={`state-badge ${tone}`}>{value}</span>
+}
+
+function PipelineRoadmapRow({
+  step,
+  active = false,
+  parallel = false,
+}: {
+  step: PipelineStep
+  active?: boolean
+  parallel?: boolean
+}) {
+  const displayKey =
+    step.kind === 'WORK' && /^\d/.test(step.key) ? `#${step.key}` : step.key
+  const title = step.title
+    .replace(/^En\s+parall[eè]le[^:]*:\s*/i, '')
+    .replace(
+      step.kind === 'WORK'
+        ? new RegExp(`^#${step.key}\\s*(?:✅\\s*)?(?:[—–-]\\s*)?`, 'i')
+        : /$^/,
+      '',
+    )
+    .trim()
+
+  return (
+    <div className={`roadmap-row ${active ? 'active' : ''}`}>
+      <span className={`roadmap-mark ${active || parallel ? 'current' : ''}`}>
+        {active ? '→' : parallel ? '↗' : '·'}
+      </span>
+      <div>
+        <strong>{displayKey}</strong>
+        <small>{title || step.title}</small>
+      </div>
+    </div>
+  )
 }
 
 function JobLine({ job }: { job: Job }) {
@@ -226,33 +261,68 @@ export default function App() {
                 </a>
               </div>
 
-              <div className="roadmap-list">
-                {data.roadmap.items.map((item) => {
-                  const active = item.key === data.roadmap.effective_active
-                  return (
-                    <div
-                      className={`roadmap-row ${active ? 'active' : ''}`}
-                      key={item.key}
-                    >
-                      <span
-                        className={`roadmap-mark ${item.done ? 'done' : active ? 'current' : ''}`}
+              {data.pipeline.steps.length > 0 ? (
+                <div className="roadmap-list roadmap-pipeline">
+                  <div className="roadmap-lane-label">MAINTENANT</div>
+                  {data.pipeline.now ? (
+                    <PipelineRoadmapRow step={data.pipeline.now} active />
+                  ) : (
+                    <div className="empty compact">Aucune étape principale restante.</div>
+                  )}
+
+                  {data.pipeline.parallel.length > 0 && (
+                    <>
+                      <div className="roadmap-lane-label">PARALLÈLE DISPONIBLE</div>
+                      {data.pipeline.parallel.map((step) => (
+                        <PipelineRoadmapRow
+                          key={step.key}
+                          step={step}
+                          parallel
+                        />
+                      ))}
+                    </>
+                  )}
+
+                  {data.pipeline.next.length > 0 && (
+                    <>
+                      <div className="roadmap-lane-label">ENSUITE</div>
+                      {data.pipeline.next.map((step) => (
+                        <PipelineRoadmapRow key={step.key} step={step} />
+                      ))}
+                    </>
+                  )}
+                </div>
+              ) : (
+                <div className="roadmap-list">
+                  {data.roadmap.items.map((item) => {
+                    const active = item.key === data.roadmap.effective_active
+                    return (
+                      <div
+                        className={`roadmap-row ${active ? 'active' : ''}`}
+                        key={item.key}
                       >
-                        {item.done ? '✓' : active ? '→' : '·'}
-                      </span>
-                      <div>
-                        <strong>
-                          {/^\d+$/.test(item.key) ? `#${item.key}` : item.key}
-                        </strong>
-                        <small>{item.title}</small>
+                        <span
+                          className={`roadmap-mark ${item.done ? 'done' : active ? 'current' : ''}`}
+                        >
+                          {item.done ? '✓' : active ? '→' : '·'}
+                        </span>
+                        <div>
+                          <strong>
+                            {/^\d+$/.test(item.key) ? `#${item.key}` : item.key}
+                          </strong>
+                          <small>{item.title}</small>
+                        </div>
                       </div>
-                    </div>
-                  )
-                })}
-              </div>
+                    )
+                  })}
+                </div>
+              )}
 
               <div className="panel-foot">
-                Issue active #{data.roadmap.active_issue} · sous-tranche{' '}
-                {data.active_work.subitem_key || '—'}
+                Issue active #{data.roadmap.active_issue}
+                {data.pipeline.steps.length > 0
+                  ? ' · pipeline #55 canonique'
+                  : ` · sous-tranche ${data.active_work.subitem_key || '—'}`}
               </div>
             </article>
 

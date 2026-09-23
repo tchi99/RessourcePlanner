@@ -283,7 +283,19 @@ async def build_dashboard(client: GitHubClient, settings: Settings, repo: str) -
 
     roadmap_body = roadmap_raw.get("body") or ""
     top_items = top_level_items(roadmap_body)
-    declared_key = extract_declared_active(roadmap_body)
+    legacy_declared_key = extract_declared_active(roadmap_body)
+
+    # The explicit product pipeline is canonical when it exists. The legacy
+    # "Ordre actif" resolver remains a compatibility fallback for older roadmaps.
+    pipeline_steps = product_pipeline(roadmap_body)
+    pipeline_projection = pipeline_window(pipeline_steps)
+    pipeline_now = pipeline_projection.get("now")
+    pipeline_work_key = (
+        str(pipeline_now.get("key"))
+        if pipeline_now and pipeline_now.get("kind") == "WORK"
+        else None
+    )
+    declared_key = pipeline_work_key or legacy_declared_key
     declared_parent = numeric_issue(declared_key or "")
     if declared_parent is None:
         first_top = first_unfinished(top_items)
@@ -296,11 +308,18 @@ async def build_dashboard(client: GitHubClient, settings: Settings, repo: str) -
     issue_subitems = subitems_from_text(issue_body, parent_issue)
     roadmap_subitems = subitems_from_text(roadmap_block, parent_issue)
     subitems = merge_subitems(issue_subitems, roadmap_subitems)
-    pipeline_steps = merge_pipeline_work_status(
-        product_pipeline(roadmap_body),
-        subitems,
-    )
+    pipeline_steps = merge_pipeline_work_status(pipeline_steps, subitems)
     pipeline_projection = pipeline_window(pipeline_steps)
+    pipeline_now = pipeline_projection.get("now")
+    pipeline_active_key = (
+        str(pipeline_now.get("key"))
+        if (
+            pipeline_now
+            and pipeline_now.get("kind") == "WORK"
+            and pipeline_now.get("issue_number") == parent_issue
+        )
+        else None
+    )
 
     parent_item = next((item for item in top_items if item.key == str(parent_issue)), None)
     block_done = bool(
@@ -308,8 +327,20 @@ async def build_dashboard(client: GitHubClient, settings: Settings, repo: str) -
         or (subitems and all(item.done for item in subitems))
         or (parent_item and parent_item.done)
     )
-    active_subitem = None if block_done else first_unfinished(subitems)
-    active_key = active_subitem.key if active_subitem else str(parent_issue)
+    if block_done:
+        active_subitem = None
+    elif pipeline_active_key and pipeline_active_key != str(parent_issue):
+        active_subitem = next(
+            (item for item in subitems if item.key == pipeline_active_key),
+            first_unfinished(subitems),
+        )
+    else:
+        active_subitem = first_unfinished(subitems)
+    active_key = (
+        pipeline_active_key
+        if pipeline_active_key and not block_done
+        else active_subitem.key if active_subitem else str(parent_issue)
+    )
     explicit_in_progress = bool(
         (
             active_subitem
@@ -471,7 +502,7 @@ async def build_dashboard(client: GitHubClient, settings: Settings, repo: str) -
             "title": roadmap_raw.get("title"),
             "url": roadmap_raw.get("html_url"),
             "updated_at": roadmap_raw.get("updated_at"),
-            "declared_active": declared_key,
+            "declared_active": legacy_declared_key,
             "active_issue": parent_issue,
             "effective_active": active_key,
             "items": [item.to_dict() for item in focus_items(top_items, subitems, parent_issue)],

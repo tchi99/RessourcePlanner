@@ -4,7 +4,7 @@ import re
 from dataclasses import asdict, dataclass
 
 ACTIVE_PATTERNS = [
-    re.compile(r"prochaine tranche active est\s+\*{0,2}`?#?(\d+[A-Z]?)", re.IGNORECASE),
+    re.compile(r"prochaine tranche active(?:\s+du\s+flux\s+principal)? est\s+\*{0,2}`?#?(\d+[A-Z]?)", re.IGNORECASE),
     re.compile(r"prochaine tranche(?: produit)?\s+(?:est|:)\s+\*{0,2}`?#?(\d+[A-Z]?)", re.IGNORECASE),
     re.compile(r"#?(\d+[A-Z]?)\s+est\s+maintenant\s+la\s+tranche\s+active", re.IGNORECASE),
     re.compile(r"#?(\d+[A-Z]?)\s+est\s+(?:maintenant\s+)?la\s+tranche\s+produit\s+active", re.IGNORECASE),
@@ -19,8 +19,10 @@ GATE_DONE_WORDS = re.compile(
 PIPELINE_ARCHITECTURE = "ARCHITECTURE_GATE"
 PIPELINE_ENVIRONMENT = "ENVIRONMENT_GATE"
 PIPELINE_WORK = "WORK"
+PIPELINE_MAIN = "MAIN"
+PIPELINE_PARALLEL = "PARALLEL"
 ARCHITECTURE_GATE_WORDS = re.compile(
-    r"\b(?:ASTRA|analyse\s+architecturale|revue\s+architecturale|architecture\s+gate)\b",
+    r"\b(?:ASTRA|analyse\s+architectur(?:e|ale)|revue\s+architecturale|architecture\s+gate)\b",
     re.IGNORECASE,
 )
 ENVIRONMENT_GATE_WORDS = re.compile(
@@ -47,6 +49,7 @@ class PipelineStep:
     title: str
     kind: str
     done: bool
+    lane: str = PIPELINE_MAIN
     marker: str | None = None
     issue_number: int | None = None
     status: str | None = None
@@ -154,7 +157,11 @@ def _pipeline_identity(kind: str, issue_number: int, key: str) -> str:
     return key
 
 
-def _parse_pipeline_fragment(fragment: str) -> PipelineStep | None:
+def _parse_pipeline_fragment(
+    fragment: str,
+    *,
+    lane: str = PIPELINE_MAIN,
+) -> PipelineStep | None:
     cleaned = _clean_markdown(fragment).strip(" -")
     match = re.search(r"#(?P<key>\d+[A-Z]?)\b", cleaned, re.IGNORECASE)
     if not match:
@@ -170,6 +177,7 @@ def _parse_pipeline_fragment(fragment: str) -> PipelineStep | None:
         title=cleaned,
         kind=kind,
         done=_pipeline_done(cleaned, kind),
+        lane=lane,
         marker=marker,
         issue_number=issue_number,
         status=None,
@@ -282,9 +290,14 @@ def product_pipeline(body: str) -> list[PipelineStep]:
         line = raw.strip()
         if not line or re.fullmatch(r"(?:↓|→|->|\s)+", line):
             continue
+        line_lane = (
+            PIPELINE_PARALLEL
+            if re.match(r"^En\s+parall[eè]le\b", _clean_markdown(line), re.IGNORECASE)
+            else PIPELINE_MAIN
+        )
         fragments = re.split(r"\s*(?:→|->)\s*", line)
         for fragment in fragments:
-            step = _parse_pipeline_fragment(fragment)
+            step = _parse_pipeline_fragment(fragment, lane=line_lane)
             if not step:
                 continue
             identity = (step.key, step.issue_number)
@@ -355,27 +368,36 @@ def pipeline_window(
     *,
     next_count: int = 3,
 ) -> dict:
+    main_steps = [step for step in pipeline if step.lane != PIPELINE_PARALLEL]
+    parallel = [
+        step.to_dict()
+        for step in pipeline
+        if step.lane == PIPELINE_PARALLEL and not step.done
+    ]
     pending_index = next(
-        (index for index, step in enumerate(pipeline) if not step.done),
+        (index for index, step in enumerate(main_steps) if not step.done),
         None,
     )
+    completed_count = sum(1 for step in pipeline if step.done)
     if pending_index is None:
         return {
-            "completed_count": len(pipeline),
+            "completed_count": completed_count,
             "now": None,
+            "parallel": parallel,
             "next": [],
             "later": [],
         }
     return {
-        "completed_count": pending_index,
-        "now": pipeline[pending_index].to_dict(),
+        "completed_count": completed_count,
+        "now": main_steps[pending_index].to_dict(),
+        "parallel": parallel,
         "next": [
             step.to_dict()
-            for step in pipeline[pending_index + 1 : pending_index + 1 + next_count]
+            for step in main_steps[pending_index + 1 : pending_index + 1 + next_count]
         ],
         "later": [
             step.to_dict()
-            for step in pipeline[pending_index + 1 + next_count :]
+            for step in main_steps[pending_index + 1 + next_count :]
         ],
     }
 

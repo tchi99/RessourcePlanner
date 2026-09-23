@@ -42,6 +42,9 @@ h2 { margin: 4px 0 0; font-size: 20px; letter-spacing: -.02em; }
 .panel-foot { color: #617086; font-size: 11px; margin-top: 18px; line-height: 1.5; }
 
 .roadmap-list { padding: 13px 0 0; display: grid; gap: 4px; }
+.roadmap-pipeline { gap: 3px; }
+.roadmap-lane-label { margin: 10px 8px 2px; color: #617086; font-size: 10px; font-weight: 800; letter-spacing: .12em; }
+.roadmap-lane-label:first-child { margin-top: 0; }
 .roadmap-row { display: grid; grid-template-columns: 25px 1fr; gap: 8px; align-items: start; padding: 9px 8px; border-radius: 9px; }
 .roadmap-row.active { background: #172337; box-shadow: inset 2px 0 #6d9ee8; }
 .roadmap-mark { color: #506075; font-weight: 800; text-align: center; }

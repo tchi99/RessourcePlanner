@@ -8,6 +8,7 @@ export type PipelineStep = {
   title: string
   kind: PipelineKind
   done: boolean
+  lane: 'MAIN' | 'PARALLEL'
   marker: string | null
   issue_number: number | null
   status: string | null
@@ -113,6 +114,7 @@ export type Dashboard = {
     steps: PipelineStep[]
     completed_count: number
     now: PipelineStep | null
+    parallel: PipelineStep[]
     next: PipelineStep[]
     later: PipelineStep[]
   }

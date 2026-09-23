@@ -193,7 +193,7 @@ Le commit de `main` affiché dans le footer est uniquement une référence sur l
 
 ## Pipeline produit explicite du roadmap #55
 
-Le Cockpit conserve le resolver historique basé sur `Ordre actif :` pour déterminer l'issue/sous-tranche DEV active, ses PR, branches, CI, stalls et règles d'auto-chaining. En complément, il lit un **pipeline produit explicite** lorsque #55 contient une section dont le heading annonce une `Suite produit` ou un `Pipeline produit`.
+Lorsque #55 contient une section dont le heading annonce une `Suite produit` ou un `Pipeline produit`, ce **pipeline produit explicite devient la source canonique du focus courant** : il détermine l'issue/sous-tranche DEV active utilisée pour les PR, branches, CI, stalls et prompts. Le resolver historique basé sur `Ordre actif :` reste seulement un fallback de compatibilité pour les roadmaps plus anciens qui n'ont pas encore de pipeline explicite.
 
 Le contrat actuellement documenté dans #55 est déterministe :
 
@@ -219,7 +219,9 @@ WORK → WORK → WORK
 ENVIRONMENT_GATE
 ```
 
-La trajectoire n'est plus affichée sur le dashboard principal. Elle appartient au panneau **Product Owner**, où elle est organisée en groupes rétractables **Maintenant / Ensuite / Plus tard**.
+Le dashboard principal affiche une projection compacte du pipeline sous **Maintenant / Parallèle disponible / Ensuite**. Le panneau **Product Owner** conserve la trajectoire détaillée et rétractable sous **Maintenant / En parallèle / Ensuite / Plus tard**.
+
+Une ligne du bloc de trajectoire qui commence explicitement par `En parallèle` est classée dans la lane `PARALLEL`. Elle reste visible comme travail READY indépendant mais **ne bloque jamais l'avancement de la lane principale**. Les mentions simplement descriptives de parallélisme dans la table ou dans une justification ne changent pas automatiquement la lane.
 
 Chaque step y est lui-même rétractable :
 - une sous-tranche DEV charge la section exacte de son issue parent;
