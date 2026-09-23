@@ -249,6 +249,7 @@ def build_next_action_and_prompt(
     derived: dict[str, Any],
     roadmap_issue: int,
     merged_but_unmarked_pr: dict[str, Any] | None = None,
+    remaining_subitems: list[str] | None = None,
 ) -> tuple[str, str]:
     if block_done:
         return (
@@ -377,10 +378,18 @@ def build_next_action_and_prompt(
         f"Consulte l'issue #{parent_issue} et les ADR applicables dans docs/architecture/.",
     ]
     if can_chain_block:
-        lines.append(
-            f"Enchaîne autonomement les tranches restantes du bloc #{parent_issue} tant qu'aucune\n"
-            "condition d'arrêt d'AGENTS.md n'est rencontrée."
-        )
+        remaining = remaining_subitems or []
+        chain = " → ".join(remaining)
+        if chain:
+            lines.append(
+                f"Enchaîne autonomement {chain} dans cet ordre tant qu'aucune\n"
+                "condition d'arrêt d'AGENTS.md n'est rencontrée."
+            )
+        else:
+            lines.append(
+                f"Enchaîne autonomement les tranches restantes du bloc #{parent_issue} tant qu'aucune\n"
+                "condition d'arrêt d'AGENTS.md n'est rencontrée."
+            )
     return (
         f"Démarrer/reprendre {slice_key} dans le bloc #{parent_issue}.",
         "\n".join(lines),
