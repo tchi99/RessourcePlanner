@@ -447,7 +447,13 @@ def subitems_from_text(body: str, parent: int | str) -> list[WorkItem]:
             checked = match.groupdict().get("checked")
             done = marker == "✅" or checked in {"x", "X"}
             title = match.group("title").strip()
-            if DONE_WORDS.search(title) and re.search(r"\b(?:PR\s*#?\d+|CI\s*#?\d+|termin|complét|livr)", title, re.IGNORECASE):
+            if re.search(r"\bDONE\b", title, re.IGNORECASE):
+                done = True
+            elif DONE_WORDS.search(title) and re.search(
+                r"\b(?:PR\s*#?\d+|CI\s*#?\d+|termin|complét|livr)",
+                title,
+                re.IGNORECASE,
+            ):
                 done = True
             if key not in items:
                 items[key] = WorkItem(key=key, title=title, done=done, marker="✅" if done else marker, issue_number=int(parent_text))
