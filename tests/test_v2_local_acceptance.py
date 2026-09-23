@@ -305,7 +305,10 @@ class V2LocalAcceptanceTests(unittest.TestCase):
 
             periods = project_manager.put(
                 f"/api/v1/demands/{demand_number}/periods",
-                json=self._period_payload(cumulative_hours=12),
+                json={
+                    **self._period_payload(cumulative_hours=12),
+                    "expected_request_version": demand.json()["version"],
+                },
             )
             self.assertEqual(periods.status_code, 200, periods.text)
             self.assertEqual(periods.json()["period_count"], 3)
@@ -373,9 +376,16 @@ class V2LocalAcceptanceTests(unittest.TestCase):
             self._app(ROLE_PROJECT_MANAGER, display_name="Chargé E2E"),
             raise_server_exceptions=False,
         ) as project_manager:
+            current = project_manager.get(
+                f"/api/v1/demands/{demand_number}"
+            )
+            self.assertEqual(current.status_code, 200, current.text)
             changed = project_manager.put(
                 f"/api/v1/demands/{demand_number}/periods",
-                json=self._period_payload(cumulative_hours=16),
+                json={
+                    **self._period_payload(cumulative_hours=16),
+                    "expected_request_version": current.json()["version"],
+                },
             )
             self.assertEqual(changed.status_code, 200, changed.text)
             self.assertTrue(changed.json()["reapproval_required"])

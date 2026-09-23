@@ -374,9 +374,13 @@ class RequestLineMaterializationHttpTests(unittest.TestCase):
                     ],
                 }
                 for line_id, options in alternatives.items():
+                    request_version = client.get(
+                        f"/api/v1/demands/{number}"
+                    ).json()["version"]
                     replaced = client.put(
                         f"/api/v1/demands/{number}/lines/{line_id}/periods",
                         json={
+                            "expected_request_version": request_version,
                             "periods": [
                                 {
                                     "period_id": period_id,

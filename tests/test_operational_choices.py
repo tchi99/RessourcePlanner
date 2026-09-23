@@ -105,6 +105,19 @@ class VersionedOperationalChoicesApiTests(unittest.TestCase):
         }
 
     @staticmethod
+    def _with_request_version(
+        client: TestClient,
+        number: str,
+        payload: dict[str, object],
+    ) -> dict[str, object]:
+        demand = client.get(f"/api/v1/demands/{number}")
+        assert demand.status_code == 200, demand.text
+        return {
+            **payload,
+            "expected_request_version": demand.json()["version"],
+        }
+
+    @staticmethod
     def _active_requirements(session, request_id: str) -> list[ResourceRequirement]:
         return list(
             session.scalars(
@@ -129,7 +142,11 @@ class VersionedOperationalChoicesApiTests(unittest.TestCase):
                 number, line_id = self._create_line(client)
                 periods = client.put(
                     f"/api/v1/demands/{number}/lines/{line_id}/periods",
-                    json=self._alternatives(D1, D2),
+                    json=self._with_request_version(
+                        client,
+                        number,
+                        self._alternatives(D1, D2),
+                    ),
                 )
                 self.assertEqual(periods.status_code, 200, periods.text)
                 selected = client.put(
@@ -155,7 +172,11 @@ class VersionedOperationalChoicesApiTests(unittest.TestCase):
                 with TestClient(pm_app, raise_server_exceptions=False) as pm_client:
                     replaced = pm_client.put(
                         f"/api/v1/demands/{number}/lines/{line_id}/periods",
-                        json=self._alternatives(D3, D4),
+                        json=self._with_request_version(
+                            pm_client,
+                            number,
+                            self._alternatives(D3, D4),
+                        ),
                     )
                     self.assertEqual(replaced.status_code, 200, replaced.text)
                     self.assertTrue(replaced.json()["reapproval_required"])

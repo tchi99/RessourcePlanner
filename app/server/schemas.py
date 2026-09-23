@@ -249,6 +249,7 @@ class DemandPeriodRequest(StrictRequest):
 
 class DemandPeriodsReplaceRequest(StrictRequest):
     periods: list[DemandPeriodRequest]
+    expected_request_version: int = Field(ge=1)
 
 
 class DemandAlternativeSelectionRequest(StrictRequest):
@@ -272,6 +273,10 @@ class DemandWorkflowOptionalCommentRequest(DemandWorkflowVersionRequest):
 
 class DemandWorkflowRequiredCommentRequest(DemandWorkflowVersionRequest):
     comment: str = Field(min_length=1)
+
+
+class DemandApprovalRequest(DemandWorkflowOptionalCommentRequest):
+    expected_planning_version: int | None = Field(default=None, ge=1)
 
 
 class OptionalCommentRequest(StrictRequest):
@@ -374,6 +379,11 @@ class AtomicAllocationBaseRequest(StrictRequest):
     overallocation_policy: OverallocationPolicy | None = None
     expected_approval_revision_id: str | None = Field(default=None, min_length=1)
     expected_operational_version: int | None = Field(default=None, ge=1)
+
+
+class AllocationWindowExtensionProposalRequest(AllocationDropEvaluateRequest):
+    expected_request_version: int = Field(ge=1)
+    expected_approval_revision_id: str = Field(min_length=1)
 
 
 class AllocationExtendMoveRequest(AtomicAllocationBaseRequest):

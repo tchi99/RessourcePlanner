@@ -49,9 +49,16 @@ class DemandPeriodsReplaceCommand:
     number: str
     periods: tuple[DemandPeriodInput, ...]
     request_line_id: str | None = None
+    expected_request_version: int | None = None
 
     def __post_init__(self) -> None:
         _required(self.number, field="demand_number", message="Le numéro de demande est requis.")
+        if self.expected_request_version is not None and int(self.expected_request_version) < 1:
+            raise ApplicationValidationError(
+                "La version candidate attendue doit être au moins 1.",
+                code="demand_version_invalid",
+                context={"expected_request_version": self.expected_request_version},
+            )
 
 
 @dataclass(frozen=True, slots=True)

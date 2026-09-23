@@ -444,8 +444,8 @@ export default function DemandPeriodsPage({
         note: row.note.trim(),
       }));
       const result = selectedLine
-        ? await replaceDemandLinePeriods(selectedDemand.number, selectedLine.line_id, payload)
-        : await replaceDemandPeriods(selectedDemand.number, payload);
+        ? await replaceDemandLinePeriods(selectedDemand.number, selectedLine.line_id, payload, selectedDemand.version)
+        : await replaceDemandPeriods(selectedDemand.number, payload, selectedDemand.version);
       const refreshed = selectedLine
         ? await getDemandLinePeriods(selectedDemand.number, selectedLine.line_id)
         : await getDemandPeriods(selectedDemand.number);

@@ -82,6 +82,19 @@ class RequestLinePeriodApiTests(unittest.TestCase):
         return number, line_ids
 
     @staticmethod
+    def _with_request_version(
+        client: TestClient,
+        number: str,
+        payload: dict,
+    ) -> dict:
+        demand = client.get(f"/api/v1/demands/{number}")
+        assert demand.status_code == 200, demand.text
+        return {
+            **payload,
+            "expected_request_version": demand.json()["version"],
+        }
+
+    @staticmethod
     def _alternatives(prefix: str) -> dict:
         return {
             "periods": [
@@ -114,11 +127,19 @@ class RequestLinePeriodApiTests(unittest.TestCase):
 
                 first = client.put(
                     f"/api/v1/demands/{number}/lines/{line_a}/periods",
-                    json=self._alternatives("OPT"),
+                    json=self._with_request_version(
+                        client,
+                        number,
+                        self._alternatives("OPT"),
+                    ),
                 )
                 second = client.put(
                     f"/api/v1/demands/{number}/lines/{line_b}/periods",
-                    json=self._alternatives("OPT"),
+                    json=self._with_request_version(
+                        client,
+                        number,
+                        self._alternatives("OPT"),
+                    ),
                 )
                 self.assertEqual(first.status_code, 200, first.text)
                 self.assertEqual(second.status_code, 200, second.text)
@@ -233,7 +254,7 @@ class RequestLinePeriodApiTests(unittest.TestCase):
                 }
                 response = client.put(
                     f"/api/v1/demands/{number}/lines/{line_a}/periods",
-                    json=payload,
+                    json=self._with_request_version(client, number, payload),
                 )
                 self.assertEqual(response.status_code, 200, response.text)
 
@@ -258,14 +279,22 @@ class RequestLinePeriodApiTests(unittest.TestCase):
                 self.assertEqual(
                     client.put(
                         f"/api/v1/demands/{number}/lines/{line_a}/periods",
-                        json=self._alternatives("A"),
+                        json=self._with_request_version(
+                            client,
+                            number,
+                            self._alternatives("A"),
+                        ),
                     ).status_code,
                     200,
                 )
                 self.assertEqual(
                     client.put(
                         f"/api/v1/demands/{number}/lines/{line_b}/periods",
-                        json=self._alternatives("B"),
+                        json=self._with_request_version(
+                            client,
+                            number,
+                            self._alternatives("B"),
+                        ),
                     ).status_code,
                     200,
                 )
@@ -275,7 +304,7 @@ class RequestLinePeriodApiTests(unittest.TestCase):
                 changed["periods"][0]["end_date"] = D2.isoformat()
                 replaced = client.put(
                     f"/api/v1/demands/{number}/lines/{line_a}/periods",
-                    json=changed,
+                    json=self._with_request_version(client, number, changed),
                 )
                 self.assertEqual(replaced.status_code, 200, replaced.text)
                 a_rows = client.get(
@@ -294,7 +323,11 @@ class RequestLinePeriodApiTests(unittest.TestCase):
                 invalid_count["periods"][0]["resource_count"] = 2
                 rejected = client.put(
                     f"/api/v1/demands/{number}/lines/{line_a}/periods",
-                    json=invalid_count,
+                    json=self._with_request_version(
+                        client,
+                        number,
+                        invalid_count,
+                    ),
                 )
                 self.assertEqual(rejected.status_code, 422, rejected.text)
                 self.assertEqual(
@@ -320,7 +353,11 @@ class RequestLinePeriodApiTests(unittest.TestCase):
                 ).json()["lines"][0]["line_id"]
                 foreign = client.put(
                     f"/api/v1/demands/{number}/lines/{foreign_line}/periods",
-                    json=self._alternatives("FOREIGN"),
+                    json=self._with_request_version(
+                        client,
+                        number,
+                        self._alternatives("FOREIGN"),
+                    ),
                 )
                 self.assertEqual(foreign.status_code, 404, foreign.text)
                 self.assertEqual(

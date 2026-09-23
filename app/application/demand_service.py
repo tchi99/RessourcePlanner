@@ -63,6 +63,7 @@ from .repository_ports import (
     DemandOperationalChoiceRepositoryPort,
     DemandPeriodRepositoryPort,
     DemandRepositoryPort,
+    PlanningMutationVersionPort,
 )
 
 
@@ -115,6 +116,7 @@ class DemandService:
         current_user_id: str | None = None,
         permissions: Sequence[str] | None = None,
         roles: Sequence[str] | None = None,
+        planning_versions: PlanningMutationVersionPort | None = None,
         batch: Callable[[str], ContextManager[Any]] | None = None,
     ) -> None:
         self._demands = demands
@@ -131,6 +133,7 @@ class DemandService:
             PERMISSION_APPROVE_DEMANDS,
         )
         self._roles = tuple(str(role).strip().upper() for role in (roles or ()) if str(role).strip())
+        self._planning_versions = planning_versions
         self._batch = batch
 
     def _context(self, label: str) -> ContextManager[Any]:
@@ -430,6 +433,68 @@ class DemandService:
             context={"demand_number": number},
         )
 
+    def _candidate_decision_mutates_active_plan(
+        self,
+        decision: EnvelopeDecision,
+        *,
+        legacy_unknown_requires_reapproval: bool,
+    ) -> bool:
+        needs_approval = decision.decision == DECISION_REAPPROVAL_REQUIRED
+        if decision.decision == DECISION_APPROVAL_REFERENCE_UNKNOWN:
+            needs_approval = legacy_unknown_requires_reapproval
+        if needs_approval and PERMISSION_APPROVE_DEMANDS in self._permissions:
+            return True
+        return (
+            decision.reason == REASON_DELEGATED_TOLERANCE
+            and any(
+                change.code == REASON_DELEGATED_TOLERANCE
+                and change.entry_key
+                and change.candidate_hours is not None
+                for change in decision.changes
+            )
+        )
+
+    def _evaluate_candidate_for_handling(
+        self,
+        number: str,
+        *,
+        code_prefix: str,
+        context: Mapping[str, Any],
+        legacy_unknown_requires_reapproval: bool,
+    ) -> EnvelopeDecision:
+        policy = self._approval_envelope_policy
+        if policy is None:
+            raise ApplicationOperationError(
+                "La politique d'enveloppe approuvée n'est pas disponible.",
+                code="approval_envelope_policy_unavailable",
+                context={"demand_number": number},
+            )
+        decision = call_application_port(
+            lambda: policy.evaluate_candidate(
+                number,
+                actor_role=self._envelope_actor_role(),
+            ),
+            code_prefix=code_prefix,
+            context=context,
+        )
+        if (
+            self._planning_versions is not None
+            and self._candidate_decision_mutates_active_plan(
+                decision,
+                legacy_unknown_requires_reapproval=legacy_unknown_requires_reapproval,
+            )
+        ):
+            self._planning_versions.acquire()
+            decision = call_application_port(
+                lambda: policy.evaluate_candidate(
+                    number,
+                    actor_role=self._envelope_actor_role(),
+                ),
+                code_prefix=f"{code_prefix}_guarded",
+                context=context,
+            )
+        return decision
+
     def _handle_candidate_envelope_decision(
         self,
         number: str,
@@ -630,13 +695,11 @@ class DemandService:
                 and envelope_relevant_change
                 and self._approval_envelope_policy is not None
             ):
-                decision = call_application_port(
-                    lambda: self._approval_envelope_policy.evaluate_candidate(
-                        number,
-                        actor_role=self._envelope_actor_role(),
-                    ),
+                decision = self._evaluate_candidate_for_handling(
+                    number,
                     code_prefix="approval_envelope_compare",
                     context={"demand_number": number},
+                    legacy_unknown_requires_reapproval=legacy_unknown_requires_reapproval,
                 )
                 return self._handle_candidate_envelope_decision(
                     number,
@@ -651,7 +714,17 @@ class DemandService:
     ) -> tuple[Sequence[DemandPeriodReadModel], bool]:
         number = self._required_identifier(command.number, entity="demand")
         existing = self._demand_or_not_found(number)
-        self._assert_workflow_action(existing, ACTION_MODIFY)
+        if command.expected_request_version is None:
+            raise ApplicationValidationError(
+                "expected_request_version est requis pour remplacer les périodes.",
+                code="demand_version_required",
+                context={"demand_number": number},
+            )
+        self._assert_workflow_action(
+            existing,
+            ACTION_MODIFY,
+            expected_version=command.expected_request_version,
+        )
         request_line_id = self._period_line_scope(
             existing,
             command.request_line_id,
@@ -746,7 +819,10 @@ class DemandService:
             call_application_port(
                 lambda: self._demands.update(
                     number,
-                    status_update,
+                    {
+                        **status_update,
+                        "ExpectedVersion": command.expected_request_version,
+                    },
                     action="Modification périodes",
                     comment=comment,
                 ),
@@ -757,16 +833,14 @@ class DemandService:
                 },
             )
             if was_approved and self._approval_envelope_policy is not None:
-                decision = call_application_port(
-                    lambda: self._approval_envelope_policy.evaluate_candidate(
-                        number,
-                        actor_role=self._envelope_actor_role(),
-                    ),
+                decision = self._evaluate_candidate_for_handling(
+                    number,
                     code_prefix="approval_envelope_period_compare",
                     context={
                         "demand_number": number,
                         "request_line_id": request_line_id,
                     },
+                    legacy_unknown_requires_reapproval=True,
                 )
                 reapproval_required = self._handle_candidate_envelope_decision(
                     number,
@@ -774,6 +848,129 @@ class DemandService:
                     legacy_unknown_requires_reapproval=True,
                 )
         return tuple(updated), reapproval_required
+
+    def extend_candidate_window(
+        self,
+        number: str,
+        *,
+        request_line_id: str | None,
+        period_key: str | None,
+        target_day: date,
+        expected_request_version: int,
+    ) -> bool:
+        """Widen only the candidate source represented by one approved entry.
+
+        The exact line/period is mutated in place so sibling lines, alternatives,
+        selections, effort and stable identities remain untouched. The existing #13
+        envelope policy then decides whether the candidate needs reapproval or can be
+        approved directly. No materialized Shift is moved here.
+        """
+
+        identifier = self._required_identifier(number, entity="demand")
+        existing = self._demand_or_not_found(identifier)
+        self._assert_workflow_action(
+            existing,
+            ACTION_MODIFY,
+            expected_version=expected_request_version,
+        )
+        was_approved = existing.status == "En planification"
+        wanted_period = str(period_key or "").strip() or None
+        wanted_line = str(request_line_id or "").strip() or None
+        comment = (
+            "Extension de fenêtre candidate depuis le planning; "
+            "aucun déplacement n'est exécuté automatiquement"
+        )
+
+        with self._context("extend candidate demand window"):
+            if wanted_period is not None:
+                scoped_line = self._period_line_scope(existing, wanted_line)
+                changed = call_application_port(
+                    lambda: self._period_repository().extend_window(
+                        identifier,
+                        wanted_period,
+                        target_day,
+                        request_line_id=scoped_line,
+                    ),
+                    code_prefix="demand_period_window_extend",
+                    context={
+                        "demand_number": identifier,
+                        "request_line_id": scoped_line,
+                        "period_key": wanted_period,
+                    },
+                )
+                if changed:
+                    call_application_port(
+                        lambda: self._demands.update(
+                            identifier,
+                            {"ExpectedVersion": expected_request_version},
+                            action="Extension période candidate",
+                            comment=comment,
+                        ),
+                        code_prefix="demand_period_window_audit",
+                        context={
+                            "demand_number": identifier,
+                            "request_line_id": scoped_line,
+                            "period_key": wanted_period,
+                        },
+                    )
+            else:
+                changed = call_application_port(
+                    lambda: self._demands.extend_candidate_window(
+                        identifier,
+                        target_day,
+                        request_line_id=wanted_line,
+                        expected_version=expected_request_version,
+                        action="Extension fenêtre candidate",
+                        comment=comment,
+                    ),
+                    code_prefix="demand_window_extend",
+                    context={
+                        "demand_number": identifier,
+                        "request_line_id": wanted_line,
+                    },
+                )
+
+            if not changed:
+                return existing.status != "En planification"
+            if not was_approved:
+                return False
+
+            if self._approval_envelope_policy is None:
+                call_application_port(
+                    lambda: self._demands.update(
+                        identifier,
+                        {
+                            "Statut": "Soumise",
+                            "ApprouvePar": None,
+                            "DateApprobation": None,
+                            "CommentaireApprobation": (
+                                "Enveloppe de fenêtre modifiée après approbation — "
+                                "nouvelle approbation requise"
+                            ),
+                        },
+                        action="Extension fenêtre candidate",
+                        comment=f"{comment}; nouvelle approbation requise",
+                    ),
+                    code_prefix="demand_window_reapproval_fallback",
+                    context={"demand_number": identifier},
+                )
+                return True
+
+            decision = self._evaluate_candidate_for_handling(
+                identifier,
+                code_prefix="approval_envelope_window_compare",
+                context={
+                    "demand_number": identifier,
+                    "request_line_id": wanted_line,
+                    "period_key": wanted_period,
+                },
+                legacy_unknown_requires_reapproval=True,
+            )
+            return self._handle_candidate_envelope_decision(
+                identifier,
+                decision,
+                legacy_unknown_requires_reapproval=True,
+            )
 
     def select_alternative_command(
         self,

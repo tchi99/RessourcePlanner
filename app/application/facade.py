@@ -7,6 +7,7 @@ from .commands import (
     AllocationDuplicateCommand,
     AllocationExtendMoveCommand,
     AllocationSplitCommand,
+    AllocationWindowExtensionProposalCommand,
     DemandAlternativeSelectCommand,
     DemandOperationalConfirmationCommand,
     DemandApproveCommand,
@@ -32,7 +33,7 @@ from .commands import (
 )
 from .demand_service import DemandService
 from .demand_workflow_policy import DemandWorkflowReadModel
-from .errors import ApplicationOperationError
+from .errors import ApplicationConflictError, ApplicationOperationError
 from .planning_service import PlanningService
 from .repository_ports import PlanningMutationVersionPort
 from .quick_shift_service import QuickShiftService
@@ -226,6 +227,7 @@ class ApplicationFacade:
         return DemandMutationResult(_identifier(command.number), status="Soumise")
 
     def approve_demand(self, command: DemandApproveCommand) -> DemandMutationResult:
+        self._acquire_planning_version(command.expected_planning_version)
         summary = self._demands.approve_command(command)
         return DemandMutationResult(
             _identifier(command.number),
@@ -332,6 +334,63 @@ class ApplicationFacade:
         command: AllocationExtendMoveCommand,
     ) -> CompositeAllocationMutationResult:
         return self._composite_allocation_service().extend_and_move_command(command)
+
+    def propose_allocation_window_extension(
+        self,
+        command: AllocationWindowExtensionProposalCommand,
+    ) -> DemandMutationResult:
+        evaluation = self._composite_allocation_service().evaluate_drop_command(
+            AllocationDropEvaluateCommand(
+                allocation_id=command.allocation_id,
+                resource_id=command.resource_id,
+                day=command.day,
+                outside_standard_hours=command.outside_standard_hours,
+            )
+        )
+        if (
+            not evaluation.approval_revision_id
+            or evaluation.approval_revision_id != command.expected_approval_revision_id
+        ):
+            raise ApplicationConflictError(
+                "L'autorisation approuvée a changé depuis l'évaluation du déplacement.",
+                code="planning_authorization_revision_conflict",
+                context={
+                    "expected_approval_revision_id": command.expected_approval_revision_id,
+                    "current_approval_revision_id": evaluation.approval_revision_id,
+                },
+            )
+        if not any(
+            str(action.get("code") or "") == "PROPOSE_WINDOW_EXTENSION"
+            and bool(action.get("enabled", True))
+            for action in evaluation.actions
+        ):
+            raise ApplicationConflictError(
+                "La cible ne requiert plus une proposition d'extension candidate.",
+                code="allocation_window_proposal_stale",
+                context={
+                    "allocation_id": command.allocation_id,
+                    "authorization_decision": evaluation.authorization_decision,
+                },
+            )
+        if not evaluation.request_number:
+            raise ApplicationConflictError(
+                "Le quart n'est plus relié à une demande candidate.",
+                code="allocation_window_proposal_source_missing",
+                context={"allocation_id": command.allocation_id},
+            )
+
+        reapproval = self._demands.extend_candidate_window(
+            evaluation.request_number,
+            request_line_id=evaluation.request_line_id,
+            period_key=evaluation.period_key,
+            target_day=command.day,
+            expected_request_version=command.expected_request_version,
+        )
+        return DemandMutationResult(
+            demand_number=evaluation.request_number,
+            status="Soumise" if reapproval else "En planification",
+            reapproval_required=reapproval,
+        )
 
     def split_allocation(
         self,

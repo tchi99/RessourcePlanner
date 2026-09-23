@@ -150,6 +150,7 @@ def build_sql_facade(
             current_user_id=actor_user_id,
             permissions=permissions,
             roles=roles,
+            planning_versions=planning_versions,
         ),
         segments=SegmentService(segments, planning_commands, planning_authorization),
         allocations=AllocationService(allocation_commands),

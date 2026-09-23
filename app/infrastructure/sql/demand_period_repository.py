@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from datetime import date
 from decimal import Decimal
 
 from sqlalchemy import select
@@ -230,6 +231,36 @@ class SqlDemandPeriodRepository(DemandPeriodRepositoryPort):
             )
             for row in periods
         )
+
+    def extend_window(
+        self,
+        demand_number: str,
+        period_id: str,
+        target_day: date,
+        *,
+        request_line_id: str | None = None,
+    ) -> bool:
+        request = self._request(demand_number)
+        scoped_line_id = self._scope_line_id(request, request_line_id)
+        wanted = _text(period_id)
+        period = self._session.scalar(
+            select(WorkforceRequestPeriod).where(
+                WorkforceRequestPeriod.period_key == wanted,
+                WorkforceRequestPeriod.workforce_request_id == request.id,
+                WorkforceRequestPeriod.request_line_id == scoped_line_id,
+                WorkforceRequestPeriod.active.is_(True),
+            )
+        )
+        if period is None:
+            raise KeyError(f"Période {wanted} introuvable pour la ligne")
+        proposed_start = min(period.start_date, target_day)
+        proposed_end = max(period.end_date, target_day)
+        if proposed_start == period.start_date and proposed_end == period.end_date:
+            return False
+        period.start_date = proposed_start
+        period.end_date = proposed_end
+        self._session.flush()
+        return True
 
     def replace_for_demand(
         self,

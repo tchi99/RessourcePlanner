@@ -8,6 +8,7 @@ from ..application import (
     AllocationDuplicateCommand,
     AllocationExtendMoveCommand,
     AllocationSplitCommand,
+    AllocationWindowExtensionProposalCommand,
     ApplicationFacade,
     AvailabilityRuleCreateCommand,
     CompetencyCatalogService,
@@ -47,9 +48,11 @@ from .schemas import (
     AllocationExtendMoveRequest,
     AllocationMoveRequest,
     AllocationSplitRequest,
+    AllocationWindowExtensionProposalRequest,
     AvailabilityRuleCreateRequest,
     AvailabilityRuleUpdateRequest,
     DemandAlternativeSelectionRequest,
+    DemandApprovalRequest,
     DemandOperationalConfirmationRequest,
     DemandCreateRequest,
     DemandLineRequest,
@@ -330,6 +333,7 @@ def build_command_router(
         command = DemandPeriodsReplaceCommand(
             number=number,
             periods=tuple(DemandPeriodInput(**period.model_dump()) for period in body.periods),
+            expected_request_version=body.expected_request_version,
         )
         return _payload(facade.replace_demand_periods(command))
 
@@ -365,6 +369,7 @@ def build_command_router(
                 DemandPeriodInput(**period.model_dump())
                 for period in body.periods
             ),
+            expected_request_version=body.expected_request_version,
         )
         return _payload(facade.replace_demand_periods(command))
 
@@ -498,7 +503,7 @@ def build_command_router(
     @router.post("/demands/{number}/approve")
     def approve_demand(
         number: str,
-        body: DemandWorkflowOptionalCommentRequest,
+        body: DemandApprovalRequest,
         facade: ApplicationFacade = Depends(facade_dependency),
     ) -> dict[str, Any]:
         return _payload(
@@ -507,6 +512,7 @@ def build_command_router(
                     number=number,
                     comment=body.comment,
                     expected_version=body.expected_version,
+                    expected_planning_version=body.expected_planning_version,
                 )
             )
         )
@@ -690,6 +696,37 @@ def build_command_router(
                     **body.model_dump(),
                 )
             )
+        )
+
+    @router.post(
+        "/allocations/{allocation_id}/propose-window-extension",
+        status_code=status.HTTP_200_OK,
+    )
+    def propose_allocation_window_extension(
+        allocation_id: str,
+        body: AllocationWindowExtensionProposalRequest,
+        idempotency_key: str = Header(alias="Idempotency-Key"),
+        facade: ApplicationFacade = Depends(facade_dependency),
+        idempotency: IdempotentCommandExecutor = Depends(stable_idempotency),
+    ) -> dict[str, Any]:
+        request_payload = {
+            "operation": "PROPOSE_WINDOW_EXTENSION",
+            "allocation_id": allocation_id,
+            "body": _json_body(body),
+        }
+        return idempotency.execute(
+            scope="manual_allocation.propose_window_extension",
+            key=idempotency_key,
+            request_payload=request_payload,
+            action=lambda: _payload(
+                facade.propose_allocation_window_extension(
+                    AllocationWindowExtensionProposalCommand(
+                        allocation_id=allocation_id,
+                        correlation_id=idempotency_key,
+                        **body.model_dump(),
+                    )
+                )
+            ),
         )
 
     @router.post(

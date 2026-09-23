@@ -125,6 +125,8 @@ class PlanningDropEvaluationResult(ApplicationResult):
     planning_version: int
     approval_revision_id: str | None = None
     approved_entry_key: str | None = None
+    request_line_id: str | None = None
+    period_key: str | None = None
     approved_window: Mapping[str, Any] | None = None
     request_number: str | None = None
     request_version: int | None = None
@@ -161,6 +163,16 @@ class PlanningDropEvaluationResult(ApplicationResult):
             approved_entry_key=(
                 str(source.get("approved_entry_key"))
                 if source.get("approved_entry_key") is not None
+                else None
+            ),
+            request_line_id=(
+                str(source.get("request_line_id"))
+                if source.get("request_line_id") is not None
+                else None
+            ),
+            period_key=(
+                str(source.get("period_key"))
+                if source.get("period_key") is not None
                 else None
             ),
             approved_window=(
