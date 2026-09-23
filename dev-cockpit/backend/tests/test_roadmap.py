@@ -111,6 +111,37 @@ analyse architecture #362
 """
 
 
+CURRENT_FALSE_DONE_ROADMAP = """
+### Suite produit après #333 — bloc P1 puis préparation environnementale
+
+Chemin principal retenu :
+
+```text
+#291A ✅ → #291B ✅ → #291C ✅ → #291D ✅ → #291E ✅ → #291F ✅
+  ↓
+#292 qualifications/permis des actifs
+  ↓
+#399 demande d'annulation + résolution coordonnateur
+  ↓
+#276 routage d'approbation par tâches
+  ↓
+#278 dashboard Coordonnateur consolidé
+
+Livré en parallèle : #398 UX sidebar + liste Demandes — PR #400, CI #814
+  ↓
+si les accès externes manquent encore :
+analyse architecture #362 ✅ — main@4fb40665
+  ↓
+#362A → #362B → #362C → #362D → #362E → #362F
+  ↓
+#363 Verification
+```
+
+#291A–#291F sont maintenant terminés; le flux principal poursuit avec
+#292 → #399 → #276 → #278; #398 est livré via PR #400.
+"""
+
+
 ISSUE = """
 # #13 — périodes + enveloppe approuvée commune
 
@@ -247,6 +278,49 @@ class RoadmapTests(unittest.TestCase):
         )
         self.assertEqual(window["later"][0]["key"], "ASTRA-362")
         self.assertEqual(window["later"][0]["kind"], "ARCHITECTURE_GATE")
+
+    def test_completion_word_on_other_work_does_not_skip_main_pipeline(self):
+        pipeline = product_pipeline(CURRENT_FALSE_DONE_ROADMAP)
+        window = pipeline_window(pipeline)
+
+        self.assertEqual(window["now"]["key"], "292")
+        self.assertEqual(
+            [step["key"] for step in window["next"]],
+            ["399", "276", "278"],
+        )
+        by_key = {step.key: step for step in pipeline}
+        for key in ("292", "399", "276", "278"):
+            self.assertFalse(by_key[key].done)
+
+    def test_delivered_in_parallel_is_classified_as_parallel_and_done(self):
+        pipeline = product_pipeline(CURRENT_FALSE_DONE_ROADMAP)
+        step = next(item for item in pipeline if item.key == "398")
+
+        self.assertEqual(step.lane, "PARALLEL")
+        self.assertTrue(step.done)
+        self.assertNotIn(
+            "398",
+            [item["key"] for item in pipeline_window(pipeline)["parallel"]],
+        )
+
+    def test_explicit_numeric_completion_still_requires_own_segment(self):
+        body = """
+### Suite produit
+
+```text
+#292 qualifications
+  ↓
+#399 annulation
+```
+
+#292 — terminé via PR #405, CI #820.
+#399 dépend de #292 terminé.
+"""
+        pipeline = product_pipeline(body)
+        by_key = {step.key: step for step in pipeline}
+
+        self.assertTrue(by_key["292"].done)
+        self.assertFalse(by_key["399"].done)
 
     def test_parallel_work_never_blocks_main_pipeline_progression(self):
         body = CURRENT_PARALLEL_PIPELINE_ROADMAP.replace(
