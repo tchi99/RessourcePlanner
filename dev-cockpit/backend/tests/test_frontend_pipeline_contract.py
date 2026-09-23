@@ -3,7 +3,7 @@ import unittest
 
 
 class FrontendPipelineContractTests(unittest.TestCase):
-    def test_product_owner_owns_extended_pipeline_and_main_dashboard_does_not(self):
+    def test_dashboard_shows_canonical_horizons_and_po_keeps_extended_pipeline(self):
         cockpit_root = Path(__file__).resolve().parents[2]
         app = (cockpit_root / "frontend" / "src" / "App.tsx").read_text(
             encoding="utf-8"
@@ -15,13 +15,16 @@ class FrontendPipelineContractTests(unittest.TestCase):
             encoding="utf-8"
         )
 
-        self.assertNotIn("TRAJECTOIRE PRODUIT", app)
-        self.assertNotIn("data.pipeline.now", app)
+        self.assertIn("data.pipeline.now", app)
+        self.assertIn("data.pipeline.parallel", app)
+        self.assertIn("PARALLÈLE DISPONIBLE", app)
+        self.assertIn("ENSUITE", app)
 
         self.assertIn("Trajectoire produit", panel)
-        for label in ("Maintenant", "Ensuite", "Plus tard"):
+        for label in ("Maintenant", "En parallèle", "Ensuite", "Plus tard"):
             self.assertIn(label, panel)
         self.assertIn("dashboard.pipeline.now", panel)
+        self.assertIn("dashboard.pipeline.parallel", panel)
         self.assertIn("dashboard.pipeline.next", panel)
         self.assertIn("dashboard.pipeline.later", panel)
         self.assertIn("PipelineHorizonGroup", panel)
@@ -34,6 +37,8 @@ class FrontendPipelineContractTests(unittest.TestCase):
         self.assertIn("'ENVIRONMENT_GATE'", types)
         self.assertIn("status: string | null", types)
         self.assertIn("rationale: string | null", types)
+        self.assertIn("lane: 'MAIN' | 'PARALLEL'", types)
+        self.assertIn("parallel: PipelineStep[]", types)
 
 
 if __name__ == "__main__":
