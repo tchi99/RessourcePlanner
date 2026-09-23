@@ -469,6 +469,12 @@ function ProductOwnerDetails({ dashboard }: { dashboard: Dashboard | null }) {
               defaultOpen
             />
             <PipelineHorizonGroup
+              label="En parallèle"
+              steps={dashboard.pipeline.parallel}
+              repo={dashboard.repo}
+              currentKey={dashboard.pipeline.now?.key}
+            />
+            <PipelineHorizonGroup
               label="Ensuite"
               steps={dashboard.pipeline.next}
               repo={dashboard.repo}
