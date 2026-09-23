@@ -99,21 +99,13 @@ def evaluate_asset_qualification(
     required_ids = tuple(row.id for row in required)
     required_names = tuple(row.name for row in required)
 
-    if not required_ids:
-        operator = (
-            session.get(Resource, allocation.operator_resource_id)
-            if allocation is not None and allocation.operator_resource_id
-            else None
-        )
-        return AssetQualification(
-            state=QUALIFICATION_SATISFIED,
-            required_competency_ids=required_ids,
-            required_competency_names=required_names,
-            operator_resource_id=operator.id if operator is not None else None,
-            operator_resource_name=operator.name if operator is not None else None,
-        )
-
     if allocation is None or not allocation.operator_resource_id:
+        if not required_ids:
+            return AssetQualification(
+                state=QUALIFICATION_SATISFIED,
+                required_competency_ids=required_ids,
+                required_competency_names=required_names,
+            )
         return AssetQualification(
             state=QUALIFICATION_MISSING_OPERATOR,
             required_competency_ids=required_ids,
