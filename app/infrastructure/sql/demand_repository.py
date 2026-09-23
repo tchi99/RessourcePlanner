@@ -802,7 +802,6 @@ class SqlDemandRepository(DemandRepositoryPort):
         comment: str = "",
     ) -> bool:
         request = self._request(number)
-        current_version = int(request.aggregate_version or 1)
         self._acquire_request_version(request, expected_version)
 
         previous_status = request.status
