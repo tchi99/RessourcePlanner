@@ -744,6 +744,142 @@ test("V2 local acceptance path runs through React, Chromium, FastAPI and SQLite"
 });
 
 
+test("REQUEST window proposal never replays the original drag after direct approval", async ({ browser }) => {
+  test.setTimeout(120_000);
+  const { d1, d2, d3, d5 } = acceptanceDates();
+  const { context, page } = await openAs(browser, "COORDINATOR");
+
+  const created = await page.request.post("/api/v1/demands", {
+    data: {
+      project_number: "P-251",
+      desired_start: d2,
+      desired_end: d2,
+      estimated_hours: 2,
+      proposed_technician: "Alice",
+      description: "Proposition fenêtre DnD #333C",
+      submit: true,
+    },
+  });
+  expect(created.status(), await created.text()).toBe(201);
+  const demandNumber = (await created.json()).demand_number as string;
+
+  const demandBeforeApproval = await page.request.get(
+    `/api/v1/demands/${encodeURIComponent(demandNumber)}`,
+  );
+  expect(demandBeforeApproval.ok()).toBeTruthy();
+  const demandVersion = (await demandBeforeApproval.json()).version as number;
+  const snapshotBeforeApproval = await page.request.get(
+    `/api/v1/planning/snapshot?start=${d1}&end=${d5}&scope=global`,
+  );
+  expect(snapshotBeforeApproval.ok()).toBeTruthy();
+  const planningVersion = (await snapshotBeforeApproval.json()).planning_version as number;
+
+  const approved = await page.request.post(
+    `/api/v1/demands/${encodeURIComponent(demandNumber)}/approve`,
+    {
+      data: {
+        comment: "Approbation initiale DnD #333C",
+        expected_version: demandVersion,
+        expected_planning_version: planningVersion,
+      },
+    },
+  );
+  expect(approved.status(), await approved.text()).toBe(200);
+
+  const shiftsResponse = await page.request.get(
+    `/api/v1/shifts?start=${d1}&end=${d5}`,
+  );
+  expect(shiftsResponse.ok()).toBeTruthy();
+  const shift = (await shiftsResponse.json() as Array<{
+    allocation_id: string;
+    segment_id: string;
+    demand_number: string | null;
+    resource_name: string;
+    work_date: string;
+  }>).find((row) => row.demand_number === demandNumber);
+  expect(shift, "Quart REQUEST #333C introuvable après approbation").toBeDefined();
+  expect(shift!.resource_name).toBe("Alice");
+  expect(shift!.work_date).toBe(d2);
+
+  await navigateMain(page, "Planning opérationnel");
+  await page.getByRole("button", { name: /Suivante/ }).click();
+  await page.getByLabel("Recherche").fill(demandNumber);
+
+  const aliceRow = page.locator(".resource-identity").filter({ hasText: "Alice" }).first().locator("..");
+  const bobRow = page.locator(".resource-identity").filter({ hasText: "Bob" }).first().locator("..");
+  const source = aliceRow
+    .locator(`.planning-drop-day[data-day="${d2}"]`)
+    .locator(`.shift-card[data-allocation-id="${shift!.allocation_id}"]`);
+  const target = bobRow.locator(`.planning-drop-day[data-day="${d3}"]`);
+  await expect(source).toBeVisible();
+
+  await dragWithDataTransfer(page, source, target);
+  let dialog = page.getByRole("dialog", { name: "Choisir l’action du déplacement" });
+  await expect(dialog).toContainText("Extension hors enveloppe approuvée");
+  await expect(
+    dialog.getByRole("button", { name: "Soumettre l'extension de période", exact: true }),
+  ).toBeVisible();
+
+  const proposalPromise = page.waitForResponse((response) => (
+    response.request().method() === "POST"
+    && response.url().includes(
+      `/api/v1/allocations/${encodeURIComponent(shift!.allocation_id)}/propose-window-extension`,
+    )
+  ));
+  await dialog.getByRole("button", { name: "Soumettre l'extension de période", exact: true }).click();
+  const proposal = await proposalPromise;
+  expect(proposal.status(), await proposal.text()).toBe(200);
+  expect(proposal.request().headers()["idempotency-key"]).toBeTruthy();
+  const proposalResult = await proposal.json() as {
+    status: string | null;
+    reapproval_required: boolean;
+  };
+  expect(proposalResult.reapproval_required).toBeFalsy();
+  expect(proposalResult.status).toBe("En planification");
+  await expect(page.locator(".planning-drag-feedback")).toContainText("Extension approuvée");
+  await expect(page.locator(".planning-drag-feedback")).toContainText("Aucun quart n’a été déplacé");
+
+  const afterProposalResponse = await page.request.get(
+    `/api/v1/shifts?start=${d1}&end=${d5}`,
+  );
+  const unchangedShift = (await afterProposalResponse.json() as Array<{
+    allocation_id: string;
+    resource_name: string;
+    work_date: string;
+  }>).find((row) => row.allocation_id === shift!.allocation_id);
+  expect(unchangedShift?.resource_name).toBe("Alice");
+  expect(unchangedShift?.work_date).toBe(d2);
+
+  const segmentAfterProposal = await page.request.get(
+    `/api/v1/segments/${encodeURIComponent(shift!.segment_id)}`,
+  );
+  expect(segmentAfterProposal.ok()).toBeTruthy();
+  expect((await segmentAfterProposal.json()).end_date).toBe(d3);
+
+  await expect(source).toBeVisible();
+  await dragWithDataTransfer(page, source, target);
+  dialog = page.getByRole("dialog", { name: "Choisir l’action du déplacement" });
+  await expect(dialog.getByRole("button", { name: "Déplacer", exact: true })).toBeVisible();
+  await expect(
+    dialog.getByRole("button", { name: "Soumettre l'extension de période", exact: true }),
+  ).toHaveCount(0);
+  await dialog.getByRole("button", { name: "Annuler", exact: true }).click();
+
+  const afterCancelResponse = await page.request.get(
+    `/api/v1/shifts?start=${d1}&end=${d5}`,
+  );
+  const afterCancel = (await afterCancelResponse.json() as Array<{
+    allocation_id: string;
+    resource_name: string;
+    work_date: string;
+  }>).find((row) => row.allocation_id === shift!.allocation_id);
+  expect(afterCancel?.resource_name).toBe("Alice");
+  expect(afterCancel?.work_date).toBe(d2);
+
+  await closeContext(context);
+});
+
+
 test("coordinator splits and duplicates a shift atomically from React", async ({ browser }) => {
   test.setTimeout(120_000);
   const { d1, d2, d5 } = acceptanceDates();
