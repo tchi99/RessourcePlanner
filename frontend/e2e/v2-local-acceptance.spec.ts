@@ -857,20 +857,30 @@ test("REQUEST window proposal never replays the original drag after direct appro
   );
   const unchangedShift = (await afterProposalResponse.json() as Array<{
     allocation_id: string;
+    segment_id: string;
+    demand_number: string | null;
     resource_name: string;
     work_date: string;
-  }>).find((row) => row.allocation_id === shift!.allocation_id);
-  expect(unchangedShift?.resource_name).toBe("Alice");
-  expect(unchangedShift?.work_date).toBe(sourceDay);
+    allocation_type: string | null;
+  }>).find((row) => (
+    row.demand_number === demandNumber
+    && row.allocation_type !== "Hors horaire requis"
+  ));
+  expect(unchangedShift, "Quart REQUEST frais introuvable après approbation de l’extension").toBeDefined();
+  expect(unchangedShift!.resource_name).toBe("Alice");
+  expect(unchangedShift!.work_date).toBe(sourceDay);
 
   const segmentAfterProposal = await page.request.get(
-    `/api/v1/segments/${encodeURIComponent(shift!.segment_id)}`,
+    `/api/v1/segments/${encodeURIComponent(unchangedShift!.segment_id)}`,
   );
   expect(segmentAfterProposal.ok()).toBeTruthy();
   expect((await segmentAfterProposal.json()).end_date).toBe(targetDay);
 
-  await expect(source).toBeVisible();
-  await dragWithDataTransfer(page, source, target);
+  const refreshedSource = aliceRow
+    .locator(`.planning-drop-day[data-day="${sourceDay}"]`)
+    .locator(`.shift-card[data-allocation-id="${unchangedShift!.allocation_id}"]`);
+  await expect(refreshedSource).toBeVisible();
+  await dragWithDataTransfer(page, refreshedSource, target);
   dialog = page.getByRole("dialog", { name: "Choisir l’action du déplacement" });
   await expect(dialog.getByRole("button", { name: "Déplacer", exact: true })).toBeVisible();
   await expect(
@@ -883,11 +893,17 @@ test("REQUEST window proposal never replays the original drag after direct appro
   );
   const afterCancel = (await afterCancelResponse.json() as Array<{
     allocation_id: string;
+    demand_number: string | null;
     resource_name: string;
     work_date: string;
-  }>).find((row) => row.allocation_id === shift!.allocation_id);
-  expect(afterCancel?.resource_name).toBe("Alice");
-  expect(afterCancel?.work_date).toBe(sourceDay);
+    allocation_type: string | null;
+  }>).find((row) => (
+    row.demand_number === demandNumber
+    && row.allocation_type !== "Hors horaire requis"
+  ));
+  expect(afterCancel, "Le nouveau DnD annulé ne doit supprimer aucun quart REQUEST comptabilisé").toBeDefined();
+  expect(afterCancel!.resource_name).toBe("Alice");
+  expect(afterCancel!.work_date).toBe(sourceDay);
 
   await closeContext(context);
 });
