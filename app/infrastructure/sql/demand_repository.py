@@ -758,6 +758,86 @@ class SqlDemandRepository(DemandRepositoryPort):
         self._session.flush()
         return number
 
+    def extend_candidate_window(
+        self,
+        number: str,
+        target_day: date,
+        *,
+        request_line_id: str | None = None,
+        expected_version: int,
+        action: str,
+        comment: str = "",
+    ) -> bool:
+        request = self._request(number)
+        current_version = int(request.aggregate_version or 1)
+        if int(expected_version) != current_version:
+            raise ApplicationConflictError(
+                "La demande a été modifiée depuis sa lecture.",
+                code="demand_version_conflict",
+                context={
+                    "demand_number": _text(request.legacy_demand_number) or request.id,
+                    "expected_version": int(expected_version),
+                    "current_version": current_version,
+                },
+            )
+
+        previous_status = request.status
+        changed_fields: tuple[str, ...]
+        if bool(request.line_mode):
+            wanted = _text(request_line_id)
+            if not wanted:
+                raise KeyError("La ligne candidate est requise.")
+            line = self._session.scalar(
+                select(RequestLine).where(
+                    RequestLine.id == wanted,
+                    RequestLine.workforce_request_id == request.id,
+                    RequestLine.active.is_(True),
+                )
+            )
+            if line is None or line.desired_start is None:
+                raise KeyError(f"Ligne {wanted} introuvable pour la demande.")
+            proposed_start = min(line.desired_start, target_day)
+            proposed_end = max(line.desired_end or line.desired_start, target_day)
+            if proposed_start == line.desired_start and proposed_end == line.desired_end:
+                return False
+            line.desired_start = proposed_start
+            line.desired_end = proposed_end
+            active_lines = tuple(
+                self._session.scalars(
+                    select(RequestLine)
+                    .where(
+                        RequestLine.workforce_request_id == request.id,
+                        RequestLine.active.is_(True),
+                    )
+                    .order_by(RequestLine.position, RequestLine.id)
+                ).all()
+            )
+            self._sync_flat_summary_from_lines(request, active_lines)
+            changed_fields = (f"RequestLine[{wanted}].DateWindow",)
+        else:
+            if request.desired_start is None:
+                raise KeyError("La fenêtre candidate de la demande est incomplète.")
+            proposed_start = min(request.desired_start, target_day)
+            proposed_end = max(request.desired_end or request.desired_start, target_day)
+            if proposed_start == request.desired_start and proposed_end == request.desired_end:
+                return False
+            request.desired_start = proposed_start
+            request.desired_end = proposed_end
+            self._sync_legacy_request_line(request)
+            changed_fields = ("DateDebutSouhaitee", "DateFinSouhaitee")
+
+        request.aggregate_version = current_version + 1
+        self._session.flush()
+        self._append_history(
+            request,
+            action=_text(action) or "Modification",
+            comment=_text(comment),
+            previous_status=previous_status,
+            changed_fields=changed_fields,
+        )
+        self._session.flush()
+        return True
+
     def update(
         self,
         number: str,
