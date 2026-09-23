@@ -1493,3 +1493,58 @@ test("development identity selector switches real local users and technician sch
 
   await context.close();
 });
+
+test("desktop sidebar collapse persists and Demands workspace remains responsive", async ({ browser }) => {
+  const context = await browser.newContext({
+    baseURL: BASE_URL,
+    locale: "fr-CA",
+    viewport: { width: 1440, height: 900 },
+    extraHTTPHeaders: { "X-E2E-Role": "COORDINATOR" },
+  });
+  const page = await context.newPage();
+  await page.goto("/");
+
+  const shell = page.locator(".app-shell");
+  const sidebar = page.locator(".app-sidebar");
+  const collapseButton = sidebar.getByRole("button", { name: "Réduire la navigation" });
+
+  await expect(collapseButton).toBeVisible();
+  expect(await sidebar.evaluate((node) => node.getBoundingClientRect().width)).toBeGreaterThan(230);
+
+  await collapseButton.click();
+  await expect(shell).toHaveClass(/is-sidebar-compact/);
+  await expect(sidebar.getByRole("button", { name: "Déployer la navigation" })).toBeVisible();
+  expect(await sidebar.evaluate((node) => node.getBoundingClientRect().width)).toBeLessThan(80);
+  expect(await page.evaluate(() => window.localStorage.getItem("resourceplanner.sidebar.compact"))).toBe("true");
+
+  await navigateMain(page, "Demandes");
+  await expect(page.getByRole("heading", { name: "Demandes", level: 1 })).toBeVisible();
+
+  const workspace = page.locator(".demands-workspace");
+  const listPanel = page.locator(".demand-list-panel");
+  const editorPanel = page.locator(".demand-editor-panel");
+  const listWidth = await listPanel.evaluate((node) => node.getBoundingClientRect().width);
+  const detailWidth = await editorPanel.evaluate((node) => node.getBoundingClientRect().width);
+  expect(listWidth).toBeGreaterThanOrEqual(390);
+  expect(listWidth).toBeLessThanOrEqual(430);
+  expect(detailWidth).toBeGreaterThan(500);
+  await expect(workspace).toBeVisible();
+
+  const projectName = page.locator(".demand-project span").first();
+  await expect(projectName).toBeVisible();
+  expect(await projectName.evaluate((node) => getComputedStyle(node).webkitLineClamp)).toBe("2");
+
+  await page.reload();
+  await expect(page.locator(".app-shell")).toHaveClass(/is-sidebar-compact/);
+  await expect(page.locator(".app-sidebar").getByRole("button", { name: "Déployer la navigation" })).toBeVisible();
+
+  await page.setViewportSize({ width: 800, height: 900 });
+  const mobileMenu = page.getByRole("button", { name: "Ouvrir la navigation" });
+  await expect(mobileMenu).toBeVisible();
+  await mobileMenu.click();
+  await expect(page.locator(".sidebar-backdrop")).toBeVisible();
+  expect(await page.locator(".app-sidebar").evaluate((node) => node.getBoundingClientRect().width)).toBeGreaterThan(230);
+  await expect(page.locator(".main-nav").getByRole("button", { name: "Demandes" })).toBeVisible();
+
+  await closeContext(context);
+});
