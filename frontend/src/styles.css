@@ -419,7 +419,7 @@ h1 { font-size: 1.6rem; }
   gap: .45rem;
   margin: 0;
   padding: .65rem .75rem;
-  border: 1px solid #e7b5b5;
+  border: 1px solid rgb(231 181 181);
   border-radius: 9px;
   background: #fff8f8;
 }
