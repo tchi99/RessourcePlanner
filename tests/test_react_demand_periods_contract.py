@@ -61,8 +61,8 @@ class ReactDemandPeriodsContractTests(unittest.TestCase):
             encoding="utf-8"
         )
 
-        self.assertIn("await replaceDemandPeriods(selectedDemand.number, payload)", source)
-        self.assertIn("await replaceDemandLinePeriods(selectedDemand.number, selectedLine.line_id, payload)", source)
+        self.assertIn("await replaceDemandPeriods(selectedDemand.number, payload, selectedDemand.version)", source)
+        self.assertIn("await replaceDemandLinePeriods(selectedDemand.number, selectedLine.line_id, payload, selectedDemand.version)", source)
         self.assertIn("result.reapproval_required", source)
         self.assertIn("le plan approuvé précédent reste inchangé", source)
         self.assertIn("await selectDemandAlternative(selectedDemand.number, group, periodId)", source)
