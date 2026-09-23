@@ -4,6 +4,8 @@ from typing import Any, Callable
 
 from fastapi import APIRouter, Depends, Header, status
 from ..application import (
+    AllocationDuplicateCommand,
+    AllocationSplitCommand,
     ApplicationFacade,
     AvailabilityRuleCreateCommand,
     CompetencyCatalogService,
@@ -38,7 +40,9 @@ from ..application import (
     WorkPackageUpdateCommand,
 )
 from .schemas import (
+    AllocationDuplicateRequest,
     AllocationMoveRequest,
+    AllocationSplitRequest,
     AvailabilityRuleCreateRequest,
     AvailabilityRuleUpdateRequest,
     DemandAlternativeSelectionRequest,
@@ -123,8 +127,10 @@ def build_command_router(
     facade_dependency: FacadeProvider,
     idempotency_dependency: IdempotencyProvider,
     competency_dependency: CompetencyProvider,
+    stable_idempotency_dependency: IdempotencyProvider | None = None,
 ) -> APIRouter:
     router = APIRouter(prefix="/api/v1", tags=["commands"])
+    stable_idempotency = stable_idempotency_dependency or idempotency_dependency
 
     @router.post("/resources", status_code=status.HTTP_201_CREATED)
     def create_resource(
@@ -665,6 +671,68 @@ def build_command_router(
                     **values,
                 )
             )
+        )
+
+    @router.post(
+        "/allocations/{allocation_id}/split",
+        status_code=status.HTTP_201_CREATED,
+    )
+    def split_allocation(
+        allocation_id: str,
+        body: AllocationSplitRequest,
+        idempotency_key: str = Header(alias="Idempotency-Key"),
+        facade: ApplicationFacade = Depends(facade_dependency),
+        idempotency: IdempotentCommandExecutor = Depends(stable_idempotency),
+    ) -> dict[str, Any]:
+        request_payload = {
+            "operation": "SPLIT",
+            "allocation_id": allocation_id,
+            "body": _json_body(body),
+        }
+        return idempotency.execute(
+            scope="manual_allocation.split",
+            key=idempotency_key,
+            request_payload=request_payload,
+            action=lambda: _payload(
+                facade.split_allocation(
+                    AllocationSplitCommand(
+                        allocation_id=allocation_id,
+                        correlation_id=idempotency_key,
+                        **body.model_dump(),
+                    )
+                )
+            ),
+        )
+
+    @router.post(
+        "/allocations/{allocation_id}/duplicate",
+        status_code=status.HTTP_201_CREATED,
+    )
+    def duplicate_allocation(
+        allocation_id: str,
+        body: AllocationDuplicateRequest,
+        idempotency_key: str = Header(alias="Idempotency-Key"),
+        facade: ApplicationFacade = Depends(facade_dependency),
+        idempotency: IdempotentCommandExecutor = Depends(stable_idempotency),
+    ) -> dict[str, Any]:
+        request_payload = {
+            "operation": "DUPLICATE",
+            "allocation_id": allocation_id,
+            "body": _json_body(body),
+        }
+        return idempotency.execute(
+            scope="manual_allocation.duplicate",
+            key=idempotency_key,
+            request_payload=request_payload,
+            action=lambda: _payload(
+                facade.duplicate_allocation(
+                    AllocationDuplicateCommand(
+                        allocation_id=allocation_id,
+                        correlation_id=idempotency_key,
+                        **body.model_dump(),
+                    )
+                )
+            ),
         )
 
     @router.post("/allocations/{allocation_id}/move")

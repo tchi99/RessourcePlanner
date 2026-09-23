@@ -192,6 +192,29 @@ def make_idempotency_dependency(
     return dependency
 
 
+def make_stable_idempotency_dependency(
+    factory: SqlSessionFactory,
+    *,
+    actor_name: str = "api",
+    session_dependency: SessionDependency | None = None,
+) -> IdempotencyDependency:
+    """Use the authenticated stable local user id for new durable command keys."""
+
+    request_session = session_dependency or make_session_dependency(factory)
+
+    def dependency(
+        request: Request,
+        session: Session = Depends(request_session),
+    ) -> Iterator[IdempotentCommandExecutor]:
+        stable_actor = _request_actor_user_id(request) or _request_actor(request, actor_name)
+        yield build_sql_idempotency_executor(
+            session,
+            actor_name=stable_actor,
+        )
+
+    return dependency
+
+
 def make_query_dependency(
     factory: SqlSessionFactory,
     *,
@@ -422,6 +445,11 @@ def create_api_app(
         actor_name=actor_name,
         session_dependency=session_dependency,
     )
+    stable_idempotency_dependency = make_stable_idempotency_dependency(
+        factory,
+        actor_name=actor_name,
+        session_dependency=session_dependency,
+    )
     query_dependency = make_query_dependency(
         factory,
         session_dependency=session_dependency,
@@ -489,6 +517,7 @@ def create_api_app(
     app.state.session_factory = factory
     app.state.facade_dependency = facade_dependency
     app.state.idempotency_dependency = idempotency_dependency
+    app.state.stable_idempotency_dependency = stable_idempotency_dependency
     app.state.query_dependency = query_dependency
     app.state.operational_contact_dependency = operational_contact_dependency
     app.state.user_admin_dependency = user_admin_dependency
@@ -584,6 +613,7 @@ def create_api_app(
             facade_dependency,
             idempotency_dependency,
             competency_dependency,
+            stable_idempotency_dependency,
         )
     )
     app.include_router(

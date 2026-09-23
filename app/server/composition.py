@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from ..application import (
     AllocationService,
     ApplicationFacade,
+    CompositeAllocationService,
     BusinessContactAdminService,
     CompetencyCatalogService,
     DemandRequesterService,
@@ -36,6 +37,7 @@ from ..infrastructure.sql import (
     OverallocationAuditedSegmentRepository,
     SqlBusinessContactAdminRepository,
     SqlCommandIdempotencyAdapter,
+    SqlCompositeAllocationCommandAdapter,
     SqlCompetencyCatalogRepository,
     SqlDemandApprovalEnvelopePolicyRepository,
     SqlDemandPeriodRepository,
@@ -115,6 +117,13 @@ def build_sql_facade(
         journal,
         session,
     )
+    composite_allocation_commands = SqlCompositeAllocationCommandAdapter(
+        session,
+        planning=planning_commands,
+        authorization=planning_authorization,
+        versioning=planning_versions,
+        journal=journal,
+    )
     approved_sync = EmergencyAwareApprovedDemandSyncAdapter(
         SqlPeriodAwareApprovedDemandSyncAdapter(session),
         journal,
@@ -145,6 +154,7 @@ def build_sql_facade(
         segments=SegmentService(segments, planning_commands, planning_authorization),
         allocations=AllocationService(allocation_commands),
         quick_shifts=QuickShiftService(segments, allocation_commands),
+        composite_allocations=CompositeAllocationService(composite_allocation_commands),
         planning=PlanningService(planning_commands),
         work_packages=WorkPackageService(work_packages),
         resource_admin=ResourceAdminService(resources),

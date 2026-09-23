@@ -360,6 +360,24 @@ class ManualAllocationRequest(ResourceReferenceRequest):
     overallocation_policy: OverallocationPolicy | None = None
 
 
+class AtomicAllocationBaseRequest(StrictRequest):
+    resource_id: str = Field(min_length=1)
+    day: date
+    expected_planning_version: int = Field(ge=1)
+    outside_standard_hours: bool | None = None
+    overallocation_policy: OverallocationPolicy | None = None
+    expected_approval_revision_id: str | None = Field(default=None, min_length=1)
+    expected_operational_version: int | None = Field(default=None, ge=1)
+
+
+class AllocationSplitRequest(AtomicAllocationBaseRequest):
+    transfer_hours: float = Field(gt=0)
+
+
+class AllocationDuplicateRequest(AtomicAllocationBaseRequest):
+    pass
+
+
 class QuickShiftRequest(StrictRequest):
     project_number: str
     technician: str
