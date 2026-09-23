@@ -291,6 +291,58 @@ class ServerDemandPeriodRouteTests(unittest.TestCase):
             finally:
                 engine.dispose()
 
+    def test_period_replace_rejects_stale_request_version(self) -> None:
+        with TemporaryDirectory() as directory:
+            database_url = self._database(directory)
+            app = create_api_app(database_url, actor_name="coord-version-test")
+            with TestClient(app, raise_server_exceptions=False) as client:
+                created = client.post(
+                    "/api/v1/demands",
+                    json={
+                        "project_number": "P-1",
+                        "desired_start": D1.isoformat(),
+                        "desired_end": D2.isoformat(),
+                        "estimated_hours": 8,
+                    },
+                )
+                self.assertEqual(created.status_code, 201, created.text)
+                number = created.json()["demand_number"]
+                initial = client.get(f"/api/v1/demands/{number}")
+                self.assertEqual(initial.status_code, 200, initial.text)
+                version = initial.json()["version"]
+
+                first = client.put(
+                    f"/api/v1/demands/{number}/periods",
+                    json={
+                        **self._alternatives(),
+                        "expected_request_version": version,
+                    },
+                )
+                self.assertEqual(first.status_code, 200, first.text)
+
+                stale = client.put(
+                    f"/api/v1/demands/{number}/periods",
+                    json={
+                        **self._alternatives(second_hours=10),
+                        "expected_request_version": version,
+                    },
+                )
+                self.assertEqual(stale.status_code, 409, stale.text)
+                self.assertEqual(
+                    stale.json()["error"]["code"],
+                    "demand_version_conflict",
+                )
+                rows = client.get(f"/api/v1/demands/{number}/periods")
+                self.assertEqual(rows.status_code, 200, rows.text)
+                self.assertEqual(
+                    next(
+                        row["hours"]
+                        for row in rows.json()
+                        if row["period_id"] == "OPT-B"
+                    ),
+                    8,
+                )
+
     def test_unknown_demand_period_read_uses_structured_not_found(self) -> None:
         with TemporaryDirectory() as directory:
             database_url = self._database(directory)
