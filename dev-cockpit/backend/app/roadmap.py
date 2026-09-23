@@ -221,6 +221,16 @@ def _matching_pipeline_step(
     return None
 
 
+def _issue_references(line: str) -> list[re.Match[str]]:
+    return list(
+        re.finditer(
+            r"(?<!PR )(?<!CI )#(?P<key>\d+[A-Z]?)\b",
+            line,
+            re.IGNORECASE,
+        )
+    )
+
+
 def _explicit_work_done(body: str, key: str) -> bool:
     normalized = normalize_key(key)
     issue = numeric_issue(normalized)
@@ -232,20 +242,26 @@ def _explicit_work_done(body: str, key: str) -> bool:
             for item in subitems_from_text(body, issue)
         )
 
-    reference = re.compile(rf"#{re.escape(normalized)}\b", re.IGNORECASE)
-    done_word = re.compile(
-        r"\b(?:termin(?:é|ée|és|ées)|complét(?:é|ée|és|ées)|livr(?:é|ée|és|ées))\b",
-        re.IGNORECASE,
-    )
     for raw in body.splitlines():
         line = _clean_markdown(raw)
-        if not reference.search(line):
+        references = _issue_references(line)
+        if not references or normalize_key(references[0].group("key")) != normalized:
             continue
+
+        # A numeric WORK is complete only when the completion marker belongs to
+        # that item's own segment. Broad prose such as
+        # "#291 terminé; le flux poursuit avec #292 → #399" must never mark the
+        # later references complete.
+        first = references[0]
+        next_start = references[1].start() if len(references) > 1 else len(line)
+        scoped = line[first.start():next_start]
+        prefix = line[:first.start()]
+
         # A gate may target the same issue number as the following WORK.
         # Its completion must never mark that WORK complete.
-        if _pipeline_kind(line) != PIPELINE_WORK:
+        if _pipeline_kind(scoped) != PIPELINE_WORK:
             continue
-        if "✅" in line or done_word.search(line):
+        if "✅" in prefix or "✅" in scoped or DONE_WORDS.search(scoped):
             return True
     return False
 
@@ -292,7 +308,11 @@ def product_pipeline(body: str) -> list[PipelineStep]:
             continue
         line_lane = (
             PIPELINE_PARALLEL
-            if re.match(r"^En\s+parall[eè]le\b", _clean_markdown(line), re.IGNORECASE)
+            if re.match(
+                r"^(?:En\s+parall[eè]le\b|Livr[ée]\s+en\s+parall[eè]le\b)",
+                _clean_markdown(line),
+                re.IGNORECASE,
+            )
             else PIPELINE_MAIN
         )
         fragments = re.split(r"\s*(?:→|->)\s*", line)
