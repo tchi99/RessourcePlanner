@@ -14,19 +14,27 @@ import UserAdminPage from "./UserAdminPage";
 
 type View = "my-schedule" | "planning" | "medium-term" | "demands" | "projects" | "resources" | "users" | "communications" | "configuration";
 
-type NavItem = { key: View; label: string; eyebrow: string; permission?: string };
+type NavItem = { key: View; label: string; eyebrow: string; shortLabel: string; permission?: string };
 
 const navItems: NavItem[] = [
-  { key: "my-schedule", label: "Mon horaire", eyebrow: "Personnel" },
-  { key: "planning", label: "Planning opérationnel", eyebrow: "Semaine" },
-  { key: "medium-term", label: "Moyen terme", eyebrow: "Capacité" },
-  { key: "demands", label: "Demandes", eyebrow: "Main-d’œuvre" },
-  { key: "projects", label: "Projets", eyebrow: "Portefeuille" },
-  { key: "communications", label: "Communications", eyebrow: "Révision", permission: "manage_communications" },
-  { key: "resources", label: "Ressources", eyebrow: "Administration", permission: "manage_resources" },
-  { key: "users", label: "Utilisateurs", eyebrow: "Sécurité", permission: "admin_users" },
-  { key: "configuration", label: "Configuration", eyebrow: "Administration", permission: "admin_settings" },
+  { key: "my-schedule", label: "Mon horaire", eyebrow: "Personnel", shortLabel: "MH" },
+  { key: "planning", label: "Planning opérationnel", eyebrow: "Semaine", shortLabel: "PL" },
+  { key: "medium-term", label: "Moyen terme", eyebrow: "Capacité", shortLabel: "MT" },
+  { key: "demands", label: "Demandes", eyebrow: "Main-d’œuvre", shortLabel: "DE" },
+  { key: "projects", label: "Projets", eyebrow: "Portefeuille", shortLabel: "PR" },
+  { key: "communications", label: "Communications", eyebrow: "Révision", shortLabel: "CO", permission: "manage_communications" },
+  { key: "resources", label: "Ressources", eyebrow: "Administration", shortLabel: "RE", permission: "manage_resources" },
+  { key: "users", label: "Utilisateurs", eyebrow: "Sécurité", shortLabel: "UT", permission: "admin_users" },
+  { key: "configuration", label: "Configuration", eyebrow: "Administration", shortLabel: "CF", permission: "admin_settings" },
 ];
+
+const SIDEBAR_COMPACT_STORAGE_KEY = "resourceplanner.sidebar.compact";
+
+function displayInitials(displayName: string) {
+  const parts = displayName.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "?";
+  return parts.slice(0, 2).map((part) => part[0]?.toUpperCase() ?? "").join("");
+}
 
 function Placeholder({ view }: { view: View }) {
   const item = navItems.find((entry) => entry.key === view)!;
@@ -55,6 +63,13 @@ export default function App() {
   const [view, setView] = useState<View>("planning");
   const [initialViewResolved, setInitialViewResolved] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarCompact, setSidebarCompact] = useState(() => {
+    try {
+      return window.localStorage.getItem(SIDEBAR_COMPACT_STORAGE_KEY) === "true";
+    } catch {
+      return false;
+    }
+  });
 
   useEffect(() => {
     if (!principal || initialViewResolved) return;
@@ -63,6 +78,14 @@ export default function App() {
     }
     setInitialViewResolved(true);
   }, [principal, initialViewResolved]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(SIDEBAR_COMPACT_STORAGE_KEY, String(sidebarCompact));
+    } catch {
+      // The shell remains usable when browser storage is unavailable.
+    }
+  }, [sidebarCompact]);
 
   const visibleNavItems = useMemo(
     () => navItems.filter((item) => !item.permission || can(item.permission)),
@@ -110,14 +133,23 @@ export default function App() {
   const currentItem = navItems.find((item) => item.key === view);
 
   return (
-    <div className="app-shell">
-      <aside className={`app-sidebar ${sidebarOpen ? "is-open" : ""}`}>
+    <div className={`app-shell ${sidebarCompact ? "is-sidebar-compact" : ""}`}>
+      <aside className={`app-sidebar ${sidebarOpen ? "is-open" : ""} ${sidebarCompact ? "is-compact" : ""}`}>
         <div className="brand-block">
           <div className="brand-mark" aria-hidden="true">RP</div>
-          <div>
+          <div className="brand-copy">
             <strong>RessourcePlanner</strong>
             <span>Planification industrielle</span>
           </div>
+          <button
+            type="button"
+            className="sidebar-collapse-button"
+            onClick={() => setSidebarCompact((value) => !value)}
+            aria-label={sidebarCompact ? "Déployer la navigation" : "Réduire la navigation"}
+            title={sidebarCompact ? "Déployer la navigation" : "Réduire la navigation"}
+          >
+            <span aria-hidden="true">{sidebarCompact ? "›" : "‹"}</span>
+          </button>
         </div>
 
         <nav className="main-nav" aria-label="Navigation principale">
@@ -130,19 +162,40 @@ export default function App() {
                 setView(item.key);
                 setSidebarOpen(false);
               }}
+              aria-label={item.label}
+              title={sidebarCompact ? item.label : undefined}
             >
-              <span>{item.eyebrow}</span>
-              <strong>{item.label}</strong>
+              <span className="nav-short" aria-hidden="true">{item.shortLabel}</span>
+              <div className="nav-copy">
+                <span>{item.eyebrow}</span>
+                <strong>{item.label}</strong>
+              </div>
             </button>
           ))}
         </nav>
 
         <div className="sidebar-footer">
-          <span>{principal.display_name}</span>
-          <strong>{principal.roles.join(" · ")}</strong>
+          <div className="sidebar-footer-copy">
+            <span>{principal.display_name}</span>
+            <strong>{principal.roles.join(" · ")}</strong>
+          </div>
+          <span
+            className="sidebar-identity-compact"
+            aria-label={`Utilisateur actif : ${principal.display_name}`}
+            title={`${principal.display_name} · ${principal.roles.join(" · ")}`}
+          >
+            {displayInitials(principal.display_name)}
+          </span>
           {principal.auth_mode === "oidc" && (
-            <button type="button" onClick={() => void logout().catch(() => undefined)}>
-              Déconnexion
+            <button
+              type="button"
+              className="sidebar-logout-button"
+              onClick={() => void logout().catch(() => undefined)}
+              aria-label="Déconnexion"
+              title={sidebarCompact ? "Déconnexion" : undefined}
+            >
+              <span className="sidebar-logout-label">Déconnexion</span>
+              <span className="sidebar-logout-short" aria-hidden="true">↪</span>
             </button>
           )}
         </div>
@@ -163,7 +216,8 @@ export default function App() {
             type="button"
             className="menu-button"
             onClick={() => setSidebarOpen((value) => !value)}
-            aria-label="Ouvrir la navigation"
+            aria-label={sidebarOpen ? "Fermer la navigation" : "Ouvrir la navigation"}
+            aria-expanded={sidebarOpen}
           >
             ☰
           </button>
