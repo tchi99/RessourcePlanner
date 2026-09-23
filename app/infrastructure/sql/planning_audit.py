@@ -148,6 +148,7 @@ class SqlPlanningAuditJournal:
         snapshot: dict[str, object] = {
             "allocation_id": reference,
             "segment_id": parent,
+            "resource_id": resource.id,
             "technician": resource.name,
             "work_date": shift.work_date,
             "hours": shift.hours,

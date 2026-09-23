@@ -249,6 +249,7 @@ class SqlRequestPlanningAuthorizationRepository(PlanningAuthorizationPort):
         planned_hours: float,
         *,
         explicit_increase: bool = False,
+        expected_operational_version: int | None = None,
     ) -> None:
         requirement = self._requirement(segment_id)
         context = self._approved_context(requirement)
@@ -319,4 +320,5 @@ class SqlRequestPlanningAuthorizationRepository(PlanningAuthorizationPort):
             demand_number,
             _text(requirement.approved_entry_key),
             float(proposed),
+            expected_version=expected_operational_version,
         )
