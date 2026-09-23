@@ -319,6 +319,151 @@ h1 { font-size: 1.6rem; }
   line-height: 1;
 }
 
+.planning-drop-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: rgba(15, 23, 42, .46);
+}
+.planning-drop-dialog {
+  width: min(760px, calc(100vw - 2rem));
+  max-height: calc(100vh - 2rem);
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--panel);
+  box-shadow: 0 20px 55px rgba(15, 23, 42, .24);
+}
+.planning-drop-dialog-header {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: .9rem 1rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel);
+}
+.planning-drop-dialog-header h2 { margin: .1rem 0 .2rem; font-size: 1.05rem; }
+.planning-drop-dialog-header p { margin: 0; color: var(--muted); font-size: .68rem; }
+.planning-drop-dialog-header > button {
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 1.2rem;
+}
+.planning-drop-dialog-body { display: grid; gap: .8rem; padding: 1rem; }
+.planning-drop-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: .55rem;
+}
+.planning-drop-summary article {
+  min-width: 0;
+  padding: .6rem .7rem;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: #f8fafc;
+}
+.planning-drop-summary span,
+.planning-drop-summary strong { display: block; }
+.planning-drop-summary span { color: var(--muted); font-size: .6rem; }
+.planning-drop-summary strong { margin-top: .12rem; font-size: .7rem; overflow-wrap: anywhere; }
+.planning-drop-impact {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .4rem .8rem;
+  padding: .55rem .7rem;
+  border-radius: 9px;
+  background: var(--accent-soft);
+  color: #46536a;
+  font-size: .63rem;
+}
+.planning-drop-approved-window {
+  margin: 0;
+  color: var(--muted);
+  font-size: .62rem;
+}
+.planning-drop-warnings {
+  display: grid;
+  gap: .35rem;
+}
+.planning-drop-warnings p {
+  margin: 0;
+  padding: .5rem .6rem;
+  border: 1px solid #efd08d;
+  border-radius: 8px;
+  background: var(--warn-soft);
+  font-size: .62rem;
+}
+.planning-drop-warnings strong,
+.planning-drop-warnings span { display: block; }
+.planning-drop-warnings strong { color: #8a5d00; font-size: .55rem; }
+.planning-drop-warnings span { margin-top: .1rem; }
+.planning-drop-option {
+  display: flex;
+  align-items: flex-start;
+  gap: .45rem;
+  padding: .55rem .65rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: .64rem;
+}
+.planning-drop-policy {
+  display: grid;
+  gap: .45rem;
+  margin: 0;
+  padding: .65rem .75rem;
+  border: 1px solid rgb(231 181 181);
+  border-radius: 9px;
+  background: #fff8f8;
+}
+.planning-drop-policy legend { padding: 0 .25rem; font-size: .66rem; font-weight: 800; }
+.planning-drop-policy p { margin: 0; color: var(--muted); font-size: .61rem; }
+.planning-drop-policy label { display: flex; gap: .4rem; align-items: flex-start; font-size: .63rem; }
+.planning-drop-split-hours { display: grid; gap: .25rem; font-size: .63rem; }
+.planning-drop-split-hours > span { font-weight: 700; }
+.planning-drop-split-hours input { max-width: 180px; }
+.planning-drop-split-hours small { color: var(--danger); }
+.planning-drop-error {
+  padding: .55rem .65rem;
+  border: 1px solid #efbbbb;
+  border-radius: 8px;
+  background: var(--danger-soft);
+  color: var(--danger);
+  font-size: .65rem;
+}
+.planning-drop-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .45rem;
+  align-items: flex-start;
+}
+.planning-drop-action { display: grid; gap: .15rem; }
+.planning-drop-actions button {
+  min-height: 34px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: white;
+  color: var(--ink);
+  padding: .42rem .65rem;
+  font-size: .63rem;
+  font-weight: 700;
+}
+.planning-drop-actions button[data-drop-action="EXTEND_AND_MOVE"],
+.planning-drop-actions button[data-drop-action="PROPOSE_WINDOW_EXTENSION"] {
+  border-color: #9fb4da;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.planning-drop-actions button:disabled { opacity: .55; cursor: not-allowed; }
+.planning-drop-action small { max-width: 210px; color: var(--danger); font-size: .55rem; }
+
 .pending-ghost-card {
   width: 100%;
   padding: .42rem .46rem;

@@ -18,16 +18,58 @@ class ReactPlanningDragDropContractTests(unittest.TestCase):
         self.assertIn("writeShiftDrag", drag)
         self.assertIn("writeSegmentDrag", drag)
 
-    def test_shift_drop_uses_explicit_backend_move_contract_without_optimistic_snapshot_edit(self) -> None:
+    def test_shift_drop_is_evaluated_before_any_write_and_keeps_backend_authority(self) -> None:
         page = (ROOT / "frontend" / "src" / "PlanningPage.tsx").read_text(encoding="utf-8")
-        api = (ROOT / "frontend" / "src" / "api.ts").read_text(encoding="utf-8")
+        dialog = (ROOT / "frontend" / "src" / "PlanningDropDialog.tsx").read_text(encoding="utf-8")
+        api = (ROOT / "frontend" / "src" / "manualOverallocationApi.ts").read_text(encoding="utf-8")
 
-        self.assertIn("moveAllocation(payload.allocation_id", page)
+        self.assertIn("evaluateAllocationDrop(payload.allocation_id", page)
+        self.assertIn("<PlanningDropDialog", page)
+        self.assertIn("evaluation.actions.filter", dialog)
+        self.assertIn("Action refusée par le backend", dialog)
+        self.assertIn("/evaluate-drop", api)
+        self.assertIn("/extend-and-move", api)
+        self.assertIn("/propose-window-extension", api)
         self.assertIn("planning-drop-day", page)
         self.assertIn("writeShiftDrag", page)
         self.assertIn("setRefreshKey", page)
-        self.assertIn("/move", api)
         self.assertNotIn("setSnapshot((current)", page)
+
+    def test_context_dialog_reuses_existing_commands_and_preserves_idempotent_retries(self) -> None:
+        page = (ROOT / "frontend" / "src" / "PlanningPage.tsx").read_text(encoding="utf-8")
+        dialog = (ROOT / "frontend" / "src" / "PlanningDropDialog.tsx").read_text(encoding="utf-8")
+
+        self.assertIn('actionCode === "MOVE"', page)
+        self.assertIn('actionCode === "SPLIT"', page)
+        self.assertIn('actionCode === "DUPLICATE"', page)
+        self.assertIn('actionCode === "EXTEND_AND_MOVE"', page)
+        self.assertIn('actionCode === "PROPOSE_WINDOW_EXTENSION"', page)
+        self.assertIn("moveAllocation(current.payload.allocation_id", page)
+        self.assertIn("splitAllocationAtomic(", page)
+        self.assertIn("duplicateAllocationAtomic(", page)
+        self.assertIn("extendAndMoveAllocationAtomic(", page)
+        self.assertIn("proposeAllocationWindowExtension(", page)
+        self.assertIn("actionKeys: dropActionKeys(evaluation)", page)
+        self.assertIn("la même clé d’idempotence sera réutilisée", page)
+        self.assertIn("Aucun quart n’a été déplacé", page)
+        self.assertIn('data-drop-action={action.code}', dialog)
+
+    def test_context_dialog_surfaces_backend_impacts_warnings_and_explicit_cancel(self) -> None:
+        page = (ROOT / "frontend" / "src" / "PlanningPage.tsx").read_text(encoding="utf-8")
+        dialog = (ROOT / "frontend" / "src" / "PlanningDropDialog.tsx").read_text(encoding="utf-8")
+
+        self.assertIn("evaluation.current_window", dialog)
+        self.assertIn("evaluation.proposed_window", dialog)
+        self.assertIn("evaluation.authorization_decision", dialog)
+        self.assertIn("evaluation.warnings.map", dialog)
+        self.assertIn("evaluation.projected_excess_hours", dialog)
+        self.assertIn("Autoriser explicitement le quart hors horaire", dialog)
+        self.assertIn("Décision de surallocation requise", dialog)
+        self.assertIn("Annuler", dialog)
+        self.assertIn("+ Quart manuel", page)
+        self.assertIn("+ Quick Shift", page)
+        self.assertNotIn("compare_approval_envelopes", page)
+        self.assertNotIn("approval_revision_id ===", page)
 
     def test_unassigned_segment_can_be_dragged_to_resource_but_buttons_remain_fallback(self) -> None:
         panel = (ROOT / "frontend" / "src" / "PlanningActionPanel.tsx").read_text(encoding="utf-8")

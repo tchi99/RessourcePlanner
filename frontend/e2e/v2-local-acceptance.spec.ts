@@ -539,7 +539,7 @@ test("V2 local acceptance path runs through React, Chromium, FastAPI and SQLite"
     await closeContext(context);
   });
 
-  await test.step("coordinator drag-and-drop rejects invalid move then applies valid resource move", async () => {
+  await test.step("coordinator uses the contextual DnD dialog for cancel, extend, move, split and duplicate", async () => {
     const { context, page } = await openAs(browser, "COORDINATOR");
     await navigateMain(page, "Planning opérationnel");
     await page.getByRole("button", { name: /Suivante/ }).click();
@@ -592,36 +592,320 @@ test("V2 local acceptance path runs through React, Chromium, FastAPI and SQLite"
     const source = sourceCell.locator(`.shift-card[data-allocation-id="${allocationId}"]`);
     await expect(source).toBeVisible();
 
-    const invalidTarget = bobRow.locator(`.planning-drop-day[data-day="${d3}"]`);
-    const invalidMoveResponsePromise = page.waitForResponse((response) => (
+    const outsideTarget = bobRow.locator(`.planning-drop-day[data-day="${d3}"]`);
+    const evaluatePromise = page.waitForResponse((response) => (
       response.request().method() === "POST"
-      && response.url().includes(`/api/v1/allocations/${encodeURIComponent(allocationId)}/move`)
+      && response.url().includes(`/api/v1/allocations/${encodeURIComponent(allocationId)}/evaluate-drop`)
     ));
-    await dragWithDataTransfer(page, source, invalidTarget);
-    const invalidMoveResponse = await invalidMoveResponsePromise;
-    expect(
-      invalidMoveResponse.request().postDataJSON(),
-      "Le drag doit transmettre le quart exact et la journée cible exacte.",
-    ).toEqual({ resource_id: "R-BOB", day: d3 });
-    expect(
-      invalidMoveResponse.status(),
-      `Le backend doit refuser le déplacement hors fenêtre. Réponse: ${await invalidMoveResponse.text()}`,
-    ).toBe(422);
-    const feedback = page.locator(".planning-drag-feedback");
-    await expect(feedback).toContainText("fenêtre du segment");
-    await expect(sourceCell.locator(`.shift-card[data-allocation-id="${allocationId}"]`)).toBeVisible();
+    await dragWithDataTransfer(page, source, outsideTarget);
+    const evaluated = await evaluatePromise;
+    expect(evaluated.status(), await evaluated.text()).toBe(200);
+    expect(evaluated.request().postDataJSON()).toEqual({
+      resource_id: "R-BOB",
+      day: d3,
+      outside_standard_hours: false,
+    });
+    expect((await evaluated.json()).actions.map((row: { code: string }) => row.code)).toEqual([
+      "EXTEND_AND_MOVE",
+      "CANCEL",
+    ]);
 
-    const validTarget = bobRow.locator(`.planning-drop-day[data-day="${d2}"]`);
+    let dropDialog = page.getByRole("dialog", { name: "Choisir l’action du déplacement" });
+    await expect(dropDialog).toContainText("Fenêtre proposée");
+    await expect(dropDialog).toContainText("Besoin autonome");
+    await dropDialog.getByRole("button", { name: "Annuler", exact: true }).click();
+    await expect(dropDialog).toBeHidden();
+
+    const unchangedSegmentResponse = await page.request.get(
+      `/api/v1/segments/${encodeURIComponent(createdShift!.segment_id)}`,
+    );
+    expect(unchangedSegmentResponse.ok()).toBeTruthy();
+    expect((await unchangedSegmentResponse.json()).end_date).toBe(d2);
+    const unchangedShiftsResponse = await page.request.get(
+      `/api/v1/shifts?start=${d1}&end=${d5}`,
+    );
+    const unchangedShift = (await unchangedShiftsResponse.json() as Array<{
+      allocation_id: string;
+      resource_name: string;
+      work_date: string;
+    }>).find((row) => row.allocation_id === allocationId);
+    expect(unchangedShift?.resource_name).toBe("Alice");
+    expect(unchangedShift?.work_date).toBe(d2);
+
     await dragWithDataTransfer(
       page,
       sourceCell.locator(`.shift-card[data-allocation-id="${allocationId}"]`),
-      validTarget,
+      outsideTarget,
     );
-    await expect(feedback).toContainText("Quart déplacé vers Bob");
-    await expect(validTarget.locator(`.shift-card[data-allocation-id="${allocationId}"]`)).toBeVisible();
+    dropDialog = page.getByRole("dialog", { name: "Choisir l’action du déplacement" });
+    await expect(dropDialog).toBeVisible();
+    const extendPromise = page.waitForResponse((response) => (
+      response.request().method() === "POST"
+      && response.url().includes(`/api/v1/allocations/${encodeURIComponent(allocationId)}/extend-and-move`)
+    ));
+    await dropDialog.getByRole("button", { name: "Étendre la période et déplacer", exact: true }).click();
+    const extended = await extendPromise;
+    expect(extended.status(), await extended.text()).toBe(200);
+    expect(extended.request().headers()["idempotency-key"]).toBeTruthy();
+    expect(typeof extended.request().postDataJSON().expected_planning_version).toBe("number");
+    await expect(page.locator(".planning-drag-feedback")).toContainText("Période étendue et quart déplacé");
+
+    const extendedSegmentResponse = await page.request.get(
+      `/api/v1/segments/${encodeURIComponent(createdShift!.segment_id)}`,
+    );
+    expect(extendedSegmentResponse.ok()).toBeTruthy();
+    expect((await extendedSegmentResponse.json()).end_date).toBe(d3);
+    await expect(
+      bobRow.locator(`.planning-drop-day[data-day="${d3}"] .shift-card[data-allocation-id="${allocationId}"]`),
+    ).toBeVisible();
+
+    const bobD3Source = bobRow
+      .locator(`.planning-drop-day[data-day="${d3}"]`)
+      .locator(`.shift-card[data-allocation-id="${allocationId}"]`);
+    const aliceD2Target = aliceRow.locator(`.planning-drop-day[data-day="${d2}"]`);
+    await dragWithDataTransfer(page, bobD3Source, aliceD2Target);
+    dropDialog = page.getByRole("dialog", { name: "Choisir l’action du déplacement" });
+    await expect(dropDialog.getByRole("button", { name: "Déplacer", exact: true })).toBeVisible();
+    await expect(dropDialog.getByRole("button", { name: "Partager", exact: true })).toBeVisible();
+    await expect(dropDialog.getByRole("button", { name: "Dupliquer", exact: true })).toBeVisible();
+    const movePromise = page.waitForResponse((response) => (
+      response.request().method() === "POST"
+      && response.url().includes(`/api/v1/allocations/${encodeURIComponent(allocationId)}/move`)
+    ));
+    await dropDialog.getByRole("button", { name: "Déplacer", exact: true }).click();
+    expect((await movePromise).status()).toBe(200);
+    await expect(page.locator(".planning-drag-feedback")).toContainText("Quart déplacé vers Alice");
+
+    const aliceD2Source = aliceRow
+      .locator(`.planning-drop-day[data-day="${d2}"]`)
+      .locator(`.shift-card[data-allocation-id="${allocationId}"]`);
+    const bobD3Target = bobRow.locator(`.planning-drop-day[data-day="${d3}"]`);
+    await dragWithDataTransfer(page, aliceD2Source, bobD3Target);
+    dropDialog = page.getByRole("dialog", { name: "Choisir l’action du déplacement" });
+    const transfer = dropDialog.locator(".planning-drop-split-hours input");
+    await transfer.fill("0.5");
+    const splitPromise = page.waitForResponse((response) => (
+      response.request().method() === "POST"
+      && response.url().includes(`/api/v1/allocations/${encodeURIComponent(allocationId)}/split`)
+    ));
+    await dropDialog.getByRole("button", { name: "Partager", exact: true }).click();
+    const split = await splitPromise;
+    expect(split.status(), await split.text()).toBe(201);
+    expect(split.request().headers()["idempotency-key"]).toBeTruthy();
+
+    const afterSplitResponse = await page.request.get(
+      `/api/v1/shifts?start=${d1}&end=${d5}`,
+    );
+    const afterSplitRows = (await afterSplitResponse.json() as Array<{
+      allocation_id: string;
+      segment_id: string;
+      resource_id: string;
+      work_date: string;
+      hours: number;
+    }>).filter((row) => row.segment_id === createdShift!.segment_id);
+    const splitTarget = afterSplitRows.find((row) => (
+      row.resource_id === "R-BOB"
+      && row.work_date === d3
+      && Math.abs(row.hours - 0.5) < 0.001
+    ));
+    expect(splitTarget, "Quart cible du partage DnD introuvable").toBeDefined();
+
+    const bobSplitCard = bobRow
+      .locator(`.planning-drop-day[data-day="${d3}"]`)
+      .locator(`.shift-card[data-allocation-id="${splitTarget!.allocation_id}"]`);
+    const aliceD3Target = aliceRow.locator(`.planning-drop-day[data-day="${d3}"]`);
+    await dragWithDataTransfer(page, bobSplitCard, aliceD3Target);
+    dropDialog = page.getByRole("dialog", { name: "Choisir l’action du déplacement" });
+
+    const duplicateFirstPromise = page.waitForResponse((response) => (
+      response.request().method() === "POST"
+      && response.url().includes(`/api/v1/allocations/${encodeURIComponent(splitTarget!.allocation_id)}/duplicate`)
+    ));
+    await dropDialog.getByRole("button", { name: "Dupliquer", exact: true }).click();
+    const duplicateFirst = await duplicateFirstPromise;
+    expect(duplicateFirst.status(), await duplicateFirst.text()).toBe(422);
+    const duplicateKey = duplicateFirst.request().headers()["idempotency-key"];
+    expect(duplicateKey).toBeTruthy();
+    await expect(dropDialog).toContainText("Décision de surallocation requise");
+
+    await dropDialog.getByRole("radio", { name: /Conserver la surallocation comme dérogation/ }).check();
+    const duplicateRetryPromise = page.waitForResponse((response) => (
+      response.request().method() === "POST"
+      && response.url().includes(`/api/v1/allocations/${encodeURIComponent(splitTarget!.allocation_id)}/duplicate`)
+    ));
+    await dropDialog.getByRole("button", { name: "Dupliquer", exact: true }).click();
+    const duplicateRetry = await duplicateRetryPromise;
+    expect(duplicateRetry.status(), await duplicateRetry.text()).toBe(201);
+    expect(duplicateRetry.request().headers()["idempotency-key"]).toBe(duplicateKey);
+    await expect(page.locator(".planning-drag-feedback")).toContainText("Quart dupliqué vers Alice");
 
     await closeContext(context);
   });
+});
+
+
+test("REQUEST window proposal never replays the original drag after direct approval", async ({ browser }) => {
+  test.setTimeout(120_000);
+  const { d1 } = acceptanceDates();
+  const cleanWeek = new Date(`${d1}T12:00:00`);
+  const sourceDay = localIso(addDays(cleanWeek, 7));
+  const targetDay = localIso(addDays(cleanWeek, 8));
+  const weekEnd = localIso(addDays(cleanWeek, 13));
+  const { context, page } = await openAs(browser, "COORDINATOR");
+
+  const created = await page.request.post("/api/v1/demands", {
+    data: {
+      project_number: "P-251",
+      desired_start: sourceDay,
+      desired_end: sourceDay,
+      estimated_hours: 2,
+      proposed_technician: "Alice",
+      description: "Proposition fenêtre DnD #333C",
+      submit: true,
+    },
+  });
+  expect(created.status(), await created.text()).toBe(201);
+  const demandNumber = (await created.json()).demand_number as string;
+
+  const snapshotBeforeApproval = await page.request.get(
+    `/api/v1/planning/snapshot?start=${sourceDay}&end=${weekEnd}&scope=global`,
+  );
+  expect(snapshotBeforeApproval.ok()).toBeTruthy();
+  const planningVersion = (await snapshotBeforeApproval.json()).planning_version as number;
+
+  const approved = await page.request.post(
+    `/api/v1/demands/${encodeURIComponent(demandNumber)}/approve`,
+    {
+      data: {
+        comment: "Approbation initiale DnD #333C",
+        expected_planning_version: planningVersion,
+      },
+    },
+  );
+  expect(approved.status(), await approved.text()).toBe(200);
+
+  const shiftsResponse = await page.request.get(
+    `/api/v1/shifts?start=${sourceDay}&end=${weekEnd}`,
+  );
+  expect(shiftsResponse.ok()).toBeTruthy();
+  const shift = (await shiftsResponse.json() as Array<{
+    allocation_id: string;
+    segment_id: string;
+    demand_number: string | null;
+    resource_name: string;
+    work_date: string;
+    allocation_type: string | null;
+  }>).find((row) => (
+    row.demand_number === demandNumber
+    && row.allocation_type !== "Hors horaire requis"
+  ));
+  expect(shift, "Quart REQUEST #333C introuvable après approbation").toBeDefined();
+  expect(shift!.resource_name).toBe("Alice");
+  expect(shift!.work_date).toBe(sourceDay);
+
+  await navigateMain(page, "Planning opérationnel");
+  await page.getByRole("button", { name: /Suivante/ }).click();
+  await page.getByRole("button", { name: /Suivante/ }).click();
+
+  const aliceRow = page.locator(".resource-identity").filter({ hasText: "Alice" }).first().locator("..");
+  const bobRow = page.locator(".resource-identity").filter({ hasText: "Bob" }).first().locator("..");
+  const source = aliceRow
+    .locator(`.planning-drop-day[data-day="${sourceDay}"]`)
+    .locator(`.shift-card[data-allocation-id="${shift!.allocation_id}"]`);
+  const target = bobRow.locator(`.planning-drop-day[data-day="${targetDay}"]`);
+  await expect(source).toBeVisible();
+
+  const evaluatePromise = page.waitForResponse((response) => (
+    response.request().method() === "POST"
+    && response.url().includes(
+      `/api/v1/allocations/${encodeURIComponent(shift!.allocation_id)}/evaluate-drop`,
+    )
+  ));
+  await dragWithDataTransfer(page, source, target);
+  const evaluated = await evaluatePromise;
+  expect(evaluated.status(), await evaluated.text()).toBe(200);
+  expect((await evaluated.json()).authorization_decision).toBe(
+    "WINDOW_EXTENSION_REAPPROVAL_REQUIRED",
+  );
+  let dialog = page.getByRole("dialog", { name: "Choisir l’action du déplacement" });
+  await expect(dialog).toContainText("Extension hors enveloppe approuvée");
+  await expect(
+    dialog.getByRole("button", { name: "Soumettre l'extension de période", exact: true }),
+  ).toBeVisible();
+
+  const proposalPromise = page.waitForResponse((response) => (
+    response.request().method() === "POST"
+    && response.url().includes(
+      `/api/v1/allocations/${encodeURIComponent(shift!.allocation_id)}/propose-window-extension`,
+    )
+  ));
+  await dialog.getByRole("button", { name: "Soumettre l'extension de période", exact: true }).click();
+  const proposal = await proposalPromise;
+  expect(proposal.status(), await proposal.text()).toBe(200);
+  expect(proposal.request().headers()["idempotency-key"]).toBeTruthy();
+  const proposalResult = await proposal.json() as {
+    status: string | null;
+    reapproval_required: boolean;
+  };
+  expect(proposalResult.reapproval_required).toBeFalsy();
+  expect(proposalResult.status).toBe("En planification");
+  await expect(page.locator(".planning-drag-feedback")).toContainText("Extension approuvée");
+  await expect(page.locator(".planning-drag-feedback")).toContainText("Aucun quart n’a été déplacé");
+
+  const afterProposalResponse = await page.request.get(
+    `/api/v1/shifts?start=${sourceDay}&end=${weekEnd}`,
+  );
+  const unchangedShift = (await afterProposalResponse.json() as Array<{
+    allocation_id: string;
+    segment_id: string;
+    demand_number: string | null;
+    resource_name: string;
+    work_date: string;
+    allocation_type: string | null;
+  }>).find((row) => (
+    row.demand_number === demandNumber
+    && row.allocation_type !== "Hors horaire requis"
+  ));
+  expect(unchangedShift, "Quart REQUEST frais introuvable après approbation de l’extension").toBeDefined();
+  expect(unchangedShift!.resource_name).toBe("Alice");
+  expect(unchangedShift!.work_date).toBe(sourceDay);
+
+  const segmentAfterProposal = await page.request.get(
+    `/api/v1/segments/${encodeURIComponent(unchangedShift!.segment_id)}`,
+  );
+  expect(segmentAfterProposal.ok()).toBeTruthy();
+  expect((await segmentAfterProposal.json()).end_date).toBe(targetDay);
+
+  const refreshedSource = aliceRow
+    .locator(`.planning-drop-day[data-day="${sourceDay}"]`)
+    .locator(`.shift-card[data-allocation-id="${unchangedShift!.allocation_id}"]`);
+  await expect(refreshedSource).toBeVisible();
+  await dragWithDataTransfer(page, refreshedSource, target);
+  dialog = page.getByRole("dialog", { name: "Choisir l’action du déplacement" });
+  await expect(dialog.getByRole("button", { name: "Déplacer", exact: true })).toBeVisible();
+  await expect(
+    dialog.getByRole("button", { name: "Soumettre l'extension de période", exact: true }),
+  ).toHaveCount(0);
+  await dialog.getByRole("button", { name: "Annuler", exact: true }).click();
+
+  const afterCancelResponse = await page.request.get(
+    `/api/v1/shifts?start=${sourceDay}&end=${weekEnd}`,
+  );
+  const afterCancel = (await afterCancelResponse.json() as Array<{
+    allocation_id: string;
+    demand_number: string | null;
+    resource_name: string;
+    work_date: string;
+    allocation_type: string | null;
+  }>).find((row) => (
+    row.demand_number === demandNumber
+    && row.allocation_type !== "Hors horaire requis"
+  ));
+  expect(afterCancel, "Le nouveau DnD annulé ne doit supprimer aucun quart REQUEST comptabilisé").toBeDefined();
+  expect(afterCancel!.resource_name).toBe("Alice");
+  expect(afterCancel!.work_date).toBe(sourceDay);
+
+  await closeContext(context);
 });
 
 

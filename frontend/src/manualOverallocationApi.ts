@@ -1,11 +1,11 @@
-import { ApiError, ManualAllocationUpdate } from "./api";
+import { ApiError, DemandMutationResult, ManualAllocationUpdate } from "./api";
 import { csrfHeaders } from "./csrf";
 import { SegmentMutationResult, SegmentUpdateWrite } from "./segments-api";
 
 export type OverallocationPolicy = "KEEP_EXCEPTION" | "INCREASE_PLANNED";
 
 export type AtomicAllocationResult = {
-  operation: "SPLIT" | "DUPLICATE";
+  operation: "SPLIT" | "DUPLICATE" | "EXTEND_AND_MOVE";
   source_allocation_id: string;
   target_allocation_id: string;
   source_shift_id: string;
@@ -35,6 +35,71 @@ export type AtomicAllocationWrite = {
 
 export type AtomicAllocationSplitWrite = AtomicAllocationWrite & {
   transfer_hours: number;
+};
+
+export type PlanningDropAction = {
+  code: "MOVE" | "SPLIT" | "DUPLICATE" | "EXTEND_AND_MOVE" | "PROPOSE_WINDOW_EXTENSION" | "CANCEL" | string;
+  label: string;
+  enabled: boolean;
+  required_parameters: string[];
+  required_permission?: string | null;
+  reason_code?: string | null;
+  reason?: string | null;
+};
+
+export type PlanningDropWarning = {
+  code: string;
+  message: string;
+  excess_hours?: number;
+};
+
+export type PlanningDropEvaluation = {
+  allocation_id: string;
+  source_shift_id: string;
+  segment_id: string;
+  requirement_id: string;
+  origin: string;
+  source_resource_id: string;
+  target_resource_id: string;
+  target_day: string;
+  current_window: { start: string; end: string };
+  proposed_window: { start: string; end: string };
+  planning_version: number;
+  approval_revision_id: string | null;
+  approved_entry_key: string | null;
+  request_line_id: string | null;
+  period_key: string | null;
+  approved_window: { start: string; end: string } | null;
+  request_number: string | null;
+  request_version: number | null;
+  operational_version: number | null;
+  authorization_decision: string;
+  availability_hours: number;
+  planned_hours: number;
+  current_locked_hours: number;
+  projected_locked_hours: number;
+  projected_excess_hours: number;
+  actions: PlanningDropAction[];
+  warnings: PlanningDropWarning[];
+};
+
+export type AllocationDropEvaluateWrite = {
+  resource_id: string;
+  day: string;
+  outside_standard_hours: boolean;
+};
+
+export type AllocationExtendMoveWrite = Omit<AtomicAllocationWrite, "outside_standard_hours"> & {
+  outside_standard_hours: boolean;
+  confirm_window_extension: boolean;
+};
+
+export type AllocationWindowExtensionProposalWrite = {
+  resource_id: string;
+  day: string;
+  outside_standard_hours: boolean;
+  expected_request_version: number;
+  expected_approval_revision_id: string;
 };
 
 export type OverallocationContext = {
@@ -151,6 +216,43 @@ export function duplicateAllocationAtomic(
 ) {
   return sendJson<AtomicAllocationResult>(
     `/api/v1/allocations/${encodeURIComponent(allocationId)}/duplicate`,
+    "POST",
+    payload,
+    { "Idempotency-Key": idempotencyKey },
+  );
+}
+
+export function evaluateAllocationDrop(
+  allocationId: string,
+  payload: AllocationDropEvaluateWrite,
+) {
+  return sendJson<PlanningDropEvaluation>(
+    `/api/v1/allocations/${encodeURIComponent(allocationId)}/evaluate-drop`,
+    "POST",
+    payload,
+  );
+}
+
+export function extendAndMoveAllocationAtomic(
+  allocationId: string,
+  payload: AllocationExtendMoveWrite,
+  idempotencyKey: string,
+) {
+  return sendJson<AtomicAllocationResult>(
+    `/api/v1/allocations/${encodeURIComponent(allocationId)}/extend-and-move`,
+    "POST",
+    payload,
+    { "Idempotency-Key": idempotencyKey },
+  );
+}
+
+export function proposeAllocationWindowExtension(
+  allocationId: string,
+  payload: AllocationWindowExtensionProposalWrite,
+  idempotencyKey: string,
+) {
+  return sendJson<DemandMutationResult>(
+    `/api/v1/allocations/${encodeURIComponent(allocationId)}/propose-window-extension`,
     "POST",
     payload,
     { "Idempotency-Key": idempotencyKey },
