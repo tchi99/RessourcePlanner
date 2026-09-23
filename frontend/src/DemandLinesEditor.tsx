@@ -285,7 +285,7 @@ export default function DemandLinesEditor({
         <div><strong>{workforceCount}</strong><span>ligne(s) main-d’œuvre</span></div>
         <div><strong>{assetCount}</strong><span>ligne(s) actif</span></div>
         <div><strong>{Number(totalHours.toFixed(2))}</strong><span>heure(s) humaines projetées</span></div>
-        <small>{totalDays} jour(s) actif(s) humain(s). Un éventuel budget d’usage d’un actif reste distinct des heures de main-d’œuvre.</small>
+        <small>{totalDays} jour(s) actif(s) humain(s). Les heures projetées utilisent 8 h/j uniquement pour l’aperçu humain; le backend demeure autoritaire sur la valeur persistée. Un éventuel budget d’usage d’un actif reste distinct des heures de main-d’œuvre.</small>
       </div>
 
       <div className="request-lines-grid">
