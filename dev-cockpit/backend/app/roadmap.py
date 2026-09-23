@@ -11,7 +11,7 @@ ACTIVE_PATTERNS = [
     re.compile(r"tranche\s+(?:produit\s+)?active\s*[:=]\s*\*{0,2}`?#?(\d+[A-Z]?)", re.IGNORECASE),
 ]
 
-DONE_WORDS = re.compile(r"\b(?:termin[ée]e?s?|compl[ée]t[ée]e?s?|livr[ée]e?s?)\b", re.IGNORECASE)
+DONE_WORDS = re.compile(r"\b(?:done|termin[ée]e?s?|compl[ée]t[ée]e?s?|livr[ée]e?s?)\b", re.IGNORECASE)
 GATE_DONE_WORDS = re.compile(
     r"\b(?:satisfait(?:e|es|s)?|termin(?:é|ée|és|ées)|complét(?:é|ée|és|ées)|effectu(?:é|ée|és|ées)|valid(?:é|ée|és|ées))\b",
     re.IGNORECASE,
