@@ -802,7 +802,17 @@ class SqlDemandRepository(DemandRepositoryPort):
         comment: str = "",
     ) -> bool:
         request = self._request(number)
-        self._acquire_request_version(request, expected_version)
+        current_version = int(request.aggregate_version or 1)
+        if int(expected_version) != current_version:
+            raise ApplicationConflictError(
+                "La demande a été modifiée depuis sa lecture.",
+                code="demand_version_conflict",
+                context={
+                    "demand_number": _text(request.legacy_demand_number) or request.id,
+                    "expected_version": int(expected_version),
+                    "current_version": current_version,
+                },
+            )
 
         previous_status = request.status
         changed_fields: tuple[str, ...]
@@ -823,6 +833,7 @@ class SqlDemandRepository(DemandRepositoryPort):
             proposed_end = max(line.desired_end or line.desired_start, target_day)
             if proposed_start == line.desired_start and proposed_end == line.desired_end:
                 return False
+            self._acquire_request_version(request, expected_version)
             line.desired_start = proposed_start
             line.desired_end = proposed_end
             active_lines = tuple(
@@ -844,6 +855,7 @@ class SqlDemandRepository(DemandRepositoryPort):
             proposed_end = max(request.desired_end or request.desired_start, target_day)
             if proposed_start == request.desired_start and proposed_end == request.desired_end:
                 return False
+            self._acquire_request_version(request, expected_version)
             request.desired_start = proposed_start
             request.desired_end = proposed_end
             self._sync_legacy_request_line(request)
