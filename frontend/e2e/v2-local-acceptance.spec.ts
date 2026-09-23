@@ -790,7 +790,11 @@ test("REQUEST window proposal never replays the original drag after direct appro
     demand_number: string | null;
     resource_name: string;
     work_date: string;
-  }>).find((row) => row.demand_number === demandNumber);
+    allocation_type: string | null;
+  }>).find((row) => (
+    row.demand_number === demandNumber
+    && row.allocation_type !== "Hors horaire requis"
+  ));
   expect(shift, "Quart REQUEST #333C introuvable après approbation").toBeDefined();
   expect(shift!.resource_name).toBe("Alice");
   expect(shift!.work_date).toBe(d2);
@@ -806,7 +810,18 @@ test("REQUEST window proposal never replays the original drag after direct appro
   const target = bobRow.locator(`.planning-drop-day[data-day="${d3}"]`);
   await expect(source).toBeVisible();
 
+  const evaluatePromise = page.waitForResponse((response) => (
+    response.request().method() === "POST"
+    && response.url().includes(
+      `/api/v1/allocations/${encodeURIComponent(shift!.allocation_id)}/evaluate-drop`,
+    )
+  ));
   await dragWithDataTransfer(page, source, target);
+  const evaluated = await evaluatePromise;
+  expect(evaluated.status(), await evaluated.text()).toBe(200);
+  expect((await evaluated.json()).authorization_decision).toBe(
+    "WINDOW_EXTENSION_REAPPROVAL_REQUIRED",
+  );
   let dialog = page.getByRole("dialog", { name: "Choisir l’action du déplacement" });
   await expect(dialog).toContainText("Extension hors enveloppe approuvée");
   await expect(
