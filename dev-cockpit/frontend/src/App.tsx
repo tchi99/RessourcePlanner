@@ -60,11 +60,14 @@ function PipelineStepLine({
       : step.kind === 'ENVIRONMENT_GATE'
         ? 'ENV'
         : 'DEV'
+  const workTitle = step.title.replace(/^#?\d+[A-Z]?\s*/, '').trim()
   const label =
     step.kind === 'ARCHITECTURE_GATE'
       ? step.title
       : /^\d+[A-Z]?$/.test(step.key)
-        ? `#${step.key} · ${step.title.replace(/^#?\d+[A-Z]?\s*/, '').trim() || step.title}`
+        ? workTitle
+          ? `#${step.key} · ${workTitle}`
+          : `#${step.key}`
         : step.title
 
   return (
