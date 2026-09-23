@@ -8,6 +8,7 @@ import type {
   DetailDocument,
   IssueDetail,
   Job,
+  PipelineStep,
   RoadmapDetail,
   RoadmapItem,
   RoleConfig,
@@ -237,6 +238,181 @@ function RoadmapIssueAccordion({
   )
 }
 
+function pipelineKindLabel(kind: PipelineStep['kind']): string {
+  if (kind === 'ARCHITECTURE_GATE') return 'ARCH'
+  if (kind === 'ENVIRONMENT_GATE') return 'ENV'
+  return 'DEV'
+}
+
+function pipelineStepLabel(step: PipelineStep): string {
+  if (step.kind !== 'WORK') return step.title
+  const clean = step.title.replace(/^#?\d+[A-Z]?\s*/, '').trim()
+  return clean ? `#${step.key} · ${clean}` : `#${step.key}`
+}
+
+function PipelineStepAccordion({
+  step,
+  repo,
+  current = false,
+}: {
+  step: PipelineStep
+  repo: string
+  current?: boolean
+}) {
+  const [detail, setDetail] = useState<IssueDetail | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function load() {
+    if (detail || loading || !step.issue_number) return
+    setLoading(true)
+    setError(null)
+    try {
+      setDetail(
+        await fetchDetail<IssueDetail>(
+          detailUrl(`/api/details/issues/${step.issue_number}`, repo),
+        ),
+      )
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Erreur inconnue')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const exactSection =
+    detail?.sections.find((section) => section.work_key === step.key) ?? null
+
+  return (
+    <details
+      className={`pipeline-detail-accordion ${current ? 'current' : ''}`}
+      onToggle={(event) => {
+        if (event.currentTarget.open) void load()
+      }}
+    >
+      <summary>
+        <span className={`pipeline-kind ${step.kind.toLowerCase()}`}>
+          {pipelineKindLabel(step.kind)}
+        </span>
+        <div>
+          <strong>{pipelineStepLabel(step)}</strong>
+          <small>
+            {step.done
+              ? 'terminé'
+              : current
+                ? 'étape courante'
+                : step.status || 'à venir'}
+          </small>
+        </div>
+      </summary>
+      <div className="pipeline-detail-body">
+        <dl className="role-detail-facts compact">
+          <div>
+            <dt>Type</dt>
+            <dd>{step.kind}</dd>
+          </div>
+          <div>
+            <dt>État #55</dt>
+            <dd>{step.status || (step.done ? 'terminé' : 'non terminé')}</dd>
+          </div>
+          <div>
+            <dt>Issue cible</dt>
+            <dd>{step.issue_number ? `#${step.issue_number}` : '—'}</dd>
+          </div>
+        </dl>
+
+        {step.rationale && (
+          <div className="pipeline-rationale">
+            <strong>Pourquoi / dépendance</strong>
+            <p>{step.rationale}</p>
+          </div>
+        )}
+
+        {loading && <LoadingDetail label="Chargement du détail GitHub…" />}
+        {error && <DetailError value={error} />}
+
+        {detail && exactSection && (
+          <div className="pipeline-step-source">
+            <div className="role-detail-subtitle">{exactSection.title}</div>
+            <MarkdownDocument markdown={exactSection.content} />
+          </div>
+        )}
+
+        {detail && !exactSection && step.kind === 'WORK' && (
+          <div className="pipeline-step-source">
+            <div className="role-detail-subtitle">
+              #{detail.number} · {detail.title}
+            </div>
+            <MarkdownDocument markdown={detail.body} />
+          </div>
+        )}
+
+        {detail && step.kind !== 'WORK' && (
+          <details className="role-document-accordion pipeline-gate-source">
+            <summary>
+              <div>
+                <strong>Contexte de l'issue #{detail.number}</strong>
+                <small>{detail.title}</small>
+              </div>
+            </summary>
+            <div className="role-document-body">
+              <MarkdownDocument markdown={detail.body} />
+            </div>
+          </details>
+        )}
+
+        {detail && detail.documents.length > 0 && (
+          <div className="role-inline-documents">
+            <div className="role-detail-subtitle">
+              Documentation associée · {detail.documents.length}
+            </div>
+            {detail.documents.map((document) => (
+              <DocumentAccordion key={document.path} document={document} />
+            ))}
+          </div>
+        )}
+      </div>
+    </details>
+  )
+}
+
+function PipelineHorizonGroup({
+  label,
+  steps,
+  repo,
+  currentKey,
+  defaultOpen = false,
+}: {
+  label: string
+  steps: PipelineStep[]
+  repo: string
+  currentKey?: string | null
+  defaultOpen?: boolean
+}) {
+  return (
+    <details className="pipeline-horizon-group" open={defaultOpen}>
+      <summary>
+        <strong>{label}</strong>
+        <span>{steps.length} étape(s)</span>
+      </summary>
+      <div className="pipeline-horizon-content">
+        {steps.length ? (
+          steps.map((step) => (
+            <PipelineStepAccordion
+              key={`${step.kind}-${step.key}`}
+              step={step}
+              repo={repo}
+              current={step.key === currentKey}
+            />
+          ))
+        ) : (
+          <p className="role-detail-muted">Aucune étape dans cet horizon.</p>
+        )}
+      </div>
+    </details>
+  )
+}
+
 function ProductOwnerDetails({ dashboard }: { dashboard: Dashboard | null }) {
   const [roadmap, setRoadmap] = useState<RoadmapDetail | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -274,6 +450,39 @@ function ProductOwnerDetails({ dashboard }: { dashboard: Dashboard | null }) {
         <p>{dashboard.active_work.title || dashboard.active_work.issue.title}</p>
         <div className="role-detail-next-action">{dashboard.next_action}</div>
       </section>
+
+      {dashboard.pipeline.steps.length > 0 && (
+        <section className="role-detail-section product-pipeline-section">
+          <div className="role-detail-section-title">
+            Trajectoire produit · {dashboard.pipeline.completed_count}/{dashboard.pipeline.steps.length} franchie(s)
+          </div>
+          <p className="role-detail-muted">
+            Pipeline déterministe lu depuis le roadmap maître. Ouvre une tranche pour
+            afficher son contexte #55 puis son détail GitHub.
+          </p>
+          <div className="pipeline-horizon-stack">
+            <PipelineHorizonGroup
+              label="Maintenant"
+              steps={dashboard.pipeline.now ? [dashboard.pipeline.now] : []}
+              repo={dashboard.repo}
+              currentKey={dashboard.pipeline.now?.key}
+              defaultOpen
+            />
+            <PipelineHorizonGroup
+              label="Ensuite"
+              steps={dashboard.pipeline.next}
+              repo={dashboard.repo}
+              currentKey={dashboard.pipeline.now?.key}
+            />
+            <PipelineHorizonGroup
+              label="Plus tard"
+              steps={dashboard.pipeline.later}
+              repo={dashboard.repo}
+              currentKey={dashboard.pipeline.now?.key}
+            />
+          </div>
+        </section>
+      )}
 
       <section className="role-detail-section">
         <div className="role-detail-section-title">
