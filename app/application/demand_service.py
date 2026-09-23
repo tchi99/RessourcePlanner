@@ -15,8 +15,6 @@ from .commands import (
     DemandCancelCommand,
     DemandCorrectionCommand,
     DemandCreateCommand,
-    DemandLineInput,
-    DemandPeriodInput,
     DemandPeriodsReplaceCommand,
     DemandSubmitCommand,
     DemandUpdateCommand,
@@ -859,8 +857,10 @@ class DemandService:
     ) -> bool:
         """Widen only the candidate source represented by one approved entry.
 
-        This method deliberately delegates to the existing #13 candidate workflows.
-        It never mutates the materialized requirement/Shift and persists no move intent.
+        The exact line/period is mutated in place so sibling lines, alternatives,
+        selections, effort and stable identities remain untouched. The existing #13
+        envelope policy then decides whether the candidate needs reapproval or can be
+        approved directly. No materialized Shift is moved here.
         """
 
         identifier = self._required_identifier(number, entity="demand")
@@ -870,150 +870,104 @@ class DemandService:
             ACTION_MODIFY,
             expected_version=expected_request_version,
         )
-
+        was_approved = existing.status == "En planification"
         wanted_period = str(period_key or "").strip() or None
         wanted_line = str(request_line_id or "").strip() or None
-        if wanted_period is not None:
-            scoped_line = self._period_line_scope(existing, wanted_line)
-            periods = self._period_repository()
-            current = call_application_port(
-                lambda: (
-                    periods.list_for_demand(identifier)
-                    if scoped_line is None
-                    else periods.list_for_demand(
+        comment = (
+            "Extension de fenêtre candidate depuis le planning; "
+            "aucun déplacement n'est exécuté automatiquement"
+        )
+
+        with self._context("extend candidate demand window"):
+            if wanted_period is not None:
+                scoped_line = self._period_line_scope(existing, wanted_line)
+                changed = call_application_port(
+                    lambda: self._period_repository().extend_window(
                         identifier,
+                        wanted_period,
+                        target_day,
                         request_line_id=scoped_line,
-                    )
-                ),
-                code_prefix="demand_periods_lookup",
-                context={
-                    "demand_number": identifier,
-                    "request_line_id": scoped_line,
-                },
-            )
-            if not any(row.period_id == wanted_period for row in current):
-                raise ApplicationConflictError(
-                    "La période candidate correspondant à l'entrée approuvée n'existe plus.",
-                    code="demand_window_source_conflict",
+                    ),
+                    code_prefix="demand_period_window_extend",
                     context={
                         "demand_number": identifier,
                         "request_line_id": scoped_line,
                         "period_key": wanted_period,
                     },
                 )
-            inputs = tuple(
-                DemandPeriodInput(
-                    period_id=row.period_id,
-                    start_date=min(row.start_date, target_day)
-                    if row.period_id == wanted_period
-                    else row.start_date,
-                    end_date=max(row.end_date, target_day)
-                    if row.period_id == wanted_period
-                    else row.end_date,
-                    hours=row.hours,
-                    kind=row.kind,
-                    alternative_group=row.alternative_group,
-                    confirmation=row.confirmation,
-                    proposed_resource=row.proposed_resource,
-                    resource_count=row.resource_count,
-                    desired_active_days=row.desired_active_days,
-                    note=row.note or "",
-                )
-                for row in current
-            )
-            _updated, reapproval = self.replace_periods_command(
-                DemandPeriodsReplaceCommand(
-                    number=identifier,
-                    periods=inputs,
-                    request_line_id=scoped_line,
-                    expected_request_version=expected_request_version,
-                )
-            )
-            return reapproval
-
-        if existing.line_mode:
-            if not wanted_line:
-                raise ApplicationConflictError(
-                    "L'entrée approuvée ne permet plus d'identifier la ligne candidate.",
-                    code="demand_window_source_conflict",
-                    context={"demand_number": identifier},
-                )
-            target = next(
-                (
-                    row
-                    for row in existing.lines
-                    if row.active and row.line_id == wanted_line
-                ),
-                None,
-            )
-            if target is None or target.desired_start is None:
-                raise ApplicationConflictError(
-                    "La ligne candidate correspondant à l'entrée approuvée n'existe plus.",
-                    code="demand_window_source_conflict",
+                if changed:
+                    call_application_port(
+                        lambda: self._demands.update(
+                            identifier,
+                            {"ExpectedVersion": expected_request_version},
+                            action="Extension période candidate",
+                            comment=comment,
+                        ),
+                        code_prefix="demand_period_window_audit",
+                        context={
+                            "demand_number": identifier,
+                            "request_line_id": scoped_line,
+                            "period_key": wanted_period,
+                        },
+                    )
+            else:
+                changed = call_application_port(
+                    lambda: self._demands.extend_candidate_window(
+                        identifier,
+                        target_day,
+                        request_line_id=wanted_line,
+                        expected_version=expected_request_version,
+                        action="Extension fenêtre candidate",
+                        comment=comment,
+                    ),
+                    code_prefix="demand_window_extend",
                     context={
                         "demand_number": identifier,
                         "request_line_id": wanted_line,
                     },
                 )
-            lines = tuple(
-                DemandLineInput(
-                    line_id=row.line_id,
-                    position=row.position,
-                    kind=row.kind,
-                    required_resource_class=row.required_resource_class,
-                    required_competency_ids=tuple(row.required_competency_ids),
-                    required_competencies=row.required_competencies,
-                    desired_start=(
-                        min(row.desired_start, target_day)
-                        if row.line_id == wanted_line and row.desired_start is not None
-                        else row.desired_start
-                    ),
-                    desired_end=(
-                        max(row.desired_end or row.desired_start, target_day)
-                        if row.line_id == wanted_line and row.desired_start is not None
-                        else row.desired_end
-                    ),
-                    desired_active_days=row.desired_active_days,
-                    estimated_hours=row.estimated_hours,
-                    work_package_ref=row.work_package_ref,
-                    task_code=row.task_code,
-                    proposed_resource_id=row.proposed_resource_id,
-                    confirmation=row.confirmation,
-                    description=row.description,
-                )
-                for row in existing.lines
-                if row.active
-            )
-            return self.modify_command(
-                DemandUpdateCommand(
-                    number=identifier,
-                    lines=lines,
-                    expected_version=expected_request_version,
-                    comment=(
-                        "Extension de fenêtre candidate depuis le planning; "
-                        "aucun déplacement n'est exécuté automatiquement"
-                    ),
-                )
-            )
 
-        if existing.desired_start is None:
-            raise ApplicationConflictError(
-                "La fenêtre candidate de la demande est incomplète.",
-                code="demand_window_source_conflict",
-                context={"demand_number": identifier},
+            if not changed:
+                return existing.status != "En planification"
+            if not was_approved:
+                return False
+
+            if self._approval_envelope_policy is None:
+                call_application_port(
+                    lambda: self._demands.update(
+                        identifier,
+                        {
+                            "Statut": "Soumise",
+                            "ApprouvePar": None,
+                            "DateApprobation": None,
+                            "CommentaireApprobation": (
+                                "Enveloppe de fenêtre modifiée après approbation — "
+                                "nouvelle approbation requise"
+                            ),
+                        },
+                        action="Extension fenêtre candidate",
+                        comment=f"{comment}; nouvelle approbation requise",
+                    ),
+                    code_prefix="demand_window_reapproval_fallback",
+                    context={"demand_number": identifier},
+                )
+                return True
+
+            decision = self._evaluate_candidate_for_handling(
+                identifier,
+                code_prefix="approval_envelope_window_compare",
+                context={
+                    "demand_number": identifier,
+                    "request_line_id": wanted_line,
+                    "period_key": wanted_period,
+                },
+                legacy_unknown_requires_reapproval=True,
             )
-        return self.modify_command(
-            DemandUpdateCommand(
-                number=identifier,
-                desired_start=min(existing.desired_start, target_day),
-                desired_end=max(existing.desired_end or existing.desired_start, target_day),
-                expected_version=expected_request_version,
-                comment=(
-                    "Extension de fenêtre candidate depuis le planning; "
-                    "aucun déplacement n'est exécuté automatiquement"
-                ),
+            return self._handle_candidate_envelope_decision(
+                identifier,
+                decision,
+                legacy_unknown_requires_reapproval=True,
             )
-        )
 
     def select_alternative_command(
         self,
