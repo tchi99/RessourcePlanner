@@ -419,9 +419,14 @@ export default function AssetPlanningPanel({
                       : Number(capacity?.occupied_units ?? 0) > 0
                         ? "Occupé"
                         : "Libre";
+                    const stateClass = capacity?.unavailable
+                      ? "unavailable"
+                      : Number(capacity?.occupied_units ?? 0) > 0
+                        ? "occupied"
+                        : "free";
                     return (
                       <div
-                        className={`asset-capacity-cell is-${state.toLocaleLowerCase("fr-CA")}`}
+                        className={`asset-capacity-cell is-${stateClass}`}
                         key={day}
                       >
                         <strong>{state}</strong>
