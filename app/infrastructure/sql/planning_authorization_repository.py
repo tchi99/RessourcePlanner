@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from datetime import date
 from collections.abc import Mapping, Sequence
 from decimal import Decimal
 
@@ -322,3 +323,66 @@ class SqlRequestPlanningAuthorizationRepository(PlanningAuthorizationPort):
             float(proposed),
             expected_version=expected_operational_version,
         )
+
+
+    def operational_window_authorization(
+        self,
+        segment_id: str,
+        target_day: date,
+        *,
+        expected_approval_revision_id: str | None = None,
+    ) -> Mapping[str, object]:
+        """Evaluate one local window against the exact active approved entry.
+
+        This is deliberately narrower than approval-envelope comparison: it only
+        answers whether the already-materialized requirement may widen to include
+        the target day without changing authorization topology or borrowing another
+        period/alternative.
+        """
+
+        requirement = self._requirement(segment_id)
+        context = self._approved_context(requirement)
+        if context is None:
+            return {
+                "authorized": True,
+                "origin": requirement.origin,
+                "approval_revision_id": None,
+                "approved_entry_key": None,
+                "approved_start": None,
+                "approved_end": None,
+            }
+
+        _request, revision, entry = context
+        expected = _text(expected_approval_revision_id)
+        if expected and expected != revision.id:
+            raise ApplicationConflictError(
+                "L'autorisation approuvée du besoin a changé depuis l'évaluation.",
+                code="planning_authorization_revision_conflict",
+                context={
+                    "expected_approval_revision_id": expected,
+                    "current_approval_revision_id": revision.id,
+                    "approved_entry_key": requirement.approved_entry_key,
+                },
+            )
+
+        try:
+            approved_start = date.fromisoformat(_text(entry.get("start_date")))
+            approved_end = date.fromisoformat(_text(entry.get("end_date")))
+        except ValueError as exc:
+            raise ApplicationConflictError(
+                "La fenêtre de l'entrée approuvée active est invalide.",
+                code="planning_authorization_window_unknown",
+                context={
+                    "approval_revision_id": revision.id,
+                    "approved_entry_key": requirement.approved_entry_key,
+                },
+            ) from exc
+
+        return {
+            "authorized": approved_start <= target_day <= approved_end,
+            "origin": requirement.origin,
+            "approval_revision_id": revision.id,
+            "approved_entry_key": requirement.approved_entry_key,
+            "approved_start": approved_start,
+            "approved_end": approved_end,
+        }
