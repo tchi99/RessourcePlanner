@@ -1,7 +1,7 @@
 # Architecture actuelle des demandes V2
 
-> Ce document décrit l'état **implémenté sur `main` après #329**.  
-> Le roadmap maître reste l'issue #55. Les décisions durables sont détaillées dans ADR-001 à ADR-004.
+> Ce document décrit l'architecture V2 actuelle et ses invariants structurants.  
+> Le roadmap maître reste l'issue #55. Les décisions durables sont détaillées dans ADR-001 à ADR-006.
 
 ## 1. Chaîne métier canonique
 
@@ -184,9 +184,9 @@ Contraintes :
 #329 ✅ projection backend de détail
 #330 ✅ détail React unifié — PR #379 / CI #752
   ↓
-#332 🟡 partage / duplication atomiques — 332A concurrence commune READY → 332B commandes → 332C interface
+#332 ✅ partage / duplication atomiques — 332A/B/C livrés
   ↓
-#333 extension de fenêtre + dialogue DnD
+#333 🟠 extension de fenêtre + dialogue DnD — 333A READY → 333B → 333C
   ↓
 #291 actifs réservables
   ↓
@@ -214,4 +214,20 @@ L'ordre autoritaire reste #55.
 - ADR-002 — périodes par ligne;
 - ADR-003 — autorisation approuvée immuable;
 - ADR-004 — candidat / autorisation / plan actif;
-- ADR-005 — révision globale/CAS des mutations de planning.
+- ADR-005 — identité canonique du demandeur distincte de l'acteur;
+- ADR-006 — révision globale/CAS des mutations de planning.
+
+
+## 11. Extension de fenêtre et déplacement (#333)
+
+#333 conserve une frontière stricte entre **autorisation** et **exécution** :
+
+- si la fenêtre finale est déjà autorisée, une commande composite peut étendre et déplacer atomiquement avec la garde ADR-006, l'idempotence et un seul rebuild;
+- si la nouvelle fenêtre sort de l'enveloppe, le geste modifie uniquement la candidate via le parcours #13 et laisse le plan actif inchangé;
+- **aucune intention de déplacement n'est persistée** pendant l'attente d'approbation;
+- approuver la nouvelle fenêtre n'exécute aucun déplacement;
+- après approbation, l'utilisateur initie un nouveau déplacement contre l'état courant, qui est entièrement revalidé.
+
+Cette décision évite d'introduire un nouvel agrégat `RequestPlanningIntent` sans besoin démontré. Une éventuelle reprise persistée du geste pourra être traitée comme une évolution UX distincte si l'usage le justifie.
+
+Deux renforcements de concurrence font partie de #333 : la garde globale de planning doit être acquise avant les lectures décisionnelles du parcours d'approbation concerné, et le remplacement des périodes doit transporter une `expected_request_version` afin de ne pas écraser une édition candidate concurrente.
