@@ -41,6 +41,11 @@ import DemandLinesEditor, {
   newDemandLine,
 } from "./DemandLinesEditor";
 import { useViewScope } from "./ViewScopeContext";
+import {
+  AssetCatalogItem,
+  AssetTypeCatalogItem,
+  getAssetCatalog,
+} from "./assetApi";
 import ViewScopeSelector from "./ViewScopeSelector";
 
 type FormState = {
@@ -116,6 +121,7 @@ function emptyForm(projectNumber = "", requesterUserId = ""): FormState {
 function lineDefaultsFromForm(form: FormState, resources: ResourceReadModel[]): DemandLineDefaults {
   const proposed = resources.find((row) => row.name === form.proposed_technician) ?? null;
   return {
+    kind: "WORKFORCE",
     required_resource_class: proposed?.resource_class ?? "",
     required_competency_ids: [...form.required_competency_ids],
     desired_start: form.desired_start,
@@ -125,6 +131,8 @@ function lineDefaultsFromForm(form: FormState, resources: ResourceReadModel[]): 
     work_package_ref: form.work_package_ref,
     task_code: form.task_code,
     proposed_resource_id: proposed?.id ?? "",
+    asset_type_id: "",
+    proposed_asset_id: "",
     confirmation: form.confirmation,
     description: "",
   };
@@ -212,6 +220,8 @@ export default function DemandsPage() {
   const [projects, setProjects] = useState<ProjectReadModel[]>([]);
   const [resources, setResources] = useState<ResourceReadModel[]>([]);
   const [competencies, setCompetencies] = useState<CompetencyReadModel[]>([]);
+  const [assetTypes, setAssetTypes] = useState<AssetTypeCatalogItem[]>([]);
+  const [assets, setAssets] = useState<AssetCatalogItem[]>([]);
   const [contacts, setContacts] = useState<BusinessContactReadModel[]>([]);
   const [demandContactLink, setDemandContactLink] = useState<ContactLinkReadModel | null>(null);
   const [lineContactResolutions, setLineContactResolutions] = useState<Record<string, RequestLineContactResolutionReadModel>>({});
@@ -249,16 +259,19 @@ export default function DemandsPage() {
       getProjects(true, controller.signal, scope),
       getResources(true, controller.signal),
       getCompetencies("", false, controller.signal),
+      getAssetCatalog(controller.signal),
       getBusinessContacts(false, controller.signal),
       canManageDemands
         ? getDemandRequesters(controller.signal)
         : Promise.resolve([] as DemandRequesterReadModel[]),
     ])
-      .then(([demandRows, projectRows, resourceRows, competencyRows, contactRows, requesterRows]) => {
+      .then(([demandRows, projectRows, resourceRows, competencyRows, assetCatalog, contactRows, requesterRows]) => {
         setDemands(demandRows);
         setProjects(projectRows);
         setResources(resourceRows);
         setCompetencies(competencyRows);
+        setAssetTypes(assetCatalog.types);
+        setAssets(assetCatalog.assets);
         setContacts(contactRows);
         setRequesters(requesterRows);
         setSelectedNumber((current) => {
@@ -496,7 +509,7 @@ export default function DemandsPage() {
     let payload: DemandWrite;
     if (lineMode) {
       if (lines.length === 0) {
-        setError("Ajoute au moins une ligne de main-d’œuvre.");
+        setError("Ajoute au moins une ligne planifiable.");
         return;
       }
       const invalid = lines
@@ -658,7 +671,7 @@ export default function DemandsPage() {
     <section className="demands-page">
       <div className="page-heading demands-heading">
         <div>
-          <span className="eyebrow">Main-d’œuvre</span>
+          <span className="eyebrow">Besoins planifiables</span>
           <h1>Demandes</h1>
           <p>Création et modification des besoins avant leur transformation en périodes, approbation et plan opérationnel.</p>
         </div>
@@ -843,8 +856,8 @@ export default function DemandsPage() {
                   <strong>{lineMode ? "Besoins par ligne activés" : "Besoin simple ou lignes multiples?"}</strong>
                   <span>
                     {lineMode
-                      ? "Chaque ligne possède maintenant ses propres dates, effort, classe, compétences, tâche et WorkPackage."
-                      : "Le mode simple reste disponible pour les demandes historiques. Active les lignes pour représenter plusieurs ressources qui peuvent diverger."}
+                      ? "Chaque ligne peut représenter de la main-d’œuvre ou un actif physique avec ses propres dates et références."
+                      : "Le mode simple reste disponible pour les demandes historiques de main-d’œuvre. Active les lignes pour créer des demandes mixtes."}
                   </span>
                 </div>
                 {!lineMode ? (
@@ -874,6 +887,8 @@ export default function DemandsPage() {
                   resources={resources}
                   workPackages={workPackages}
                   tasks={tasks}
+                  assetTypes={assetTypes}
+                  assets={assets}
                   disabled={saving}
                 />
               ) : (
