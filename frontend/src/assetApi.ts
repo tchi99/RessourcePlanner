@@ -8,6 +8,8 @@ export type AssetTypeCatalogItem = {
   category: string;
   active: boolean;
   occupancy_policy: string;
+  qualification_policy: string;
+  required_competencies: { id: string; name: string }[];
   metadata: Record<string, unknown>;
 };
 
@@ -81,6 +83,55 @@ async function sendJson<T>(
 
 export function getAssetCatalog(signal?: AbortSignal) {
   return getJson<AssetCatalog>("/api/v1/assets/catalog", signal);
+}
+
+export type AssetOperatorCandidate = {
+  resource_id: string;
+  resource_name: string;
+};
+
+export type AssetOperatorCandidates = {
+  requirement_id: string;
+  allocation_id: string;
+  qualification_state: "SATISFIED" | "MISSING_OPERATOR" | "SKILL_MISMATCH" | "NO_OVERLAP";
+  required_competency_ids: string[];
+  required_competency_names: string[];
+  operator_resource_id: string | null;
+  operator_resource_name: string | null;
+  candidates: AssetOperatorCandidate[];
+  planning_version: number;
+};
+
+export function getAssetOperatorCandidates(
+  requirementId: string,
+  signal?: AbortSignal,
+) {
+  return getJson<AssetOperatorCandidates>(
+    `/api/v1/assets/requirements/${encodeURIComponent(requirementId)}/operator-candidates`,
+    signal,
+  );
+}
+
+export function setAssetRequirementOperator(
+  requirementId: string,
+  payload: {
+    operator_resource_id: string | null;
+    expected_planning_version: number;
+  },
+  idempotencyKey: string,
+) {
+  return sendJson<{
+    planning_version: number;
+    allocation_id: string;
+    requirement_id: string;
+    operator_resource_id: string | null;
+    qualification_state: string;
+  }>(
+    `/api/v1/assets/requirements/${encodeURIComponent(requirementId)}/operator`,
+    "PUT",
+    payload,
+    { "Idempotency-Key": idempotencyKey },
+  );
 }
 
 export function reserveAssetRequirement(
