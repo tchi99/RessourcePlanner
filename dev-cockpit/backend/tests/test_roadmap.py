@@ -111,6 +111,36 @@ analyse architecture #362
 """
 
 
+CURRENT_407_TABLE_ROADMAP = """
+### Suite produit après #333 — bloc P1 puis préparation environnementale
+
+Chemin principal retenu :
+
+```text
+#292 ✅ qualifications/permis des actifs — PR #406, CI #822
+  ↓
+#407 cohérence sauvegarde → workflow + protection des modifications non enregistrées
+  ↓
+#399 demande d'annulation + résolution coordonnateur
+  ↓
+#276 routage d'approbation par tâches
+  ↓
+#410 inclure les demandes du coordonnateur assigné dans Mon périmètre
+  ↓
+#278 dashboard Coordonnateur consolidé
+```
+
+| Étape | État / gate | Pourquoi maintenant |
+|---|---|---|
+| #292 | ✅ TERMINÉ — PR #406 / CI #822 | livré |
+| #407 | 🟠 NEXT — #292 terminée | corriger la cohérence version/read model |
+| #399 | après #407 | annulation |
+| #276 | après #399 | approbation |
+| #410 | avant #278 | scope coordonnateur |
+| #278 | après #407 + #399 + #276 + #410 | dashboard |
+"""
+
+
 CURRENT_FALSE_DONE_ROADMAP = """
 ### Suite produit après #333 — bloc P1 puis préparation environnementale
 
@@ -278,6 +308,19 @@ class RoadmapTests(unittest.TestCase):
         )
         self.assertEqual(window["later"][0]["key"], "ASTRA-362")
         self.assertEqual(window["later"][0]["kind"], "ARCHITECTURE_GATE")
+
+    def test_table_dependency_completion_does_not_complete_next_work(self):
+        pipeline = product_pipeline(CURRENT_407_TABLE_ROADMAP)
+        window = pipeline_window(pipeline)
+        by_key = {step.key: step for step in pipeline}
+
+        self.assertTrue(by_key["292"].done)
+        self.assertFalse(by_key["407"].done)
+        self.assertEqual(window["now"]["key"], "407")
+        self.assertEqual(
+            [step["key"] for step in window["next"]],
+            ["399", "276", "410"],
+        )
 
     def test_completion_word_on_other_work_does_not_skip_main_pipeline(self):
         pipeline = product_pipeline(CURRENT_FALSE_DONE_ROADMAP)
