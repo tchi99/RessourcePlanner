@@ -315,6 +315,106 @@ class PlanningCapacityGridReadModel:
 
 
 @dataclass(frozen=True, slots=True)
+class AssetTypeReadModel:
+    id: str
+    code: str
+    label: str
+    category: str
+    occupancy_policy: str
+    active: bool
+
+
+@dataclass(frozen=True, slots=True)
+class AssetReadModel:
+    id: str
+    code: str
+    label: str
+    asset_type_id: str
+    active: bool
+
+
+@dataclass(frozen=True, slots=True)
+class AssetAllocationReadModel:
+    allocation_id: str
+    requirement_id: str
+    asset_id: str
+    asset_code: str
+    asset_label: str
+    start_date: date
+    end_date: date
+    locked: bool
+    source: str
+
+
+@dataclass(frozen=True, slots=True)
+class AssetUnavailabilityReadModel:
+    id: str
+    asset_id: str
+    start_date: date
+    end_date: date
+    reason: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class AssetRequirementReadModel:
+    requirement_id: str
+    demand_number: str
+    project_id: str
+    project_number: str
+    source_request_line_id: str
+    source_period_id: str | None
+    approval_revision_id: str | None
+    approved_entry_key: str
+    slot_index: int
+    asset_type_id: str
+    asset_type_code: str
+    asset_type_label: str
+    start_date: date
+    end_date: date
+    usage_hours: float | None
+    status: str
+    allocation_id: str | None = None
+    asset_id: str | None = None
+    asset_code: str | None = None
+    asset_label: str | None = None
+    allocation_start_date: date | None = None
+    allocation_end_date: date | None = None
+    allocation_locked: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class AssetDayCapacityReadModel:
+    asset_id: str
+    day: date
+    capacity_units: int
+    occupied_units: int
+    remaining_units: int
+    unavailable: bool
+    available: bool
+
+
+@dataclass(frozen=True, slots=True)
+class AssetPlanningDiagnosticReadModel:
+    code: str
+    message: str
+    requirement_id: str | None = None
+    allocation_id: str | None = None
+    asset_id: str | None = None
+    day: date | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class AssetPlanningWindowReadModel:
+    asset_types: tuple[AssetTypeReadModel, ...] = ()
+    assets: tuple[AssetReadModel, ...] = ()
+    requirements: tuple[AssetRequirementReadModel, ...] = ()
+    allocations: tuple[AssetAllocationReadModel, ...] = ()
+    unavailability: tuple[AssetUnavailabilityReadModel, ...] = ()
+    capacity: tuple[AssetDayCapacityReadModel, ...] = ()
+    diagnostics: tuple[AssetPlanningDiagnosticReadModel, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
 class PlanningSnapshotReadModel:
     """Canonical, transaction-coherent planning window exposed to web clients."""
 
@@ -327,6 +427,13 @@ class PlanningSnapshotReadModel:
     planning_version: int = 1
     pending_loads: tuple[PendingDemandLoadReadModel, ...] = ()
     capacity_buckets: tuple[MediumTermCapacityBucketReadModel, ...] = ()
+    asset_types: tuple[AssetTypeReadModel, ...] = ()
+    assets: tuple[AssetReadModel, ...] = ()
+    asset_requirements: tuple[AssetRequirementReadModel, ...] = ()
+    asset_allocations: tuple[AssetAllocationReadModel, ...] = ()
+    asset_unavailability: tuple[AssetUnavailabilityReadModel, ...] = ()
+    asset_capacity: tuple[AssetDayCapacityReadModel, ...] = ()
+    asset_diagnostics: tuple[AssetPlanningDiagnosticReadModel, ...] = ()
     firm_hours: float = 0.0
     potential_hours: float = 0.0
     replacement_proposal_hours: float = 0.0
