@@ -32,7 +32,7 @@ class ReactEstimatedActiveDaysContractTests(unittest.TestCase):
         self.assertIn("Jours actifs souhaités", source)
         self.assertIn("ne multiplie pas les heures", source)
         self.assertIn("Cible de répartition", source)
-        self.assertIn("await replaceDemandPeriods(selectedDemand.number, payload)", source)
+        self.assertIn("await replaceDemandPeriods(selectedDemand.number, payload, selectedDemand.version)", source)
 
     def test_segment_view_surfaces_target_and_backend_diagnostic(self) -> None:
         source = (ROOT / "frontend" / "src" / "DemandSegmentsPage.tsx").read_text(
