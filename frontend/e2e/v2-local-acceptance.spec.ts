@@ -557,7 +557,7 @@ test("V2 local acceptance path runs through React, Chromium, FastAPI and SQLite"
     await expect(quickShift).toBeHidden();
 
     const shiftsResponse = await page.request.get(
-      `/api/v1/shifts?start=${sourceDay}&end=${weekEnd}`,
+      `/api/v1/shifts?start=${d1}&end=${d5}`,
     );
     expect(shiftsResponse.ok()).toBeTruthy();
     const shifts = await shiftsResponse.json() as Array<{
@@ -630,7 +630,7 @@ test("V2 local acceptance path runs through React, Chromium, FastAPI and SQLite"
       work_date: string;
     }>).find((row) => row.allocation_id === allocationId);
     expect(unchangedShift?.resource_name).toBe("Alice");
-    expect(unchangedShift?.work_date).toBe(sourceDay);
+    expect(unchangedShift?.work_date).toBe(d2);
 
     await dragWithDataTransfer(
       page,
@@ -677,7 +677,7 @@ test("V2 local acceptance path runs through React, Chromium, FastAPI and SQLite"
     await expect(page.locator(".planning-drag-feedback")).toContainText("Quart déplacé vers Alice");
 
     const aliceD2Source = aliceRow
-      .locator(`.planning-drop-day[data-day="${sourceDay}"]`)
+      .locator(`.planning-drop-day[data-day="${d2}"]`)
       .locator(`.shift-card[data-allocation-id="${allocationId}"]`);
     const bobD3Target = bobRow.locator(`.planning-drop-day[data-day="${d3}"]`);
     await dragWithDataTransfer(page, aliceD2Source, bobD3Target);
