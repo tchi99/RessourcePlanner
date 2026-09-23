@@ -113,6 +113,38 @@ En parallèle dès maintenant : #398 UX sidebar + liste Demandes
 """
 
 
+ROADMAP_CURRENT_407 = """
+# Roadmap maître
+
+### Suite produit après #333 — bloc P1 puis préparation environnementale
+
+Chemin principal retenu :
+
+```text
+#292 ✅ qualifications/permis des actifs — PR #406, CI #822
+  ↓
+#407 cohérence sauvegarde → workflow + protection des modifications non enregistrées
+  ↓
+#399 demande d'annulation + résolution coordonnateur
+  ↓
+#276 routage d'approbation par tâches
+  ↓
+#410 inclure les demandes du coordonnateur assigné dans Mon périmètre
+  ↓
+#278 dashboard Coordonnateur consolidé
+```
+
+| Étape | État / gate | Pourquoi maintenant |
+|---|---|---|
+| #292 | ✅ TERMINÉ — PR #406 / CI #822 | livré |
+| #407 | 🟠 NEXT — #292 terminée | corriger la cohérence version/read model |
+| #399 | après #407 | annulation |
+| #276 | après #399 | approbation |
+| #410 | avant #278 | scope coordonnateur |
+| #278 | après #407 + #399 + #276 + #410 | dashboard |
+"""
+
+
 ROADMAP_291_READY = """
 **L'analyse ASTRA est terminée. La prochaine tranche active est #291, avec 291A READY.**
 
@@ -798,6 +830,78 @@ class ServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(
             [step["key"] for step in dashboard["pipeline"]["next"]],
             ["399", "276", "278"],
+        )
+
+
+    async def test_next_row_dependency_completion_keeps_407_active(self):
+        def handler(request: httpx.Request) -> httpx.Response:
+            path = request.url.path
+            query = dict(request.url.params)
+            if path == "/repos/tchi99/RessourcePlanner/issues/55":
+                return response({
+                    "number": 55,
+                    "title": "Roadmap maître",
+                    "body": ROADMAP_CURRENT_407,
+                    "html_url": "https://github.test/issues/55",
+                    "updated_at": "2026-09-23T21:26:33Z",
+                    "state": "open",
+                })
+            if path == "/repos/tchi99/RessourcePlanner/issues/407":
+                return response({
+                    "number": 407,
+                    "title": "Cohérence sauvegarde → workflow",
+                    "body": "## Priorité\nNEXT",
+                    "state": "open",
+                    "html_url": "https://github.test/issues/407",
+                    "updated_at": "2026-09-23T21:20:00Z",
+                })
+            if path == "/repos/tchi99/RessourcePlanner/pulls":
+                return response([])
+            if path == "/repos/tchi99/RessourcePlanner/commits":
+                return response([{
+                    "sha": "main-407",
+                    "html_url": "https://github.test/commit/main-407",
+                    "commit": {
+                        "message": "main",
+                        "author": {"date": "2026-09-23T21:27:00Z"},
+                    },
+                }])
+            if path == "/repos/tchi99/RessourcePlanner/contents/AGENTS.md":
+                return response(encoded_file(AGENTS))
+            if path == "/repos/tchi99/RessourcePlanner/contents/docs/architecture":
+                return response([])
+            if path == "/repos/tchi99/RessourcePlanner/branches":
+                return response([
+                    {"name": "main", "commit": {"sha": "main-407"}},
+                ])
+            raise AssertionError(
+                f"Unexpected request: {request.method} {request.url} {query}"
+            )
+
+        settings = Settings(
+            github_token="test",
+            repository="tchi99/RessourcePlanner",
+            roadmap_issue=55,
+            stalled_after_minutes=20,
+            github_api_url="https://api.github.test",
+        )
+        client = GitHubClient(settings, transport=httpx.MockTransport(handler))
+        try:
+            dashboard = await build_dashboard(
+                client,
+                settings,
+                "tchi99/RessourcePlanner",
+            )
+        finally:
+            await client.close()
+
+        self.assertEqual(dashboard["roadmap"]["active_issue"], 407)
+        self.assertEqual(dashboard["roadmap"]["effective_active"], "407")
+        self.assertEqual(dashboard["active_work"]["issue_number"], 407)
+        self.assertEqual(dashboard["pipeline"]["now"]["key"], "407")
+        self.assertEqual(
+            [step["key"] for step in dashboard["pipeline"]["next"]],
+            ["399", "276", "410"],
         )
 
 
