@@ -3,7 +3,12 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any, Protocol
 
-from .commands import AllocationDuplicateCommand, AllocationSplitCommand
+from .commands import (
+    AllocationDropEvaluateCommand,
+    AllocationDuplicateCommand,
+    AllocationExtendMoveCommand,
+    AllocationSplitCommand,
+)
 
 
 class PlanningCommandPort(Protocol):
@@ -54,11 +59,15 @@ class AllocationCommandPort(Protocol):
 
 
 class CompositeAllocationCommandPort(Protocol):
-    """Atomic split/duplicate command boundary for one Shift transaction."""
+    """Atomic contextual planning commands for one Shift transaction."""
 
     def split(self, command: AllocationSplitCommand) -> Mapping[str, Any]: ...
 
     def duplicate(self, command: AllocationDuplicateCommand) -> Mapping[str, Any]: ...
+
+    def evaluate_drop(self, command: AllocationDropEvaluateCommand) -> Mapping[str, Any]: ...
+
+    def extend_and_move(self, command: AllocationExtendMoveCommand) -> Mapping[str, Any]: ...
 
 
 class ApprovedDemandSyncPort(Protocol):
