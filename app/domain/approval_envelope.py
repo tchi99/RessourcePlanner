@@ -82,6 +82,32 @@ class EnvelopeEntryIdentity:
         )
 
 
+def envelope_entry_identity_from_stable_key(value: object) -> EnvelopeEntryIdentity:
+    """Parse one canonical line/period identity without weakening its scope."""
+
+    raw = _text(value)
+    try:
+        parts = json.loads(raw)
+    except (TypeError, ValueError, json.JSONDecodeError) as exc:
+        raise ValueError("Une identité d'entrée approuvée est invalide.") from exc
+    if (
+        not isinstance(parts, list)
+        or len(parts) != 3
+        or parts[0] not in {"LINE", "PERIOD"}
+        or not _text(parts[1])
+    ):
+        raise ValueError("Une identité d'entrée approuvée est invalide.")
+    period_key = _optional_text(parts[2])
+    if parts[0] == "LINE" and period_key is not None:
+        raise ValueError("Une identité de ligne approuvée ne peut pas contenir de période.")
+    if parts[0] == "PERIOD" and period_key is None:
+        raise ValueError("Une identité de période approuvée doit contenir une clé stable.")
+    return EnvelopeEntryIdentity(
+        line_id=_text(parts[1]),
+        period_key=period_key,
+    )
+
+
 @dataclass(frozen=True, slots=True, order=True)
 class EnvelopeGroupIdentity:
     line_id: str
