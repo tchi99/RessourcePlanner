@@ -5,7 +5,14 @@ planning engine must continue to depend on ports/read models rather than SQLAlch
 """
 
 from .approval_envelope_policy_repository import SqlDemandApprovalEnvelopePolicyRepository
-from .asset_models import Asset, AssetAllocation, AssetRequirement, AssetType, AssetUnavailability
+from .asset_models import (
+    Asset,
+    AssetAllocation,
+    AssetRequirement,
+    AssetType,
+    AssetTypeCompetency,
+    AssetUnavailability,
+)
 from .approval_revision_models import (
     APPROVAL_REFERENCE_CAPTURED,
     APPROVAL_REFERENCE_LEGACY_UNKNOWN,
@@ -120,6 +127,12 @@ __all__ = [
     "AppUser",
     "AuthLoginTransaction",
     "AuthSession",
+    "Asset",
+    "AssetAllocation",
+    "AssetRequirement",
+    "AssetType",
+    "AssetTypeCompetency",
+    "AssetUnavailability",
     "Base",
     "BusinessContact",
     "CommandIdempotencyReceipt",
