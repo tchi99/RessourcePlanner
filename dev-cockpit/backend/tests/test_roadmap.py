@@ -81,6 +81,36 @@ audit/fermeture des anciennes issues locales
 | #263 | après P1 ou en parallèle infra | valider la vraie VM Ubuntu |
 """
 
+CURRENT_PARALLEL_PIPELINE_ROADMAP = """
+La prochaine tranche active du flux principal est #292.
+
+### Suite produit après #333 — bloc P1 puis préparation environnementale
+
+Chemin principal retenu :
+
+```text
+#291A ✅ → #291B ✅ → #291C ✅ → #291D ✅ → #291E ✅ → #291F ✅
+  ↓
+#292 qualifications/permis des actifs
+  ↓
+#399 demande d'annulation + résolution coordonnateur
+  ↓
+#276 routage d'approbation par tâches
+  ↓
+#278 dashboard Coordonnateur consolidé
+
+En parallèle dès maintenant : #398 UX sidebar + liste Demandes
+  ↓
+si les accès externes manquent encore :
+analyse architecture #362
+  ↓
+#362 Delivery
+  ↓
+#363 Verification
+```
+"""
+
+
 ISSUE = """
 # #13 — périodes + enveloppe approuvée commune
 
@@ -195,6 +225,37 @@ class RoadmapTests(unittest.TestCase):
         self.assertEqual(window["now"]["key"], "291")
         self.assertEqual(window["now"]["kind"], "WORK")
         self.assertEqual(window["next"][0]["key"], "292")
+
+    def test_current_roadmap_uses_main_lane_and_exposes_parallel_ready_work(self):
+        self.assertEqual(
+            extract_declared_active(CURRENT_PARALLEL_PIPELINE_ROADMAP),
+            "292",
+        )
+        pipeline = product_pipeline(CURRENT_PARALLEL_PIPELINE_ROADMAP)
+        parallel = [step for step in pipeline if step.lane == "PARALLEL"]
+        self.assertEqual([step.key for step in parallel], ["398"])
+
+        window = pipeline_window(pipeline)
+        self.assertEqual(window["now"]["key"], "292")
+        self.assertEqual(
+            [step["key"] for step in window["parallel"]],
+            ["398"],
+        )
+        self.assertEqual(
+            [step["key"] for step in window["next"]],
+            ["399", "276", "278"],
+        )
+        self.assertEqual(window["later"][0]["key"], "ASTRA-362")
+        self.assertEqual(window["later"][0]["kind"], "ARCHITECTURE_GATE")
+
+    def test_parallel_work_never_blocks_main_pipeline_progression(self):
+        body = CURRENT_PARALLEL_PIPELINE_ROADMAP.replace(
+            "#292 qualifications/permis des actifs",
+            "#292 qualifications/permis des actifs ✅",
+        )
+        window = pipeline_window(product_pipeline(body))
+        self.assertEqual(window["now"]["key"], "399")
+        self.assertEqual([step["key"] for step in window["parallel"]], ["398"])
 
     def test_old_13a_roadmap_compatibility_is_preserved(self):
         self.assertEqual(extract_declared_active(ROADMAP), "13")
