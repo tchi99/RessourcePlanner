@@ -305,3 +305,37 @@ class AllocationExtendMoveCommand:
             )
         if self.overallocation_policy is not None:
             _overallocation_policy(self.overallocation_policy)
+
+
+@dataclass(frozen=True, slots=True)
+class AllocationWindowExtensionProposalCommand:
+    allocation_id: str
+    resource_id: str
+    day: date
+    expected_request_version: int
+    expected_approval_revision_id: str
+    outside_standard_hours: bool = False
+    correlation_id: str | None = None
+
+    def __post_init__(self) -> None:
+        required_text(
+            self.allocation_id,
+            field="allocation_id",
+            message="Un identifiant d'allocation est requis.",
+        )
+        required_text(
+            self.resource_id,
+            field="allocation_resource",
+            message="Une ressource cible est requise.",
+        )
+        required_text(
+            self.expected_approval_revision_id,
+            field="allocation_approval_revision",
+            message="La révision approuvée attendue est requise.",
+        )
+        if int(self.expected_request_version) < 1:
+            raise ApplicationValidationError(
+                "La version candidate attendue doit être au moins 1.",
+                code="demand_version_invalid",
+                context={"expected_request_version": self.expected_request_version},
+            )
