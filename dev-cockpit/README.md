@@ -189,6 +189,42 @@ Pour la tranche active, la résolution suit cet ordre :
 
 Le commit de `main` affiché dans le footer est uniquement une référence sur l'état du dépôt. Les états `IN_PROGRESS`, `STALLED`, la dernière activité, les workflows associés et le détail Developer utilisent le HEAD de la branche active ou de la PR active.
 
+## Pipeline produit explicite du roadmap #55
+
+Le Cockpit conserve le resolver historique basé sur `Ordre actif :` pour déterminer l'issue/sous-tranche DEV active, ses PR, branches, CI, stalls et règles d'auto-chaining. En complément, il lit un **pipeline produit explicite** lorsque #55 contient une section dont le heading annonce une `Suite produit` ou un `Pipeline produit`.
+
+Le contrat actuellement documenté dans #55 est déterministe :
+
+1. la séquence ordonnée est le premier bloc fenced `text` de cette section qui contient des références `#issue` / `#issueSousTranche`;
+2. une étape ordinaire est `WORK`;
+3. une étape explicitement libellée ASTRA / analyse architecturale est `ARCHITECTURE_GATE`;
+4. une étape explicitement libellée validation VM / environnement / infrastructure est `ENVIRONMENT_GATE`;
+5. la table Markdown de la même section peut enrichir le type et surtout l'état de la gate;
+6. `✅` ou une formulation explicite de gate terminée/satisfaite/validée dans #55 marque la gate comme franchie;
+7. les sous-tranches WORK continuent aussi de réutiliser les marqueurs GitHub de l'issue active.
+
+Aucun état local n'enregistre qu'une gate est terminée. Si #55 ne la marque plus comme satisfaite, le Cockpit la reconsidère comme ouverte au prochain refresh.
+
+Exemple de trajectoire :
+
+```text
+WORK → WORK → WORK
+          ↓
+ARCHITECTURE_GATE
+          ↓
+WORK → WORK → WORK
+          ↓
+ENVIRONMENT_GATE
+```
+
+Le dashboard expose cette trajectoire en trois horizons :
+
+- **Maintenant** : premier step non terminé;
+- **Ensuite** : les trois steps immédiatement suivants;
+- **Plus tard** : jusqu'à six steps supplémentaires, avec compteur si la trajectoire est plus longue.
+
+Une gate d'architecture ou d'environnement n'est jamais transformée en tranche DEV. Si elle devient le step courant, le prompt Developer indique explicitement qu'aucune implémentation ne doit démarrer avant que GitHub/#55 documente la gate comme satisfaite.
+
 ## Détection du travail interrompu
 
 Le cockpit ne considère pas le dernier commit global du dépôt comme un signal de stall. Il observe uniquement l'activité GitHub pertinente pour la tranche active.

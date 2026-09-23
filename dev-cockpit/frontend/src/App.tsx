@@ -1,7 +1,14 @@
 import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import RoleCards from './RoleCards'
-import type { CockpitConfig, Dashboard, Job, PullRequest, Run } from './types'
+import type {
+  CockpitConfig,
+  Dashboard,
+  Job,
+  PipelineStep,
+  PullRequest,
+  Run,
+} from './types'
 
 function latestRun(pr: PullRequest | null): Run | null {
   return pr?.runs?.[0] ?? null
@@ -38,6 +45,42 @@ function StateBadge({ value }: { value: string }) {
           : 'neutral'
 
   return <span className={`state-badge ${tone}`}>{value}</span>
+}
+
+function PipelineStepLine({
+  step,
+  emphasis = false,
+}: {
+  step: PipelineStep
+  emphasis?: boolean
+}) {
+  const kindLabel =
+    step.kind === 'ARCHITECTURE_GATE'
+      ? 'ARCH'
+      : step.kind === 'ENVIRONMENT_GATE'
+        ? 'ENV'
+        : 'DEV'
+  const workTitle = step.title.replace(/^#?\d+[A-Z]?\s*/, '').trim()
+  const label =
+    step.kind === 'ARCHITECTURE_GATE'
+      ? step.title
+      : /^\d+[A-Z]?$/.test(step.key)
+        ? workTitle
+          ? `#${step.key} · ${workTitle}`
+          : `#${step.key}`
+        : step.title
+
+  return (
+    <div className={`pipeline-step-line ${emphasis ? 'current' : ''}`}>
+      <span className={`pipeline-kind ${step.kind.toLowerCase()}`}>
+        {kindLabel}
+      </span>
+      <div>
+        <strong>{label}</strong>
+        {step.done && <small>terminé</small>}
+      </div>
+    </div>
+  )
 }
 
 function JobLine({ job }: { job: Job }) {
@@ -206,6 +249,66 @@ export default function App() {
                 <div key={warning}>⚠ {warning}</div>
               ))}
             </div>
+          )}
+
+          {data.pipeline.steps.length > 0 && (
+            <section className="panel trajectory-panel">
+              <div className="panel-header">
+                <div>
+                  <span className="panel-kicker">TRAJECTOIRE PRODUIT</span>
+                  <h2>Maintenant / Ensuite / Plus tard</h2>
+                </div>
+                <span className="trajectory-progress">
+                  {data.pipeline.completed_count}/{data.pipeline.steps.length} franchie(s)
+                </span>
+              </div>
+
+              <div className="trajectory-grid">
+                <div className="trajectory-column now">
+                  <span className="section-label">Maintenant</span>
+                  {data.pipeline.now ? (
+                    <PipelineStepLine step={data.pipeline.now} emphasis />
+                  ) : (
+                    <div className="empty compact">Pipeline terminé.</div>
+                  )}
+                </div>
+
+                <div className="trajectory-column">
+                  <span className="section-label">Ensuite</span>
+                  {data.pipeline.next.length ? (
+                    data.pipeline.next.map((step) => (
+                      <PipelineStepLine
+                        key={`${step.kind}-${step.key}`}
+                        step={step}
+                      />
+                    ))
+                  ) : (
+                    <div className="empty compact">Aucune étape suivante.</div>
+                  )}
+                </div>
+
+                <div className="trajectory-column later">
+                  <span className="section-label">Plus tard</span>
+                  {data.pipeline.later.length ? (
+                    <>
+                      {data.pipeline.later.slice(0, 6).map((step) => (
+                        <PipelineStepLine
+                          key={`${step.kind}-${step.key}`}
+                          step={step}
+                        />
+                      ))}
+                      {data.pipeline.later.length > 6 && (
+                        <small className="trajectory-more">
+                          + {data.pipeline.later.length - 6} étape(s) dans #55
+                        </small>
+                      )}
+                    </>
+                  ) : (
+                    <div className="empty compact">Aucune étape plus lointaine.</div>
+                  )}
+                </div>
+              </div>
+            </section>
           )}
 
           <section className="dashboard-grid">

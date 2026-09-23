@@ -1355,3 +1355,115 @@ footer a { color: #768aa6; }
     justify-content: flex-start;
   }
 }
+
+
+.trajectory-panel {
+  margin-bottom: 16px;
+}
+
+.trajectory-progress {
+  color: rgb(116 132 153);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.trajectory-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr) minmax(0, 1.25fr);
+  gap: 12px;
+}
+
+.trajectory-column {
+  min-width: 0;
+  display: grid;
+  align-content: start;
+  gap: 7px;
+  border: 1px solid rgb(41 54 72);
+  border-radius: 12px;
+  background: rgb(14 21 30);
+  padding: 11px;
+}
+
+.trajectory-column.now {
+  border-color: rgb(68 102 143);
+  background: rgb(17 31 47);
+}
+
+.pipeline-step-line {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+  border: 1px solid rgb(37 50 67);
+  border-radius: 9px;
+  background: rgb(12 19 28);
+  padding: 8px;
+}
+
+.pipeline-step-line.current {
+  border-color: rgb(75 116 166);
+  background: rgb(17 35 55);
+  box-shadow: inset 2px 0 rgb(100 151 217);
+}
+
+.pipeline-step-line strong,
+.pipeline-step-line small {
+  display: block;
+}
+
+.pipeline-step-line strong {
+  color: rgb(194 208 226);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.pipeline-step-line small {
+  margin-top: 2px;
+  color: rgb(108 128 151);
+  font-size: 9px;
+}
+
+.pipeline-kind {
+  display: inline-flex;
+  justify-content: center;
+  min-width: 42px;
+  border: 1px solid rgb(55 72 94);
+  border-radius: 999px;
+  padding: 3px 5px;
+  color: rgb(137 157 181);
+  background: rgb(17 25 36);
+  font-size: 8px;
+  font-weight: 850;
+  letter-spacing: .08em;
+}
+
+.pipeline-kind.architecture_gate {
+  border-color: rgb(93 72 126);
+  color: rgb(193 167 232);
+  background: rgb(32 24 45);
+}
+
+.pipeline-kind.environment_gate {
+  border-color: rgb(55 102 89);
+  color: rgb(135 201 179);
+  background: rgb(16 39 33);
+}
+
+.pipeline-kind.work {
+  border-color: rgb(59 88 123);
+  color: rgb(151 188 233);
+  background: rgb(16 32 50);
+}
+
+.trajectory-more {
+  display: block;
+  margin-top: 3px;
+  color: rgb(105 122 143);
+  font-size: 10px;
+}
+
+@media (max-width: 900px) {
+  .trajectory-grid {
+    grid-template-columns: 1fr;
+  }
+}
