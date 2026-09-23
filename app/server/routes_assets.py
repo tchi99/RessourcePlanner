@@ -12,7 +12,18 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ..infrastructure.sql.asset_models import Asset, AssetAllocation, AssetRequirement, AssetType, AssetUnavailability
+from ..infrastructure.sql.asset_models import (
+    Asset,
+    AssetAllocation,
+    AssetRequirement,
+    AssetType,
+    AssetUnavailability,
+)
+from ..infrastructure.sql.asset_qualification import (
+    QUALIFICATION_POLICY_ANY_ASSIGNED_WORKFORCE,
+    evaluate_asset_qualification,
+    required_competencies,
+)
 from ..infrastructure.sql.asset_service import SqlAssetService
 from ..infrastructure.sql.planning_version import SqlPlanningMutationVersionRepository
 
@@ -72,6 +83,17 @@ class ReservationChange(StrictBody):
     expected_planning_version: int = Field(ge=1)
 
 
+class TypeQualificationUpdate(StrictBody):
+    competency_ids: list[str] = Field(default_factory=list)
+    qualification_policy: str = QUALIFICATION_POLICY_ANY_ASSIGNED_WORKFORCE
+    expected_planning_version: int = Field(ge=1)
+
+
+class OperatorChange(StrictBody):
+    operator_resource_id: str | None = None
+    expected_planning_version: int = Field(ge=1)
+
+
 def build_asset_router(session_dependency: Callable[[], Iterator[Session]]) -> APIRouter:
     router = APIRouter(prefix="/api/v1/assets", tags=["assets"])
 
@@ -82,11 +104,25 @@ def build_asset_router(session_dependency: Callable[[], Iterator[Session]]) -> A
 
     @router.get("/catalog")
     def catalog(session: Session = Depends(session_dependency)) -> dict:
+        type_rows = tuple(session.scalars(select(AssetType).order_by(AssetType.code)))
         return {
-            "types": [{"id": row.id, "code": row.code, "label": row.label, "category": row.category,
-                       "active": row.active, "occupancy_policy": row.occupancy_policy,
-                       "metadata": json.loads(row.metadata_json or "{}")}
-                      for row in session.scalars(select(AssetType).order_by(AssetType.code))],
+            "types": [
+                {
+                    "id": row.id,
+                    "code": row.code,
+                    "label": row.label,
+                    "category": row.category,
+                    "active": row.active,
+                    "occupancy_policy": row.occupancy_policy,
+                    "qualification_policy": row.qualification_policy,
+                    "required_competencies": [
+                        {"id": competency.id, "name": competency.name}
+                        for competency in required_competencies(session, row.id)
+                    ],
+                    "metadata": json.loads(row.metadata_json or "{}"),
+                }
+                for row in type_rows
+            ],
             "assets": [{"id": row.id, "code": row.code, "label": row.label, "asset_type_id": row.asset_type_id,
                         "active": row.active, "metadata": json.loads(row.metadata_json or "{}")}
                        for row in session.scalars(select(Asset).order_by(Asset.code))],
@@ -112,6 +148,20 @@ def build_asset_router(session_dependency: Callable[[], Iterator[Session]]) -> A
         return service(session, request).update_catalog(AssetType, identifier,
             body.model_dump(exclude_unset=True, exclude={"expected_planning_version"}), body.expected_planning_version)
 
+    @router.put("/types/{identifier}/qualification")
+    def update_type_qualification(
+        identifier: str,
+        body: TypeQualificationUpdate,
+        request: Request,
+        session: Session = Depends(session_dependency),
+    ) -> dict:
+        return service(session, request).set_type_qualification(
+            asset_type_id=identifier,
+            competency_ids=body.competency_ids,
+            qualification_policy=body.qualification_policy,
+            expected_version=body.expected_planning_version,
+        )
+
     @router.patch("/{identifier}/active")
     def activate_asset(identifier: str, body: ActiveUpdate, request: Request, session: Session = Depends(session_dependency)) -> dict:
         return service(session, request).set_active(Asset, identifier, body.active, body.expected_planning_version)
@@ -135,14 +185,31 @@ def build_asset_router(session_dependency: Callable[[], Iterator[Session]]) -> A
 
     @router.get("/requirements")
     def requirements(session: Session = Depends(session_dependency)) -> dict:
+        requirement_rows = tuple(session.scalars(select(AssetRequirement)))
+        allocation_rows = tuple(session.scalars(select(AssetAllocation)))
+        requirements_by_id = {row.id: row for row in requirement_rows}
         return {
             "requirements": [{"id": row.id, "request_id": row.workforce_request_id, "asset_type_id": row.asset_type_id,
                               "start_date": row.start_date, "end_date": row.end_date, "usage_hours": row.usage_hours,
                               "status": row.status, "approved_entry_key": row.approved_entry_key}
-                             for row in session.scalars(select(AssetRequirement))],
-            "allocations": [{"id": row.id, "requirement_id": row.asset_requirement_id, "asset_id": row.asset_id,
-                             "start_date": row.start_date, "end_date": row.end_date, "locked": row.locked}
-                            for row in session.scalars(select(AssetAllocation))],
+                             for row in requirement_rows],
+            "allocations": [
+                {
+                    "id": row.id,
+                    "requirement_id": row.asset_requirement_id,
+                    "asset_id": row.asset_id,
+                    "operator_resource_id": row.operator_resource_id,
+                    "start_date": row.start_date,
+                    "end_date": row.end_date,
+                    "locked": row.locked,
+                    "qualification_state": evaluate_asset_qualification(
+                        session,
+                        requirement=requirements_by_id[row.asset_requirement_id],
+                        allocation=row,
+                    ).state,
+                }
+                for row in allocation_rows
+            ],
             "unavailability": [{"id": row.id, "asset_id": row.asset_id, "start_date": row.start_date,
                                 "end_date": row.end_date, "reason": row.reason}
                                for row in session.scalars(select(AssetUnavailability))],
@@ -157,5 +224,28 @@ def build_asset_router(session_dependency: Callable[[], Iterator[Session]]) -> A
                                                  start_date=body.start_date, end_date=body.end_date,
                                                  expected_version=body.expected_planning_version,
                                                  idempotency_key=idempotency_key)
+
+    @router.get("/requirements/{identifier}/operator-candidates")
+    def operator_candidates(
+        identifier: str,
+        request: Request,
+        session: Session = Depends(session_dependency),
+    ) -> dict:
+        return service(session, request).operator_candidates(identifier)
+
+    @router.put("/requirements/{identifier}/operator")
+    def set_operator(
+        identifier: str,
+        body: OperatorChange,
+        request: Request,
+        idempotency_key: str = Header(alias="Idempotency-Key", min_length=1),
+        session: Session = Depends(session_dependency),
+    ) -> dict:
+        return service(session, request).set_operator(
+            requirement_id=identifier,
+            operator_resource_id=body.operator_resource_id,
+            expected_version=body.expected_planning_version,
+            idempotency_key=idempotency_key,
+        )
 
     return router

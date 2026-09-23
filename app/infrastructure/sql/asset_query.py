@@ -32,6 +32,14 @@ from .asset_models import (
     AssetType,
     AssetUnavailability,
 )
+from .asset_qualification import (
+    QUALIFICATION_MISSING_OPERATOR,
+    QUALIFICATION_NO_OVERLAP,
+    QUALIFICATION_SATISFIED,
+    QUALIFICATION_SKILL_MISMATCH,
+    evaluate_asset_qualification,
+    required_competencies,
+)
 from .models import Project, WorkforceRequest
 from .operational_choice_models import RequestOperationalState
 
@@ -119,6 +127,11 @@ class SqlAssetPlanningQuery:
             asset_type = asset_types.get(row.asset_type_id)
             allocation = allocations.get(row.id)
             asset = assets.get(allocation.asset_id) if allocation is not None else None
+            qualification = evaluate_asset_qualification(
+                self._session,
+                requirement=row,
+                allocation=allocation,
+            )
             result.append(
                 AssetRequirementReadModel(
                     requirement_id=row.id,
@@ -164,6 +177,11 @@ class SqlAssetPlanningQuery:
                     allocation_locked=bool(
                         allocation is not None and allocation.locked
                     ),
+                    operator_resource_id=qualification.operator_resource_id,
+                    operator_resource_name=qualification.operator_resource_name,
+                    qualification_state=qualification.state,
+                    required_competency_ids=qualification.required_competency_ids,
+                    required_competency_names=qualification.required_competency_names,
                 )
             )
         return tuple(result)
@@ -420,28 +438,44 @@ class SqlAssetPlanningQuery:
             ).all()
         )
 
-        allocation_models = tuple(
-            AssetAllocationReadModel(
-                allocation_id=row.id,
-                requirement_id=row.asset_requirement_id,
-                asset_id=row.asset_id,
-                asset_code=(
-                    assets_by_id[row.asset_id].code
-                    if row.asset_id in assets_by_id
-                    else row.asset_id
-                ),
-                asset_label=(
-                    assets_by_id[row.asset_id].label
-                    if row.asset_id in assets_by_id
-                    else row.asset_id
-                ),
-                start_date=row.start_date,
-                end_date=row.end_date,
-                locked=bool(row.locked),
-                source=row.source,
+        visible_requirements_by_id = {
+            row.id: row for row in visible_requirements
+        }
+        allocation_models_list: list[AssetAllocationReadModel] = []
+        for row in visible_allocations:
+            requirement = visible_requirements_by_id[row.asset_requirement_id]
+            qualification = evaluate_asset_qualification(
+                self._session,
+                requirement=requirement,
+                allocation=row,
             )
-            for row in visible_allocations
-        )
+            allocation_models_list.append(
+                AssetAllocationReadModel(
+                    allocation_id=row.id,
+                    requirement_id=row.asset_requirement_id,
+                    asset_id=row.asset_id,
+                    asset_code=(
+                        assets_by_id[row.asset_id].code
+                        if row.asset_id in assets_by_id
+                        else row.asset_id
+                    ),
+                    asset_label=(
+                        assets_by_id[row.asset_id].label
+                        if row.asset_id in assets_by_id
+                        else row.asset_id
+                    ),
+                    start_date=row.start_date,
+                    end_date=row.end_date,
+                    locked=bool(row.locked),
+                    source=row.source,
+                    operator_resource_id=qualification.operator_resource_id,
+                    operator_resource_name=qualification.operator_resource_name,
+                    qualification_state=qualification.state,
+                    required_competency_ids=qualification.required_competency_ids,
+                    required_competency_names=qualification.required_competency_names,
+                )
+            )
+        allocation_models = tuple(allocation_models_list)
         unavailability_models = tuple(
             AssetUnavailabilityReadModel(
                 id=row.id,
@@ -577,6 +611,34 @@ class SqlAssetPlanningQuery:
                 )
                 incompatible_locked = incompatible_locked or bool(allocation.locked)
 
+            qualification = evaluate_asset_qualification(
+                self._session,
+                requirement=requirement,
+                allocation=allocation,
+            )
+            qualification_messages = {
+                QUALIFICATION_MISSING_OPERATOR: (
+                    "La réservation exige une ressource opératrice qualifiée."
+                ),
+                QUALIFICATION_SKILL_MISMATCH: (
+                    "La ressource opératrice liée est inactive ou ne possède pas les compétences requises."
+                ),
+                QUALIFICATION_NO_OVERLAP: (
+                    "La ressource opératrice qualifiée n'a aucune affectation humaine compatible avec la réservation."
+                ),
+            }
+            if qualification.state != QUALIFICATION_SATISFIED:
+                add_diagnostic(
+                    f"ASSET_QUALIFICATION_{qualification.state}",
+                    qualification_messages.get(
+                        qualification.state,
+                        "La qualification de la réservation d'actif est invalide.",
+                    ),
+                    requirement_id=requirement.id,
+                    allocation_id=allocation.id,
+                    asset_id=allocation.asset_id,
+                )
+
             if incompatible_locked:
                 add_diagnostic(
                     "ASSET_LOCKED_INCOMPATIBLE",
@@ -630,6 +692,15 @@ class SqlAssetPlanningQuery:
                     category=row.category,
                     occupancy_policy=row.occupancy_policy,
                     active=bool(row.active),
+                    qualification_policy=row.qualification_policy,
+                    required_competency_ids=tuple(
+                        competency.id
+                        for competency in required_competencies(self._session, row.id)
+                    ),
+                    required_competency_names=tuple(
+                        competency.name
+                        for competency in required_competencies(self._session, row.id)
+                    ),
                 )
                 for row in type_rows
             ),

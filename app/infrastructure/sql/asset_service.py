@@ -6,13 +6,29 @@ from datetime import date
 import hashlib
 import json
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from ...application.errors import ApplicationConflictError, ApplicationNotFoundError, ApplicationValidationError
 from ...domain.reservable_assets import AssetOccupation, overlapping_asset_occupations
 from ...domain.approval_envelope import approval_envelope_from_snapshot_payload
-from .asset_models import Asset, AssetAllocation, AssetRequirement, AssetType, AssetUnavailability
+from .asset_models import (
+    Asset,
+    AssetAllocation,
+    AssetRequirement,
+    AssetType,
+    AssetTypeCompetency,
+    AssetUnavailability,
+)
+from .asset_qualification import (
+    QUALIFICATION_NO_OVERLAP,
+    QUALIFICATION_POLICY_ANY_ASSIGNED_WORKFORCE,
+    QUALIFICATION_SATISFIED,
+    QUALIFICATION_SKILL_MISMATCH,
+    eligible_operator_resources,
+    evaluate_asset_qualification,
+)
+from .models import Competency
 from .approval_revision_models import RequestApprovalReference, RequestApprovalRevision
 from .base import new_id
 from .idempotency import SqlCommandIdempotencyAdapter
@@ -99,6 +115,238 @@ class SqlAssetService:
                           before=before, after={key: getattr(row, key) for key in updates})
         self.session.flush()
         return {"id": row.id, "planning_version": self.version.current_version()}
+
+    def set_type_qualification(
+        self,
+        *,
+        asset_type_id: str,
+        competency_ids: list[str],
+        qualification_policy: str,
+        expected_version: int,
+    ) -> dict:
+        self.version.acquire(expected_version)
+        asset_type = self.session.get(AssetType, asset_type_id)
+        if asset_type is None:
+            raise ApplicationNotFoundError(
+                "Type d'actif introuvable.",
+                code="asset_type_not_found",
+            )
+        if qualification_policy != QUALIFICATION_POLICY_ANY_ASSIGNED_WORKFORCE:
+            raise ApplicationValidationError(
+                "Politique de qualification d'actif invalide.",
+                code="asset_qualification_policy_invalid",
+            )
+
+        normalized = tuple(dict.fromkeys(str(value or "").strip() for value in competency_ids))
+        normalized = tuple(value for value in normalized if value)
+        competencies: list[Competency] = []
+        for competency_id in normalized:
+            competency = self.session.get(Competency, competency_id)
+            if competency is None:
+                raise ApplicationValidationError(
+                    "Compétence de qualification introuvable.",
+                    code="asset_qualification_competency_not_found",
+                    context={"competency_id": competency_id},
+                )
+            if not competency.active:
+                raise ApplicationValidationError(
+                    "Une compétence inactive ne peut pas être ajoutée comme prérequis.",
+                    code="asset_qualification_competency_inactive",
+                    context={"competency_id": competency_id},
+                )
+            competencies.append(competency)
+
+        previous_ids = tuple(
+            self.session.scalars(
+                select(AssetTypeCompetency.competency_id)
+                .where(AssetTypeCompetency.asset_type_id == asset_type.id)
+                .order_by(AssetTypeCompetency.competency_id)
+            ).all()
+        )
+        before = {
+            "qualification_policy": asset_type.qualification_policy,
+            "competency_ids": previous_ids,
+        }
+        self.session.execute(
+            delete(AssetTypeCompetency).where(
+                AssetTypeCompetency.asset_type_id == asset_type.id
+            )
+        )
+        self.session.add_all(
+            [
+                AssetTypeCompetency(
+                    asset_type_id=asset_type.id,
+                    competency_id=competency.id,
+                )
+                for competency in competencies
+            ]
+        )
+        asset_type.qualification_policy = qualification_policy
+        after = {
+            "qualification_policy": asset_type.qualification_policy,
+            "competency_ids": normalized,
+        }
+        self.audit.append(
+            entity_type="ASSET_TYPE",
+            entity_id=asset_type.id,
+            entity_reference=asset_type.code,
+            action="Prérequis de qualification",
+            before=before,
+            after=after,
+        )
+        self.session.flush()
+        return {
+            "id": asset_type.id,
+            "qualification_policy": asset_type.qualification_policy,
+            "competency_ids": list(normalized),
+            "planning_version": self.version.current_version(),
+        }
+
+    def operator_candidates(self, requirement_id: str) -> dict:
+        requirement = self.session.get(AssetRequirement, requirement_id)
+        if requirement is None or requirement.status == "Annulé":
+            raise ApplicationNotFoundError(
+                "Besoin d'actif introuvable.",
+                code="asset_requirement_not_found",
+            )
+        allocation = self.session.scalar(
+            select(AssetAllocation).where(
+                AssetAllocation.asset_requirement_id == requirement.id
+            )
+        )
+        if allocation is None:
+            raise ApplicationConflictError(
+                "Une réservation d'actif est requise avant de choisir un opérateur.",
+                code="asset_operator_requires_reservation",
+            )
+        qualification = evaluate_asset_qualification(
+            self.session,
+            requirement=requirement,
+            allocation=allocation,
+        )
+        candidates = eligible_operator_resources(
+            self.session,
+            requirement=requirement,
+            allocation=allocation,
+        )
+        return {
+            "requirement_id": requirement.id,
+            "allocation_id": allocation.id,
+            "qualification_state": qualification.state,
+            "required_competency_ids": list(qualification.required_competency_ids),
+            "required_competency_names": list(qualification.required_competency_names),
+            "operator_resource_id": qualification.operator_resource_id,
+            "operator_resource_name": qualification.operator_resource_name,
+            "candidates": [
+                {"resource_id": row.id, "resource_name": row.name}
+                for row in candidates
+            ],
+            "planning_version": self.version.current_version(),
+        }
+
+    def set_operator(
+        self,
+        *,
+        requirement_id: str,
+        operator_resource_id: str | None,
+        expected_version: int,
+        idempotency_key: str,
+    ) -> dict:
+        payload = {
+            "requirement_id": requirement_id,
+            "operator_resource_id": operator_resource_id,
+            "expected_version": expected_version,
+        }
+        fingerprint = hashlib.sha256(
+            json.dumps(payload, sort_keys=True).encode()
+        ).hexdigest()
+        return SqlCommandIdempotencyAdapter(
+            self.session,
+            actor_name=self.actor,
+        ).replay_or_execute(
+            scope="asset_operator_assignment",
+            key=idempotency_key,
+            request_fingerprint=fingerprint,
+            action=lambda: self._set_operator(**payload),
+        )
+
+    def _set_operator(
+        self,
+        *,
+        requirement_id: str,
+        operator_resource_id: str | None,
+        expected_version: int,
+    ) -> dict:
+        self.version.acquire(expected_version)
+        requirement = self.session.get(AssetRequirement, requirement_id)
+        if requirement is None or requirement.status == "Annulé":
+            raise ApplicationNotFoundError(
+                "Besoin d'actif introuvable.",
+                code="asset_requirement_not_found",
+            )
+        allocation = self.session.scalar(
+            select(AssetAllocation).where(
+                AssetAllocation.asset_requirement_id == requirement.id
+            )
+        )
+        if allocation is None:
+            raise ApplicationConflictError(
+                "Une réservation d'actif est requise avant de choisir un opérateur.",
+                code="asset_operator_requires_reservation",
+            )
+
+        before = {"operator_resource_id": allocation.operator_resource_id}
+        previous = allocation.operator_resource_id
+        allocation.operator_resource_id = (
+            str(operator_resource_id or "").strip() or None
+        )
+        qualification = evaluate_asset_qualification(
+            self.session,
+            requirement=requirement,
+            allocation=allocation,
+        )
+        if allocation.operator_resource_id is not None:
+            if qualification.state == QUALIFICATION_SKILL_MISMATCH:
+                allocation.operator_resource_id = previous
+                raise ApplicationValidationError(
+                    "La ressource choisie n'est pas active ou ne possède pas les compétences requises.",
+                    code="asset_operator_skill_mismatch",
+                )
+            if qualification.state == QUALIFICATION_NO_OVERLAP:
+                allocation.operator_resource_id = previous
+                raise ApplicationValidationError(
+                    "La ressource choisie n'a aucune affectation compatible sur cette réservation.",
+                    code="asset_operator_no_overlap",
+                )
+            if qualification.state != QUALIFICATION_SATISFIED:
+                allocation.operator_resource_id = previous
+                raise ApplicationValidationError(
+                    "La ressource choisie ne satisfait pas la qualification d'actif.",
+                    code="asset_operator_invalid",
+                )
+
+        self.audit.append(
+            entity_type="ASSET_ALLOCATION",
+            entity_id=allocation.id,
+            entity_reference=requirement.id,
+            parent_reference=requirement.workforce_request_id,
+            action="Opérateur qualifiant",
+            before=before,
+            after={"operator_resource_id": allocation.operator_resource_id},
+        )
+        self.session.flush()
+        qualification = evaluate_asset_qualification(
+            self.session,
+            requirement=requirement,
+            allocation=allocation,
+        )
+        return {
+            "allocation_id": allocation.id,
+            "requirement_id": requirement.id,
+            "operator_resource_id": allocation.operator_resource_id,
+            "qualification_state": qualification.state,
+            "planning_version": self.version.current_version(),
+        }
 
     def add_unavailability(self, *, asset_id: str, start_date: date, end_date: date,
                            reason: str | None, expected_version: int) -> dict:

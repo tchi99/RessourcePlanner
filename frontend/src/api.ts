@@ -358,6 +358,11 @@ export type DemandDetailAssetRequirementReadModel = {
   allocation_start_date: string | null;
   allocation_end_date: string | null;
   allocation_locked: boolean;
+  operator_resource_id: string | null;
+  operator_resource_name: string | null;
+  qualification_state: "SATISFIED" | "MISSING_OPERATOR" | "SKILL_MISMATCH" | "NO_OVERLAP";
+  required_competency_ids: string[];
+  required_competency_names: string[];
 };
 
 export type DemandDetailReadModel = {
@@ -675,6 +680,9 @@ export type AssetTypePlanningReadModel = {
   category: string;
   occupancy_policy: string;
   active: boolean;
+  qualification_policy: string;
+  required_competency_ids: string[];
+  required_competency_names: string[];
 };
 
 export type AssetPlanningReadModel = {
@@ -697,6 +705,11 @@ export type AssetAllocationPlanningReadModel = {
   end_date: string;
   locked: boolean;
   source: string;
+  operator_resource_id: string | null;
+  operator_resource_name: string | null;
+  qualification_state: "SATISFIED" | "MISSING_OPERATOR" | "SKILL_MISMATCH" | "NO_OVERLAP";
+  required_competency_ids: string[];
+  required_competency_names: string[];
 };
 
 export type AssetUnavailabilityPlanningReadModel = {

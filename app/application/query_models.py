@@ -322,6 +322,9 @@ class AssetTypeReadModel:
     category: str
     occupancy_policy: str
     active: bool
+    qualification_policy: str = "ANY_ASSIGNED_WORKFORCE"
+    required_competency_ids: tuple[str, ...] = ()
+    required_competency_names: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -344,6 +347,11 @@ class AssetAllocationReadModel:
     end_date: date
     locked: bool
     source: str
+    operator_resource_id: str | None = None
+    operator_resource_name: str | None = None
+    qualification_state: str = "SATISFIED"
+    required_competency_ids: tuple[str, ...] = ()
+    required_competency_names: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -380,6 +388,11 @@ class AssetRequirementReadModel:
     allocation_start_date: date | None = None
     allocation_end_date: date | None = None
     allocation_locked: bool = False
+    operator_resource_id: str | None = None
+    operator_resource_name: str | None = None
+    qualification_state: str = "SATISFIED"
+    required_competency_ids: tuple[str, ...] = ()
+    required_competency_names: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

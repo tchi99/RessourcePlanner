@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
   ApiError,
@@ -7,9 +7,12 @@ import {
   PlanningSnapshotReadModel,
 } from "./api";
 import {
+  AssetOperatorCandidate,
   addAssetUnavailability,
+  getAssetOperatorCandidates,
   removeAssetUnavailability,
   reserveAssetRequirement,
+  setAssetRequirementOperator,
 } from "./assetApi";
 
 const STALE_CODES = new Set([
@@ -36,24 +39,59 @@ function diagnosticTone(code: string) {
   return "danger";
 }
 
+const QUALIFICATION_LABELS: Record<string, string> = {
+  SATISFIED: "Qualification satisfaite",
+  MISSING_OPERATOR: "Qualification manquante",
+  SKILL_MISMATCH: "Compétence non conforme",
+  NO_OVERLAP: "Aucun chevauchement",
+};
+
 function AssetRequirementCard({
   requirement,
   snapshot,
   canManage,
   busy,
   onReserve,
+  onOperator,
 }: {
   requirement: AssetRequirementPlanningReadModel;
   snapshot: PlanningSnapshotReadModel;
   canManage: boolean;
   busy: boolean;
   onReserve: (requirement: AssetRequirementPlanningReadModel, assetId: string | null) => void;
+  onOperator: (requirement: AssetRequirementPlanningReadModel, resourceId: string | null) => void;
 }) {
   const compatible = snapshot.assets.filter((asset) => (
     asset.asset_type_id === requirement.asset_type_id
     && (asset.active || asset.id === requirement.asset_id)
   ));
   const [selected, setSelected] = useState(requirement.asset_id ?? "");
+  const [operatorSelected, setOperatorSelected] = useState(requirement.operator_resource_id ?? "");
+  const [operatorCandidates, setOperatorCandidates] = useState<AssetOperatorCandidate[]>([]);
+  const [candidateError, setCandidateError] = useState("");
+
+  useEffect(() => {
+    setOperatorSelected(requirement.operator_resource_id ?? "");
+    if (!requirement.asset_id || requirement.required_competency_ids.length === 0) {
+      setOperatorCandidates([]);
+      setCandidateError("");
+      return undefined;
+    }
+    const controller = new AbortController();
+    setCandidateError("");
+    void getAssetOperatorCandidates(requirement.requirement_id, controller.signal)
+      .then((payload) => setOperatorCandidates(payload.candidates))
+      .catch((reason: unknown) => {
+        if (!controller.signal.aborted) setCandidateError(messageFromError(reason));
+      });
+    return () => controller.abort();
+  }, [
+    requirement.requirement_id,
+    requirement.asset_id,
+    requirement.operator_resource_id,
+    requirement.qualification_state,
+    requirement.required_competency_ids,
+  ]);
 
   return (
     <article className="asset-requirement-card" data-requirement-id={requirement.requirement_id}>
@@ -108,6 +146,56 @@ function AssetRequirementCard({
             {requirement.allocation_start_date} → {requirement.allocation_end_date}
             {requirement.allocation_locked ? " · décision manuelle verrouillée" : ""}
           </span>
+        </div>
+      )}
+
+      {requirement.required_competency_ids.length > 0 && (
+        <div className="asset-current-allocation asset-qualification">
+          <strong>
+            {QUALIFICATION_LABELS[requirement.qualification_state] ?? requirement.qualification_state}
+          </strong>
+          <span>
+            Prérequis : {requirement.required_competency_names.join(", ")}
+          </span>
+          {requirement.asset_id && (
+            <div className="asset-reservation-controls">
+              <label>
+                <span>Opérateur qualifiant</span>
+                <select
+                  value={operatorSelected}
+                  onChange={(event) => setOperatorSelected(event.target.value)}
+                  disabled={!canManage || busy}
+                  aria-label={`Opérateur qualifiant pour ${requirement.asset_type_label} ${requirement.demand_number}`}
+                >
+                  <option value="">Aucun opérateur</option>
+                  {requirement.operator_resource_id
+                    && !operatorCandidates.some((row) => row.resource_id === requirement.operator_resource_id) && (
+                    <option value={requirement.operator_resource_id}>
+                      {requirement.operator_resource_name ?? requirement.operator_resource_id} — non admissible actuellement
+                    </option>
+                  )}
+                  {operatorCandidates.map((candidate) => (
+                    <option value={candidate.resource_id} key={candidate.resource_id}>
+                      {candidate.resource_name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <button
+                type="button"
+                className="secondary-button"
+                disabled={
+                  !canManage
+                  || busy
+                  || operatorSelected === (requirement.operator_resource_id ?? "")
+                }
+                onClick={() => onOperator(requirement, operatorSelected || null)}
+              >
+                Enregistrer l’opérateur
+              </button>
+            </div>
+          )}
+          {candidateError && <small role="alert">{candidateError}</small>}
         </div>
       )}
     </article>
@@ -198,6 +286,60 @@ export default function AssetPlanningPanel({
         setFeedback({
           tone: "info",
           message: "La réponse est incertaine. Réessaie la même réservation : la même clé d’idempotence sera réutilisée.",
+        });
+      } else {
+        retryKeys.current.delete(fingerprint);
+        setFeedback({ tone: "error", message: messageFromError(reason) });
+      }
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function assignOperator(
+    requirement: AssetRequirementPlanningReadModel,
+    resourceId: string | null,
+  ) {
+    if (busy) return;
+    const fingerprint = [
+      "operator",
+      requirement.requirement_id,
+      resourceId ?? "none",
+      snapshot.planning_version,
+    ].join("|");
+    const key = retryKeys.current.get(fingerprint) ?? mutationKey();
+    retryKeys.current.set(fingerprint, key);
+    setBusy(`operator:${requirement.requirement_id}`);
+    setFeedback(null);
+    try {
+      await setAssetRequirementOperator(
+        requirement.requirement_id,
+        {
+          operator_resource_id: resourceId,
+          expected_planning_version: snapshot.planning_version,
+        },
+        key,
+      );
+      retryKeys.current.delete(fingerprint);
+      setFeedback({
+        tone: "success",
+        message: resourceId
+          ? "Opérateur qualifiant enregistré."
+          : "Opérateur qualifiant retiré.",
+      });
+      onRefresh();
+    } catch (reason: unknown) {
+      if (reason instanceof ApiError && reason.code && STALE_CODES.has(reason.code)) {
+        retryKeys.current.delete(fingerprint);
+        setFeedback({
+          tone: "info",
+          message: "Le planning a changé. Le snapshot est actualisé; vérifie l’opérateur puis réessaie.",
+        });
+        onRefresh();
+      } else if (reason instanceof TypeError) {
+        setFeedback({
+          tone: "info",
+          message: "La réponse est incertaine. Réessaie la même affectation : la même clé d’idempotence sera réutilisée.",
         });
       } else {
         retryKeys.current.delete(fingerprint);
@@ -315,8 +457,12 @@ export default function AssetPlanningPanel({
                 requirement={requirement}
                 snapshot={snapshot}
                 canManage={canManage}
-                busy={busy === `reserve:${requirement.requirement_id}`}
+                busy={
+                  busy === `reserve:${requirement.requirement_id}`
+                  || busy === `operator:${requirement.requirement_id}`
+                }
                 onReserve={(row, assetId) => void reserve(row, assetId)}
+                onOperator={(row, resourceId) => void assignOperator(row, resourceId)}
               />
             ))}
           </div>

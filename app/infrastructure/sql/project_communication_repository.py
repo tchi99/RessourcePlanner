@@ -13,6 +13,11 @@ from ...domain.project_communication import (
     ProjectCommunicationAssignment,
     ProjectCommunicationParticipant,
 )
+from .asset_models import AssetAllocation, AssetRequirement
+from .asset_qualification import (
+    QUALIFICATION_SATISFIED,
+    evaluate_asset_qualification,
+)
 from .business_contact_models import BusinessContact
 from .identity_models import AppUser
 from .models import Project, Resource, ResourceRequirement, Shift, WorkforceRequest
@@ -215,6 +220,36 @@ class SqlProjectCommunicationRepository(ProjectCommunicationRepositoryPort):
         )
         requests_by_id = {row.id: row for row in requests}
 
+        asset_qualification_diagnostics: dict[str, list[str]] = {}
+        asset_rows = (
+            self._session.execute(
+                select(AssetAllocation, AssetRequirement)
+                .join(
+                    AssetRequirement,
+                    AssetAllocation.asset_requirement_id == AssetRequirement.id,
+                )
+                .where(
+                    AssetRequirement.workforce_request_id.in_(request_ids),
+                    AssetAllocation.start_date <= week_end,
+                    AssetAllocation.end_date >= week_start,
+                )
+            ).all()
+            if request_ids
+            else []
+        )
+        for allocation, asset_requirement in asset_rows:
+            qualification = evaluate_asset_qualification(
+                self._session,
+                requirement=asset_requirement,
+                allocation=allocation,
+            )
+            if qualification.state == QUALIFICATION_SATISFIED:
+                continue
+            asset_qualification_diagnostics.setdefault(
+                asset_requirement.workforce_request_id,
+                [],
+            ).append(f"ASSET_QUALIFICATION_{qualification.state}")
+
         resource_external_ids = {
             _text(resource.external_id)
             for _shift, _requirement, resource, _project in rows
@@ -321,6 +356,12 @@ class SqlProjectCommunicationRepository(ProjectCommunicationRepositoryPort):
                 + list(manager.diagnostics)
                 + list(resource_contact.diagnostics)
                 + operational_diagnostics
+                + list(
+                    asset_qualification_diagnostics.get(
+                        requirement.workforce_request_id or "",
+                        (),
+                    )
+                )
             )
             result.append(
                 ProjectCommunicationAssignment(

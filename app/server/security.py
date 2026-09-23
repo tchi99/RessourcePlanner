@@ -62,7 +62,10 @@ def required_permission(method: str, path: str) -> str | None:
         return PERMISSION_MANAGE_DEMANDS
     if verb == "GET":
         return PERMISSION_READ
-    if path.startswith("/api/v1/assets/requirements/") and path.endswith("/reservation"):
+    if (
+        path.startswith("/api/v1/assets/requirements/")
+        and (path.endswith("/reservation") or path.endswith("/operator"))
+    ):
         return PERMISSION_MANAGE_PLANNING
     if path.startswith("/api/v1/assets/") and "/unavailability" in path:
         return PERMISSION_MANAGE_PLANNING

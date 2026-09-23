@@ -20,6 +20,7 @@ DAY = date(2026, 8, 26)
 
 EXPECTED_TABLES = {
     "asset_types",
+    "asset_type_competencies",
     "assets",
     "asset_unavailability",
     "asset_requirements",
@@ -73,6 +74,8 @@ class SqlSchemaTests(unittest.TestCase):
         resources = Base.metadata.tables["resources"].c
         business_contacts = Base.metadata.tables["business_contacts"].c
         periods = Base.metadata.tables["workforce_request_periods"].c
+        asset_types = Base.metadata.tables["asset_types"].c
+        asset_type_competencies = Base.metadata.tables["asset_type_competencies"].c
         asset_requirements = Base.metadata.tables["asset_requirements"].c
         asset_allocations = Base.metadata.tables["asset_allocations"].c
         period_requirements = Base.metadata.tables["workforce_request_period_requirements"].c
@@ -154,9 +157,17 @@ class SqlSchemaTests(unittest.TestCase):
         self.assertFalse(periods.start_date.nullable)
         self.assertFalse(periods.end_date.nullable)
         self.assertTrue(periods.hours.nullable)
+        self.assertFalse(asset_types.qualification_policy.nullable)
+        self.assertFalse(asset_type_competencies.asset_type_id.nullable)
+        self.assertFalse(asset_type_competencies.competency_id.nullable)
+        self.assertEqual(
+            [column.name for column in Base.metadata.tables["asset_type_competencies"].primary_key.columns],
+            ["asset_type_id", "competency_id"],
+        )
         self.assertTrue(asset_requirements.usage_hours.nullable)
         self.assertFalse(asset_requirements.asset_type_id.nullable)
         self.assertFalse(asset_allocations.asset_id.nullable)
+        self.assertTrue(asset_allocations.operator_resource_id.nullable)
         self.assertEqual(
             [column.name for column in Base.metadata.tables["workforce_request_period_selections"].primary_key.columns],
             ["request_line_id", "alternative_group"],
