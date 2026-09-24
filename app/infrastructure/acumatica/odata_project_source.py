@@ -161,6 +161,8 @@ def parse_rp_projects_feed(xml_payload: bytes | str) -> tuple[ODataProjectRecord
         root = ET.fromstring(xml_payload)
     except (ET.ParseError, TypeError, ValueError) as exc:
         raise ODataProjectFeedError("invalid_xml") from exc
+    if root.tag != f"{{{ATOM_NAMESPACE}}}feed":
+        raise ODataProjectFeedError("invalid_feed_root")
 
     records: list[ODataProjectRecord] = []
     for entry_index, entry in enumerate(root.findall(f".//{{{ATOM_NAMESPACE}}}entry")):
