@@ -1,6 +1,6 @@
 # RessourcePlanner Dev Cockpit
 
-Outil de développement local, isolé fonctionnellement de l'application métier RessourcePlanner. Il observe GitHub en lecture seule et génère un prompt court à copier dans un Dev ChatGPT. Il n'intègre aucune API IA/OpenAI et ne pilote aucun agent.
+Outil de développement local, isolé fonctionnellement de l'application métier RessourcePlanner. Il observe GitHub, dérive l'état de développement et génère des contextes de reprise pour ChatGPT. Il n'intègre aucune API IA/OpenAI et ne pilote aucun agent. La seule mutation GitHub supportée est un **Safe Writeback explicite** du bloc canonique de #55, décrit plus bas; toutes les autres vues restent observationnelles.
 
 ## Source de vérité
 
@@ -65,7 +65,7 @@ DEV_COCKPIT_STALLED_AFTER_MINUTES=30
 DEV_COCKPIT_HTTP_PORT=8081
 ```
 
-`DEV_COCKPIT_GITHUB_TOKEN` doit être un token GitHub local en lecture seule donnant accès au dépôt surveillé, aux Issues, PR et Actions. Le token :
+`DEV_COCKPIT_GITHUB_TOKEN` peut rester un token GitHub local en lecture seule pour toutes les fonctions d'observation (Issues, PR, Actions, branches, détails). Pour utiliser **Appliquer à #55**, le même token doit en plus posséder l'autorisation **Issues: write** sur le dépôt surveillé. Le token :
 
 - n'est jamais envoyé à React;
 - n'est jamais retourné par l'API;
@@ -265,7 +265,31 @@ Lorsqu'une étape MAIN `READY` est prouvée livrée, le cockpit génère une pro
 
 Une étape `PARALLEL READY` prouvée livrée peut être proposée `DONE` sans modifier la lane MAIN.
 
-Le bouton **Préparer la mise à jour de #55** copie seulement le bloc proposé dans le presse-papiers. Il n'écrit jamais dans GitHub. La mise à jour de #55 reste une action explicite, ce qui maintient GitHub comme source de vérité et évite un second stockage d'état produit dans le cockpit.
+Le bloc proposé reste disponible à la copie manuelle. Lorsque le token local possède **Issues: write**, le cockpit permet aussi un Safe Writeback explicite.
+
+### Safe Writeback de #55
+
+Le Safe Writeback ferme la boucle du Reconciler sans créer de second état produit. Il ne peut écrire que lorsque le pipeline canonique est valide, que le Reconciler retourne `stale` et qu'une proposition déterministe existe déjà.
+
+Le parcours comporte deux étapes obligatoires :
+
+1. **Voir le diff** appelle `POST /api/roadmap-writeback/preview`. Le backend reconstruit le dashboard depuis GitHub, relit #55 et vérifie que le bloc analysé correspond encore exactement au bloc courant. La réponse contient le diff, `updated_at`, le SHA-256 du body complet et le SHA-256 de la proposition.
+2. **Confirmer et appliquer à #55** appelle `POST /api/roadmap-writeback/apply`. Le backend relit #55, vérifie `updated_at + body SHA-256`, recalcule le Reconciler, vérifie que la proposition n'a pas changé, relit encore #55 immédiatement avant le PATCH, puis remplace uniquement `COCKPIT_PIPELINE_V1`.
+
+Invariants :
+
+- aucun bloc envoyé par le navigateur n'est utilisé comme autorité : l'apply recalcule la proposition côté serveur;
+- le Markdown avant et après `COCKPIT_PIPELINE_V1` reste octet-pour-octet identique;
+- un pipeline legacy, invalide ou non-stale ne peut pas être écrit;
+- aucune gate d'architecture/environnement n'est automatiquement déclarée terminée;
+- une modification concurrente de #55 produit `ROADMAP_CHANGED` (HTTP 409) et aucune écriture;
+- une proposition différente de celle prévisualisée produit `PROPOSAL_CHANGED` et exige un nouveau diff;
+- le résultat GitHub est relu dans la réponse du PATCH et revalidé comme pipeline canonique valide;
+- aucune mutation n'est déclenchée par polling, refresh ou Attention Center : l'utilisateur doit cliquer sur la confirmation finale.
+
+GitHub Issues ne fournit pas au cockpit un champ CAS applicatif transactionnel. La protection est donc un verrou optimiste fort basé sur **`updated_at + SHA-256 du body complet`**, vérifié deux fois avant le PATCH, puis vérifié après l'écriture. Le cockpit échoue fermé dès qu'un écart est observé.
+
+Le texte humain de #55 n'est volontairement pas réécrit par ce mécanisme : le Safe Writeback est limité au contrat machine `COCKPIT_PIPELINE_V1`. Les mises à jour documentaires plus larges restent des éditions GitHub explicites.
 
 ### Attention Center
 
