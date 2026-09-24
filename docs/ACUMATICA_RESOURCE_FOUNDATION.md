@@ -1,6 +1,14 @@
 # Acumatica — fondation locale identité et ressources
 
-Cette tranche prépare la synchronisation des employés et le premier login OIDC sans dépendre de l'accès réel à l'instance Acumatica.
+Cette tranche prépare la synchronisation des employés et le premier login OIDC sans dépendre du feed réel de l'instance Acumatica.
+
+## Décision de protocole
+
+Les synchronisations métier Acumatica utiliseront **OData**.
+
+La fondation applicative reste volontairement indépendante du protocole grâce aux ports `EmployeeSourcePort` et `ProjectSourcePort`.
+
+L'authentification OIDC des utilisateurs reste un sujet distinct de la lecture OData des données ERP.
 
 ## État
 
@@ -19,11 +27,11 @@ Implémenté localement :
 
 Non implémenté avant la validation #232 :
 
-- endpoint REST Employee/User Acumatica concret;
+- feed/vue OData Employee/User réel;
 - noms réels des champs Employee/User;
-- claim OIDC contenant un identifiant employé;
+- identifiant externe employé réellement observé;
+- claim OIDC contenant éventuellement un identifiant employé;
 - résolution automatique `(issuer, sub) → employee_external_id`;
-- Push Notifications employés;
 - règles organisationnelles propres à l'instance réelle.
 
 ## Propriété des données
@@ -56,8 +64,9 @@ Acumatica OIDC
       │ employee_external_id (nullable)
       ▼
 ResourceProfile / resources
+      ▲
       │
-      └─ external_id
+      └── feed OData Employee/User
 ```
 
 Le courriel et le nom ne sont jamais des clés autoritaires.
@@ -85,7 +94,7 @@ SqlEmployeeSyncRepository
 resources
 ```
 
-Un adaptateur Acumatica réel remplacera plus tard la source simulée, sans modifier le service métier.
+Un adaptateur OData réel remplacera plus tard la source simulée, sans modifier le service métier.
 
 Lorsqu'un `external_id` existe déjà, seuls `name`, `email` et `active` sont mis à jour. Les champs de planification locaux sont préservés.
 
@@ -133,9 +142,11 @@ Les index sont définis explicitement pour SQLite et SQL Server afin de permettr
 
 En parallèle du développement local :
 
-- #232 : contrat d'intégration réel Acumatica;
-- #207 : synchronisation projets réelle;
+- #232 : contrat OData Employee/User réel + relation identité ↔ employé;
+- #207 : synchronisation projets réelle via `RP_Projects`;
 - #223 : OIDC réel;
 - #162 : SQL Server réel.
 
-Une fois #232 suffisamment avancée, il restera principalement à implémenter `AcumaticaEmployeeSource` et le mécanisme de résolution automatique entre l'identité OIDC et l'identifiant employé externe.
+Une fois #232 suffisamment avancée, il restera principalement à implémenter l'adaptateur OData Employee/User et le mécanisme de résolution automatique entre l'identité OIDC et l'identifiant employé externe.
+
+Voir aussi [ACUMATICA_ODATA_CONTRACT.md](ACUMATICA_ODATA_CONTRACT.md).
