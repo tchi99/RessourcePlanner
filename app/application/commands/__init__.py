@@ -14,6 +14,8 @@ from .allocation import (
 from .demand import (
     DemandApproveCommand,
     DemandCancelCommand,
+    DemandCancellationRejectCommand,
+    DemandCancellationRequestCommand,
     DemandCorrectionCommand,
     DemandCreateCommand,
     DemandLineInput,
@@ -41,6 +43,8 @@ __all__ = [
     "DemandOperationalConfirmationCommand",
     "DemandApproveCommand",
     "DemandCancelCommand",
+    "DemandCancellationRejectCommand",
+    "DemandCancellationRequestCommand",
     "DemandCorrectionCommand",
     "DemandCreateCommand",
     "DemandLineInput",
