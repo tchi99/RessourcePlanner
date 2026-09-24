@@ -43,6 +43,24 @@ class DemandRepositoryPort(Protocol):
         comment: str = "",
     ) -> None: ...
 
+    def request_cancellation(
+        self,
+        number: str,
+        *,
+        cancellation_request_id: str,
+        reason: str,
+        expected_version: int,
+    ) -> None: ...
+
+    def reject_cancellation(
+        self,
+        number: str,
+        *,
+        cancellation_request_id: str,
+        comment: str,
+        expected_version: int,
+    ) -> None: ...
+
     def extend_candidate_window(
         self,
         number: str,
