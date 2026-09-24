@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 
@@ -141,7 +141,7 @@ def _timeline(
         try:
             stamp = datetime.fromisoformat(raw.replace("Z", "+00:00"))
         except ValueError:
-            stamp = datetime.min
+            stamp = datetime.min.replace(tzinfo=timezone.utc)
         return stamp, str(event.get("label") or "")
 
     unique: dict[tuple[str, str], dict[str, Any]] = {}
