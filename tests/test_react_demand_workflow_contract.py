@@ -35,11 +35,12 @@ class ReactDemandWorkflowContractTests(unittest.TestCase):
         self.assertIn("getDemandWorkflowState", source)
         self.assertIn("expected_version", source)
         self.assertIn("/api/v1/demands/${encodeURIComponent(number)}/${action}", source)
-        self.assertIn("workflowState?.available_actions", page)
+        self.assertIn("currentWorkflowState?.available_actions", page)
         self.assertIn("getDemandDetail", page)
         self.assertIn("canonicalDetail.workflow as DemandWorkflowState", page)
+        self.assertIn("canonicalDetail?.demand ?? selectedDemand", page)
         self.assertNotIn("getDemandWorkflowState", page)
-        self.assertIn("workflowState?.version ?? selectedDemand.version", page)
+        self.assertIn("currentWorkflowState?.version ?? currentDemand.version", page)
         self.assertNotIn("function expectedActions", page)
 
     def test_workflow_separates_approval_from_confirmation(self) -> None:
