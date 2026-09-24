@@ -4,6 +4,7 @@ import RoleCards from './RoleCards'
 import type {
   CockpitConfig,
   Dashboard,
+  ExecutionControl,
   Job,
   PipelineReconciliation,
   PipelineStep,
