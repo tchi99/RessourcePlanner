@@ -1492,13 +1492,13 @@ test("materialized demand cancellation is requested, reviewed, rejected or accep
 
   await workflowSelect(requester.page, cancellationDemand);
   await requester.page.getByRole("button", { name: "Soumettre", exact: true }).click();
-  await expect(requester.page.locator(".demand-notice")).toContainText("soumise pour approbation");
+  await expect(requester.page.locator(".demand-notice").filter({ hasText: "soumise pour approbation" }).first()).toContainText("soumise pour approbation");
 
   const approver = await openAs(browser, "COORDINATOR");
   await workflowSelect(approver.page, cancellationDemand);
   await approver.page.getByLabel(/Commentaire d’approbation/).fill("Matérialiser le plan #399D");
   await approver.page.getByRole("button", { name: "Approuver", exact: true }).click();
-  await expect(approver.page.locator(".demand-notice")).toContainText("Demande approuvée");
+  await expect(approver.page.locator(".demand-notice").filter({ hasText: "Demande approuvée" }).first()).toContainText("Demande approuvée");
   await closeContext(approver.context);
 
   await requester.page.reload();
@@ -1528,7 +1528,7 @@ test("materialized demand cancellation is requested, reviewed, rejected or accep
     "Modification concurrente #399D",
   );
   await concurrentForm.getByRole("button", { name: "Enregistrer les modifications" }).click();
-  await expect(concurrentEditor.page.locator(".demand-notice")).toContainText("Modification enregistrée");
+  await expect(concurrentEditor.page.locator(".demand-notice").filter({ hasText: "Modification enregistrée" }).first()).toContainText("Modification enregistrée");
   await closeContext(concurrentEditor.context);
 
   await requester.page.getByRole("button", { name: "Demander l’annulation", exact: true }).click();
@@ -1555,7 +1555,7 @@ test("materialized demand cancellation is requested, reviewed, rejected or accep
   await expect(review).toContainText("Plan humain");
   await coordinator.page.getByLabel("Commentaire de résolution (requis)").fill("Plan encore requis cette semaine");
   await coordinator.page.getByRole("button", { name: "Refuser", exact: true }).click();
-  await expect(coordinator.page.locator(".demand-notice")).toContainText("planning actif est conservé");
+  await expect(coordinator.page.locator(".demand-notice").filter({ hasText: "planning actif est conservé" }).first()).toContainText("planning actif est conservé");
 
   await navigateMain(coordinator.page, "Planning opérationnel");
   await coordinator.page.getByRole("button", { name: /Suivante/ }).click();
@@ -1574,7 +1574,7 @@ test("materialized demand cancellation is requested, reviewed, rejected or accep
   await expect(coordinator.page.getByTestId("cancellation-review")).toContainText("Planning qui sera libéré");
   await coordinator.page.getByLabel("Commentaire de résolution (requis)").fill("Annulation approuvée #399D");
   await coordinator.page.getByRole("button", { name: "Annuler la demande et libérer le planning", exact: true }).click();
-  await expect(coordinator.page.locator(".demand-notice")).toContainText("Planning libéré");
+  await expect(coordinator.page.locator(".demand-notice").filter({ hasText: "Planning libéré" }).first()).toContainText("Planning libéré");
   await expect(coordinator.page.locator(".demand-detail-statuses")).toContainText("Annulée");
   await expect(coordinator.page.getByTestId("detail-cancellation-pending")).toHaveCount(0);
 
