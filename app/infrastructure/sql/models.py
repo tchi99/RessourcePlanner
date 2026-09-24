@@ -175,6 +175,10 @@ class WorkforceRequest(TimestampMixin, Base):
             "estimated_days IS NULL OR estimated_days >= 0",
             name="workforce_request_days_non_negative",
         ),
+        CheckConstraint(
+            "cancellation_state IS NULL OR cancellation_state IN ('PENDING','REJECTED','ACCEPTED')",
+            name="workforce_request_cancellation_state",
+        ),
         Index("ix_workforce_requests_project_status", "project_id", "status"),
         Index("ix_workforce_requests_window", "desired_start", "desired_end"),
     )
@@ -213,6 +217,22 @@ class WorkforceRequest(TimestampMixin, Base):
         String(ID_LENGTH), ForeignKey("resources.id"), nullable=True, index=True
     )
     status: Mapped[str] = mapped_column(String(32), nullable=False, server_default=text("'Brouillon'"), index=True)
+    cancellation_request_id: Mapped[str | None] = mapped_column(String(ID_LENGTH), nullable=True)
+    cancellation_state: Mapped[str | None] = mapped_column(String(16), nullable=True, index=True)
+    cancellation_requested_by_user_id: Mapped[str | None] = mapped_column(
+        String(ID_LENGTH), ForeignKey("app_users.id"), nullable=True, index=True
+    )
+    cancellation_requested_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    cancellation_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    cancellation_resolved_by_user_id: Mapped[str | None] = mapped_column(
+        String(ID_LENGTH), ForeignKey("app_users.id"), nullable=True, index=True
+    )
+    cancellation_resolved_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    cancellation_resolution_comment: Mapped[str | None] = mapped_column(Text, nullable=True)
     approved_by_external_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
     approved_by_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
