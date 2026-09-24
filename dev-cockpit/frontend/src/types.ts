@@ -170,6 +170,33 @@ export type RoleMission = {
   primary_link: ExecutionLink | null
 }
 
+export type HandoffConfidence = 'COMPLETE' | 'PARTIAL' | 'BLOCKED'
+
+export type HandoffSource = {
+  label: string
+  url: string
+  kind: 'roadmap' | 'issue' | 'pull_request' | 'branch' | 'commit' | 'adr'
+}
+
+export type HandoffPack = {
+  role: AvatarPreset
+  role_label: string
+  confidence: HandoffConfidence
+  missing: string[]
+  title: string
+  prompt: string
+  sources: HandoffSource[]
+  section: {
+    title: string
+    content: string
+  } | null
+}
+
+export type HandoffProjection = {
+  active_key: string | null
+  packs: Record<AvatarPreset, HandoffPack>
+}
+
 export type ExecutionControl = {
   phase: ExecutionPhase
   label: string
@@ -203,6 +230,7 @@ export type Dashboard = {
   }
   reconciliation: PipelineReconciliation
   execution: ExecutionControl
+  handoff: HandoffProjection
   roadmap: {
     number: number
     title: string

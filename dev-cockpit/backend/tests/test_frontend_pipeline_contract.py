@@ -44,7 +44,9 @@ class FrontendPipelineContractTests(unittest.TestCase):
         self.assertIn("PipelineUnavailable", panel)
         self.assertIn("MissionBlock", panel)
         self.assertIn("Mission courante", panel)
-        self.assertIn("Copier mission + ouvrir ChatGPT", panel)
+        self.assertIn("HANDOFF PACK", panel)
+        self.assertIn("Préparer la reprise + ouvrir ChatGPT", panel)
+        self.assertIn("handoff-confidence", panel)
         self.assertIn("/api/details/issues/", panel)
         self.assertIn("exactSection", panel)
 
@@ -67,9 +69,14 @@ class FrontendPipelineContractTests(unittest.TestCase):
         self.assertIn("ExecutionTimelineEvent", types)
         self.assertIn("RoleMission", types)
         self.assertIn("execution: ExecutionControl", types)
+        self.assertIn("HandoffPack", types)
+        self.assertIn("HandoffProjection", types)
+        self.assertIn("handoff: HandoffProjection", types)
+        self.assertIn("'COMPLETE' | 'PARTIAL' | 'BLOCKED'", types)
 
         self.assertIn("dashboard?.execution.missions", roles)
-        self.assertIn("Copier mission + ouvrir", roles)
+        self.assertIn("dashboard?.handoff.packs", roles)
+        self.assertIn("Préparer la reprise + ouvrir", roles)
         self.assertIn("handoffRole", roles)
 
 
