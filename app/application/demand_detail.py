@@ -4,6 +4,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 from typing import Sequence
 
+from .demand_cancellation import DemandCancellationPolicyReadModel
 from .demand_workflow_policy import (
     ACTION_MODIFY,
     DemandWorkflowActionReadModel,
@@ -66,6 +67,7 @@ class DemandDetailWorkflowReadModel:
     version: int
     available_actions: tuple[str, ...]
     actions: tuple[DemandWorkflowActionReadModel, ...]
+    cancellation: DemandCancellationPolicyReadModel | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -243,9 +245,20 @@ class DemandDetailService:
             asset_requirements=asset_requirements,
         )
 
+        materialization_reader = getattr(
+            self._queries,
+            "demand_cancellation_materialization",
+            None,
+        )
+        materialization = (
+            materialization_reader(demand.number)
+            if callable(materialization_reader)
+            else None
+        )
         workflow_state = demand_workflow_state(
             demand,
             permissions=permissions,
+            materialization=materialization,
         )
         workflow = DemandDetailWorkflowReadModel(
             demand_number=workflow_state.demand_number,
@@ -253,6 +266,7 @@ class DemandDetailService:
             version=workflow_state.version,
             available_actions=workflow_state.available_actions,
             actions=workflow_state.actions,
+            cancellation=workflow_state.cancellation,
         )
         can_modify = ACTION_MODIFY in workflow.available_actions
         operational_version = (
