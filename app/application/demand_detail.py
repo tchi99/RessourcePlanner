@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Sequence
 
 from .demand_cancellation import DemandCancellationPolicyReadModel
@@ -296,8 +296,16 @@ class DemandDetailService:
             reapproval_required=envelope_decision == "REAPPROVAL_REQUIRED",
         )
 
+        decorated_demand = replace(
+            demand,
+            cancellation_policy=(
+                workflow_state.cancellation.to_dict()
+                if workflow_state.cancellation is not None
+                else None
+            ),
+        )
         return DemandDetailReadModel(
-            demand=demand,
+            demand=decorated_demand,
             version=int(demand.version),
             lines=tuple(detail_lines),
             periods=periods,
