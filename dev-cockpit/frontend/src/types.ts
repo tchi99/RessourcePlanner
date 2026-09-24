@@ -156,7 +156,7 @@ export type Dashboard = {
       url: string
       merged_at: string
     } | null
-  }
+  } | null
   architecture: {
     path: string
     url: string
