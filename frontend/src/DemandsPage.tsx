@@ -791,12 +791,6 @@ export default function DemandsPage() {
               </div>
 
               {detailLoading && <div className="editor-loading">Actualisation du détail…</div>}
-              {!detailLoading && selectedDetail && !creating && (
-                <div className="editor-loading">
-                  Contexte backend v{selectedDetail.version} · {selectedDetail.workflow.available_actions.length} action(s) disponible(s)
-                </div>
-              )}
-
               <div className="project-master-card">
                 <div>
                   <span>Responsable projet</span>
