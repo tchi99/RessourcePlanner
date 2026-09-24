@@ -28,13 +28,13 @@ class ReactPlanDeltaContractTests(unittest.TestCase):
             encoding="utf-8"
         )
 
-        self.assertIn('normalStatus(selectedDemand.status) !== "soumise"', source)
-        self.assertIn('normalStatus(selectedDemand.status) === "soumise"', source)
-        self.assertIn("getDemandPlanDelta(selectedDemand.number)", source)
+        self.assertIn('normalStatus(currentDemand.status) !== "soumise"', source)
+        self.assertIn('normalStatus(currentDemand.status) === "soumise"', source)
+        self.assertIn("getDemandPlanDelta(currentDemand.number)", source)
         self.assertIn('data-testid="plan-delta-preview"', source)
         self.assertIn('data-testid="approval-state"', source)
         self.assertIn('data-testid="envelope-decision"', source)
-        self.assertIn("getDemandApprovalState(selectedDemand.number)", source)
+        self.assertIn("getDemandApprovalState(currentDemand.number)", source)
 
     def test_workflow_explains_current_to_proposed_changes_before_approval(self) -> None:
         source = (ROOT / "frontend" / "src" / "DemandWorkflowPage.tsx").read_text(
