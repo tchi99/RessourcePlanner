@@ -154,7 +154,11 @@ def build_sql_facade(
         planning=planning_commands,
         current_user_id=actor_user_id,
         current_user_name=actor,
-        permissions=tuple(permissions or ()),
+        permissions=(
+            tuple(permissions)
+            if permissions is not None
+            else ("manage_demands", "approve_demands")
+        ),
     )
 
     return EmergencyApplicationFacade(
