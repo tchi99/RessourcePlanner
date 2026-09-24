@@ -34,6 +34,7 @@ from .commands import (
     WorkPackageCreateCommand,
     WorkPackageUpdateCommand,
 )
+from .approval_voting import ApprovalVoteCommand, ApprovalVoteOutcome
 from .demand_service import DemandService
 from .demand_workflow_policy import DemandWorkflowReadModel
 from .errors import ApplicationConflictError, ApplicationOperationError
@@ -230,14 +231,15 @@ class ApplicationFacade:
         self._demands.submit_command(command)
         return DemandMutationResult(_identifier(command.number), status="Soumise")
 
-    def approve_demand(self, command: DemandApproveCommand) -> DemandMutationResult:
-        self._acquire_planning_version(command.expected_planning_version)
-        summary = self._demands.approve_command(command)
-        return DemandMutationResult(
-            _identifier(command.number),
-            status="En planification",
-            planning=PlanningResult.from_mapping(summary),
-        )
+    def approve_demand(self, command: DemandApproveCommand) -> ApprovalVoteOutcome:
+        # 276C owns the planning CAS decision: partial votes must not consume it.
+        return self._demands.approve_command(command)
+
+    def vote_demand_approval(
+        self,
+        command: ApprovalVoteCommand,
+    ) -> ApprovalVoteOutcome:
+        return self._demands.vote_approval_command(command)
 
     def request_demand_correction(
         self,
