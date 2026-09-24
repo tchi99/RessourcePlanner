@@ -267,6 +267,55 @@ Une étape `PARALLEL READY` prouvée livrée peut être proposée `DONE` sans mo
 
 Le bouton **Préparer la mise à jour de #55** copie seulement le bloc proposé dans le presse-papiers. Il n'écrit jamais dans GitHub. La mise à jour de #55 reste une action explicite, ce qui maintient GitHub comme source de vérité et évite un second stockage d'état produit dans le cockpit.
 
+### Contrôleur d'exécution
+
+Le cockpit dérive maintenant une **phase d'exécution** à partir du contrat canonique, du Roadmap Reconciler et des artefacts GitHub de la tranche active. Cette phase n'est jamais persistée localement.
+
+Phases principales :
+
+- `PIPELINE_INVALID` : le contrat #55 est invalide; aucun nouveau travail ne doit être lancé;
+- `ROADMAP_UPDATE_REQUIRED` : une livraison GitHub vérifiée n'est pas encore reflétée dans #55;
+- `ARCHITECTURE_GATE` / `ENVIRONMENT_GATE` : la prochaine étape est une gate, pas du développement applicatif;
+- `READY` : la tranche canonique est prête et aucune branche/PR active n'est détectée;
+- `DEVELOPING` : une branche ou un travail actif existe sans PR prête;
+- `PR_OPEN` : une PR correspondante est ouverte;
+- `CI_RUNNING` : les checks de la tranche sont en cours;
+- `CI_RED` : les checks ont échoué et doivent être corrigés;
+- `STALLED` / `POSSIBLE_STALL` : le signal GitHub indique une interruption probable ou possible;
+- `READY_TO_MERGE` : la PR est verte et mergeable;
+- `DELIVERY_UNVERIFIED` : une PR est fusionnée mais la preuve de livraison n'est pas assez forte pour promouvoir le roadmap;
+- `NO_ACTIVE_WORK` : aucune étape MAIN exécutable n'est déclarée.
+
+Chaque phase expose un label, un résumé, la prochaine action, le rôle responsable, un prompt de reprise et un lien primaire lorsque GitHub en fournit un.
+
+Le contrôleur donne toujours priorité à la cohérence du roadmap : si le reconciler retourne `stale`, la phase devient `ROADMAP_UPDATE_REQUIRED` même si une autre activité GitHub est observable. Le cockpit demande alors de réconcilier #55 avant de lancer implicitement la tranche suivante.
+
+### Missions par rôle et handoff ChatGPT
+
+Le même état dérive une mission pour chaque avatar standard :
+
+- **Product Owner** : cohérence du pipeline, décisions/gates et réconciliation #55;
+- **Developer** : démarrage, reprise, correction CI ou attente selon la phase;
+- **Architecte** : gate architecture active ou disponibilité sans nouvelle décision;
+- **Reviewer** : jobs rouges, revue finale ou attente des checks;
+- **Generic** : reprend l'action du contrôleur sans logique métier supplémentaire.
+
+Ces missions ne sont pas stockées dans `roles.json`; seul le nom, l'avatar et le lien ChatGPT restent des préférences locales. Les missions sont recalculées à chaque lecture du dashboard.
+
+Les cartes de rôles affichent la mission courante et son état (`action`, `waiting`, `clear`, `blocked`). Le bouton de handoff copie le prompt de mission et, si une conversation ChatGPT est configurée, ouvre cette conversation dans un nouvel onglet. Le panneau de détail de chaque rôle expose aussi la mission et le même handoff.
+
+### Timeline GitHub
+
+Le contrôleur reconstruit une timeline courte uniquement depuis les horodatages GitHub disponibles :
+
+- dernière mise à jour du roadmap;
+- dernier commit de la branche/PR active;
+- création de la PR lorsque GitHub fournit `created_at`;
+- démarrage et fin des workflows GitHub Actions;
+- fusion d'une PR active détectée comme non encore matérialisée dans le roadmap.
+
+La timeline n'invente aucune date de création de branche : l'API de branches utilisée par le cockpit n'en fournit pas. Elle reste donc une projection éphémère des événements observables, sans journal local ni second stockage d'état.
+
 ### PR d'architecture vs travail Developer
 
 Une PR liée à l'issue active n'est pas automatiquement considérée comme une PR d'implémentation. Le Cockpit inspecte les fichiers changés des PR qui correspondent à la tranche active :
