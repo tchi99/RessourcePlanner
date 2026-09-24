@@ -151,26 +151,24 @@ La même décision s'applique aux futures données organisationnelles Acumatica 
 
 Le feed/vue Employee/User exact, ses champs, sa clé stable et la relation avec l'identité OIDC restent à découvrir dans #232 avant l'implémentation de #256.
 
-## Écart avec le code actuel
+## Implémentation locale
 
-Le code actuel contient encore `AcumaticaProjectSource`, conçu historiquement pour le Contract-Based REST API JSON avec bearer token.
+Le runtime projet compose `ODataProjectSource`, un lecteur Atom/XML dédié derrière le `ProjectSourcePort` existant. `ProjectId`, `ProjectCode`, `ProjectName`, client, chargé de projet et statut sont projetés vers `ExternalProjectRecord` sans modifier `ProjectSyncService`.
 
-Il ne représente plus la cible d'intégration réelle.
+`StartDate`, `EndDate`, `DefaultBranchCode`, `DefaultBranchCode_Desc`, `LastModifiedDateTime`, `CustomerID` et `BaseType` sont parsés dans le record d'infrastructure mais ne sont pas ajoutés au modèle SQL `Project` par 207A. Aucune règle de filtrage `BaseType` n'est appliquée.
 
-La prochaine adaptation projet doit introduire un lecteur OData Atom/XML derrière le `ProjectSourcePort` existant, puis valider le vrai feed dans #207. Le service applicatif de synchronisation et son repository SQL doivent rester indépendants du protocole Acumatica.
+L'ancien `AcumaticaProjectSource` REST/JSON reste présent uniquement comme compatibilité historique; il n'est plus le chemin composé par le runtime projet.
 
 ## Validation restante
 
-Avant de considérer l'intégration projet réelle terminée :
+207B doit valider l'environnement réel sans changer les décisions de parsing de 207A :
 
-1. implémenter l'adaptateur OData Atom/XML;
-2. tester le parser avec l'échantillon anonymisé;
-3. configurer les credentials de développement hors dépôt;
-4. effectuer un GET réel de `RP_Projects`;
-5. confirmer la sémantique de `ProjectId`;
-6. confirmer filtrage, pagination et comportement de `LastModifiedDateTime`;
-7. synchroniser vers une base de développement;
-8. relancer la synchronisation et confirmer l'idempotence;
-9. remplacer le compte nominatif par un compte de service avant exploitation durable.
+1. confirmer le mécanisme HTTP d'authentification et injecter les credentials hors dépôt;
+2. effectuer un GET réel de `RP_Projects`;
+3. confirmer la sémantique de `ProjectId`;
+4. confirmer filtrage, ordre, pagination et comportement de `LastModifiedDateTime`;
+5. synchroniser vers une base de développement et rejouer la synchronisation;
+6. confirmer la règle métier de `BaseType`;
+7. remplacer le compte nominatif par un compte de service avant exploitation durable.
 
 Refs : #207 #232 #256

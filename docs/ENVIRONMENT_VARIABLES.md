@@ -48,36 +48,33 @@ Le préflight de démarrage vérifie la **configuration** OIDC, mais ne contacte
 
 ## Acumatica
 
-### Décision cible
+### Projet OData actuellement implémenté
 
-Les synchronisations métier Acumatica utiliseront **OData**. Le contrat projet est documenté dans [ACUMATICA_ODATA_CONTRACT.md](ACUMATICA_ODATA_CONTRACT.md).
-
-Le code actuel expose encore des variables conçues pour l'ancien adaptateur Contract-Based REST. Tant que l'adaptateur OData n'est pas implémenté, elles doivent être considérées comme **configuration legacy/de développement**, pas comme le contrat cible de production.
-
-### Variables actuellement implémentées
+Les synchronisations métier Acumatica utilisent **OData**. Le contrat projet est documenté dans [ACUMATICA_ODATA_CONTRACT.md](ACUMATICA_ODATA_CONTRACT.md) et le feed projet est fixé à `/oDATA/RP_Projects`.
 
 | Variable | Usage actuel | Secret |
 | --- | --- | --- |
-| `RESOURCEPLANNER_ACUMATICA_BASE_URL` | Base de l'instance Acumatica | Non |
-| `RESOURCEPLANNER_ACUMATICA_ACCESS_TOKEN` | Bearer token de l'adaptateur REST historique | **Oui** |
-| `RESOURCEPLANNER_ACUMATICA_ENDPOINT` | Endpoint Contract-Based REST historique | Non |
-| `RESOURCEPLANNER_ACUMATICA_VERSION` | Version du contrat REST historique | Non |
-| `RESOURCEPLANNER_ACUMATICA_PROJECT_ENTITY` | Entité projet REST historique | Non |
-| `RESOURCEPLANNER_ACUMATICA_PROJECT_NUMBER_FIELD` | Champ numéro REST historique | Non |
-| `RESOURCEPLANNER_ACUMATICA_PROJECT_NAME_FIELD` | Champ nom REST historique | Non |
-| `RESOURCEPLANNER_ACUMATICA_PROJECT_CLIENT_FIELD` | Champ client REST historique | Non |
-| `RESOURCEPLANNER_ACUMATICA_PROJECT_MANAGER_FIELD` | Champ chargé de projet REST historique | Non |
-| `RESOURCEPLANNER_ACUMATICA_PROJECT_STATUS_FIELD` | Champ statut REST historique | Non |
-| `RESOURCEPLANNER_ACUMATICA_PAGE_SIZE` | Taille des pages | Non |
-| `RESOURCEPLANNER_ACUMATICA_TIMEOUT_SECONDS` | Timeout HTTP | Non |
+| `RESOURCEPLANNER_ACUMATICA_BASE_URL` | Base de l'instance Acumatica; active la source projet OData | Non |
+| `RESOURCEPLANNER_ACUMATICA_TIMEOUT_SECONDS` | Timeout HTTP du lecteur OData; défaut 30 s | Non |
 
-Ne pas figer de nouveaux noms de variables OData avant l'implémentation de l'adaptateur réel. L'objectif est de remplacer proprement la configuration spécifique REST par une configuration OData minimale et explicite.
+207A ne fixe volontairement **aucun mécanisme d'authentification HTTP**. Le transport expose une frontière permettant à 207B d'injecter les credentials appropriés après validation réelle de l'instance. Aucun mot de passe, token, cookie ou compte de service n'est requis par les tests contractuels.
 
-Le nom d'hôte réel, les comptes nominatifs temporaires et le futur compte de service doivent rester dans la configuration d'environnement/secrets, jamais dans Git.
+### Variables REST historiques
 
-Pendant les smokes de développement, un compte utilisateur nominatif peut être utilisé temporairement. Avant exploitation durable, il doit être remplacé par un compte de service ERP dédié avec permissions minimales.
+Les variables suivantes restent reconnues comme noms historiques afin de ne pas casser brutalement des environnements ou tests périphériques, mais elles **ne pilotent plus le nouveau chemin projet OData** :
 
-L'absence d'Acumatica n'empêche pas les fonctions locales. Une configuration Acumatica partielle doit continuer à échouer explicitement lorsqu'une source Acumatica est activée.
+- `RESOURCEPLANNER_ACUMATICA_ACCESS_TOKEN`;
+- `RESOURCEPLANNER_ACUMATICA_ENDPOINT`;
+- `RESOURCEPLANNER_ACUMATICA_VERSION`;
+- `RESOURCEPLANNER_ACUMATICA_PROJECT_ENTITY`;
+- `RESOURCEPLANNER_ACUMATICA_PROJECT_NUMBER_FIELD`;
+- `RESOURCEPLANNER_ACUMATICA_PROJECT_NAME_FIELD`;
+- `RESOURCEPLANNER_ACUMATICA_PROJECT_CLIENT_FIELD`;
+- `RESOURCEPLANNER_ACUMATICA_PROJECT_MANAGER_FIELD`;
+- `RESOURCEPLANNER_ACUMATICA_PROJECT_STATUS_FIELD`;
+- `RESOURCEPLANNER_ACUMATICA_PAGE_SIZE`.
+
+Le nom d'hôte réel, les comptes nominatifs temporaires et le futur compte de service restent dans la configuration d'environnement/secrets, jamais dans Git. L'absence de `RESOURCEPLANNER_ACUMATICA_BASE_URL` laisse l'intégration Acumatica désactivée et n'empêche pas les fonctions locales.
 
 ## Configuration chiffrée / SMTP
 

@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom"
+      xmlns:d="http://schemas.microsoft.com/ado/2007/08/dataservices"
+      xmlns:m="http://schemas.microsoft.com/ado/2007/08/dataservices/metadata">
+  <title type="text">RP_Projects</title>
+  <entry>
+    <content type="application/xml">
+      <m:properties>
+        <d:ProjectCode xml:space="preserve">  P-0100  </d:ProjectCode>
+        <d:ProjectId m:type="Edm.Int32">101</d:ProjectId>
+        <d:ProjectName>Projet Électrique – Montréal</d:ProjectName>
+        <d:CustomerID xml:space="preserve">  C-001  </d:CustomerID>
+        <d:CustomerName>Client Énergie</d:CustomerName>
+        <d:ProjectManagerId xml:space="preserve">  PM-01  </d:ProjectManagerId>
+        <d:ProjectManagerName>Élodie Tremblay</d:ProjectManagerName>
+        <d:Status>Actif</d:Status>
+        <d:StartDate m:type="Edm.DateTime">2026-01-15T00:00:00</d:StartDate>
+        <d:EndDate m:type="Edm.DateTime" m:null="true" />
+        <d:DefaultBranchCode xml:space="preserve"> 110 </d:DefaultBranchCode>
+        <d:DefaultBranchCode_Desc>Électrique</d:DefaultBranchCode_Desc>
+        <d:LastModifiedDateTime m:type="Edm.DateTime">2026-09-24T12:30:45.123</d:LastModifiedDateTime>
+        <d:BaseType>P</d:BaseType>
+      </m:properties>
+    </content>
+  </entry>
+  <entry>
+    <content type="application/xml">
+      <m:properties>
+        <d:ProjectId m:type="Edm.Int32">102</d:ProjectId>
+        <d:ProjectCode>P-0200</d:ProjectCode>
+        <d:ProjectName>Projet automatisation</d:ProjectName>
+        <d:CustomerID m:null="true" />
+        <d:CustomerName>Client Automation</d:CustomerName>
+        <d:ProjectManagerId m:null="true" />
+        <d:ProjectManagerName m:null="true" />
+        <d:Status>En planification</d:Status>
+        <d:StartDate m:type="Edm.DateTime">2026-02-01T08:00:00</d:StartDate>
+        <d:EndDate m:type="Edm.DateTime">2026-12-31T17:00:00</d:EndDate>
+        <d:DefaultBranchCode>210</d:DefaultBranchCode>
+        <d:DefaultBranchCode_Desc>Automatisation</d:DefaultBranchCode_Desc>
+        <d:LastModifiedDateTime m:type="Edm.DateTime">2026-09-23T09:10:11</d:LastModifiedDateTime>
+        <d:BaseType>R</d:BaseType>
+      </m:properties>
+    </content>
+  </entry>
+  <entry>
+    <content type="application/xml">
+      <m:properties>
+        <d:ProjectName>Projet excavation</d:ProjectName>
+        <d:ProjectCode>P-0300</d:ProjectCode>
+        <d:ProjectId m:type="Edm.Int32">103</d:ProjectId>
+        <d:Status>Complété</d:Status>
+        <d:DefaultBranchCode>310</d:DefaultBranchCode>
+        <d:DefaultBranchCode_Desc>Excavation</d:DefaultBranchCode_Desc>
+        <d:BaseType>P</d:BaseType>
+      </m:properties>
+    </content>
+  </entry>
+  <entry>
+    <content type="application/xml">
+      <m:properties>
+        <d:ProjectId m:type="Edm.Int32">104</d:ProjectId>
+        <d:ProjectCode>P-0400</d:ProjectCode>
+        <d:ProjectName>Projet mécanique industrielle</d:ProjectName>
+        <d:Status>Suspendu</d:Status>
+        <d:DefaultBranchCode>510</d:DefaultBranchCode>
+        <d:DefaultBranchCode_Desc>Mécanique industrielle</d:DefaultBranchCode_Desc>
+        <d:BaseType>P</d:BaseType>
+      </m:properties>
+    </content>
+  </entry>
+  <entry>
+    <content type="application/xml">
+      <m:properties>
+        <d:ProjectId m:type="Edm.Int32">105</d:ProjectId>
+        <d:ProjectCode>P-0500</d:ProjectCode>
+        <d:ProjectName>Projet interne annulé</d:ProjectName>
+        <d:Status>Annulé</d:Status>
+        <d:DefaultBranchCode>910</d:DefaultBranchCode>
+        <d:DefaultBranchCode_Desc>Interne</d:DefaultBranchCode_Desc>
+        <d:BaseType>R</d:BaseType>
+      </m:properties>
+    </content>
+  </entry>
+</feed>

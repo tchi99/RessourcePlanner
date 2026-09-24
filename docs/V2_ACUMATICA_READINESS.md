@@ -14,9 +14,9 @@ Pour les projets, la vue connue est :
 
 Le contrat fonctionnel et le mapping sont documentés dans [ACUMATICA_ODATA_CONTRACT.md](ACUMATICA_ODATA_CONTRACT.md).
 
-## Ce qui reste valide dans les tests historiques
+## Garanties réutilisées et couvertes
 
-La source projet actuelle est encore un client REST JSON historique. Ses tests ne valident plus le protocole cible, mais plusieurs propriétés restent directement pertinentes pour le futur adaptateur OData :
+Le runtime projet utilise maintenant `ODataProjectSource`. Les tests OData reprennent les garanties génériques déjà établies par l'ancien client REST :
 
 - timeout HTTP;
 - erreur réseau;
@@ -32,7 +32,7 @@ La source projet actuelle est encore un client REST JSON historique. Ses tests n
 - métriques externes cohérentes;
 - journalisation technique sans credential ni payload métier.
 
-Ces garanties doivent être conservées lors du remplacement de l'adaptateur REST par l'adaptateur OData.
+Ces garanties sont conservées sans modifier `ProjectSyncService` ni la transaction SQL de synchronisation.
 
 ## Contrat OData projet connu
 
@@ -48,7 +48,7 @@ Le feed `RP_Projects` est Atom/XML.
 - `LastModifiedDateTime` est disponible;
 - `BaseType` est exposé mais sa règle de filtrage métier reste à confirmer.
 
-Le parser devra donc être testé sur Atom/XML et non sur une liste JSON.
+Le parser est testé sur un fixture Atom/XML anonymisé fidèle au contrat, y compris namespaces, valeurs nulles, Unicode, `Edm.Int32`, `Edm.DateTime`, ordre variable des propriétés, divisions connues et `BaseType` P/R.
 
 ## Sémantique d'un pull partiel
 
@@ -128,8 +128,6 @@ Même avec le contrat `RP_Projects` connu, il reste à confirmer sur l'instance 
 
 ## Ce qui n'est volontairement pas considéré comme livré
 
-- adaptateur OData projet concret;
-- parser Atom/XML de production;
 - authentification de service OData;
 - `AcumaticaEmployeeSource` OData;
 - synchro incrémentale fondée sur `LastModifiedDateTime`;
@@ -140,12 +138,10 @@ Même avec le contrat `RP_Projects` connu, il reste à confirmer sur l'instance 
 
 ## Ordre recommandé
 
-1. utiliser le contrat documenté dans `ACUMATICA_ODATA_CONTRACT.md`;
-2. implémenter l'adaptateur OData projet derrière `ProjectSourcePort`;
-3. tester avec le sample anonymisé;
-4. exécuter #207 contre le vrai feed;
-5. confirmer filtrage/pagination/incrémental;
-6. compléter #232 pour Employee/User et identité;
-7. implémenter ensuite #256 avec la source OData réellement observée.
+1. exécuter 207B contre le vrai feed avec des credentials hors Git;
+2. confirmer authentification, filtrage, ordre, pagination et incrémental;
+3. confirmer la règle de `BaseType`;
+4. compléter #232 pour Employee/User et identité;
+5. implémenter ensuite #256 avec la source OData réellement observée.
 
 Le but est de conserver les garanties applicatives déjà acquises tout en remplaçant uniquement la frontière de transport devenue obsolète.
