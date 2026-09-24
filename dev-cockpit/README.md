@@ -304,6 +304,35 @@ Ces missions ne sont pas stockées dans `roles.json`; seul le nom, l'avatar et l
 
 Les cartes de rôles affichent la mission courante et son état (`action`, `waiting`, `clear`, `blocked`). Le bouton de handoff copie le prompt de mission et, si une conversation ChatGPT est configurée, ouvre cette conversation dans un nouvel onglet. Le panneau de détail de chaque rôle expose aussi la mission et le même handoff.
 
+### Handoff Pack par rôle
+
+Le bouton de reprise ne copie plus seulement la mission courte. Le cockpit génère maintenant un **Handoff Pack** éphémère pour chaque rôle à partir du même état GitHub utilisé par le dashboard.
+
+Le pack contient, lorsqu'ils sont disponibles :
+
+- l'étape canonique, son type/statut et la phase d'exécution;
+- l'issue parent et la sous-tranche exacte;
+- la prochaine action dérivée;
+- la branche active, la PR, le dernier commit et la CI observée;
+- les jobs rouges;
+- les ADR référencés par l'issue/roadmap actif;
+- la chaîne de sous-tranches restante lorsque l'enchaînement est explicitement permis;
+- la section exacte de l'issue parent correspondant à la sous-tranche;
+- les contraintes durables pertinentes d'AGENTS.md;
+- une consigne de reprise adaptée au rôle qui interdit de refaire inutilement l'exploration déjà disponible.
+
+Aucun de ces éléments n'est inventé. Une branche, PR, section ou ADR absent reste absent du pack.
+
+Chaque pack expose une confiance :
+
+- **COMPLETE** : le contexte observable est suffisant pour reprendre directement la mission;
+- **PARTIAL** : le pack est exploitable, mais une preuve attendue manque, par exemple une tranche marquée en développement sans branche ni PR observable;
+- **BLOCKED** : la mission ne doit pas démarrer/reprendre dans l'état actuel, par exemple pipeline invalide, roadmap stale ou gate active pour le Developer.
+
+La confiance est calculée par rôle : un roadmap stale peut produire un pack Developer **BLOCKED** tout en laissant au Product Owner un pack **COMPLETE** pour effectuer la réconciliation.
+
+Le bouton **Préparer la reprise** copie le pack complet. Si une conversation ChatGPT est associée au rôle, le cockpit copie d'abord le pack puis ouvre la conversation dans un nouvel onglet. Il n'envoie aucune donnée via une API IA et ne persiste pas le pack dans `roles.json`.
+
 ### Timeline GitHub
 
 Le contrôleur reconstruit une timeline courte uniquement depuis les horodatages GitHub disponibles :
