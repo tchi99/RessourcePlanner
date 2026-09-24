@@ -961,6 +961,9 @@ class ServiceTests(unittest.IsolatedAsyncioTestCase):
             "Roadmap canonique : #55",
             dashboard["handoff"]["packs"]["developer"]["prompt"],
         )
+        self.assertEqual(dashboard["attention"]["status"], "ACTION")
+        self.assertEqual(dashboard["attention"]["action_count"], 1)
+        self.assertEqual(dashboard["attention"]["items"][0]["role"], "developer")
         self.assertEqual(
             [step["key"] for step in dashboard["pipeline"]["next"]],
             ["399", "276", "410"],
@@ -1068,6 +1071,8 @@ class ServiceTests(unittest.IsolatedAsyncioTestCase):
             "#399A — état persistant — DONE (PR #413)",
         )
         self.assertNotIn("#412", dashboard["handoff"]["packs"]["developer"]["prompt"])
+        self.assertEqual(dashboard["attention"]["status"], "ACTION")
+        self.assertEqual(dashboard["attention"]["items"][0]["key"], "399A")
 
     async def test_invalid_canonical_pipeline_fails_closed_without_active_issue(self):
         def handler(request: httpx.Request) -> httpx.Response:
@@ -1123,6 +1128,11 @@ class ServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(
             dashboard["handoff"]["packs"]["developer"]["confidence"],
             "BLOCKED",
+        )
+        self.assertEqual(dashboard["attention"]["status"], "ACTION")
+        self.assertEqual(
+            dashboard["attention"]["items"][0]["role"],
+            "product-owner",
         )
         self.assertIsNone(dashboard["roadmap"]["active_issue"])
         self.assertIsNone(dashboard["roadmap"]["effective_active"])

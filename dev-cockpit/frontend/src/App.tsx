@@ -2,8 +2,11 @@ import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import RoleCards from './RoleCards'
 import type {
+  AttentionCenter,
+  AttentionItem,
   CockpitConfig,
   Dashboard,
+  HandoffProjection,
   ExecutionControl,
   Job,
   PipelineReconciliation,
@@ -173,6 +176,123 @@ function RoadmapReconciliationPanel({
   )
 }
 
+function AttentionCenterPanel({
+  attention,
+  handoff,
+  copiedId,
+  onPrepare,
+}: {
+  attention: AttentionCenter
+  handoff: HandoffProjection
+  copiedId: string | null
+  onPrepare: (item: AttentionItem) => void
+}) {
+  const roleSummary = Object.entries(attention.roles).filter(
+    ([, counts]) => counts.actions > 0 || counts.watches > 0,
+  )
+
+  return (
+    <section className={`attention-center ${attention.status.toLowerCase()}`}>
+      <div className="attention-header">
+        <div>
+          <span className="panel-kicker">ATTENTION CENTER</span>
+          <h2>
+            {attention.status === 'CLEAR'
+              ? 'Tout roule'
+              : `${attention.action_count} action(s) · ${attention.watch_count} attente(s)`}
+          </h2>
+          <p>{attention.summary}</p>
+        </div>
+        <span className={`attention-overall ${attention.status.toLowerCase()}`}>
+          {attention.status}
+        </span>
+      </div>
+
+      {roleSummary.length > 0 && (
+        <div className="attention-role-summary">
+          {roleSummary.map(([role, counts]) => (
+            <span key={role}>
+              {counts.label}: {counts.actions} action
+              {counts.actions === 1 ? '' : 's'} · {counts.watches} attente
+              {counts.watches === 1 ? '' : 's'}
+            </span>
+          ))}
+        </div>
+      )}
+
+      {attention.items.length > 0 ? (
+        <div className="attention-list">
+          {attention.items.map((item) => {
+            const pack = handoff.packs[item.role]
+            return (
+              <article key={item.id} className={item.level.toLowerCase()}>
+                <div className="attention-item-main">
+                  <div className="attention-item-title">
+                    <span className={`attention-level ${item.level.toLowerCase()}`}>
+                      {item.level}
+                    </span>
+                    <strong>
+                      {item.key} · {item.title}
+                    </strong>
+                  </div>
+                  <span className="attention-role">{item.role_label}</span>
+                  <p>{item.detail}</p>
+                  <div className="attention-action">
+                    <span>Action</span>
+                    <strong>{item.action}</strong>
+                  </div>
+                </div>
+
+                <div className="attention-item-actions">
+                  {pack?.prompt && (
+                    <button
+                      className="primary"
+                      type="button"
+                      onClick={() => onPrepare(item)}
+                    >
+                      {copiedId === item.id
+                        ? 'Reprise copiée ✓'
+                        : 'Préparer la reprise'}
+                    </button>
+                  )}
+                  {item.primary_link && (
+                    <a
+                      className="button"
+                      href={item.primary_link.url}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      {item.primary_link.label} ↗
+                    </a>
+                  )}
+                  {item.handoff_confidence && (
+                    <span
+                      className={`handoff-confidence ${item.handoff_confidence.toLowerCase()}`}
+                    >
+                      {item.handoff_confidence}
+                    </span>
+                  )}
+                </div>
+              </article>
+            )
+          })}
+        </div>
+      ) : (
+        <div className="attention-clear">
+          <span>✓</span>
+          <div>
+            <strong>Aucune intervention requise</strong>
+            <small>
+              Les entrées apparaîtront automatiquement lorsqu'un signal GitHub
+              nécessitera une action ou une surveillance.
+            </small>
+          </div>
+        </div>
+      )}
+    </section>
+  )
+}
+
 function ExecutionControllerPanel({
   execution,
   copied,
@@ -302,6 +422,7 @@ export default function App() {
   const [error, setError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
   const [roadmapCopied, setRoadmapCopied] = useState(false)
+  const [attentionCopiedId, setAttentionCopiedId] = useState<string | null>(null)
 
   async function load(targetRepo: string) {
     if (!targetRepo) return
@@ -372,6 +493,14 @@ export default function App() {
     window.setTimeout(() => setRoadmapCopied(false), 1800)
   }
 
+  async function prepareAttention(item: AttentionItem) {
+    const pack = data?.handoff.packs[item.role]
+    if (!pack?.prompt) return
+    await navigator.clipboard.writeText(pack.prompt)
+    setAttentionCopiedId(item.id)
+    window.setTimeout(() => setAttentionCopiedId(null), 1800)
+  }
+
   const activeWork = data?.active_work ?? null
   const primaryPr = activeWork?.primary_pr ?? null
   const run = latestRun(primaryPr) ?? activeWork?.active_runs?.[0] ?? null
@@ -428,6 +557,15 @@ export default function App() {
 
       {loading && !data && (
         <section className="loading-panel">Lecture de GitHub…</section>
+      )}
+
+      {data && (
+        <AttentionCenterPanel
+          attention={data.attention}
+          handoff={data.handoff}
+          copiedId={attentionCopiedId}
+          onPrepare={(item) => void prepareAttention(item)}
+        />
       )}
 
       <RoleCards dashboard={data} />
