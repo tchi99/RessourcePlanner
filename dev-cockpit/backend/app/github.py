@@ -63,8 +63,32 @@ class GitHubClient:
             raise GitHubError(response.status_code, message)
         return response.json()
 
+    async def _patch(self, path: str, payload: dict[str, Any]) -> Any:
+        response = await self._client.patch(path, json=payload)
+        if response.is_error:
+            message = "Erreur GitHub"
+            try:
+                body = response.json()
+                if isinstance(body, dict) and body.get("message"):
+                    message = str(body["message"])
+            except ValueError:
+                pass
+            raise GitHubError(response.status_code, message)
+        return response.json()
+
     async def get_issue(self, repo: str, number: int) -> dict[str, Any]:
         return await self._get(f"/repos/{repo}/issues/{number}")
+
+    async def update_issue_body(
+        self,
+        repo: str,
+        number: int,
+        body: str,
+    ) -> dict[str, Any]:
+        return await self._patch(
+            f"/repos/{repo}/issues/{number}",
+            {"body": body},
+        )
 
     async def list_pulls(self, repo: str, state: str = "open", per_page: int = 20) -> list[dict[str, Any]]:
         return await self._get(
