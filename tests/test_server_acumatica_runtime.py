@@ -28,44 +28,60 @@ class ServerAcumaticaRuntimeTests(unittest.TestCase):
         )
         self.assertIsNone(settings.acumatica)
 
-    def test_complete_environment_builds_configurable_acumatica_settings(self) -> None:
+    def test_base_url_builds_minimal_odata_project_settings(self) -> None:
         settings = ServerSettings.from_environment(
             {
                 DATABASE_URL_ENV: "sqlite+pysqlite:///:memory:",
                 ACUMATICA_BASE_URL_ENV: "https://erp.example.test/Instance",
-                ACUMATICA_ACCESS_TOKEN_ENV: "secret-token",
-                ACUMATICA_ENDPOINT_ENV: "RP",
-                ACUMATICA_VERSION_ENV: "1.0.0",
-                ACUMATICA_ENTITY_ENV: "RPProject",
-                ACUMATICA_NUMBER_FIELD_ENV: "Nbr",
-                ACUMATICA_NAME_FIELD_ENV: "Label",
-                ACUMATICA_CLIENT_FIELD_ENV: "Account",
-                ACUMATICA_MANAGER_FIELD_ENV: "Owner",
-                ACUMATICA_STATUS_FIELD_ENV: "State",
-                ACUMATICA_PAGE_SIZE_ENV: "75",
                 ACUMATICA_TIMEOUT_SECONDS_ENV: "12.5",
             }
         )
-        assert settings.acumatica is not None
-        self.assertEqual(settings.acumatica.endpoint, "RP")
-        self.assertEqual(settings.acumatica.version, "1.0.0")
-        self.assertEqual(settings.acumatica.entity, "RPProject")
-        self.assertEqual(settings.acumatica.number_field, "Nbr")
-        self.assertEqual(settings.acumatica.page_size, 75)
-        self.assertEqual(settings.acumatica.timeout_seconds, 12.5)
-        self.assertNotIn("secret-token", repr(settings))
-        self.assertNotIn("secret-token", repr(settings.acumatica))
 
-    def test_partial_acumatica_configuration_is_rejected(self) -> None:
-        with self.assertRaises(ServerConfigurationError) as raised:
-            ServerSettings.from_environment(
-                {
-                    DATABASE_URL_ENV: "sqlite+pysqlite:///:memory:",
-                    ACUMATICA_BASE_URL_ENV: "https://erp.example.test",
-                    ACUMATICA_VERSION_ENV: "25.200.001",
-                }
-            )
-        self.assertIn(ACUMATICA_ACCESS_TOKEN_ENV, str(raised.exception))
+        assert settings.acumatica is not None
+        self.assertEqual(settings.acumatica.base_url, "https://erp.example.test/Instance")
+        self.assertEqual(settings.acumatica.feed_path, "/oDATA/RP_Projects")
+        self.assertEqual(settings.acumatica.timeout_seconds, 12.5)
+        self.assertEqual(
+            settings.acumatica.safe_summary(),
+            {"protocol": "odata", "feed_path": "/oDATA/RP_Projects"},
+        )
+
+    def test_legacy_rest_configuration_is_not_required_by_odata_runtime(self) -> None:
+        settings = ServerSettings.from_environment(
+            {
+                DATABASE_URL_ENV: "sqlite+pysqlite:///:memory:",
+                ACUMATICA_BASE_URL_ENV: "https://erp.example.test/Instance",
+                ACUMATICA_ACCESS_TOKEN_ENV: "legacy-secret-token",
+                ACUMATICA_ENDPOINT_ENV: "LegacyEndpoint",
+                ACUMATICA_VERSION_ENV: "25.200.001",
+                ACUMATICA_ENTITY_ENV: "LegacyProject",
+                ACUMATICA_NUMBER_FIELD_ENV: "LegacyNumber",
+                ACUMATICA_NAME_FIELD_ENV: "LegacyName",
+                ACUMATICA_CLIENT_FIELD_ENV: "LegacyClient",
+                ACUMATICA_MANAGER_FIELD_ENV: "LegacyManager",
+                ACUMATICA_STATUS_FIELD_ENV: "LegacyStatus",
+                ACUMATICA_PAGE_SIZE_ENV: "0",
+            }
+        )
+
+        assert settings.acumatica is not None
+        self.assertEqual(settings.acumatica.feed_path, "/oDATA/RP_Projects")
+        self.assertEqual(settings.acumatica.timeout_seconds, 30.0)
+        diagnostic = repr(settings) + repr(settings.acumatica) + str(settings.acumatica.safe_summary())
+        self.assertNotIn("legacy-secret-token", diagnostic)
+        self.assertNotIn("LegacyEndpoint", diagnostic)
+        self.assertNotIn("LegacyProject", diagnostic)
+
+    def test_legacy_rest_values_without_base_url_do_not_activate_integration(self) -> None:
+        settings = ServerSettings.from_environment(
+            {
+                DATABASE_URL_ENV: "sqlite+pysqlite:///:memory:",
+                ACUMATICA_ACCESS_TOKEN_ENV: "legacy-secret-token",
+                ACUMATICA_VERSION_ENV: "25.200.001",
+                ACUMATICA_ENTITY_ENV: "Project",
+            }
+        )
+        self.assertIsNone(settings.acumatica)
 
     def test_invalid_acumatica_timeout_is_rejected(self) -> None:
         for value in ("0", "-1", "121", "abc"):
@@ -75,23 +91,7 @@ class ServerAcumaticaRuntimeTests(unittest.TestCase):
                         {
                             DATABASE_URL_ENV: "sqlite+pysqlite:///:memory:",
                             ACUMATICA_BASE_URL_ENV: "https://erp.example.test",
-                            ACUMATICA_ACCESS_TOKEN_ENV: "token",
-                            ACUMATICA_VERSION_ENV: "25.200.001",
                             ACUMATICA_TIMEOUT_SECONDS_ENV: value,
-                        }
-                    )
-
-    def test_invalid_acumatica_page_size_is_rejected(self) -> None:
-        for value in ("0", "1001", "abc"):
-            with self.subTest(value=value):
-                with self.assertRaises(ServerConfigurationError):
-                    ServerSettings.from_environment(
-                        {
-                            DATABASE_URL_ENV: "sqlite+pysqlite:///:memory:",
-                            ACUMATICA_BASE_URL_ENV: "https://erp.example.test",
-                            ACUMATICA_ACCESS_TOKEN_ENV: "token",
-                            ACUMATICA_VERSION_ENV: "25.200.001",
-                            ACUMATICA_PAGE_SIZE_ENV: value,
                         }
                     )
 
