@@ -129,6 +129,11 @@ export default function DemandWorkflowPage({
   const [planDeltaLoading, setPlanDeltaLoading] = useState(false);
   const [planDeltaError, setPlanDeltaError] = useState<string | null>(null);
 
+  const currentDemand = canonicalDetail?.demand ?? selectedDemand;
+  const currentWorkflowState = canonicalDetail
+    ? canonicalDetail.workflow as DemandWorkflowState
+    : workflowState;
+
   async function refresh(number?: string) {
     const rows = demandNumber
       ? [(await getDemandDetail(demandNumber)).demand]
@@ -206,14 +211,14 @@ export default function DemandWorkflowPage({
   }, [selectedNumber, loading]);
 
   useEffect(() => {
-    if (!selectedDemand) {
+    if (!currentDemand) {
       setApprovalState(null);
       setApprovalStateError(null);
       return;
     }
     let active = true;
     setApprovalStateError(null);
-    getDemandApprovalState(selectedDemand.number)
+    getDemandApprovalState(currentDemand.number)
       .then((state) => {
         if (active) setApprovalState(state);
       })
@@ -224,10 +229,10 @@ export default function DemandWorkflowPage({
         }
       });
     return () => { active = false; };
-  }, [selectedDemand?.number, selectedDemand?.version, selectedDemand?.status]);
+  }, [currentDemand?.number, currentDemand?.version, currentDemand?.status]);
 
   useEffect(() => {
-    if (!selectedDemand || normalStatus(selectedDemand.status) !== "soumise") {
+    if (!currentDemand || normalStatus(currentDemand.status) !== "soumise") {
       setPlanDelta(null);
       setPlanDeltaError(null);
       setPlanDeltaLoading(false);
@@ -236,7 +241,7 @@ export default function DemandWorkflowPage({
     let active = true;
     setPlanDeltaLoading(true);
     setPlanDeltaError(null);
-    getDemandPlanDelta(selectedDemand.number)
+    getDemandPlanDelta(currentDemand.number)
       .then((delta) => {
         if (active) setPlanDelta(delta);
       })
@@ -250,22 +255,22 @@ export default function DemandWorkflowPage({
         if (active) setPlanDeltaLoading(false);
       });
     return () => { active = false; };
-  }, [selectedDemand?.number, selectedDemand?.status]);
+  }, [currentDemand?.number, currentDemand?.status]);
 
   const actions = useMemo(
     () =>
-      (workflowState?.available_actions ?? []).filter(
+      (currentWorkflowState?.available_actions ?? []).filter(
         (action): action is WorkflowButtonAction =>
           action === "submit" ||
           action === "approve" ||
           action === "correction" ||
           action === "cancel",
       ),
-    [workflowState],
+    [currentWorkflowState],
   );
 
   async function runAction(action: WorkflowButtonAction) {
-    if (!selectedDemand || pendingAction) return;
+    if (!currentDemand || pendingAction) return;
     if (hasUnsavedChanges) {
       setError("Enregistre les modifications avant de poursuivre.");
       return;
@@ -274,30 +279,30 @@ export default function DemandWorkflowPage({
       setError("Un commentaire est requis pour demander une correction.");
       return;
     }
-    if (action === "cancel" && !window.confirm(`Annuler la demande ${selectedDemand.number}?`)) return;
+    if (action === "cancel" && !window.confirm(`Annuler la demande ${currentDemand.number}?`)) return;
 
     setPendingAction(action);
     setError(null);
     setNotice(null);
     try {
-      const expectedVersion = workflowState?.version ?? selectedDemand.version;
+      const expectedVersion = currentWorkflowState?.version ?? currentDemand.version;
       let result: DemandWorkflowResult;
       if (action === "submit") {
-        result = await submitDemand(selectedDemand.number, expectedVersion);
+        result = await submitDemand(currentDemand.number, expectedVersion);
       } else if (action === "approve") {
         result = await approveDemand(
-          selectedDemand.number,
+          currentDemand.number,
           approvalComment.trim(),
           expectedVersion,
         );
       } else if (action === "correction") {
         result = await requestDemandCorrection(
-          selectedDemand.number,
+          currentDemand.number,
           correctionComment.trim(),
           expectedVersion,
         );
       } else {
-        result = await cancelDemand(selectedDemand.number, expectedVersion);
+        result = await cancelDemand(currentDemand.number, expectedVersion);
       }
 
       if (canonicalDetail) {
@@ -373,27 +378,27 @@ export default function DemandWorkflowPage({
               ))}
             </select>
           </label>
-          {selectedDemand && (
+          {currentDemand && (
             <div className="workflow-summary-card">
-              <strong>{selectedDemand.number}</strong>
-              <span>{selectedDemand.project_number} — {selectedDemand.project_name || "Projet"}</span>
-              <span>{selectedDemand.requester ? `Demandeur : ${selectedDemand.requester}` : "Demandeur non défini"}</span>
+              <strong>{currentDemand.number}</strong>
+              <span>{currentDemand.project_number} — {currentDemand.project_name || "Projet"}</span>
+              <span>{currentDemand.requester ? `Demandeur : ${currentDemand.requester}` : "Demandeur non défini"}</span>
             </div>
           )}
         </aside>)}
 
         <div className="workflow-detail-panel">
-          {selectedDemand ? (
+          {currentDemand ? (
             <>
               <div className="workflow-state-grid">
                 <div className="workflow-state-card">
                   <span>Approbation / statut</span>
-                  <strong>{selectedDemand.status || "Non défini"}</strong>
+                  <strong>{currentDemand.status || "Non défini"}</strong>
                   <small>Ce statut pilote le cycle de vie de la demande.</small>
                 </div>
                 <div className="workflow-state-card">
                   <span>Confirmation</span>
-                  <strong>{selectedDemand.confirmation || "Confirmée"}</strong>
+                  <strong>{currentDemand.confirmation || "Confirmée"}</strong>
                   <small>La confirmation décrit la certitude du besoin, indépendamment de son approbation.</small>
                 </div>
                 {approvalState && (
@@ -438,7 +443,7 @@ export default function DemandWorkflowPage({
                 </div>
               )}
 
-              {normalStatus(selectedDemand.status) === "soumise" && (
+              {normalStatus(currentDemand.status) === "soumise" && (
                 <div className="plan-delta-panel" data-testid="plan-delta-preview">
                   <div className="plan-delta-heading">
                     <div>
