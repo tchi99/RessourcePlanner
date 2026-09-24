@@ -269,29 +269,23 @@ class EmergencyDemandService(DemandService):
                 code_prefix="demand_emergency_override",
                 context={"demand_number": number},
             )
-            call_application_port(
-                lambda: self._approved_sync.sync_approved(number),
-                code_prefix="demand_emergency_sync",
-                context={"demand_number": number},
-            )
-            summary = call_application_port(
-                self._planning.rebuild,
-                code_prefix="demand_emergency_rebuild",
-                context={"demand_number": number},
-            )
-        return dict(summary)
+        # 276C closes the historical emergency materialization bypass. Urgency may
+        # remain an auditable treatment marker, but no human/asset plan is materialized
+        # before the line-approval quorum is complete.
+        return {}
 
     def approve_command(self, command):
-        summary = super().approve_command(command)
-        repository = self._emergency_repository()
-        call_application_port(
-            lambda: repository.clear_emergency_override(
-                str(command.number or "").strip()
-            ),
-            code_prefix="demand_emergency_regularize",
-            context={"demand_number": str(command.number or "").strip()},
-        )
-        return summary
+        outcome = super().approve_command(command)
+        if outcome.status == "En planification":
+            repository = self._emergency_repository()
+            call_application_port(
+                lambda: repository.clear_emergency_override(
+                    str(command.number or "").strip()
+                ),
+                code_prefix="demand_emergency_regularize",
+                context={"demand_number": str(command.number or "").strip()},
+            )
+        return outcome
 
 
 class EmergencyApplicationFacade(ApplicationFacade):
