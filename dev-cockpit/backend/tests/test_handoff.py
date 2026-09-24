@@ -213,7 +213,7 @@ class HandoffPackTests(unittest.TestCase):
 
         self.assertEqual(result["packs"]["developer"]["confidence"], "BLOCKED")
         self.assertEqual(result["packs"]["product-owner"]["confidence"], "BLOCKED")
-        self.assertIn("Pipeline", result["packs"]["developer"]["prompt"])
+        self.assertIn("pipeline canonique", result["packs"]["developer"]["prompt"].lower())
 
     def test_reviewer_pack_is_targeted_to_pr_ci_and_risk(self):
         work = active_work(
