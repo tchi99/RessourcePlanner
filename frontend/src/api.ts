@@ -266,6 +266,9 @@ export type DemandCancellationPolicyReadModel = {
 export type DemandReadModel = {
   number: string;
   status: string;
+  effective_status?: string | null;
+  terminal?: boolean;
+  created_at?: string | null;
   cancellation_request_id?: string | null;
   cancellation_state?: "PENDING" | "REJECTED" | "ACCEPTED" | null;
   cancellation_requested_by_user_id?: string | null;

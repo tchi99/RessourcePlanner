@@ -20,7 +20,7 @@
 
 .demand-filter-bar {
   display: grid;
-  grid-template-columns: minmax(240px, 1fr) minmax(150px, .42fr) minmax(210px, .7fr);
+  grid-template-columns: minmax(240px, 1.2fr) repeat(4, minmax(150px, .65fr));
   gap: .6rem;
   margin-bottom: .8rem;
   padding: .7rem;
@@ -61,6 +61,29 @@
 .demand-form-grid textarea {
   min-height: 110px;
   resize: vertical;
+}
+
+.demand-filter-bar .terminal-filter-toggle {
+  align-self: end;
+  display: flex;
+  min-height: 38px;
+  align-items: center;
+  gap: .45rem;
+  padding: .45rem .6rem;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: white;
+}
+
+.demand-filter-bar .terminal-filter-toggle input {
+  width: auto;
+  min-height: 0;
+  margin: 0;
+}
+
+.demand-filter-bar .terminal-filter-toggle > span {
+  color: var(--ink);
+  font-size: .72rem;
 }
 
 .demand-filter-bar input:focus,
@@ -742,7 +765,6 @@
     width: 100%;
   }
 }
-
 
 .demand-cancellation-badge {
   display: inline-flex;

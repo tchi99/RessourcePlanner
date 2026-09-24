@@ -81,6 +81,9 @@ class DemandReadModel:
 
     number: str
     status: str
+    effective_status: str | None = None
+    terminal: bool = False
+    created_at: datetime | None = None
     cancellation_request_id: str | None = None
     cancellation_state: str | None = None
     cancellation_requested_by_user_id: str | None = None
@@ -127,6 +130,19 @@ class DemandReadModel:
         return cls(
             number=_text(row.get("NoDemande")),
             status=_text(row.get("Statut")),
+            effective_status=(
+                _optional_text(row.get("StatutEffectif"))
+                or _text(row.get("Statut"))
+            ),
+            terminal=bool(
+                row.get("Terminal")
+                or _text(row.get("Statut")) == "Annulée"
+            ),
+            created_at=(
+                row.get("DateCreation")
+                if isinstance(row.get("DateCreation"), datetime)
+                else None
+            ),
             cancellation_request_id=_optional_text(row.get("CancellationRequestId")),
             cancellation_state=_optional_text(row.get("CancellationState")),
             cancellation_requested_by_user_id=_optional_text(
