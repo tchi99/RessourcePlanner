@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from ...application.query_models import (
     AssetPlanningWindowReadModel,
     AssetRequirementReadModel,
+    DemandCancellationMaterializationReadModel,
     DemandMaterializedRequirementReadModel,
     DemandMaterializedResourceReadModel,
     MediumTermUnlinkedSegmentReadModel,
@@ -42,6 +43,7 @@ from ...domain.workload import (
     pending_load_mode,
     workload_kind,
 )
+from .asset_models import AssetAllocation, AssetRequirement
 from .asset_query import SqlAssetPlanningQuery
 from .demand_period_repository import SqlDemandPeriodRepository
 from .demand_repository import SqlDemandRepository
@@ -300,6 +302,124 @@ class SqlPlannerQueryRepository(PlannerQueryPort):
 
     def get_demand(self, number: str) -> DemandReadModel | None:
         return self._demands.get(number)
+
+    def demand_cancellation_materialization(
+        self,
+        number: str,
+    ) -> DemandCancellationMaterializationReadModel:
+        rows = self.list_demand_cancellation_materializations((number,))
+        if rows:
+            return rows[0]
+        return DemandCancellationMaterializationReadModel(
+            demand_number=_text(number),
+        )
+
+    def list_demand_cancellation_materializations(
+        self,
+        numbers: Sequence[str],
+    ) -> tuple[DemandCancellationMaterializationReadModel, ...]:
+        wanted = tuple(dict.fromkeys(_text(value) for value in numbers if _text(value)))
+        if not wanted:
+            return ()
+
+        requests = tuple(
+            self._session.scalars(
+                select(WorkforceRequest).where(
+                    (WorkforceRequest.legacy_demand_number.in_(wanted))
+                    | (WorkforceRequest.id.in_(wanted))
+                )
+            ).all()
+        )
+        if not requests:
+            return ()
+
+        request_ids = tuple(row.id for row in requests)
+        business_numbers = {
+            row.id: (_text(row.legacy_demand_number) or row.id)
+            for row in requests
+        }
+        requirement_rows = tuple(
+            self._session.execute(
+                select(
+                    ResourceRequirement.id,
+                    ResourceRequirement.workforce_request_id,
+                ).where(
+                    ResourceRequirement.workforce_request_id.in_(request_ids),
+                    ResourceRequirement.origin == "REQUEST",
+                )
+            ).all()
+        )
+        requirement_owner = {
+            requirement_id: request_id
+            for requirement_id, request_id in requirement_rows
+        }
+        human_counts = {request_id: [0, 0] for request_id in request_ids}
+        if requirement_owner:
+            shift_rows = self._session.execute(
+                select(
+                    Shift.resource_requirement_id,
+                    Shift.locked,
+                ).where(
+                    Shift.resource_requirement_id.in_(tuple(requirement_owner)),
+                    (Shift.allocation_type.is_(None))
+                    | (Shift.allocation_type != MISSING_ALLOCATION_TYPE),
+                )
+            ).all()
+            for requirement_id, locked in shift_rows:
+                request_id = requirement_owner.get(requirement_id)
+                if request_id is None:
+                    continue
+                human_counts[request_id][0] += 1
+                if locked:
+                    human_counts[request_id][1] += 1
+
+        asset_requirement_rows = tuple(
+            self._session.execute(
+                select(
+                    AssetRequirement.id,
+                    AssetRequirement.workforce_request_id,
+                ).where(AssetRequirement.workforce_request_id.in_(request_ids))
+            ).all()
+        )
+        asset_requirement_owner = {
+            requirement_id: request_id
+            for requirement_id, request_id in asset_requirement_rows
+        }
+        asset_counts = {request_id: [0, 0] for request_id in request_ids}
+        if asset_requirement_owner:
+            allocation_rows = self._session.execute(
+                select(
+                    AssetAllocation.asset_requirement_id,
+                    AssetAllocation.locked,
+                ).where(
+                    AssetAllocation.asset_requirement_id.in_(
+                        tuple(asset_requirement_owner)
+                    )
+                )
+            ).all()
+            for requirement_id, locked in allocation_rows:
+                request_id = asset_requirement_owner.get(requirement_id)
+                if request_id is None:
+                    continue
+                asset_counts[request_id][0] += 1
+                if locked:
+                    asset_counts[request_id][1] += 1
+
+        by_number = {
+            business_numbers[row.id]: DemandCancellationMaterializationReadModel(
+                demand_number=business_numbers[row.id],
+                human_shift_count=human_counts[row.id][0],
+                locked_human_shift_count=human_counts[row.id][1],
+                asset_allocation_count=asset_counts[row.id][0],
+                locked_asset_allocation_count=asset_counts[row.id][1],
+            )
+            for row in requests
+        }
+        return tuple(
+            by_number[value]
+            for value in wanted
+            if value in by_number
+        )
 
     def list_demand_periods(
         self,
