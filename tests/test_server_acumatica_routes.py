@@ -11,7 +11,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 
 from app.application import ApplicationOperationError, ExternalProjectRecord
-from app.infrastructure.acumatica import AcumaticaProjectSource, AcumaticaProjectSourceSettings
+from app.infrastructure.acumatica import ODataProjectSource, ODataProjectSourceSettings
 from app.infrastructure.sql import (
     Base,
     Project,
@@ -53,8 +53,8 @@ class FailingProjectSource:
             context={
                 "failure_kind": "timeout",
                 "retryable": True,
-                "endpoint": "Default",
-                "entity": "Project",
+                "protocol": "odata",
+                "feed_path": "/oDATA/RP_Projects",
             },
         )
 
@@ -96,9 +96,8 @@ class ServerAcumaticaRouteTests(unittest.TestCase):
                 self._database(directory),
                 project_source=source,
                 acumatica_info={
-                    "endpoint": "Default",
-                    "version": "25.200.001",
-                    "entity": "Project",
+                    "protocol": "odata",
+                    "feed_path": "/oDATA/RP_Projects",
                 },
                 performance_log_path=performance_log,
             )
@@ -113,9 +112,8 @@ class ServerAcumaticaRouteTests(unittest.TestCase):
                 status.json(),
                 {
                     "configured": True,
-                    "endpoint": "Default",
-                    "version": "25.200.001",
-                    "entity": "Project",
+                    "protocol": "odata",
+                    "feed_path": "/oDATA/RP_Projects",
                 },
             )
             self.assertEqual(first.status_code, 200)
@@ -177,7 +175,7 @@ class ServerAcumaticaRouteTests(unittest.TestCase):
             self.assertEqual(sample["external_item_count"], 0)
             self.assertGreaterEqual(sample["external_seconds"], 0.0)
 
-    def test_failed_second_page_does_not_apply_partial_acumatica_snapshot(self) -> None:
+    def test_invalid_late_feed_entry_does_not_apply_partial_acumatica_snapshot(self) -> None:
         with TemporaryDirectory() as directory:
             database_url = self._database(directory)
             engine = create_sql_engine(database_url)
@@ -187,7 +185,7 @@ class ServerAcumaticaRouteTests(unittest.TestCase):
                     session.add(
                         Project(
                             id="EXISTING",
-                            erp_external_id="ERP-EXISTING",
+                            erp_external_id="101",
                             number="P-EXISTING",
                             name="Nom local conservé",
                             status="Active",
@@ -196,33 +194,28 @@ class ServerAcumaticaRouteTests(unittest.TestCase):
             finally:
                 engine.dispose()
 
-            def handler(request: httpx.Request) -> httpx.Response:
-                if request.url.params.get("$skip") == "0":
-                    return httpx.Response(
-                        200,
-                        json=[
-                            {
-                                "id": "ERP-EXISTING",
-                                "ProjectID": {"value": "P-EXISTING"},
-                                "Description": {"value": "Nom partiel à ne pas appliquer"},
-                            },
-                            {
-                                "id": "ERP-FIRST",
-                                "ProjectID": {"value": "P-FIRST"},
-                                "Description": {"value": "Nouveau partiel"},
-                            },
-                        ],
-                    )
-                return httpx.Response(503, text="upstream unavailable")
+            payload = b"""<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom"
+      xmlns:d="http://schemas.microsoft.com/ado/2007/08/dataservices"
+      xmlns:m="http://schemas.microsoft.com/ado/2007/08/dataservices/metadata">
+  <entry><content type="application/xml"><m:properties>
+    <d:ProjectId m:type="Edm.Int32">101</d:ProjectId>
+    <d:ProjectCode>P-EXISTING</d:ProjectCode>
+    <d:ProjectName>Nom partiel a ne pas appliquer</d:ProjectName>
+  </m:properties></content></entry>
+  <entry><content type="application/xml"><m:properties>
+    <d:ProjectId m:type="Edm.Int32">102</d:ProjectId>
+    <d:ProjectCode>P-FIRST</d:ProjectCode>
+  </m:properties></content></entry>
+</feed>"""
 
-            source = AcumaticaProjectSource(
-                AcumaticaProjectSourceSettings(
+            source = ODataProjectSource(
+                ODataProjectSourceSettings(
                     base_url="https://erp.example.test/Instance",
-                    bearer_token="runtime-secret",
-                    version="25.200.001",
-                    page_size=2,
                 ),
-                transport=httpx.MockTransport(handler),
+                transport=httpx.MockTransport(
+                    lambda _request: httpx.Response(200, content=payload)
+                ),
             )
             app = create_api_app(database_url, project_source=source)
             with TestClient(app) as client:
@@ -232,7 +225,11 @@ class ServerAcumaticaRouteTests(unittest.TestCase):
             self.assertEqual(sync.status_code, 500)
             self.assertEqual(
                 sync.json()["error"]["context"]["failure_kind"],
-                "upstream_5xx",
+                "invalid_payload",
+            )
+            self.assertEqual(
+                sync.json()["error"]["context"]["reason"],
+                "required_field_missing",
             )
             self.assertEqual(len(projects.json()), 1)
             self.assertEqual(projects.json()[0]["number"], "P-EXISTING")
