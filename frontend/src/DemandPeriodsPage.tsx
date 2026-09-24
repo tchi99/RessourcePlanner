@@ -219,14 +219,16 @@ function PeriodFields({
 
 type DemandPeriodsPageProps = {
   demandNumber?: string;
+  canonicalDemand?: DemandReadModel | null;
   embedded?: boolean;
-  onChanged?: () => void;
+  onChanged?: () => void | Promise<void>;
   onDirtyChange?: (dirty: boolean) => void;
   canEdit?: boolean;
 };
 
 export default function DemandPeriodsPage({
   demandNumber,
+  canonicalDemand,
   embedded = false,
   onChanged,
   onDirtyChange,
@@ -272,9 +274,11 @@ export default function DemandPeriodsPage({
 
   useEffect(() => {
     const controller = new AbortController();
-    const demandRequest = demandNumber
-      ? getDemand(demandNumber, controller.signal).then((row) => [row])
-      : getDemands(controller.signal);
+    const demandRequest = canonicalDemand
+      ? Promise.resolve([canonicalDemand])
+      : demandNumber
+        ? getDemand(demandNumber, controller.signal).then((row) => [row])
+        : getDemands(controller.signal);
     Promise.all([demandRequest, getResources(true, controller.signal)])
       .then(([demandRows, resourceRows]) => {
         setDemands(demandRows);
@@ -290,7 +294,7 @@ export default function DemandPeriodsPage({
         if (!controller.signal.aborted) setLoading(false);
       });
     return () => controller.abort();
-  }, [demandNumber]);
+  }, [demandNumber, canonicalDemand]);
 
   useEffect(() => {
     onDirtyChange?.(dirty);
@@ -456,11 +460,14 @@ export default function DemandPeriodsPage({
           ? "Périodes enregistrées. L'enveloppe ayant changé, la demande doit être approuvée de nouveau; le plan approuvé précédent reste inchangé jusque-là."
           : "Périodes enregistrées.",
       );
-      const demandRows = demandNumber
-        ? [await getDemand(demandNumber)]
-        : await getDemands();
-      setDemands(demandRows);
-      onChanged?.();
+      if (onChanged) {
+        await onChanged();
+      } else {
+        const demandRows = demandNumber
+          ? [await getDemand(demandNumber)]
+          : await getDemands();
+        setDemands(demandRows);
+      }
     } catch (reason: unknown) {
       setError(errorMessage(reason));
     } finally {
@@ -489,6 +496,14 @@ export default function DemandPeriodsPage({
         : await getDemandPeriods(selectedDemand.number);
       setPeriods(refreshed.map(fromRead));
       setNotice(`Option ${periodId} retenue pour ${group}. Les autres options du groupe restent alternatives et ne sont pas matérialisées en parallèle.`);
+      if (onChanged) {
+        await onChanged();
+      } else {
+        const demandRows = demandNumber
+          ? [await getDemand(demandNumber)]
+          : await getDemands();
+        setDemands(demandRows);
+      }
     } catch (reason: unknown) {
       setError(errorMessage(reason));
     } finally {
