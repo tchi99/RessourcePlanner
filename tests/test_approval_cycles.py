@@ -14,6 +14,7 @@ from app.application.approval_cycles import ApprovalCycleService
 from app.application.approval_scopes import ApprovalScopeService
 from app.application.errors import ApplicationConflictError, ApplicationValidationError
 from app.domain.approval_cycles import (
+    APPROVAL_CYCLE_INIT_LEGACY_EXPLICIT,
     LEGACY_APPROVAL_CYCLE_APPROVED_HISTORICAL,
     LEGACY_APPROVAL_CYCLE_SUBMITTED_REQUIRES_INITIALIZATION,
     ApprovalSubjectRoutingEntry,
@@ -45,6 +46,7 @@ from app.infrastructure.sql import (
     TaskApprovalScopeMapping,
     TaskCatalogEntry,
     WorkforceRequest,
+    WorkforceRequestHistory,
 )
 from app.infrastructure.sql.request_version import acquire_request_aggregate_version
 
@@ -499,6 +501,7 @@ class ApprovalCycleTests(unittest.TestCase):
             )
             task = session.get(TaskCatalogEntry, "T1")
             task.coordinator_contact_id = "C1"
+            task.approver_name = "U1"
             session.commit()
 
             with self.assertRaises(ApplicationValidationError) as error:
@@ -581,6 +584,36 @@ class ApprovalCycleTests(unittest.TestCase):
             self.assertEqual(
                 session.scalar(select(func.count(ApprovalDecision.id))),
                 0,
+            )
+
+    def test_legacy_submitted_initialization_is_explicit_and_audited(self) -> None:
+        with self.factory() as session:
+            service = self._service(session)
+            cycle = service.initialize_cycle(
+                "D1",
+                expected_version=1,
+                initialization_reason=APPROVAL_CYCLE_INIT_LEGACY_EXPLICIT,
+            )
+            session.commit()
+
+            history = session.scalar(
+                select(WorkforceRequestHistory)
+                .where(
+                    WorkforceRequestHistory.workforce_request_id == "D1",
+                    WorkforceRequestHistory.action
+                    == "Initialisation cycle approbation",
+                )
+                .order_by(WorkforceRequestHistory.occurred_at.desc())
+            )
+            self.assertIsNotNone(history)
+            details = json.loads(history.details)
+            self.assertEqual(
+                details["initialization_reason"],
+                APPROVAL_CYCLE_INIT_LEGACY_EXPLICIT,
+            )
+            self.assertEqual(
+                details["approval_cycle_id"],
+                cycle.id,
             )
 
     def test_cycle_creation_has_no_planning_or_approval_revision_side_effects(self) -> None:
