@@ -97,6 +97,20 @@ class SecurityPolicyTests(unittest.TestCase):
             PERMISSION_APPROVE_DEMANDS,
         )
         self.assertEqual(
+            required_permission(
+                "POST",
+                "/api/v1/demands/DMO-1/request-cancellation",
+            ),
+            PERMISSION_MANAGE_DEMANDS,
+        )
+        self.assertEqual(
+            required_permission(
+                "POST",
+                "/api/v1/demands/DMO-1/reject-cancellation",
+            ),
+            PERMISSION_APPROVE_DEMANDS,
+        )
+        self.assertEqual(
             required_permission("POST", "/api/v1/integrations/acumatica/projects/sync"),
             PERMISSION_SYNC_PROJECTS,
         )
