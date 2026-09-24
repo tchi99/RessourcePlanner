@@ -41,7 +41,7 @@ def _agents_constraints(agents_text: str) -> list[str]:
             "Garder la PR centrée sur une issue ou sous-tranche cohérente.",
         ),
         (
-            "Always synchronize with main after the previous PR is merged before beginning the next sub-item.",
+            "Always synchronize with ",
             "Synchroniser avec main après la fusion précédente avant d'enchaîner la sous-tranche suivante.",
         ),
         (
