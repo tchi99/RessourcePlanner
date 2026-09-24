@@ -152,6 +152,23 @@ class RoadmapReconciliationTests(unittest.IsolatedAsyncioTestCase):
             proposal["pipeline_block"],
         )
 
+    async def test_other_slice_pr_mentioning_ready_slice_is_not_delivery_evidence(self):
+        raw = {
+            "number": 417,
+            "title": "test(399C): harden cancellation concurrency",
+            "body": "Refs #399C\n\nAucun changement React : 399D reste hors périmètre.",
+            "head": {"ref": "test/399c-cancellation-concurrency"},
+            "merged_at": "2026-09-24T12:51:23Z",
+        }
+        result = await self._reconcile(
+            closed_prs=[raw],
+            files={417: [{"filename": "tests/test_demand_cancellation_request.py"}]},
+        )
+
+        self.assertEqual(result["status"], "coherent")
+        self.assertEqual(result["findings"], [])
+        self.assertIsNone(result["proposal"])
+
     async def test_ready_merged_red_does_not_propose_promotion(self):
         raw = {
             "number": 423,
