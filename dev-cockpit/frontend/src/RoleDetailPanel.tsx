@@ -930,14 +930,15 @@ function ArchitectDetails({ dashboard }: { dashboard: Dashboard | null }) {
     return <PipelineUnavailable dashboard={dashboard} />
   }
 
+  const work = dashboard.active_work
   const referenced = new Set(dashboard.architecture.referenced_adrs)
   const overview = architecture?.documents.find((document) => document.name === 'README.md')
   const adrs = architecture?.documents.filter((document) => document.name.startsWith('ADR-')) ?? []
   const relevantAdrs = adrs.filter((document) => referenced.has(document.name))
   const otherAdrs = adrs.filter((document) => !referenced.has(document.name))
-  const activeSection = dashboard.active_work.subitem_key
+  const activeSection = work.subitem_key
     ? issue?.sections.find(
-        (section) => section.work_key === dashboard.active_work.subitem_key,
+        (section) => section.work_key === work.subitem_key,
       ) ?? null
     : null
 

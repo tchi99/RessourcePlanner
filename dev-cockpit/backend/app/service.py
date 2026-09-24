@@ -515,12 +515,11 @@ async def build_dashboard(client: GitHubClient, settings: Settings, repo: str) -
         )
 
     merged_but_unmarked_raw = None
-    if (
-        not block_done
-        and not primary_pr
-        and (active_subitem or canonical_mode)
-        and pipeline_now.get("kind") == "WORK"
-    ):
+    has_active_work_identity = bool(
+        (canonical_mode and pipeline_now and pipeline_now.get("kind") == "WORK")
+        or (not canonical_mode and active_subitem)
+    )
+    if not block_done and not primary_pr and has_active_work_identity:
         merged_candidates = [
             pr
             for pr in closed_raw
