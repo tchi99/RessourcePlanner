@@ -201,32 +201,32 @@ def build_read_router(
         context_repository: Any = Depends(context_dependency),
     ) -> list[DemandReadModel]:
         project_ids = _project_ids_for_scope(request, scope, context_repository)
-        rows = (
-            tuple(queries.list_demands())
-            if project_ids is None
-            else tuple(queries.list_demands(project_ids=project_ids))
-        )
-        principal: AuthPrincipal = request.state.auth_principal
-        batch_reader = getattr(
+        combined_reader = getattr(
             queries,
-            "list_demand_cancellation_materializations",
+            "list_demands_with_cancellation_materialization",
             None,
         )
-        materializations = (
-            tuple(batch_reader(tuple(row.number for row in rows)))
-            if callable(batch_reader)
-            else ()
-        )
-        materialization_by_number = {
-            row.demand_number: row for row in materializations
-        }
+        if callable(combined_reader):
+            pairs = tuple(
+                combined_reader()
+                if project_ids is None
+                else combined_reader(project_ids=project_ids)
+            )
+        else:
+            rows = (
+                tuple(queries.list_demands())
+                if project_ids is None
+                else tuple(queries.list_demands(project_ids=project_ids))
+            )
+            pairs = tuple((row, None) for row in rows)
+        principal: AuthPrincipal = request.state.auth_principal
         return [
             _with_cancellation_policy(
                 row,
                 permissions=principal.permissions,
-                materialization=materialization_by_number.get(row.number),
+                materialization=materialization,
             )
-            for row in rows
+            for row, materialization in pairs
         ]
 
     @router.get("/demands/{number}")
@@ -235,7 +235,17 @@ def build_read_router(
         request: Request,
         queries: PlannerQueryPort = Depends(query_dependency),
     ) -> DemandReadModel:
-        row = queries.get_demand(number)
+        combined_reader = getattr(
+            queries,
+            "get_demand_with_cancellation_materialization",
+            None,
+        )
+        combined = combined_reader(number) if callable(combined_reader) else None
+        if combined is not None:
+            row, materialization = combined
+        else:
+            row = queries.get_demand(number)
+            materialization = None
         if row is None:
             raise ApplicationNotFoundError(
                 f"Demande {number} introuvable",
@@ -243,8 +253,6 @@ def build_read_router(
                 context={"demand_number": number},
             )
         principal: AuthPrincipal = request.state.auth_principal
-        reader = getattr(queries, "demand_cancellation_materialization", None)
-        materialization = reader(row.number) if callable(reader) else None
         return _with_cancellation_policy(
             row,
             permissions=principal.permissions,
