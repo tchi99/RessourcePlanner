@@ -142,7 +142,10 @@ function RoadmapReconciliationPanel({
         'message' in detail &&
         typeof (detail as { message?: unknown }).message === 'string'
       ) {
-        return (detail as { message: string }).message
+        const typed = detail as { code?: unknown; message: string }
+        return typeof typed.code === 'string'
+          ? `${typed.code} — ${typed.message}`
+          : typed.message
       }
     }
     return fallback
@@ -203,7 +206,7 @@ function RoadmapReconciliationPanel({
       )
       if (
         caught instanceof Error &&
-        /changé|changed|nouveau diff|recharge/i.test(caught.message)
+        /ROADMAP_CHANGED|PROPOSAL_CHANGED|changé|changed|nouveau diff|recharge/i.test(caught.message)
       ) {
         setPreview(null)
       }
