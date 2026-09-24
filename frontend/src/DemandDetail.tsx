@@ -97,6 +97,11 @@ export default function DemandDetail({
         </div>
         <div className="demand-detail-statuses">
           <span>{detail.demand.status}</span>
+          {detail.demand.cancellation_state === "PENDING" && (
+            <strong className="demand-cancellation-badge" data-testid="detail-cancellation-pending">
+              Annulation demandée
+            </strong>
+          )}
           {detail.policy.reapproval_required && <strong>Réapprobation requise</strong>}
         </div>
       </header>
