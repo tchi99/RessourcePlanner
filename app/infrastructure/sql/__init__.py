@@ -5,6 +5,13 @@ planning engine must continue to depend on ports/read models rather than SQLAlch
 """
 
 from .approval_envelope_policy_repository import SqlDemandApprovalEnvelopePolicyRepository
+from .approval_cycle_models import (
+    ApprovalDecision,
+    ApprovalRequirement,
+    ApprovalRequirementApprover,
+    RequestApprovalCycle,
+)
+from .approval_cycle_repository import SqlApprovalCycleRepository
 from .approval_scope_models import ApprovalScope, ApprovalScopeApprover, TaskApprovalScopeMapping
 from .approval_scope_repository import SqlApprovalScopeRepository
 from .asset_models import (
@@ -127,6 +134,9 @@ __all__ = [
     "APPROVAL_REFERENCE_LEGACY_UNKNOWN",
     "APPROVAL_REFERENCE_NOT_APPLICABLE",
     "AppUser",
+    "ApprovalDecision",
+    "ApprovalRequirement",
+    "ApprovalRequirementApprover",
     "ApprovalScope",
     "ApprovalScopeApprover",
     "AuthLoginTransaction",
@@ -160,6 +170,7 @@ __all__ = [
     "PlanningMutationState",
     "Project",
     "RequestLine",
+    "RequestApprovalCycle",
     "RequestApprovalReference",
     "RequestApprovalRevision",
     "RequestOperationalState",
@@ -175,6 +186,7 @@ __all__ = [
     "TaskApprovalScopeMapping",
     "TaskCatalogEntry",
     "SqlAllocationCommandAdapter",
+    "SqlApprovalCycleRepository",
     "SqlApprovalScopeRepository",
     "SqlApprovedDemandSyncAdapter",
     "SqlAuthSessionRepository",
