@@ -10,6 +10,7 @@ from urllib.parse import quote
 from .config import Settings
 from .derive import build_next_action_and_prompt, commit_summary, derive_states, matches_work_key
 from .execution import build_execution_control
+from .handoff import build_handoff_packs
 from .github import GitHubClient, GitHubError
 from .roadmap import (
     active_block,
@@ -587,6 +588,7 @@ def _dashboard_without_active_work(
     legacy_declared_key: str | None,
     pipeline_contract: Any,
     pipeline_projection: dict[str, Any],
+    agents_text: str,
 ) -> dict[str, Any]:
     invalid = not pipeline_contract.valid
     errors = list(pipeline_contract.errors)
@@ -614,6 +616,37 @@ def _dashboard_without_active_work(
         warnings = []
 
     adr_entries = _architecture_entries(architecture_raw)
+    reconciliation = {
+        "status": "invalid" if invalid else "coherent",
+        "summary": (
+            "Pipeline canonique invalide; la reconciliation GitHub est suspendue."
+            if invalid
+            else "Aucune etape MAIN active; aucun ecart actionnable detecte."
+        ),
+        "findings": [],
+        "proposal": None,
+    }
+    execution = build_execution_control(
+        roadmap_issue=settings.roadmap_issue,
+        roadmap_url=roadmap_raw.get("html_url"),
+        roadmap_updated_at=roadmap_raw.get("updated_at"),
+        pipeline_valid=pipeline_contract.valid,
+        pipeline_now=pipeline_projection.get("now"),
+        reconciliation=reconciliation,
+        active_work=None,
+        fallback_next_action=next_action,
+        fallback_dev_prompt=dev_prompt,
+    )
+    handoff = build_handoff_packs(
+        roadmap_issue=settings.roadmap_issue,
+        roadmap_url=roadmap_raw.get("html_url"),
+        pipeline_now=pipeline_projection.get("now"),
+        execution=execution,
+        active_work=None,
+        issue_body="",
+        referenced_adrs=[],
+        agents_text=agents_text,
+    )
     return {
         "repo": repo,
         "generated_at": datetime.now(timezone.utc).isoformat(),
@@ -629,36 +662,9 @@ def _dashboard_without_active_work(
             "errors": errors,
             **pipeline_projection,
         },
-        "reconciliation": {
-            "status": "invalid" if invalid else "coherent",
-            "summary": (
-                "Pipeline canonique invalide; la reconciliation GitHub est suspendue."
-                if invalid
-                else "Aucune etape MAIN active; aucun ecart actionnable detecte."
-            ),
-            "findings": [],
-            "proposal": None,
-        },
-        "execution": build_execution_control(
-            roadmap_issue=settings.roadmap_issue,
-            roadmap_url=roadmap_raw.get("html_url"),
-            roadmap_updated_at=roadmap_raw.get("updated_at"),
-            pipeline_valid=pipeline_contract.valid,
-            pipeline_now=pipeline_projection.get("now"),
-            reconciliation={
-                "status": "invalid" if invalid else "coherent",
-                "summary": (
-                    "Pipeline canonique invalide; la reconciliation GitHub est suspendue."
-                    if invalid
-                    else "Aucune etape MAIN active; aucun ecart actionnable detecte."
-                ),
-                "findings": [],
-                "proposal": None,
-            },
-            active_work=None,
-            fallback_next_action=next_action,
-            fallback_dev_prompt=dev_prompt,
-        ),
+        "reconciliation": reconciliation,
+        "execution": execution,
+        "handoff": handoff,
         "roadmap": {
             "number": roadmap_raw.get("number"),
             "title": roadmap_raw.get("title"),
@@ -728,6 +734,7 @@ async def build_dashboard(client: GitHubClient, settings: Settings, repo: str) -
             legacy_declared_key=legacy_declared_key,
             pipeline_contract=pipeline_contract,
             pipeline_projection=pipeline_projection,
+            agents_text=agents_text,
         )
 
     canonical_mode = pipeline_contract.present
@@ -977,6 +984,11 @@ async def build_dashboard(client: GitHubClient, settings: Settings, repo: str) -
     adr_entries = _architecture_entries(architecture_raw)
     adr_names = [str(entry["name"]) for entry in adr_entries if entry.get("name")]
     referenced = referenced_adrs(issue_body + "\n" + roadmap_block, adr_names)
+    referenced_adr_entries = [
+        entry
+        for entry in adr_entries
+        if str(entry.get("name") or "") in referenced
+    ]
 
     reconciliation = await _reconcile_canonical_pipeline(
         client,
@@ -1031,6 +1043,16 @@ async def build_dashboard(client: GitHubClient, settings: Settings, repo: str) -
         fallback_next_action=next_action,
         fallback_dev_prompt=dev_prompt,
     )
+    handoff = build_handoff_packs(
+        roadmap_issue=settings.roadmap_issue,
+        roadmap_url=roadmap_raw.get("html_url"),
+        pipeline_now=pipeline_projection.get("now"),
+        execution=execution,
+        active_work=active_work_projection,
+        issue_body=issue_body,
+        referenced_adrs=referenced_adr_entries,
+        agents_text=agents_text,
+    )
 
     warnings: list[str] = []
     if merged_but_unmarked:
@@ -1056,6 +1078,7 @@ async def build_dashboard(client: GitHubClient, settings: Settings, repo: str) -
         },
         "reconciliation": reconciliation,
         "execution": execution,
+        "handoff": handoff,
         "roadmap": {
             "number": roadmap_raw.get("number"),
             "title": roadmap_raw.get("title"),
