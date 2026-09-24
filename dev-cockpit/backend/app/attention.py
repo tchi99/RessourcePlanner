@@ -172,7 +172,10 @@ def _handoff_items(
     *,
     handoff: dict[str, Any],
     active_key: str,
+    phase: str,
 ) -> list[dict[str, Any]]:
+    if phase == "NO_ACTIVE_WORK":
+        return []
     rows: list[dict[str, Any]] = []
     for role, pack in (handoff.get("packs") or {}).items():
         if pack.get("confidence") != "PARTIAL":
@@ -247,7 +250,13 @@ def build_attention_center(
             handoff=handoff,
         )
     )
-    candidates.extend(_handoff_items(handoff=handoff, active_key=key))
+    candidates.extend(
+        _handoff_items(
+            handoff=handoff,
+            active_key=key,
+            phase=str(execution.get("phase") or ""),
+        )
+    )
 
     items = _deduplicate(candidates)
     action_count = sum(1 for item in items if item["level"] == "ACTION")
