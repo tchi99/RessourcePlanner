@@ -51,8 +51,8 @@ class ReactDemandWorkflowContractTests(unittest.TestCase):
         self.assertIn("Approbation / statut", source)
         self.assertIn("Confirmation", source)
         self.assertIn("Approbation ≠ confirmation.", source)
-        self.assertIn("selectedDemand.confirmation", source)
-        self.assertIn("selectedDemand.status", source)
+        self.assertIn("currentDemand.confirmation", source)
+        self.assertIn("currentDemand.status", source)
 
     def test_workflow_blocks_mutations_while_any_editor_is_dirty(self) -> None:
         detail = (ROOT / "frontend" / "src" / "DemandDetail.tsx").read_text(
@@ -76,9 +76,9 @@ class ReactDemandWorkflowContractTests(unittest.TestCase):
             encoding="utf-8"
         )
 
-        self.assertIn("if (!selectedDemand || pendingAction) return", source)
+        self.assertIn("if (!currentDemand || pendingAction) return", source)
         self.assertIn('action === "correction" && !correctionComment.trim()', source)
-        self.assertIn("disabled={busy || !correctionComment.trim()}", source)
+        self.assertIn("disabled={busy || hasUnsavedChanges || !correctionComment.trim()}", source)
         self.assertIn("const busy = pendingAction !== null", source)
         self.assertIn("await refresh(result.demand_number)", source)
         self.assertIn("result.planning", source)
