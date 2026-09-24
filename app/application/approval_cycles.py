@@ -172,6 +172,14 @@ class ApprovalCycleService:
             )
         return record
 
+    def get_request(self, request_id: str) -> ApprovalCycleRequestRecord | None:
+        identifier = _required(request_id, "workforce_request_id")
+        return call_application_port(
+            lambda: self._repository.get_request(identifier),
+            code_prefix="approval_cycle_request_read",
+            context={"workforce_request_id": identifier},
+        )
+
     def get_active_cycle(self, request_id: str) -> ApprovalCycleRecord | None:
         identifier = _required(request_id, "workforce_request_id")
         return call_application_port(
@@ -410,6 +418,16 @@ class ApprovalCycleService:
             subject=subject,
             routing_entries=routing_entries,
         )
+
+    def current_subject_fingerprint(self, request_id: str) -> str:
+        cycle = self.get_active_cycle(request_id)
+        if cycle is None:
+            raise ApplicationNotFoundError(
+                "Aucun cycle d'approbation actif n'existe pour cette demande.",
+                code="approval_cycle_not_found",
+                context={"workforce_request_id": request_id},
+            )
+        return self._current_fingerprint(cycle)
 
     def validate_active_cycle(
         self,
