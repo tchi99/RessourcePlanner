@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import date
 from typing import Any, Callable, Literal
 
@@ -10,6 +11,7 @@ from ..application import (
     ApplicationNotFoundError,
     ApplicationValidationError,
     DemandApprovalStateReadModel,
+    DemandCancellationMaterializationReadModel,
     DemandDetailReadModel,
     DemandDetailService,
     DemandHistoryReadModel,
@@ -32,6 +34,7 @@ from ..application import (
     ShiftReadModel,
     WorkPackageReadModel,
 )
+from ..application.demand_cancellation import demand_cancellation_policy
 from ..application.query_models import PlanningHistoryReadModel
 from ..application.security import AuthPrincipal
 from ..application.user_view_context import (
@@ -88,6 +91,20 @@ def _window(start: date | None, end: date | None) -> None:
             code="query_date_window_invalid",
             context={"start": start.isoformat(), "end": end.isoformat()},
         )
+
+
+def _with_cancellation_policy(
+    demand: DemandReadModel,
+    *,
+    permissions: tuple[str, ...],
+    materialization: DemandCancellationMaterializationReadModel | None = None,
+) -> DemandReadModel:
+    policy = demand_cancellation_policy(
+        demand,
+        permissions=permissions,
+        materialization=materialization,
+    )
+    return replace(demand, cancellation_policy=policy.to_dict())
 
 
 def build_read_router(
@@ -184,13 +201,38 @@ def build_read_router(
         context_repository: Any = Depends(context_dependency),
     ) -> list[DemandReadModel]:
         project_ids = _project_ids_for_scope(request, scope, context_repository)
-        if project_ids is None:
-            return list(queries.list_demands())
-        return list(queries.list_demands(project_ids=project_ids))
+        rows = (
+            tuple(queries.list_demands())
+            if project_ids is None
+            else tuple(queries.list_demands(project_ids=project_ids))
+        )
+        principal: AuthPrincipal = request.state.auth_principal
+        batch_reader = getattr(
+            queries,
+            "list_demand_cancellation_materializations",
+            None,
+        )
+        materializations = (
+            tuple(batch_reader(tuple(row.number for row in rows)))
+            if callable(batch_reader)
+            else ()
+        )
+        materialization_by_number = {
+            row.demand_number: row for row in materializations
+        }
+        return [
+            _with_cancellation_policy(
+                row,
+                permissions=principal.permissions,
+                materialization=materialization_by_number.get(row.number),
+            )
+            for row in rows
+        ]
 
     @router.get("/demands/{number}")
     def get_demand(
         number: str,
+        request: Request,
         queries: PlannerQueryPort = Depends(query_dependency),
     ) -> DemandReadModel:
         row = queries.get_demand(number)
@@ -200,7 +242,14 @@ def build_read_router(
                 code="demand_not_found",
                 context={"demand_number": number},
             )
-        return row
+        principal: AuthPrincipal = request.state.auth_principal
+        reader = getattr(queries, "demand_cancellation_materialization", None)
+        materialization = reader(row.number) if callable(reader) else None
+        return _with_cancellation_policy(
+            row,
+            permissions=principal.permissions,
+            materialization=materialization,
+        )
 
     if operational_contact_dependency is not None:
 
