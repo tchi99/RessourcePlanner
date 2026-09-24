@@ -24,24 +24,33 @@ export default function DemandDetail({
   demandNumber,
   onChanged,
   onDirtyChange,
+  canonicalDetail,
+  hasUnsavedChanges = false,
   compact = false,
 }: {
   demandNumber: string;
-  onChanged?: () => void;
+  onChanged?: () => void | Promise<void>;
   onDirtyChange?: (dirty: boolean) => void;
+  canonicalDetail?: DemandDetailReadModel | null;
+  hasUnsavedChanges?: boolean;
   compact?: boolean;
 }) {
-  const [detail, setDetail] = useState<DemandDetailReadModel | null>(null);
+  const [loadedDetail, setLoadedDetail] = useState<DemandDetailReadModel | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
+    if (canonicalDetail) {
+      setLoading(false);
+      setError(null);
+      return;
+    }
     const controller = new AbortController();
     setLoading(true);
     setError(null);
     getDemandDetail(demandNumber, controller.signal)
-      .then(setDetail)
+      .then(setLoadedDetail)
       .catch((reason: unknown) => {
         if (!(reason instanceof DOMException && reason.name === "AbortError")) {
           setError(detailError(reason));
@@ -51,11 +60,13 @@ export default function DemandDetail({
         if (!controller.signal.aborted) setLoading(false);
       });
     return () => controller.abort();
-  }, [demandNumber, refreshKey]);
+  }, [demandNumber, refreshKey, canonicalDetail]);
 
-  function changed() {
+  const detail = canonicalDetail ?? loadedDetail;
+
+  async function changed() {
     setRefreshKey((value) => value + 1);
-    onChanged?.();
+    await onChanged?.();
   }
 
   if (loading && !detail) {
@@ -166,6 +177,7 @@ export default function DemandDetail({
         </summary>
         <DemandPeriodsPage
           demandNumber={demandNumber}
+          canonicalDemand={detail.demand}
           embedded
           onChanged={changed}
           onDirtyChange={onDirtyChange}
@@ -180,6 +192,8 @@ export default function DemandDetail({
         </summary>
         <DemandWorkflowPage
           demandNumber={demandNumber}
+          canonicalDetail={detail}
+          hasUnsavedChanges={hasUnsavedChanges}
           embedded
           onChanged={changed}
           refreshToken={refreshKey}
