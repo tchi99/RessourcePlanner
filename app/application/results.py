@@ -61,6 +61,8 @@ class WorkPackageMutationResult(ApplicationResult):
 class DemandMutationResult(ApplicationResult):
     demand_number: str
     status: str | None = None
+    cancellation_request_id: str | None = None
+    cancellation_state: str | None = None
     reapproval_required: bool = False
     planning: PlanningResult | None = None
 
