@@ -19,6 +19,9 @@ DOMAIN_ENGINE = ROOT / "app" / "domain" / "planning_engine.py"
 DAY = date(2026, 8, 26)
 
 EXPECTED_TABLES = {
+    "approval_decisions",
+    "approval_requirement_approvers",
+    "approval_requirements",
     "approval_scopes",
     "approval_scope_approvers",
     "task_approval_scope_mappings",
@@ -42,6 +45,7 @@ EXPECTED_TABLES = {
     "planning_change_history",
     "planning_mutation_state",
     "projects",
+    "request_approval_cycles",
     "request_approval_references",
     "request_approval_revisions",
     "request_operational_states",
@@ -103,6 +107,10 @@ class SqlSchemaTests(unittest.TestCase):
             "resource_requirement_competencies"
         ].c
         selections = Base.metadata.tables["workforce_request_period_selections"].c
+        approval_cycles = Base.metadata.tables["request_approval_cycles"].c
+        approval_requirements = Base.metadata.tables["approval_requirements"].c
+        approval_requirement_approvers = Base.metadata.tables["approval_requirement_approvers"].c
+        approval_decisions = Base.metadata.tables["approval_decisions"].c
         approval_revisions = Base.metadata.tables["request_approval_revisions"].c
         approval_references = Base.metadata.tables["request_approval_references"].c
         operational_states = Base.metadata.tables["request_operational_states"].c
@@ -123,6 +131,17 @@ class SqlSchemaTests(unittest.TestCase):
         self.assertTrue(requirements.approval_revision_id.nullable)
         self.assertTrue(requirements.approved_entry_key.nullable)
         self.assertFalse(requirements.approval_reference_status.nullable)
+        self.assertFalse(approval_cycles.workforce_request_id.nullable)
+        self.assertFalse(approval_cycles.submitted_request_version.nullable)
+        self.assertFalse(approval_cycles.subject_fingerprint.nullable)
+        self.assertTrue(approval_cycles.approved_revision_id.nullable)
+        self.assertFalse(approval_requirements.approval_cycle_id.nullable)
+        self.assertFalse(approval_requirements.request_line_id.nullable)
+        self.assertFalse(approval_requirement_approvers.requirement_id.nullable)
+        self.assertFalse(approval_requirement_approvers.app_user_id.nullable)
+        self.assertFalse(approval_decisions.requirement_id.nullable)
+        self.assertFalse(approval_decisions.app_user_id.nullable)
+        self.assertFalse(approval_decisions.action_id.nullable)
         self.assertFalse(approval_revisions.workforce_request_id.nullable)
         self.assertTrue(approval_revisions.previous_revision_id.nullable)
         self.assertFalse(approval_revisions.payload_text.nullable)
