@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 import logging
 from typing import Final
@@ -203,16 +203,31 @@ def parse_rp_projects_feed(xml_payload: bytes | str) -> tuple[ODataProjectRecord
 
 @dataclass(frozen=True, slots=True)
 class ODataProjectSourceSettings:
-    """Minimal RP_Projects OData settings; authentication is intentionally external."""
+    """Runtime settings for the observed RP_Projects OData contract."""
 
     base_url: str
     feed_path: str = "/oDATA/RP_Projects"
     timeout_seconds: float = 30.0
+    page_size: int = 100
+    username: str | None = field(default=None, repr=False)
+    password: str | None = field(default=None, repr=False)
+
+    def __post_init__(self) -> None:
+        if self.page_size <= 0:
+            raise ValueError("page_size must be positive")
+        if bool(self.username) != bool(self.password):
+            raise ValueError("username and password must be configured together")
 
     def safe_summary(self) -> dict[str, object]:
         return {
             "protocol": "odata",
             "feed_path": self.feed_path,
+            "authentication": "basic" if self.username else "none",
+            "pagination": {
+                "mode": "top_skip",
+                "orderby": "ProjectId asc",
+                "page_size": self.page_size,
+            },
         }
 
 
@@ -286,35 +301,81 @@ class ODataProjectSource(ProjectSourcePort):
             "Accept": "application/atom+xml, application/xml;q=0.9",
             **self._request_headers,
         }
+        auth = (
+            httpx.BasicAuth(self._settings.username, self._settings.password)
+            if self._settings.username and self._settings.password
+            else None
+        )
+        records: list[ODataProjectRecord] = []
+        seen_project_ids: set[int] = set()
+        skip = 0
         try:
             with httpx.Client(
                 transport=self._transport,
                 timeout=self._settings.timeout_seconds,
                 follow_redirects=True,
+                auth=auth,
             ) as client:
-                response = client.get(self._url(), headers=headers)
-                response.raise_for_status()
-                try:
-                    parsed = parse_rp_projects_feed(response.content)
-                except ODataProjectFeedError as exc:
-                    self._log_failure(
-                        failure_kind="invalid_payload",
-                        retryable=False,
-                        http_status=response.status_code,
-                        reason=exc.reason,
+                while True:
+                    response = client.get(
+                        self._url(),
+                        headers=headers,
+                        params={
+                            "$orderby": "ProjectId asc",
+                            "$top": str(self._settings.page_size),
+                            "$skip": str(skip),
+                        },
                     )
-                    raise ApplicationOperationError(
-                        "La réponse OData Acumatica des projets est invalide.",
-                        code="acumatica_project_response_invalid",
-                        context=self._safe_context(
+                    response.raise_for_status()
+                    try:
+                        page = parse_rp_projects_feed(response.content)
+                    except ODataProjectFeedError as exc:
+                        self._log_failure(
                             failure_kind="invalid_payload",
                             retryable=False,
                             http_status=response.status_code,
                             reason=exc.reason,
-                            field=exc.field,
-                            entry_index=exc.entry_index,
-                        ),
-                    ) from exc
+                        )
+                        raise ApplicationOperationError(
+                            "La réponse OData Acumatica des projets est invalide.",
+                            code="acumatica_project_response_invalid",
+                            context=self._safe_context(
+                                failure_kind="invalid_payload",
+                                retryable=False,
+                                http_status=response.status_code,
+                                reason=exc.reason,
+                                field=exc.field,
+                                entry_index=exc.entry_index,
+                            ),
+                        ) from exc
+
+                    duplicate_id = next(
+                        (record.project_id for record in page if record.project_id in seen_project_ids),
+                        None,
+                    )
+                    if duplicate_id is not None:
+                        self._log_failure(
+                            failure_kind="invalid_payload",
+                            retryable=False,
+                            http_status=response.status_code,
+                            reason="pagination_duplicate_project",
+                        )
+                        raise ApplicationOperationError(
+                            "La pagination OData Acumatica des projets est incohérente.",
+                            code="acumatica_project_response_invalid",
+                            context=self._safe_context(
+                                failure_kind="invalid_payload",
+                                retryable=False,
+                                http_status=response.status_code,
+                                reason="pagination_duplicate_project",
+                            ),
+                        )
+
+                    records.extend(page)
+                    seen_project_ids.update(record.project_id for record in page)
+                    if len(page) < self._settings.page_size:
+                        break
+                    skip += len(page)
         except ApplicationOperationError:
             raise
         except httpx.HTTPStatusError as exc:
@@ -349,4 +410,4 @@ class ODataProjectSource(ProjectSourcePort):
                 context=self._safe_context(failure_kind="network", retryable=True),
             ) from exc
 
-        return tuple(record.to_external_record() for record in parsed)
+        return tuple(record.to_external_record() for record in records)
