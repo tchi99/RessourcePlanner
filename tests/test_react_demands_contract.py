@@ -32,6 +32,59 @@ class ReactDemandsContractTests(unittest.TestCase):
         self.assertIn('"Idempotency-Key"', source)
         self.assertIn("work_package_ref", source)
 
+    def test_list_composes_terminal_filter_status_project_search_and_creation_sort(self) -> None:
+        source = (ROOT / "frontend" / "src" / "DemandsPage.tsx").read_text(
+            encoding="utf-8"
+        )
+        api = (ROOT / "frontend" / "src" / "api.ts").read_text(encoding="utf-8")
+
+        self.assertIn("effective_status?: string | null", api)
+        self.assertIn("terminal?: boolean", api)
+        self.assertIn("created_at?: string | null", api)
+        self.assertIn("Inclure les demandes terminées", source)
+        self.assertIn("Plus récentes d’abord", source)
+        self.assertIn("Plus anciennes d’abord", source)
+        self.assertIn('useState<"newest" | "oldest">("newest")', source)
+        self.assertIn(
+            'if (!includeTerminated && statusFilter === "all" && demand.terminal)',
+            source,
+        )
+        self.assertIn(
+            'if (statusFilter !== "all" && effectiveStatus !== statusFilter)',
+            source,
+        )
+        self.assertIn(
+            'if (projectFilter !== "all" && demand.project_number !== projectFilter)',
+            source,
+        )
+        self.assertIn("demandSearchText(demand)", source)
+        self.assertIn('sortOrder === "newest" ? -1 : 1', source)
+        self.assertIn("demandCreatedAtMs(left) - demandCreatedAtMs(right)", source)
+        self.assertIn(
+            "[demands, search, statusFilter, projectFilter, includeTerminated, sortOrder]",
+            source,
+        )
+        self.assertNotIn("desired_start) -", source)
+
+    def test_role_simplification_uses_backend_technical_projection(self) -> None:
+        detail = (ROOT / "frontend" / "src" / "DemandDetail.tsx").read_text(
+            encoding="utf-8"
+        )
+        demands = (ROOT / "frontend" / "src" / "DemandsPage.tsx").read_text(
+            encoding="utf-8"
+        )
+        api = (ROOT / "frontend" / "src" / "api.ts").read_text(encoding="utf-8")
+
+        self.assertIn("DemandDetailTechnicalContextReadModel", api)
+        self.assertIn("technical_context: DemandDetailTechnicalContextReadModel | null", api)
+        self.assertIn("const technicalContext = detail.technical_context", detail)
+        self.assertIn("{technicalContext && (", detail)
+        self.assertIn("Diagnostic technique / Contexte backend", detail)
+        self.assertIn('data-testid="demand-technical-context"', detail)
+        self.assertNotIn("principal?.roles", detail)
+        self.assertNotIn("Contexte backend v{selectedDetail.version}", demands)
+        self.assertNotIn("Version {detail.version}", detail)
+
     def test_creation_reuses_idempotency_key_for_identical_retry(self) -> None:
         source = (ROOT / "frontend" / "src" / "DemandsPage.tsx").read_text(
             encoding="utf-8"

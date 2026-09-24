@@ -161,6 +161,15 @@ function normalize(value: string | null | undefined) {
   return (value ?? "").trim().toLocaleLowerCase("fr-CA");
 }
 
+function effectiveDemandStatus(demand: DemandReadModel) {
+  return demand.effective_status || demand.status;
+}
+
+function demandCreatedAtMs(demand: DemandReadModel) {
+  const value = Date.parse(demand.created_at ?? "");
+  return Number.isNaN(value) ? 0 : value;
+}
+
 function demandSearchText(demand: DemandReadModel) {
   const lineText = (demand.lines ?? []).flatMap((line) => [
     line.required_resource_class,
@@ -173,7 +182,7 @@ function demandSearchText(demand: DemandReadModel) {
   ]);
   return normalize([
     demand.number,
-    demand.status,
+    effectiveDemandStatus(demand),
     demand.project_number,
     demand.project_name,
     demand.client,
@@ -193,7 +202,7 @@ function DemandCard({ demand, selected, onClick }: { demand: DemandReadModel; se
     <button type="button" className={`demand-card ${selected ? "selected" : ""}`} onClick={onClick}>
       <div className="demand-card-topline">
         <strong>{demand.number}</strong>
-        <span className={`demand-status status-${normalize(demand.status).replace(/[^a-z0-9]+/g, "-")}`}>{demand.status || "—"}</span>
+        <span className={`demand-status status-${normalize(effectiveDemandStatus(demand)).replace(/[^a-z0-9]+/g, "-")}`}>{effectiveDemandStatus(demand) || "—"}</span>
       </div>
       <div className="demand-project">
         <strong>{demand.project_number || "Projet non défini"}</strong>
@@ -252,6 +261,8 @@ export default function DemandsPage() {
   const [taskSearch, setTaskSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [projectFilter, setProjectFilter] = useState("all");
+  const [includeTerminated, setIncludeTerminated] = useState(false);
+  const [sortOrder, setSortOrder] = useState<"newest" | "oldest">("newest");
   const createRetry = useRef<RetryReceipt | null>(null);
 
   useEffect(() => {
@@ -367,19 +378,25 @@ export default function DemandsPage() {
   }, [editorDirty, contextDirty]);
 
   const statusOptions = useMemo(
-    () => [...new Set(demands.map((row) => row.status).filter(Boolean))].sort((a, b) => a.localeCompare(b, "fr-CA")),
+    () => [...new Set(demands.map(effectiveDemandStatus).filter(Boolean))].sort((a, b) => a.localeCompare(b, "fr-CA")),
     [demands],
   );
 
   const visibleDemands = useMemo(() => {
     const query = normalize(search);
-    return demands.filter((demand) => {
-      if (statusFilter !== "all" && demand.status !== statusFilter) return false;
+    const filtered = demands.filter((demand) => {
+      const effectiveStatus = effectiveDemandStatus(demand);
+      if (!includeTerminated && statusFilter === "all" && demand.terminal) return false;
+      if (statusFilter !== "all" && effectiveStatus !== statusFilter) return false;
       if (projectFilter !== "all" && demand.project_number !== projectFilter) return false;
       if (query && !demandSearchText(demand).includes(query)) return false;
       return true;
     });
-  }, [demands, search, statusFilter, projectFilter]);
+    const direction = sortOrder === "newest" ? -1 : 1;
+    return [...filtered].sort(
+      (left, right) => direction * (demandCreatedAtMs(left) - demandCreatedAtMs(right)),
+    );
+  }, [demands, search, statusFilter, projectFilter, includeTerminated, sortOrder]);
 
   const selectedProject = useMemo(
     () => projects.find((row) => row.number === form.project_number) ?? null,
@@ -710,6 +727,21 @@ export default function DemandsPage() {
             {projects.map((project) => <option value={project.number} key={project.id}>{project.number} — {project.name}</option>)}
           </select>
         </label>
+        <label>
+          <span>Tri</span>
+          <select value={sortOrder} onChange={(event) => setSortOrder(event.target.value as "newest" | "oldest")}>
+            <option value="newest">Plus récentes d’abord</option>
+            <option value="oldest">Plus anciennes d’abord</option>
+          </select>
+        </label>
+        <label className="terminal-filter-toggle">
+          <input
+            type="checkbox"
+            checked={includeTerminated}
+            onChange={(event) => setIncludeTerminated(event.target.checked)}
+          />
+          <span>Inclure les demandes terminées</span>
+        </label>
       </div>
 
       <div className="demands-workspace">
@@ -759,12 +791,6 @@ export default function DemandsPage() {
               </div>
 
               {detailLoading && <div className="editor-loading">Actualisation du détail…</div>}
-              {!detailLoading && selectedDetail && !creating && (
-                <div className="editor-loading">
-                  Contexte backend v{selectedDetail.version} · {selectedDetail.workflow.available_actions.length} action(s) disponible(s)
-                </div>
-              )}
-
               <div className="project-master-card">
                 <div>
                   <span>Responsable projet</span>

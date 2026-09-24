@@ -19,6 +19,7 @@ from .plan_delta import DemandApprovalStateReadModel
 from .query_models import AssetRequirementReadModel, DemandMaterializedRequirementReadModel
 from .query_ports import PlannerQueryPort
 from .read_models import DemandLineReadModel, DemandPeriodReadModel, DemandReadModel
+from .security import PERMISSION_ADMIN_SETTINGS
 
 
 _EDITABLE_CANDIDATE_FIELDS = (
@@ -83,6 +84,20 @@ class DemandDetailPolicyReadModel:
 
 
 @dataclass(frozen=True, slots=True)
+class DemandDetailTechnicalContextReadModel:
+    request_version: int
+    workflow_version: int
+    expected_request_version: int
+    expected_operational_version: int | None
+    active_revision_id: str | None
+    approved_request_version: int | None
+    operational_version: int | None
+    envelope_decision: str | None
+    envelope_reason: str | None
+    diagnostics: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
 class DemandDetailReadModel:
     demand: DemandReadModel
     version: int
@@ -93,6 +108,7 @@ class DemandDetailReadModel:
     approval_state: DemandApprovalStateReadModel | None
     policy: DemandDetailPolicyReadModel
     diagnostics: tuple[str, ...] = ()
+    technical_context: DemandDetailTechnicalContextReadModel | None = None
 
 
 class DemandDetailService:
@@ -296,6 +312,32 @@ class DemandDetailService:
             reapproval_required=envelope_decision == "REAPPROVAL_REQUIRED",
         )
 
+        unique_diagnostics = tuple(dict.fromkeys(value for value in diagnostics if value))
+        technical_context = None
+        if PERMISSION_ADMIN_SETTINGS in permissions:
+            technical_context = DemandDetailTechnicalContextReadModel(
+                request_version=int(demand.version),
+                workflow_version=int(workflow.version),
+                expected_request_version=policy.expected_request_version,
+                expected_operational_version=policy.expected_operational_version,
+                active_revision_id=(
+                    approval_state.active_revision_id if approval_state is not None else None
+                ),
+                approved_request_version=(
+                    approval_state.approved_request_version if approval_state is not None else None
+                ),
+                operational_version=(
+                    approval_state.operational_version if approval_state is not None else None
+                ),
+                envelope_decision=(
+                    approval_state.envelope_decision if approval_state is not None else None
+                ),
+                envelope_reason=(
+                    approval_state.envelope_reason if approval_state is not None else None
+                ),
+                diagnostics=unique_diagnostics,
+            )
+
         decorated_demand = replace(
             demand,
             cancellation_policy=(
@@ -313,5 +355,6 @@ class DemandDetailService:
             workflow=workflow,
             approval_state=approval_state,
             policy=policy,
-            diagnostics=tuple(dict.fromkeys(value for value in diagnostics if value)),
+            diagnostics=(unique_diagnostics if technical_context is not None else ()),
+            technical_context=technical_context,
         )

@@ -102,6 +102,35 @@ export type StalledDetails = {
   explicit_in_progress: boolean
 }
 
+export type ReconciliationEvidence = {
+  kind: 'pull_request' | 'issue'
+  label: string
+  url: string | null
+  state: string | null
+}
+
+export type ReconciliationFinding = {
+  code: string
+  severity: 'stale' | 'attention'
+  key: string
+  message: string
+  evidence: ReconciliationEvidence[]
+}
+
+export type PipelineReconciliation = {
+  status: 'coherent' | 'stale' | 'attention' | 'invalid' | 'legacy'
+  summary: string
+  findings: ReconciliationFinding[]
+  proposal: {
+    changes: Array<{
+      key: string
+      from: string
+      to: string
+    }>
+    pipeline_block: string
+  } | null
+}
+
 export type Dashboard = {
   repo: string
   generated_at: string
@@ -121,6 +150,7 @@ export type Dashboard = {
     next: PipelineStep[]
     later: PipelineStep[]
   }
+  reconciliation: PipelineReconciliation
   roadmap: {
     number: number
     title: string
