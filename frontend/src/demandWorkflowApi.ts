@@ -22,7 +22,15 @@ export type DemandCancellationMutationResult = {
   demand_number: string;
   status: string;
   cancellation_request_id: string;
-  cancellation_state: "PENDING" | "REJECTED";
+  cancellation_state: "PENDING" | "REJECTED" | "ACCEPTED";
+  planning_version?: number | null;
+  request_version?: number | null;
+  deleted_human_shifts?: number;
+  deleted_asset_allocations?: number;
+  cancelled_workforce_requirements?: number;
+  cancelled_asset_requirements?: number;
+  released_locked_human_shifts?: number;
+  released_locked_asset_allocations?: number;
 };
 
 export type DemandCancellationPolicyState = {
@@ -43,6 +51,7 @@ export type WorkflowAction =
   | "correction"
   | "cancel"
   | "request-cancellation"
+  | "accept-cancellation"
   | "reject-cancellation";
 
 export type DemandWorkflowActionState = {
@@ -203,6 +212,36 @@ export async function rejectDemandCancellation(
         cancellation_request_id: cancellationRequestId,
         comment,
         expected_version: expectedVersion,
+      }),
+    },
+  );
+  if (!response.ok) throw await apiError(response);
+  return response.json() as Promise<DemandCancellationMutationResult>;
+}
+
+
+export async function acceptDemandCancellation(
+  number: string,
+  cancellationRequestId: string,
+  comment: string,
+  expectedVersion: number,
+  expectedPlanningVersion: number,
+  idempotencyKey: string,
+): Promise<DemandCancellationMutationResult> {
+  const response = await fetch(
+    `${API_BASE}/api/v1/demands/${encodeURIComponent(number)}/accept-cancellation`,
+    {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+        "Idempotency-Key": idempotencyKey,
+      },
+      body: JSON.stringify({
+        cancellation_request_id: cancellationRequestId,
+        comment,
+        expected_version: expectedVersion,
+        expected_planning_version: expectedPlanningVersion,
       }),
     },
   );

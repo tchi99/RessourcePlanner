@@ -199,6 +199,11 @@ function DemandCard({ demand, selected, onClick }: { demand: DemandReadModel; se
         <strong>{demand.project_number || "Projet non défini"}</strong>
         <span>{demand.project_name || ""}</span>
       </div>
+      {demand.cancellation_state === "PENDING" && (
+        <span className="demand-cancellation-badge" data-testid="demand-cancellation-pending">
+          Annulation demandée
+        </span>
+      )}
       <div className="demand-card-meta">
         <span>{demand.desired_start || "Date à définir"}{demand.desired_end && demand.desired_end !== demand.desired_start ? ` → ${demand.desired_end}` : ""}</span>
         <span>{demand.line_mode ? `${(demand.lines ?? []).filter((line) => line.active).length} ligne(s)` : `${demand.resource_count || 1} ressource(s)`}</span>

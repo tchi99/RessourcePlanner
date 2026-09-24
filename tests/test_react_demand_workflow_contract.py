@@ -80,8 +80,52 @@ class ReactDemandWorkflowContractTests(unittest.TestCase):
         self.assertIn('action === "correction" && !correctionComment.trim()', source)
         self.assertIn("disabled={busy || hasUnsavedChanges || !correctionComment.trim()}", source)
         self.assertIn("const busy = pendingAction !== null", source)
-        self.assertIn("await refresh(result.demand_number)", source)
+        self.assertIn("await refreshAfterMutation(result.demand_number)", source)
         self.assertIn("result.planning", source)
+
+    def test_materialized_cancellation_uses_backend_actions_versions_and_idempotency(self) -> None:
+        client = (ROOT / "frontend" / "src" / "demandWorkflowApi.ts").read_text(
+            encoding="utf-8"
+        )
+        page = (ROOT / "frontend" / "src" / "DemandWorkflowPage.tsx").read_text(
+            encoding="utf-8"
+        )
+        detail = (ROOT / "frontend" / "src" / "DemandDetail.tsx").read_text(
+            encoding="utf-8"
+        )
+        demands = (ROOT / "frontend" / "src" / "DemandsPage.tsx").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn('"request-cancellation"', client)
+        self.assertIn('"accept-cancellation"', client)
+        self.assertIn('"reject-cancellation"', client)
+        self.assertIn('"Idempotency-Key": idempotencyKey', client)
+        self.assertIn("expected_planning_version: expectedPlanningVersion", client)
+        self.assertIn("getPlanningSnapshot", page)
+        self.assertIn("currentWorkflowState?.available_actions", page)
+        self.assertIn("currentDemand.cancellation_request_id", page)
+        self.assertIn('currentDemand.cancellation_state === "PENDING"', page)
+        self.assertIn("Annulation demandée", page)
+        self.assertIn("Traiter l’annulation", page)
+        self.assertIn("Annuler la demande et libérer le planning", page)
+        self.assertIn("canonicalDetail.materialized_plan", page)
+        self.assertIn("acceptRetry.current?.fingerprint === fingerprint", page)
+        self.assertIn("await refreshAfterMutation(result.demand_number)", page)
+        self.assertIn('detail.demand.cancellation_state === "PENDING"', detail)
+        self.assertIn('demand.cancellation_state === "PENDING"', demands)
+
+    def test_cancellation_reason_resolution_and_dirty_guard_are_required(self) -> None:
+        page = (ROOT / "frontend" / "src" / "DemandWorkflowPage.tsx").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn("Une raison est requise pour demander l’annulation.", page)
+        self.assertIn("Un commentaire de résolution est requis.", page)
+        self.assertIn("!cancellationReason.trim()", page)
+        self.assertIn("!cancellationResolutionComment.trim()", page)
+        self.assertGreaterEqual(page.count("if (hasUnsavedChanges)"), 3)
+        self.assertIn("Enregistre les modifications avant de poursuivre.", page)
 
 
 if __name__ == "__main__":
