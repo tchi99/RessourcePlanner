@@ -536,3 +536,18 @@ class DemandCorrectionCommand:
 class DemandCancelCommand:
     number: str
     expected_version: int | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class DemandCancellationRequestCommand:
+    number: str
+    reason: str
+    expected_version: int | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class DemandCancellationRejectCommand:
+    number: str
+    cancellation_request_id: str
+    comment: str
+    expected_version: int | None = None
