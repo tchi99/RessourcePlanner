@@ -140,3 +140,69 @@
     margin-left: 0;
   }
 }
+
+
+.workflow-cancellation-state,
+.workflow-cancellation-request,
+.workflow-cancellation-review {
+  display: grid;
+  gap: 0.75rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--border-color, #d8dee8);
+  border-radius: 12px;
+}
+
+.workflow-cancellation-state {
+  background: rgba(226, 157, 30, 0.1);
+}
+
+.workflow-cancellation-state > span,
+.workflow-cancellation-state > small,
+.workflow-cancellation-review p {
+  line-height: 1.4;
+  opacity: 0.8;
+}
+
+.workflow-cancellation-request .workflow-cancel,
+.workflow-cancellation-treatment .primary-button {
+  justify-self: start;
+  margin-left: 0;
+}
+
+.workflow-cancellation-review {
+  background: rgba(91, 110, 230, 0.04);
+}
+
+.cancellation-impact-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 0.7rem;
+}
+
+.cancellation-impact-grid article,
+.cancellation-impact-list > div {
+  display: grid;
+  gap: 0.25rem;
+  padding: 0.75rem;
+  border: 1px solid var(--border-color, #d8dee8);
+  border-radius: 10px;
+  background: var(--panel-background, #fff);
+}
+
+.cancellation-impact-grid article > span {
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  opacity: 0.7;
+}
+
+.cancellation-impact-grid article > small,
+.cancellation-impact-list span {
+  line-height: 1.35;
+  opacity: 0.75;
+}
+
+.cancellation-impact-list {
+  display: grid;
+  gap: 0.5rem;
+}
