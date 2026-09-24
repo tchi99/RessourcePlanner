@@ -48,22 +48,36 @@ Le préflight de démarrage vérifie la **configuration** OIDC, mais ne contacte
 
 ## Acumatica
 
-| Variable | Usage | Secret |
+### Décision cible
+
+Les synchronisations métier Acumatica utiliseront **OData**. Le contrat projet est documenté dans [ACUMATICA_ODATA_CONTRACT.md](ACUMATICA_ODATA_CONTRACT.md).
+
+Le code actuel expose encore des variables conçues pour l'ancien adaptateur Contract-Based REST. Tant que l'adaptateur OData n'est pas implémenté, elles doivent être considérées comme **configuration legacy/de développement**, pas comme le contrat cible de production.
+
+### Variables actuellement implémentées
+
+| Variable | Usage actuel | Secret |
 | --- | --- | --- |
-| `RESOURCEPLANNER_ACUMATICA_BASE_URL` | URL de l'instance | Non |
-| `RESOURCEPLANNER_ACUMATICA_ACCESS_TOKEN` | Bearer token runtime actuel | **Oui** |
-| `RESOURCEPLANNER_ACUMATICA_ENDPOINT` | Endpoint contract-based REST | Non |
-| `RESOURCEPLANNER_ACUMATICA_VERSION` | Version du contrat | Non |
-| `RESOURCEPLANNER_ACUMATICA_PROJECT_ENTITY` | Entité projet | Non |
-| `RESOURCEPLANNER_ACUMATICA_PROJECT_NUMBER_FIELD` | Champ numéro | Non |
-| `RESOURCEPLANNER_ACUMATICA_PROJECT_NAME_FIELD` | Champ nom | Non |
-| `RESOURCEPLANNER_ACUMATICA_PROJECT_CLIENT_FIELD` | Champ client | Non |
-| `RESOURCEPLANNER_ACUMATICA_PROJECT_MANAGER_FIELD` | Champ chargé de projet | Non |
-| `RESOURCEPLANNER_ACUMATICA_PROJECT_STATUS_FIELD` | Champ statut | Non |
+| `RESOURCEPLANNER_ACUMATICA_BASE_URL` | Base de l'instance Acumatica | Non |
+| `RESOURCEPLANNER_ACUMATICA_ACCESS_TOKEN` | Bearer token de l'adaptateur REST historique | **Oui** |
+| `RESOURCEPLANNER_ACUMATICA_ENDPOINT` | Endpoint Contract-Based REST historique | Non |
+| `RESOURCEPLANNER_ACUMATICA_VERSION` | Version du contrat REST historique | Non |
+| `RESOURCEPLANNER_ACUMATICA_PROJECT_ENTITY` | Entité projet REST historique | Non |
+| `RESOURCEPLANNER_ACUMATICA_PROJECT_NUMBER_FIELD` | Champ numéro REST historique | Non |
+| `RESOURCEPLANNER_ACUMATICA_PROJECT_NAME_FIELD` | Champ nom REST historique | Non |
+| `RESOURCEPLANNER_ACUMATICA_PROJECT_CLIENT_FIELD` | Champ client REST historique | Non |
+| `RESOURCEPLANNER_ACUMATICA_PROJECT_MANAGER_FIELD` | Champ chargé de projet REST historique | Non |
+| `RESOURCEPLANNER_ACUMATICA_PROJECT_STATUS_FIELD` | Champ statut REST historique | Non |
 | `RESOURCEPLANNER_ACUMATICA_PAGE_SIZE` | Taille des pages | Non |
 | `RESOURCEPLANNER_ACUMATICA_TIMEOUT_SECONDS` | Timeout HTTP | Non |
 
-L'absence d'Acumatica n'empêche pas les fonctions locales. Une configuration Acumatica **partielle** est par contre une erreur de configuration explicite au démarrage.
+Ne pas figer de nouveaux noms de variables OData avant l'implémentation de l'adaptateur réel. L'objectif est de remplacer proprement la configuration spécifique REST par une configuration OData minimale et explicite.
+
+Le nom d'hôte réel, les comptes nominatifs temporaires et le futur compte de service doivent rester dans la configuration d'environnement/secrets, jamais dans Git.
+
+Pendant les smokes de développement, un compte utilisateur nominatif peut être utilisé temporairement. Avant exploitation durable, il doit être remplacé par un compte de service ERP dédié avec permissions minimales.
+
+L'absence d'Acumatica n'empêche pas les fonctions locales. Une configuration Acumatica partielle doit continuer à échouer explicitement lorsqu'une source Acumatica est activée.
 
 ## Configuration chiffrée / SMTP
 
