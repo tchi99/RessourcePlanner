@@ -17,6 +17,8 @@ from ..application import (
     DemandOperationalConfirmationCommand,
     DemandApproveCommand,
     DemandCancelCommand,
+    DemandCancellationRejectCommand,
+    DemandCancellationRequestCommand,
     DemandCorrectionCommand,
     DemandCreateCommand,
     DemandLineInput,
@@ -53,6 +55,8 @@ from .schemas import (
     AvailabilityRuleUpdateRequest,
     DemandAlternativeSelectionRequest,
     DemandApprovalRequest,
+    DemandCancellationRejectRequest,
+    DemandCancellationRequest,
     DemandOperationalConfirmationRequest,
     DemandCreateRequest,
     DemandLineRequest,
@@ -546,6 +550,39 @@ def build_command_router(
             facade.request_demand_correction(
                 DemandCorrectionCommand(
                     number=number,
+                    comment=body.comment,
+                    expected_version=body.expected_version,
+                )
+            )
+        )
+
+    @router.post("/demands/{number}/request-cancellation")
+    def request_demand_cancellation(
+        number: str,
+        body: DemandCancellationRequest,
+        facade: ApplicationFacade = Depends(facade_dependency),
+    ) -> dict[str, Any]:
+        return _payload(
+            facade.request_demand_cancellation(
+                DemandCancellationRequestCommand(
+                    number=number,
+                    reason=body.reason,
+                    expected_version=body.expected_version,
+                )
+            )
+        )
+
+    @router.post("/demands/{number}/reject-cancellation")
+    def reject_demand_cancellation(
+        number: str,
+        body: DemandCancellationRejectRequest,
+        facade: ApplicationFacade = Depends(facade_dependency),
+    ) -> dict[str, Any]:
+        return _payload(
+            facade.reject_demand_cancellation(
+                DemandCancellationRejectCommand(
+                    number=number,
+                    cancellation_request_id=body.cancellation_request_id,
                     comment=body.comment,
                     expected_version=body.expected_version,
                 )
