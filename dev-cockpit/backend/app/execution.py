@@ -14,6 +14,8 @@ EXECUTION_PHASES = {
     "PR_OPEN",
     "CI_RUNNING",
     "CI_RED",
+    "STALLED",
+    "POSSIBLE_STALL",
     "READY_TO_MERGE",
     "DELIVERY_UNVERIFIED",
     "NO_ACTIVE_WORK",
@@ -170,6 +172,10 @@ def _phase(
         return "NO_ACTIVE_WORK"
 
     states = set(active_work.get("states") or [])
+    if "STALLED_CONFIRMED" in states or "STALLED" in states:
+        return "STALLED"
+    if "POSSIBLE_STALL" in states:
+        return "POSSIBLE_STALL"
     if "CI_RED" in states:
         return "CI_RED"
     if "CI_RUNNING" in states:
@@ -251,6 +257,39 @@ def _control_copy(
             f"{key} attend une validation d'environnement explicite.",
             "Compléter la validation environnementale requise.",
             fallback_dev_prompt,
+            _link(f"Issue #{issue.get('number')}", issue.get("url")),
+        )
+
+    if phase == "STALLED":
+        jobs = ", ".join(str(job) for job in failed_jobs)
+        detail = (
+            f"{key} semble interrompu; des échecs CI restent visibles : {jobs}."
+            if jobs
+            else f"{key} semble interrompu et aucune reprise GitHub récente n'est détectée."
+        )
+        return (
+            "Travail probablement interrompu",
+            detail,
+            f"Reprendre {key} depuis le dernier état GitHub observable.",
+            (
+                f"Reprends {key} à partir de la branche/PR et du dernier commit visibles. "
+                + (f"Commence par les jobs rouges ({jobs}). " if jobs else "")
+                + "Ne recommence pas l'implémentation depuis zéro : inspecte l'état courant, poursuis la plus petite correction "
+                "nécessaire et amène le cycle AGENTS.md jusqu'à CI verte puis fusion."
+            ),
+            _link(f"PR #{pr_number}", primary_pr.get("url")) if pr_number else _link(str(branch.get("name") or key), branch.get("url")),
+        )
+
+    if phase == "POSSIBLE_STALL":
+        return (
+            "Reprise à confirmer",
+            f"{key} est marqué en cours mais aucun signal GitHub récent ne confirme une activité.",
+            "Vérifier la conversation/branche puis reprendre seulement à partir de l'état réel.",
+            (
+                f"Vérifie l'état réel de {key} avant de créer du nouveau travail. S'il existe une branche ou une PR, reprends-la; "
+                "sinon relis l'issue active et démarre uniquement la prochaine action non effectuée. Publie rapidement un signal GitHub "
+                "observable (commit ou PR) pour sortir de l'état possiblement interrompu."
+            ),
             _link(f"Issue #{issue.get('number')}", issue.get("url")),
         )
 
@@ -451,7 +490,7 @@ def _missions(
         )
 
     pr_number = primary_pr.get("number")
-    if phase == "CI_RED":
+    if phase in {"CI_RED", "STALLED"} and failed_jobs:
         jobs = ", ".join(str(job) for job in failed_jobs) or "jobs en échec"
         reviewer = _mission(
             "action",
