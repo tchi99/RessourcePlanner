@@ -81,7 +81,13 @@ class SqlApprovalCycleRepository:
         self,
         request_id: str,
     ) -> ApprovalCycleRequestRecord | None:
-        row = self._session.get(WorkforceRequest, _text(request_id))
+        wanted = _text(request_id)
+        row = self._session.scalar(
+            select(WorkforceRequest).where(
+                (WorkforceRequest.id == wanted)
+                | (WorkforceRequest.legacy_demand_number == wanted)
+            )
+        )
         if row is None:
             return None
         return ApprovalCycleRequestRecord(
