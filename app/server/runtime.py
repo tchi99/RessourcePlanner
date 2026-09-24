@@ -136,12 +136,12 @@ def _acumatica_settings(values: Mapping[str, str]) -> ODataProjectSourceSettings
         return None
 
     username = _text(values.get(ACUMATICA_USERNAME_ENV))
-    password = _text(values.get(ACUMATICA_PASSWORD_ENV))
+    credential = _text(values.get(ACUMATICA_PASSWORD_ENV))
     missing = [
         name
         for name, value in (
             (ACUMATICA_USERNAME_ENV, username),
-            (ACUMATICA_PASSWORD_ENV, password),
+            (ACUMATICA_PASSWORD_ENV, credential),
         )
         if not value
     ]
@@ -154,7 +154,7 @@ def _acumatica_settings(values: Mapping[str, str]) -> ODataProjectSourceSettings
     return ODataProjectSourceSettings(
         base_url=base_url,
         username=username,
-        password=password,
+        credential=credential,
         page_size=_positive_int(
             values.get(ACUMATICA_PAGE_SIZE_ENV),
             default=100,
