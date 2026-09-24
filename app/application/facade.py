@@ -52,6 +52,7 @@ from .results import (
     AllocationMutationResult,
     CompositeAllocationMutationResult,
     DemandAlternativeSelectionResult,
+    DemandCancellationMutationResult,
     DemandMutationResult,
     DemandOperationalConfirmationResult,
     DemandPeriodsMutationResult,
@@ -247,11 +248,11 @@ class ApplicationFacade:
     def request_demand_cancellation(
         self,
         command: DemandCancellationRequestCommand,
-    ) -> DemandMutationResult:
+    ) -> DemandCancellationMutationResult:
         status, cancellation_request_id = self._demands.request_cancellation_command(
             command
         )
-        return DemandMutationResult(
+        return DemandCancellationMutationResult(
             _identifier(command.number),
             status=status,
             cancellation_request_id=cancellation_request_id,
@@ -261,9 +262,9 @@ class ApplicationFacade:
     def reject_demand_cancellation(
         self,
         command: DemandCancellationRejectCommand,
-    ) -> DemandMutationResult:
+    ) -> DemandCancellationMutationResult:
         status = self._demands.reject_cancellation_command(command)
-        return DemandMutationResult(
+        return DemandCancellationMutationResult(
             _identifier(command.number),
             status=status,
             cancellation_request_id=_identifier(command.cancellation_request_id),
