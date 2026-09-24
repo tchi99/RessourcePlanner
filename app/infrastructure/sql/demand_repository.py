@@ -10,6 +10,10 @@ from typing import Any
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.orm import Session, aliased
 
+from ...application.demand_completion import (
+    DemandCompletionFacts,
+    project_effective_demand_state,
+)
 from ...application.errors import ApplicationConflictError
 from ...application.query_models import DemandCancellationMaterializationReadModel
 from ...application.read_models import DemandLineReadModel, DemandReadModel
@@ -110,13 +114,15 @@ class SqlDemandRepository(DemandRepositoryPort):
         proposed_resource: Resource | None,
         competency_ids: tuple[str, ...] = (),
         lines: tuple[DemandLineReadModel, ...] = (),
+        completion_facts: DemandCompletionFacts | None = None,
     ) -> DemandReadModel:
-        return DemandReadModel(
+        model = DemandReadModel(
             # During the first SQL cutover the existing NoDemande is preserved in
             # legacy_demand_number. A dedicated business-number column can replace
             # this compatibility name later without changing the application port.
             number=_text(request.legacy_demand_number) or request.id,
             status=_text(request.status),
+            created_at=request.created_at,
             cancellation_request_id=_optional_text(request.cancellation_request_id),
             cancellation_state=_optional_text(request.cancellation_state),
             cancellation_requested_by_user_id=_optional_text(
@@ -174,6 +180,10 @@ class SqlDemandRepository(DemandRepositoryPort):
             line_mode=bool(request.line_mode),
             lines=lines,
         )
+        return project_effective_demand_state(
+            model,
+            completion_facts or DemandCompletionFacts(),
+        )
 
     def _aggregate_children(
         self,
@@ -182,12 +192,13 @@ class SqlDemandRepository(DemandRepositoryPort):
         dict[str, tuple[str, ...]],
         dict[str, tuple[DemandLineReadModel, ...]],
         dict[str, tuple[int, int, int, int]],
+        dict[str, DemandCompletionFacts],
     ]:
-        """Load child projections and cancellation materialization in one batch query."""
+        """Load child projections plus lifecycle facts in one batch query."""
 
         identifiers = tuple(str(value) for value in request_ids if str(value))
         if not identifiers:
-            return {}, {}, {}
+            return {}, {}, {}, {}
 
         request_competency = aliased(WorkforceRequestCompetency)
         line_competency = aliased(RequestLineCompetency)
@@ -254,6 +265,100 @@ class SqlDemandRepository(DemandRepositoryPort):
             .scalar_subquery()
         )
 
+        counted_shift_hours = (
+            select(func.coalesce(func.sum(Shift.hours), 0))
+            .where(
+                Shift.resource_requirement_id == ResourceRequirement.id,
+                (Shift.allocation_type.is_(None))
+                | (Shift.allocation_type != MISSING_ALLOCATION_TYPE),
+            )
+            .correlate(ResourceRequirement)
+            .scalar_subquery()
+        )
+        human_requirement_count = (
+            select(func.count(ResourceRequirement.id))
+            .where(
+                ResourceRequirement.workforce_request_id == WorkforceRequest.id,
+                ResourceRequirement.origin == "REQUEST",
+                ResourceRequirement.status != "Annulé",
+            )
+            .correlate(WorkforceRequest)
+            .scalar_subquery()
+        )
+        human_remaining_requirement_count = (
+            select(func.count(ResourceRequirement.id))
+            .where(
+                ResourceRequirement.workforce_request_id == WorkforceRequest.id,
+                ResourceRequirement.origin == "REQUEST",
+                ResourceRequirement.status != "Annulé",
+                ResourceRequirement.planned_hours > counted_shift_hours,
+            )
+            .correlate(WorkforceRequest)
+            .scalar_subquery()
+        )
+        current_or_future_shift_count = (
+            select(func.count(Shift.id))
+            .select_from(Shift)
+            .join(
+                ResourceRequirement,
+                Shift.resource_requirement_id == ResourceRequirement.id,
+            )
+            .where(
+                ResourceRequirement.workforce_request_id == WorkforceRequest.id,
+                ResourceRequirement.origin == "REQUEST",
+                ResourceRequirement.status != "Annulé",
+                Shift.work_date >= date.today(),
+                (Shift.allocation_type.is_(None))
+                | (Shift.allocation_type != MISSING_ALLOCATION_TYPE),
+            )
+            .correlate(WorkforceRequest)
+            .scalar_subquery()
+        )
+        active_asset_requirement_count = (
+            select(func.count(AssetRequirement.id))
+            .where(
+                AssetRequirement.workforce_request_id == WorkforceRequest.id,
+                AssetRequirement.status != "Annulé",
+            )
+            .correlate(WorkforceRequest)
+            .scalar_subquery()
+        )
+        covering_asset_allocation_count = (
+            select(func.count(AssetAllocation.id))
+            .where(
+                AssetAllocation.asset_requirement_id == AssetRequirement.id,
+                AssetAllocation.start_date <= AssetRequirement.start_date,
+                AssetAllocation.end_date >= AssetRequirement.end_date,
+            )
+            .correlate(AssetRequirement)
+            .scalar_subquery()
+        )
+        uncovered_asset_requirement_count = (
+            select(func.count(AssetRequirement.id))
+            .where(
+                AssetRequirement.workforce_request_id == WorkforceRequest.id,
+                AssetRequirement.status != "Annulé",
+                covering_asset_allocation_count == 0,
+            )
+            .correlate(WorkforceRequest)
+            .scalar_subquery()
+        )
+        current_or_future_asset_allocation_count = (
+            select(func.count(AssetAllocation.id))
+            .select_from(AssetAllocation)
+            .join(
+                AssetRequirement,
+                AssetAllocation.asset_requirement_id == AssetRequirement.id,
+            )
+            .where(
+                AssetRequirement.workforce_request_id == WorkforceRequest.id,
+                AssetRequirement.status != "Annulé",
+                AssetAllocation.end_date >= date.today(),
+            )
+            .correlate(WorkforceRequest)
+            .scalar_subquery()
+        )
+
         rows = self._session.execute(
             select(
                 WorkforceRequest.id,
@@ -266,6 +371,12 @@ class SqlDemandRepository(DemandRepositoryPort):
                 locked_human_shift_count,
                 asset_allocation_count,
                 locked_asset_allocation_count,
+                human_requirement_count,
+                human_remaining_requirement_count,
+                current_or_future_shift_count,
+                active_asset_requirement_count,
+                uncovered_asset_requirement_count,
+                current_or_future_asset_allocation_count,
             )
             .select_from(WorkforceRequest)
             .outerjoin(
@@ -307,6 +418,7 @@ class SqlDemandRepository(DemandRepositoryPort):
             tuple[str, RequestLine, WorkPackage | None, Resource | None],
         ] = {}
         cancellation_counts: dict[str, tuple[int, int, int, int]] = {}
+        completion_facts: dict[str, DemandCompletionFacts] = {}
 
         for (
             request_id,
@@ -319,6 +431,12 @@ class SqlDemandRepository(DemandRepositoryPort):
             locked_human_count,
             asset_count,
             locked_asset_count,
+            human_requirement_total,
+            human_remaining_total,
+            current_or_future_shift_total,
+            asset_requirement_total,
+            uncovered_asset_requirement_total,
+            current_or_future_asset_allocation_total,
         ) in rows:
             cancellation_counts.setdefault(
                 request_id,
@@ -327,6 +445,23 @@ class SqlDemandRepository(DemandRepositoryPort):
                     int(locked_human_count or 0),
                     int(asset_count or 0),
                     int(locked_asset_count or 0),
+                ),
+            )
+            completion_facts.setdefault(
+                request_id,
+                DemandCompletionFacts(
+                    human_requirement_count=int(human_requirement_total or 0),
+                    human_remaining_requirement_count=int(human_remaining_total or 0),
+                    current_or_future_shift_count=int(
+                        current_or_future_shift_total or 0
+                    ),
+                    asset_requirement_count=int(asset_requirement_total or 0),
+                    asset_uncovered_requirement_count=int(
+                        uncovered_asset_requirement_total or 0
+                    ),
+                    current_or_future_asset_allocation_count=int(
+                        current_or_future_asset_allocation_total or 0
+                    ),
                 ),
             )
             if request_competency_id is not None:
@@ -419,6 +554,7 @@ class SqlDemandRepository(DemandRepositoryPort):
                 for request_id, values in grouped_lines.items()
             },
             cancellation_counts,
+            completion_facts,
         )
 
     def _row_query(self):
@@ -476,6 +612,7 @@ class SqlDemandRepository(DemandRepositoryPort):
             competency_ids,
             lines_by_request,
             cancellation_counts,
+            completion_facts,
         ) = self._aggregate_children(request_ids)
         return tuple(
             (
@@ -486,6 +623,7 @@ class SqlDemandRepository(DemandRepositoryPort):
                     proposed_resource,
                     competency_ids.get(request.id, ()),
                     lines_by_request.get(request.id, ()),
+                    completion_facts.get(request.id),
                 ),
                 self._cancellation_materialization(
                     request,
@@ -527,6 +665,7 @@ class SqlDemandRepository(DemandRepositoryPort):
             competency_ids,
             lines_by_request,
             cancellation_counts,
+            completion_facts,
         ) = self._aggregate_children((request.id,))
         return (
             self._read_model(
@@ -536,6 +675,7 @@ class SqlDemandRepository(DemandRepositoryPort):
                 proposed_resource,
                 competency_ids.get(request.id, ()),
                 lines_by_request.get(request.id, ()),
+                completion_facts.get(request.id),
             ),
             self._cancellation_materialization(
                 request,
