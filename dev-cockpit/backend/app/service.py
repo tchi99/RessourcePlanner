@@ -689,9 +689,22 @@ async def build_dashboard(client: GitHubClient, settings: Settings, repo: str) -
         "active_work": {
             "key": active_key,
             "issue_number": parent_issue,
-            "title": active_subitem.title if active_subitem else active_issue_raw.get("title"),
+            "title": (
+                str(pipeline_now.get("title"))
+                if canonical_mode and pipeline_now
+                else active_subitem.title if active_subitem else active_issue_raw.get("title")
+            ),
             "issue": _issue_summary(active_issue_raw),
-            "subitem_key": active_subitem.key if active_subitem else None,
+            "subitem_key": (
+                active_key
+                if (
+                    canonical_mode
+                    and pipeline_now
+                    and pipeline_now.get("kind") == "WORK"
+                    and active_key != str(parent_issue)
+                )
+                else active_subitem.key if active_subitem else None
+            ),
             "block_done": block_done,
             "can_chain_block": can_chain_block,
             "remaining_subitems": remaining_subitems,
