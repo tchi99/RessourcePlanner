@@ -8,6 +8,7 @@ from typing import Any
 from urllib.parse import quote
 
 from .config import Settings
+from .attention import build_attention_center
 from .derive import build_next_action_and_prompt, commit_summary, derive_states, matches_work_key
 from .execution import build_execution_control
 from .handoff import build_handoff_packs
@@ -647,6 +648,13 @@ def _dashboard_without_active_work(
         referenced_adrs=[],
         agents_text=agents_text,
     )
+    attention = build_attention_center(
+        execution=execution,
+        reconciliation=reconciliation,
+        handoff=handoff,
+        active_work=None,
+        pipeline_now=pipeline_projection.get("now"),
+    )
     return {
         "repo": repo,
         "generated_at": datetime.now(timezone.utc).isoformat(),
@@ -665,6 +673,7 @@ def _dashboard_without_active_work(
         "reconciliation": reconciliation,
         "execution": execution,
         "handoff": handoff,
+        "attention": attention,
         "roadmap": {
             "number": roadmap_raw.get("number"),
             "title": roadmap_raw.get("title"),
@@ -1053,6 +1062,13 @@ async def build_dashboard(client: GitHubClient, settings: Settings, repo: str) -
         referenced_adrs=referenced_adr_entries,
         agents_text=agents_text,
     )
+    attention = build_attention_center(
+        execution=execution,
+        reconciliation=reconciliation,
+        handoff=handoff,
+        active_work=active_work_projection,
+        pipeline_now=pipeline_projection.get("now"),
+    )
 
     warnings: list[str] = []
     if merged_but_unmarked:
@@ -1079,6 +1095,7 @@ async def build_dashboard(client: GitHubClient, settings: Settings, repo: str) -
         "reconciliation": reconciliation,
         "execution": execution,
         "handoff": handoff,
+        "attention": attention,
         "roadmap": {
             "number": roadmap_raw.get("number"),
             "title": roadmap_raw.get("title"),
