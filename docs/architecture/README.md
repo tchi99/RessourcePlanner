@@ -53,6 +53,7 @@ Voir :
 - `ADR-006-global-planning-mutation-version.md`
 - `ADR-007-reservable-non-human-resources.md`
 - `ADR-008-delivery-planning-boundary.md`
+- `ADR-009-persistent-cancellation-intent.md`
 
 Chaîne métier actuelle :
 
@@ -169,8 +170,9 @@ Exemples qui ne nécessitent normalement pas d'ADR :
 | ADR-006 | sérialiser les mutations concurrentes du planning par une révision globale persistante/CAS SQL tant que le rebuild reste global |
 | ADR-007 | séparer les actifs réservables des ressources humaines tout en partageant l'orchestration Planning; occupation initiale exclusive à la journée |
 | ADR-008 | séparer Delivery de Planning; WorkPackage comme jonction, capacité Planning read-only, progression/forecast et concurrence Delivery propres |
+| ADR-009 | persister l’intention d’annulation sur WorkforceRequest, décider selon la matérialisation réelle et séparer CAS de demande de CAS planning |
 
-Ces huit ADR sont en statut `Accepted`. ADR-006 reste le socle de concurrence globale. ADR-007 guide #291 pour les actifs réservables. ADR-008 guide #362 : `DeliveryPlan`/Epics/Stories restent distincts des `Shift`, les heures WorkPackage actuelles sont une référence de planification et non un budget approuvé, et Delivery consomme une projection read-only du plan actif/approuvé.
+Ces neuf ADR sont en statut `Accepted`. ADR-006 reste le socle de concurrence globale. ADR-007 guide #291 pour les actifs réservables. ADR-008 guide #362 : `DeliveryPlan`/Epics/Stories restent distincts des `Shift`, les heures WorkPackage actuelles sont une référence de planification et non un budget approuvé, et Delivery consomme une projection read-only du plan actif/approuvé.
 
 ---
 
