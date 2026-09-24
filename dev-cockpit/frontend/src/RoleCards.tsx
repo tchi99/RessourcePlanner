@@ -280,10 +280,10 @@ export default function RoleCards({ dashboard }: { dashboard: Dashboard | null }
   }
 
   function handoffRole(role: RoleConfig) {
-    const mission = dashboard?.execution.missions[role.avatar]
-    if (!mission?.prompt) return
+    const pack = dashboard?.handoff.packs[role.avatar]
+    if (!pack?.prompt) return
 
-    void navigator.clipboard.writeText(mission.prompt)
+    void navigator.clipboard.writeText(pack.prompt)
     setMissionCopiedId(role.id)
     window.setTimeout(() => setMissionCopiedId(null), 1600)
 
@@ -344,6 +344,7 @@ export default function RoleCards({ dashboard }: { dashboard: Dashboard | null }
           {enabledRoles.map((role) => {
             const chatStatus = chatStatusForRole(role, chatStatuses)
             const mission = dashboard?.execution.missions[role.avatar] ?? null
+            const handoffPack = dashboard?.handoff.packs[role.avatar] ?? null
             const chatWorking = chatStatus?.effective_state === 'working'
             const githubWorking = isDeveloperWorking(role, dashboard)
             const working = Boolean(chatWorking || githubWorking)
@@ -383,6 +384,11 @@ export default function RoleCards({ dashboard }: { dashboard: Dashboard | null }
                         {mission.state}
                       </span>
                     )}
+                    {handoffPack && (
+                      <span className={`handoff-confidence ${handoffPack.confidence.toLowerCase()}`}>
+                        {handoffPack.confidence}
+                      </span>
+                    )}
                     {role.chat_url && (
                       <span
                         className={`chat-state ${chatStatus?.effective_state ?? 'unknown'}`}
@@ -414,10 +420,10 @@ export default function RoleCards({ dashboard }: { dashboard: Dashboard | null }
                         onClick={() => handoffRole(role)}
                       >
                         {missionCopiedId === role.id
-                          ? 'Mission copiée ✓'
+                          ? 'Handoff copié ✓'
                           : role.chat_url
-                            ? 'Copier mission + ouvrir ↗'
-                            : 'Copier mission'}
+                            ? 'Préparer la reprise + ouvrir ↗'
+                            : 'Préparer la reprise'}
                       </button>
                     ) : role.chat_url ? (
                       <a
