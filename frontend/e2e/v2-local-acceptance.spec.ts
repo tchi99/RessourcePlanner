@@ -1472,6 +1472,121 @@ test("mixed asset demand uses authoritative reservations, conflicts, refresh and
   await closeContext(reapprover.context);
 });
 
+test("materialized demand cancellation is requested, reviewed, rejected or accepted through React", async ({ browser }) => {
+  test.setTimeout(180_000);
+  const { d1, d2 } = acceptanceDates();
+
+  const requester = await openAs(browser, "PROJECT_MANAGER");
+  const editor = await createDemand(requester.page, {
+    start: d1,
+    end: d2,
+    hours: "8",
+    activeDays: "1",
+    description: "Demande dédiée annulation matérialisée #399D",
+    proposedResource: "Alice",
+  });
+  await editor.getByRole("button", { name: "Créer le brouillon" }).click();
+  const createdNotice = requester.page.locator(".demand-notice");
+  await expect(createdNotice).toContainText("créée en brouillon");
+  const cancellationDemand = demandNumberFrom(await createdNotice.textContent());
+
+  await workflowSelect(requester.page, cancellationDemand);
+  await requester.page.getByRole("button", { name: "Soumettre", exact: true }).click();
+  await expect(requester.page.locator(".demand-notice")).toContainText("soumise pour approbation");
+
+  const approver = await openAs(browser, "COORDINATOR");
+  await workflowSelect(approver.page, cancellationDemand);
+  await approver.page.getByLabel(/Commentaire d’approbation/).fill("Matérialiser le plan #399D");
+  await approver.page.getByRole("button", { name: "Approuver", exact: true }).click();
+  await expect(approver.page.locator(".demand-notice")).toContainText("Demande approuvée");
+  await closeContext(approver.context);
+
+  await requester.page.reload();
+  await workflowSelect(requester.page, cancellationDemand);
+  await expect(requester.page.getByRole("button", { name: "Annuler la demande", exact: true })).toHaveCount(0);
+  const requestCancellation = requester.page.getByRole("button", { name: "Demander l’annulation", exact: true });
+  await expect(requestCancellation).toBeDisabled();
+
+  const cancellationReason = requester.page.getByLabel("Raison de la demande d’annulation (requise)");
+  await cancellationReason.fill("Mandat retiré par le client");
+  const requestEditor = requester.page.locator(".demand-editor-form");
+  const description = labelled(requestEditor, "Description / contexte de la demande", "textarea");
+  await description.fill("Modification locale non enregistrée avant annulation");
+  await expect(requestCancellation).toBeDisabled();
+  await expect(
+    requester.page.getByText("Enregistre les modifications avant de poursuivre.", { exact: true }),
+  ).toBeVisible();
+
+  await requester.page.reload();
+  await workflowSelect(requester.page, cancellationDemand);
+  await requester.page.getByLabel("Raison de la demande d’annulation (requise)").fill("Mandat retiré par le client");
+
+  const concurrentEditor = await openAs(browser, "PROJECT_MANAGER");
+  await openDemandDetail(concurrentEditor.page, cancellationDemand);
+  const concurrentForm = concurrentEditor.page.locator(".demand-editor-form");
+  await labelled(concurrentForm, "Description / contexte de la demande", "textarea").fill(
+    "Modification concurrente #399D",
+  );
+  await concurrentForm.getByRole("button", { name: "Enregistrer les modifications" }).click();
+  await expect(concurrentEditor.page.locator(".demand-notice")).toContainText("Modification enregistrée");
+  await closeContext(concurrentEditor.context);
+
+  await requester.page.getByRole("button", { name: "Demander l’annulation", exact: true }).click();
+  await expect(requester.page.locator(".error-panel")).toContainText("demand_version_conflict");
+
+  await requester.page.reload();
+  await workflowSelect(requester.page, cancellationDemand);
+  await requester.page.getByLabel("Raison de la demande d’annulation (requise)").fill("Mandat retiré par le client");
+  await requester.page.getByRole("button", { name: "Demander l’annulation", exact: true }).click();
+  await expect(requester.page.getByTestId("cancellation-pending-state")).toContainText("Annulation demandée");
+  await expect(requester.page.getByTestId("detail-cancellation-pending")).toContainText("Annulation demandée");
+  await expect(
+    requester.page.locator(".demand-card").filter({ hasText: cancellationDemand }).getByTestId("demand-cancellation-pending"),
+  ).toContainText("Annulation demandée");
+  await expect(requester.page.getByRole("button", { name: "Demander l’annulation", exact: true })).toHaveCount(0);
+  await expect(requester.page.getByRole("button", { name: "Annuler la demande", exact: true })).toHaveCount(0);
+
+  const coordinator = await openAs(browser, "COORDINATOR");
+  await workflowSelect(coordinator.page, cancellationDemand);
+  await expect(coordinator.page.getByTestId("cancellation-pending-state")).toBeVisible();
+  await coordinator.page.getByRole("button", { name: "Traiter l’annulation", exact: true }).click();
+  const review = coordinator.page.getByTestId("cancellation-review");
+  await expect(review).toContainText("Planning qui sera libéré");
+  await expect(review).toContainText("Plan humain");
+  await coordinator.page.getByLabel("Commentaire de résolution (requis)").fill("Plan encore requis cette semaine");
+  await coordinator.page.getByRole("button", { name: "Refuser", exact: true }).click();
+  await expect(coordinator.page.locator(".demand-notice")).toContainText("planning actif est conservé");
+
+  await navigateMain(coordinator.page, "Planning opérationnel");
+  await coordinator.page.getByRole("button", { name: /Suivante/ }).click();
+  await coordinator.page.getByLabel("Recherche").fill(cancellationDemand);
+  await expect(coordinator.page.locator(".shift-card")).not.toHaveCount(0);
+
+  await requester.page.reload();
+  await workflowSelect(requester.page, cancellationDemand);
+  await requester.page.getByLabel("Raison de la demande d’annulation (requise)").fill("Annulation confirmée par le client");
+  await requester.page.getByRole("button", { name: "Demander l’annulation", exact: true }).click();
+  await expect(requester.page.getByTestId("cancellation-pending-state")).toBeVisible();
+
+  await navigateMain(coordinator.page, "Demandes");
+  await workflowSelect(coordinator.page, cancellationDemand);
+  await coordinator.page.getByRole("button", { name: "Traiter l’annulation", exact: true }).click();
+  await expect(coordinator.page.getByTestId("cancellation-review")).toContainText("Planning qui sera libéré");
+  await coordinator.page.getByLabel("Commentaire de résolution (requis)").fill("Annulation approuvée #399D");
+  await coordinator.page.getByRole("button", { name: "Annuler la demande et libérer le planning", exact: true }).click();
+  await expect(coordinator.page.locator(".demand-notice")).toContainText("Planning libéré");
+  await expect(coordinator.page.locator(".demand-detail-statuses")).toContainText("Annulée");
+  await expect(coordinator.page.getByTestId("detail-cancellation-pending")).toHaveCount(0);
+
+  await navigateMain(coordinator.page, "Planning opérationnel");
+  await coordinator.page.getByRole("button", { name: /Suivante/ }).click();
+  await coordinator.page.getByLabel("Recherche").fill(cancellationDemand);
+  await expect(coordinator.page.locator(".shift-card")).toHaveCount(0);
+
+  await closeContext(coordinator.context);
+  await closeContext(requester.context);
+});
+
 test("development identity selector switches real local users and technician schedules", async ({ browser }) => {
   const context = await browser.newContext({
     baseURL: BASE_URL,
