@@ -26,6 +26,25 @@ class ApiTests(unittest.TestCase):
         self.assertIn("DEV_COCKPIT_GITHUB_TOKEN", response.json()["detail"])
         self.assertEqual(client.get("/api/health").json()["status"], "configuration_error")
 
+    def test_writeback_without_token_returns_configuration_error(self):
+        client = TestClient(create_app(Settings(github_token=None)))
+
+        preview = client.post("/api/roadmap-writeback/preview")
+        self.assertEqual(preview.status_code, 503)
+        self.assertIn("Issues en écriture", preview.json()["detail"])
+
+        apply = client.post(
+            "/api/roadmap-writeback/apply",
+            json={
+                "expected_updated_at": "2026-09-24T19:30:00Z",
+                "expected_body_sha256": "a" * 64,
+                "expected_proposal_sha256": "b" * 64,
+                "confirm": True,
+            },
+        )
+        self.assertEqual(apply.status_code, 503)
+        self.assertIn("Issues en écriture", apply.json()["detail"])
+
     def test_roles_can_be_managed_without_github_token(self):
         with TemporaryDirectory() as temp_dir:
             client = TestClient(
