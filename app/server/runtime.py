@@ -9,7 +9,7 @@ import uvicorn
 
 from ..application.identity_provisioning import AutoProvisioningPolicy
 from ..application.security import AuthPrincipal, ROLE_ADMIN, normalize_roles
-from ..infrastructure.acumatica import AcumaticaProjectSource, AcumaticaProjectSourceSettings
+from ..infrastructure.acumatica import ODataProjectSource, ODataProjectSourceSettings
 from ..infrastructure.acumatica.oidc import OidcClient, OidcClientSettings
 from ..infrastructure.smtp import FernetSecretCipher, SmtpClient
 from ..infrastructure.m365 import (
@@ -132,40 +132,13 @@ def _acumatica_page_size(value: object) -> int:
     return _positive_int(value, default=200, label=ACUMATICA_PAGE_SIZE_ENV, maximum=1000)
 
 
-def _acumatica_settings(values: Mapping[str, str]) -> AcumaticaProjectSourceSettings | None:
+def _acumatica_settings(values: Mapping[str, str]) -> ODataProjectSourceSettings | None:
     base_url = _text(values.get(ACUMATICA_BASE_URL_ENV))
-    bearer_token = _text(values.get(ACUMATICA_ACCESS_TOKEN_ENV))
-    version = _text(values.get(ACUMATICA_VERSION_ENV))
-
-    if not any((base_url, bearer_token, version)):
+    if not base_url:
         return None
 
-    missing = [
-        name
-        for name, value in (
-            (ACUMATICA_BASE_URL_ENV, base_url),
-            (ACUMATICA_ACCESS_TOKEN_ENV, bearer_token),
-            (ACUMATICA_VERSION_ENV, version),
-        )
-        if not value
-    ]
-    if missing:
-        raise ServerConfigurationError(
-            "Configuration Acumatica incomplète; variables requises: " + ", ".join(missing)
-        )
-
-    return AcumaticaProjectSourceSettings(
+    return ODataProjectSourceSettings(
         base_url=base_url,
-        bearer_token=bearer_token,
-        endpoint=_text(values.get(ACUMATICA_ENDPOINT_ENV)) or "Default",
-        version=version,
-        entity=_text(values.get(ACUMATICA_ENTITY_ENV)) or "Project",
-        number_field=_text(values.get(ACUMATICA_NUMBER_FIELD_ENV)) or "ProjectID",
-        name_field=_text(values.get(ACUMATICA_NAME_FIELD_ENV)) or "Description",
-        client_field=_text(values.get(ACUMATICA_CLIENT_FIELD_ENV)) or "Customer",
-        project_manager_field=_text(values.get(ACUMATICA_MANAGER_FIELD_ENV)) or "ProjectManager",
-        status_field=_text(values.get(ACUMATICA_STATUS_FIELD_ENV)) or "Status",
-        page_size=_acumatica_page_size(values.get(ACUMATICA_PAGE_SIZE_ENV)),
         timeout_seconds=_positive_float(
             values.get(ACUMATICA_TIMEOUT_SECONDS_ENV),
             default=30.0,
@@ -302,7 +275,7 @@ class ServerSettings:
     oidc_auto_provision: bool = False
     api_docs_enabled: bool = True
     embedding: EmbeddingSettings = field(default_factory=EmbeddingSettings)
-    acumatica: AcumaticaProjectSourceSettings | None = field(default=None, repr=False)
+    acumatica: ODataProjectSourceSettings | None = field(default=None, repr=False)
     m365: MicrosoftGraphCommunicationSettings | None = field(default=None, repr=False)
     config_encryption_key: str | None = field(default=None, repr=False)
 
@@ -406,7 +379,7 @@ def create_configured_app(settings: ServerSettings | None = None) -> FastAPI:
 
     resolved = settings or ServerSettings.from_environment()
     project_source = (
-        AcumaticaProjectSource(resolved.acumatica)
+        ODataProjectSource(resolved.acumatica)
         if resolved.acumatica is not None
         else None
     )
