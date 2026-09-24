@@ -1,157 +1,207 @@
 from __future__ import annotations
 
+from datetime import timezone
+from pathlib import Path
 import unittest
 
 import httpx
 
 from app.application import ApplicationOperationError
-from app.infrastructure.acumatica import AcumaticaProjectSource, AcumaticaProjectSourceSettings
+from app.infrastructure.acumatica import (
+    ODataProjectFeedError,
+    ODataProjectSource,
+    ODataProjectSourceSettings,
+    parse_rp_projects_feed,
+)
 
 
-LOGGER = "app.infrastructure.acumatica.project_source"
+LOGGER = "app.infrastructure.acumatica.odata_project_source"
+FIXTURE = Path(__file__).resolve().parent / "fixtures" / "acumatica" / "rp_projects_atom.xml"
 
 
-def _settings(**overrides) -> AcumaticaProjectSourceSettings:
+def _settings(**overrides) -> ODataProjectSourceSettings:
     values = {
         "base_url": "https://erp.example.test/Instance",
-        "bearer_token": "test-token",
-        "endpoint": "Default",
-        "version": "25.200.001",
-        "entity": "Project",
-        "page_size": 2,
         "timeout_seconds": 0.25,
     }
     values.update(overrides)
-    return AcumaticaProjectSourceSettings(**values)
+    return ODataProjectSourceSettings(**values)
 
 
-def _project(
-    external_id: str,
-    number: str,
-    name: str,
+def _feed(properties: str = "", *, entry: bool = True) -> bytes:
+    body = (
+        f"<entry><content type=\"application/xml\"><m:properties>{properties}"
+        "</m:properties></content></entry>"
+        if entry
+        else ""
+    )
+    return (
+        "<?xml version=\"1.0\" encoding=\"utf-8\"?>"
+        "<feed xmlns=\"http://www.w3.org/2005/Atom\" "
+        "xmlns:d=\"http://schemas.microsoft.com/ado/2007/08/dataservices\" "
+        "xmlns:m=\"http://schemas.microsoft.com/ado/2007/08/dataservices/metadata\">"
+        f"{body}</feed>"
+    ).encode("utf-8")
+
+
+def _minimal_properties(
     *,
-    client: str | None = "Client",
-    manager: str | None = "Gestionnaire",
-    status: str | None = "Active",
-) -> dict[str, object]:
-    payload: dict[str, object] = {
-        "id": external_id,
-        "ProjectID": {"value": number},
-        "Description": {"value": name},
-    }
-    if client is not None:
-        payload["Customer"] = {"value": client}
-    if manager is not None:
-        payload["ProjectManager"] = {"value": manager}
-    if status is not None:
-        payload["Status"] = {"value": status}
-    return payload
+    project_id: str = "101",
+    project_code: str = " P-0100 ",
+    project_name: str = "Projet Énergie",
+) -> str:
+    return (
+        f"<d:ProjectId m:type=\"Edm.Int32\">{project_id}</d:ProjectId>"
+        f"<d:ProjectCode xml:space=\"preserve\">{project_code}</d:ProjectCode>"
+        f"<d:ProjectName>{project_name}</d:ProjectName>"
+    )
 
 
-class AcumaticaProjectSourceTests(unittest.TestCase):
-    def test_reads_paginated_contract_rest_projects_and_never_exposes_token(self) -> None:
+class ODataProjectContractTests(unittest.TestCase):
+    def test_anonymized_fixture_covers_rp_projects_contract(self) -> None:
+        rows = parse_rp_projects_feed(FIXTURE.read_bytes())
+
+        self.assertEqual(len(rows), 5)
+        first = rows[0]
+        self.assertEqual(first.project_id, 101)
+        self.assertEqual(first.project_code, "P-0100")
+        self.assertEqual(first.project_name, "Projet Électrique – Montréal")
+        self.assertEqual(first.customer_id, "C-001")
+        self.assertEqual(first.customer_name, "Client Énergie")
+        self.assertEqual(first.project_manager_id, "PM-01")
+        self.assertEqual(first.project_manager_name, "Élodie Tremblay")
+        self.assertEqual(first.status, "Actif")
+        self.assertEqual(first.start_date.isoformat(), "2026-01-15T00:00:00")
+        self.assertIsNone(first.end_date)
+        self.assertEqual(first.default_branch_code, "110")
+        self.assertEqual(first.default_branch_description, "Électrique")
+        self.assertEqual(first.last_modified_at.isoformat(), "2026-09-24T12:30:45.123000")
+        self.assertEqual(first.base_type, "P")
+
+        self.assertEqual(rows[1].base_type, "R")
+        self.assertIsNone(rows[1].customer_id)
+        self.assertIsNone(rows[1].project_manager_id)
+        self.assertIsNone(rows[1].project_manager_name)
+        self.assertEqual(rows[1].end_date.isoformat(), "2026-12-31T17:00:00")
+        self.assertEqual(
+            [row.status for row in rows],
+            ["Actif", "En planification", "Complété", "Suspendu", "Annulé"],
+        )
+        self.assertEqual(
+            [row.default_branch_code for row in rows],
+            ["110", "210", "310", "510", "910"],
+        )
+
+    def test_namespace_prefixes_and_property_order_are_not_significant(self) -> None:
+        payload = StringPayload.ALTERNATE_PREFIXES.encode("utf-8")
+
+        row = parse_rp_projects_feed(payload)[0]
+
+        self.assertEqual(row.project_id, 214)
+        self.assertEqual(row.project_code, "P-0214")
+        self.assertEqual(row.project_name, "Projet Québec")
+        self.assertEqual(row.customer_name, "Client Côte-Nord")
+        self.assertEqual(row.default_branch_code, "210")
+        self.assertEqual(row.base_type, "R")
+        self.assertEqual(row.last_modified_at.tzinfo, timezone.utc)
+
+    def test_valid_feed_without_entries_returns_empty_snapshot(self) -> None:
+        self.assertEqual(parse_rp_projects_feed(_feed(entry=False)), ())
+
+    def test_invalid_xml_is_rejected_without_payload_details(self) -> None:
+        with self.assertRaises(ODataProjectFeedError) as raised:
+            parse_rp_projects_feed(b"<feed>sensitive-project-payload")
+
+        self.assertEqual(raised.exception.reason, "invalid_xml")
+        self.assertNotIn("sensitive-project-payload", str(raised.exception))
+
+    def test_required_fields_are_rejected_explicitly(self) -> None:
+        cases = {
+            "ProjectId": (
+                "<d:ProjectCode>P-1</d:ProjectCode><d:ProjectName>Projet</d:ProjectName>"
+            ),
+            "ProjectCode": (
+                "<d:ProjectId m:type=\"Edm.Int32\">1</d:ProjectId>"
+                "<d:ProjectName>Projet</d:ProjectName>"
+            ),
+            "ProjectName": (
+                "<d:ProjectId m:type=\"Edm.Int32\">1</d:ProjectId>"
+                "<d:ProjectCode>P-1</d:ProjectCode>"
+            ),
+        }
+        for field, properties in cases.items():
+            with self.subTest(field=field):
+                with self.assertRaises(ODataProjectFeedError) as raised:
+                    parse_rp_projects_feed(_feed(properties))
+                self.assertEqual(raised.exception.reason, "required_field_missing")
+                self.assertEqual(raised.exception.field, field)
+                self.assertEqual(raised.exception.entry_index, 0)
+
+    def test_invalid_int32_and_datetime_values_are_rejected(self) -> None:
+        cases = (
+            (
+                _minimal_properties(project_id="not-an-int"),
+                "invalid_int32",
+                "ProjectId",
+            ),
+            (
+                _minimal_properties(project_id=str(2**31)),
+                "invalid_int32",
+                "ProjectId",
+            ),
+            (
+                _minimal_properties() + "<d:StartDate m:type=\"Edm.DateTime\">not-a-date</d:StartDate>",
+                "invalid_datetime",
+                "StartDate",
+            ),
+            (
+                _minimal_properties()
+                + "<d:LastModifiedDateTime m:type=\"Edm.DateTime\">2026-99-99T00:00:00</d:LastModifiedDateTime>",
+                "invalid_datetime",
+                "LastModifiedDateTime",
+            ),
+        )
+        for properties, reason, field in cases:
+            with self.subTest(reason=reason, field=field):
+                with self.assertRaises(ODataProjectFeedError) as raised:
+                    parse_rp_projects_feed(_feed(properties))
+                self.assertEqual(raised.exception.reason, reason)
+                self.assertEqual(raised.exception.field, field)
+
+    def test_source_maps_project_id_to_stable_external_identity_without_fixed_auth(self) -> None:
         requests: list[httpx.Request] = []
 
         def handler(request: httpx.Request) -> httpx.Response:
             requests.append(request)
-            self.assertEqual(request.headers.get("Authorization"), "Bearer test-token")
-            skip = request.url.params.get("$skip")
-            if skip == "0":
-                payload = [
-                    _project("ERP-1", "P-100", "Projet 100", client="Client A", manager="Alice"),
-                    _project(
-                        "ERP-2",
-                        "P-200",
-                        "Projet 200",
-                        client="Client B",
-                        manager="Bob",
-                        status="Completed",
-                    ),
-                ]
-            else:
-                payload = [
-                    _project(
-                        "ERP-3",
-                        "P-300",
-                        "Projet 300",
-                        client=None,
-                        manager=None,
-                        status="Inactive",
-                    )
-                ]
-            return httpx.Response(200, json=payload)
+            self.assertEqual(request.headers.get("X-Test-Credential"), "opaque-test-value")
+            return httpx.Response(200, content=FIXTURE.read_bytes())
 
-        settings = _settings()
-        source = AcumaticaProjectSource(settings, transport=httpx.MockTransport(handler))
+        source = ODataProjectSource(
+            _settings(),
+            transport=httpx.MockTransport(handler),
+            request_headers={"X-Test-Credential": "opaque-test-value"},
+        )
 
         rows = source.list_projects()
 
-        self.assertEqual([row.number for row in rows], ["P-100", "P-200", "P-300"])
-        self.assertEqual(rows[0].client, "Client A")
-        self.assertEqual(rows[1].project_manager_name, "Bob")
-        self.assertEqual(rows[2].status, "Inactive")
-        self.assertEqual(len(requests), 2)
-        self.assertEqual(requests[0].url.path, "/Instance/entity/Default/25.200.001/Project")
-        self.assertEqual(requests[0].url.params.get("$top"), "2")
-        self.assertEqual(requests[0].url.params.get("$skip"), "0")
-        self.assertEqual(requests[1].url.params.get("$skip"), "2")
-        self.assertIn("ProjectID", requests[0].url.params.get("$select", ""))
-        self.assertNotIn("test-token", repr(settings))
-        self.assertNotIn("test-token", str(settings.safe_summary()))
-
-    def test_field_mapping_is_configurable(self) -> None:
-        def handler(_request: httpx.Request) -> httpx.Response:
-            return httpx.Response(
-                200,
-                json=[
-                    {
-                        "id": "ERP-X",
-                        "Nbr": {"value": "X-1"},
-                        "Label": {"value": "Projet personnalisé"},
-                        "Account": {"value": "Client X"},
-                        "Owner": {"value": "Caroline"},
-                        "State": {"value": "Open"},
-                    }
-                ],
-            )
-
-        settings = _settings(
-            base_url="https://erp.example.test",
-            version="custom-v1",
-            entity="CustomProject",
-            number_field="Nbr",
-            name_field="Label",
-            client_field="Account",
-            project_manager_field="Owner",
-            status_field="State",
+        self.assertEqual(len(rows), 5)
+        self.assertEqual(rows[0].external_id, "101")
+        self.assertEqual(rows[0].number, "P-0100")
+        self.assertEqual(rows[0].name, "Projet Électrique – Montréal")
+        self.assertEqual(rows[0].client, "Client Énergie")
+        self.assertEqual(rows[0].project_manager_external_id, "PM-01")
+        self.assertEqual(rows[0].project_manager_name, "Élodie Tremblay")
+        self.assertEqual(rows[0].status, "Actif")
+        self.assertEqual(len(requests), 1)
+        self.assertEqual(requests[0].url.path, "/Instance/oDATA/RP_Projects")
+        self.assertIn("application/atom+xml", requests[0].headers["Accept"])
+        self.assertEqual(
+            source._settings.safe_summary(),
+            {"protocol": "odata", "feed_path": "/oDATA/RP_Projects"},
         )
-        row = AcumaticaProjectSource(
-            settings,
-            transport=httpx.MockTransport(handler),
-        ).list_projects()[0]
-        self.assertEqual(row.number, "X-1")
-        self.assertEqual(row.name, "Projet personnalisé")
-        self.assertEqual(row.client, "Client X")
-        self.assertEqual(row.project_manager_name, "Caroline")
-        self.assertEqual(row.status, "Open")
+        self.assertNotIn("opaque-test-value", repr(source._settings))
 
-    def test_optional_fields_may_be_absent_without_inventing_values(self) -> None:
-        def handler(_request: httpx.Request) -> httpx.Response:
-            return httpx.Response(
-                200,
-                json=[_project("ERP-1", "P-1", "Projet minimal", client=None, manager=None, status=None)],
-            )
-
-        row = AcumaticaProjectSource(
-            _settings(page_size=200),
-            transport=httpx.MockTransport(handler),
-        ).list_projects()[0]
-
-        self.assertIsNone(row.client)
-        self.assertIsNone(row.project_manager_name)
-        self.assertEqual(row.status, "active")
-
-    def test_http_failures_are_classified_without_leaking_body_or_token(self) -> None:
+    def test_http_failures_are_classified_without_leaking_body_or_headers(self) -> None:
         cases = (
             (401, "authentication", False),
             (403, "authorization", False),
@@ -164,9 +214,10 @@ class AcumaticaProjectSourceTests(unittest.TestCase):
                 def handler(_request: httpx.Request, status=status) -> httpx.Response:
                     return httpx.Response(status, text="sensitive-upstream-body")
 
-                source = AcumaticaProjectSource(
-                    _settings(bearer_token="secret-bearer-value"),
+                source = ODataProjectSource(
+                    _settings(),
                     transport=httpx.MockTransport(handler),
+                    request_headers={"Cookie": "session=secret-cookie-value"},
                 )
                 with self.assertLogs(LOGGER, level="WARNING") as captured:
                     with self.assertRaises(ApplicationOperationError) as raised:
@@ -178,7 +229,7 @@ class AcumaticaProjectSourceTests(unittest.TestCase):
                 self.assertEqual(raised.exception.context["retryable"], retryable)
                 diagnostic = str(raised.exception.as_dict()) + "\n" + "\n".join(captured.output)
                 self.assertNotIn("sensitive-upstream-body", diagnostic)
-                self.assertNotIn("secret-bearer-value", diagnostic)
+                self.assertNotIn("secret-cookie-value", diagnostic)
 
     def test_timeout_and_network_errors_are_classified_and_safe(self) -> None:
         cases = (
@@ -202,9 +253,10 @@ class AcumaticaProjectSourceTests(unittest.TestCase):
                 def handler(request: httpx.Request, factory=factory):
                     raise factory(request)
 
-                source = AcumaticaProjectSource(
-                    _settings(bearer_token="secret-bearer-value"),
+                source = ODataProjectSource(
+                    _settings(),
                     transport=httpx.MockTransport(handler),
+                    request_headers={"Authorization": "opaque secret-header-value"},
                 )
                 with self.assertLogs(LOGGER, level="WARNING") as captured:
                     with self.assertRaises(ApplicationOperationError) as raised:
@@ -216,90 +268,51 @@ class AcumaticaProjectSourceTests(unittest.TestCase):
                 diagnostic = str(raised.exception.as_dict()) + "\n" + "\n".join(captured.output)
                 self.assertNotIn("sensitive-timeout-detail", diagnostic)
                 self.assertNotIn("sensitive-network-detail", diagnostic)
-                self.assertNotIn("secret-bearer-value", diagnostic)
+                self.assertNotIn("secret-header-value", diagnostic)
 
-    def test_malformed_json_and_invalid_shapes_are_rejected(self) -> None:
-        cases = (
-            (
-                httpx.Response(200, content=b"{not-json"),
-                "invalid_json",
-                "invalid_json",
-            ),
-            (
-                httpx.Response(200, json={"items": []}),
-                "invalid_payload",
-                "not_a_list",
-            ),
-            (
-                httpx.Response(200, json=[_project("ERP-1", "P-1", "Projet"), "bad-row"]),
-                "invalid_payload",
-                "non_object_row",
-            ),
-        )
-        for response, failure_kind, reason in cases:
-            with self.subTest(reason=reason):
-                source = AcumaticaProjectSource(
-                    _settings(page_size=200),
-                    transport=httpx.MockTransport(lambda _request, response=response: response),
-                )
-                with self.assertRaises(ApplicationOperationError) as raised:
-                    source.list_projects()
-
-                self.assertEqual(raised.exception.code, "acumatica_project_response_invalid")
-                self.assertEqual(raised.exception.context["failure_kind"], failure_kind)
-                self.assertEqual(raised.exception.context["reason"], reason)
-
-    def test_incomplete_required_project_payload_is_rejected_without_logging_payload(self) -> None:
-        marker = "sensitive-project-name"
+    def test_invalid_feed_diagnostics_never_include_project_payload_or_secret(self) -> None:
+        marker = "sensitive-project-payload"
+        secret = "secret-cookie-value"
 
         def handler(_request: httpx.Request) -> httpx.Response:
-            return httpx.Response(
-                200,
-                json=[{"id": "ERP-1", "ProjectID": {"value": "P-1"}, "Other": marker}],
-            )
+            return httpx.Response(200, content=f"<feed>{marker}".encode("utf-8"))
 
-        source = AcumaticaProjectSource(
-            _settings(page_size=200),
+        source = ODataProjectSource(
+            _settings(),
             transport=httpx.MockTransport(handler),
+            request_headers={"Cookie": f"session={secret}"},
         )
         with self.assertLogs(LOGGER, level="WARNING") as captured:
             with self.assertRaises(ApplicationOperationError) as raised:
                 source.list_projects()
 
-        self.assertEqual(raised.exception.code, "acumatica_project_payload_invalid")
-        self.assertNotIn(marker, "\n".join(captured.output))
-        self.assertEqual(
-            raised.exception.context,
-            {"has_external_id": True, "has_number": True, "has_name": False},
-        )
+        self.assertEqual(raised.exception.code, "acumatica_project_response_invalid")
+        self.assertEqual(raised.exception.context["failure_kind"], "invalid_payload")
+        self.assertEqual(raised.exception.context["reason"], "invalid_xml")
+        diagnostic = str(raised.exception.as_dict()) + "\n" + "\n".join(captured.output)
+        self.assertNotIn(marker, diagnostic)
+        self.assertNotIn(secret, diagnostic)
 
-    def test_failure_on_later_page_never_returns_a_partial_snapshot(self) -> None:
-        calls = 0
 
-        def handler(request: httpx.Request) -> httpx.Response:
-            nonlocal calls
-            calls += 1
-            if request.url.params.get("$skip") == "0":
-                return httpx.Response(
-                    200,
-                    json=[
-                        _project("ERP-1", "P-1", "Projet 1"),
-                        _project("ERP-2", "P-2", "Projet 2"),
-                    ],
-                )
-            return httpx.Response(503, text="page-two-sensitive-body")
-
-        source = AcumaticaProjectSource(
-            _settings(page_size=2),
-            transport=httpx.MockTransport(handler),
-        )
-
-        with self.assertRaises(ApplicationOperationError) as raised:
-            source.list_projects()
-
-        self.assertEqual(calls, 2)
-        self.assertEqual(raised.exception.context["failure_kind"], "upstream_5xx")
-        self.assertEqual(raised.exception.context["http_status"], 503)
+class StringPayload:
+    ALTERNATE_PREFIXES = """<?xml version="1.0" encoding="utf-8"?>
+<a:feed xmlns:a="http://www.w3.org/2005/Atom"
+        xmlns:data="http://schemas.microsoft.com/ado/2007/08/dataservices"
+        xmlns:meta="http://schemas.microsoft.com/ado/2007/08/dataservices/metadata">
+  <a:entry>
+    <a:content type="application/xml">
+      <meta:properties>
+        <data:BaseType>R</data:BaseType>
+        <data:LastModifiedDateTime meta:type="Edm.DateTime">2026-09-24T18:00:00Z</data:LastModifiedDateTime>
+        <data:CustomerName>Client Côte-Nord</data:CustomerName>
+        <data:ProjectName>Projet Québec</data:ProjectName>
+        <data:DefaultBranchCode>210</data:DefaultBranchCode>
+        <data:ProjectCode xml:space="preserve"> P-0214 </data:ProjectCode>
+        <data:ProjectId meta:type="Edm.Int32">214</data:ProjectId>
+      </meta:properties>
+    </a:content>
+  </a:entry>
+</a:feed>"""
 
 
 if __name__ == "__main__":
