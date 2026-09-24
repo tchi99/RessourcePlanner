@@ -184,10 +184,12 @@ function ExecutionControllerPanel({
 }) {
   const tone =
     execution.phase === 'CI_RED' ||
+    execution.phase === 'STALLED' ||
     execution.phase === 'PIPELINE_INVALID'
       ? 'danger'
       : execution.phase === 'ROADMAP_UPDATE_REQUIRED' ||
-          execution.phase === 'DELIVERY_UNVERIFIED'
+          execution.phase === 'DELIVERY_UNVERIFIED' ||
+          execution.phase === 'POSSIBLE_STALL'
         ? 'warning'
         : execution.phase === 'READY_TO_MERGE'
           ? 'success'
