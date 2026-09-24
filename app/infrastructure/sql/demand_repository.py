@@ -112,6 +112,20 @@ class SqlDemandRepository(DemandRepositoryPort):
             # this compatibility name later without changing the application port.
             number=_text(request.legacy_demand_number) or request.id,
             status=_text(request.status),
+            cancellation_request_id=_optional_text(request.cancellation_request_id),
+            cancellation_state=_optional_text(request.cancellation_state),
+            cancellation_requested_by_user_id=_optional_text(
+                request.cancellation_requested_by_user_id
+            ),
+            cancellation_requested_at=request.cancellation_requested_at,
+            cancellation_reason=_optional_text(request.cancellation_reason),
+            cancellation_resolved_by_user_id=_optional_text(
+                request.cancellation_resolved_by_user_id
+            ),
+            cancellation_resolved_at=request.cancellation_resolved_at,
+            cancellation_resolution_comment=_optional_text(
+                request.cancellation_resolution_comment
+            ),
             project_number=_optional_text(project.number),
             project_name=_optional_text(project.name),
             client=_optional_text(project.client),
@@ -808,6 +822,107 @@ class SqlDemandRepository(DemandRepositoryPort):
         self._session.flush()
         return number
 
+    def request_cancellation(
+        self,
+        number: str,
+        *,
+        cancellation_request_id: str,
+        reason: str,
+        expected_version: int,
+    ) -> None:
+        request = self._request(number)
+        previous_status = request.status
+        self._acquire_request_version(request, expected_version)
+        occurred_at = utc_now()
+        request.cancellation_request_id = _text(cancellation_request_id)
+        request.cancellation_state = "PENDING"
+        request.cancellation_requested_by_user_id = self._actor_user_id
+        request.cancellation_requested_at = occurred_at
+        request.cancellation_reason = _text(reason)
+        request.cancellation_resolved_by_user_id = None
+        request.cancellation_resolved_at = None
+        request.cancellation_resolution_comment = None
+        self._session.flush()
+        self._append_history(
+            request,
+            action="Demande d'annulation",
+            comment=_text(reason),
+            previous_status=previous_status,
+            changed_fields=(
+                "cancellation_request_id",
+                "cancellation_state",
+                "cancellation_requested_by_user_id",
+                "cancellation_requested_at",
+                "cancellation_reason",
+            ),
+            extra_details={
+                "cancellation_request_id": request.cancellation_request_id,
+                "cancellation_state": request.cancellation_state,
+                "requested_by_user_id": request.cancellation_requested_by_user_id,
+                "requested_at": occurred_at.isoformat(),
+                "reason": request.cancellation_reason,
+            },
+        )
+        self._session.flush()
+
+    def reject_cancellation(
+        self,
+        number: str,
+        *,
+        cancellation_request_id: str,
+        comment: str,
+        expected_version: int,
+    ) -> None:
+        request = self._request(number)
+        previous_status = request.status
+        wanted_cycle = _text(cancellation_request_id)
+        if request.cancellation_state != "PENDING" or request.cancellation_request_id != wanted_cycle:
+            raise ApplicationConflictError(
+                "La demande d'annulation à résoudre n'est plus active.",
+                code="cancellation_cycle_conflict",
+                context={
+                    "demand_number": _text(request.legacy_demand_number) or request.id,
+                    "expected_cancellation_request_id": wanted_cycle,
+                    "current_cancellation_request_id": request.cancellation_request_id,
+                    "cancellation_state": request.cancellation_state,
+                },
+            )
+        self._acquire_request_version(request, expected_version)
+        occurred_at = utc_now()
+        request.cancellation_state = "REJECTED"
+        request.cancellation_resolved_by_user_id = self._actor_user_id
+        request.cancellation_resolved_at = occurred_at
+        request.cancellation_resolution_comment = _text(comment)
+        self._session.flush()
+        self._append_history(
+            request,
+            action="Refus d'annulation",
+            comment=_text(comment),
+            previous_status=previous_status,
+            changed_fields=(
+                "cancellation_state",
+                "cancellation_resolved_by_user_id",
+                "cancellation_resolved_at",
+                "cancellation_resolution_comment",
+            ),
+            extra_details={
+                "cancellation_request_id": request.cancellation_request_id,
+                "cancellation_state": request.cancellation_state,
+                "requested_by_user_id": request.cancellation_requested_by_user_id,
+                "requested_at": (
+                    request.cancellation_requested_at.isoformat()
+                    if request.cancellation_requested_at is not None
+                    else None
+                ),
+                "reason": request.cancellation_reason,
+                "resolved_by_user_id": request.cancellation_resolved_by_user_id,
+                "resolved_at": occurred_at.isoformat(),
+                "resolution_comment": request.cancellation_resolution_comment,
+                "resolution": "REJECTED",
+            },
+        )
+        self._session.flush()
+
     def extend_candidate_window(
         self,
         number: str,
@@ -1050,13 +1165,17 @@ class SqlDemandRepository(DemandRepositoryPort):
         comment: str,
         previous_status: str | None = None,
         changed_fields: tuple[str, ...] = (),
+        extra_details: Mapping[str, Any] | None = None,
     ) -> None:
+        detail_payload: dict[str, Any] = {
+            "aggregate_version": int(request.aggregate_version or 1),
+            "line_mode": bool(request.line_mode),
+            "changed_fields": list(dict.fromkeys(changed_fields)),
+        }
+        if extra_details:
+            detail_payload.update(dict(extra_details))
         details = json.dumps(
-            {
-                "aggregate_version": int(request.aggregate_version or 1),
-                "line_mode": bool(request.line_mode),
-                "changed_fields": list(dict.fromkeys(changed_fields)),
-            },
+            detail_payload,
             sort_keys=True,
             separators=(",", ":"),
         )
