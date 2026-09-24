@@ -55,6 +55,8 @@ class ReactDemandsContractTests(unittest.TestCase):
         self.assertIn("Approbation ≠ confirmation", source)
         self.assertIn("getDemandDetail", source)
         self.assertIn("<DemandDetail", source)
+        self.assertIn("canonicalDetail={selectedDetail}", source)
+        self.assertIn("hasUnsavedChanges={editorDirty || contextDirty}", source)
         self.assertIn("confirmDiscardChanges", source)
         self.assertNotIn('name="project_manager"', source)
 
