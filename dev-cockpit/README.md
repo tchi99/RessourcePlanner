@@ -191,45 +191,56 @@ La clé de travail active vient d'abord de l'état documenté dans l'issue/roadm
 
 Le commit de `main` affiché dans le footer est uniquement une référence sur l'état du dépôt. Les états `IN_PROGRESS`, `STALLED`, la dernière activité, les workflows associés et le détail Developer utilisent le HEAD de la branche active ou de la PR active.
 
-## Pipeline produit explicite du roadmap #55
+## Pipeline canonique du roadmap #55
 
-Lorsque #55 contient une section dont le heading annonce une `Suite produit` ou un `Pipeline produit`, ce **pipeline produit explicite devient la source canonique du focus courant** : il détermine l'issue/sous-tranche DEV active utilisée pour les PR, branches, CI, stalls et prompts. Le resolver historique basé sur `Ordre actif :` reste seulement un fallback de compatibilité pour les roadmaps plus anciens qui n'ont pas encore de pipeline explicite.
+GitHub #55 reste la source de vérité du produit. Le cockpit ne conserve aucun état produit local.
 
-Le contrat actuellement documenté dans #55 est déterministe :
+Quand #55 contient le bloc versionné `COCKPIT_PIPELINE_V1`, ce bloc est **autoritaire** pour déterminer le focus courant, les horizons Maintenant/Ensuite, les gates, le prompt Developer et la clé utilisée pour rechercher une PR ou une branche. Le texte humain détaillé de #55 reste de la documentation; il ne peut ni remplacer ni contredire le bloc canonique dans le resolver.
 
-1. la séquence ordonnée est le premier bloc fenced `text` de cette section qui contient des références `#issue` / `#issueSousTranche`;
-2. une étape ordinaire est `WORK`;
-3. une étape explicitement libellée ASTRA / analyse architecturale est `ARCHITECTURE_GATE`;
-4. une étape explicitement libellée validation VM / environnement / infrastructure est `ENVIRONMENT_GATE`;
-5. la table Markdown de la même section peut enrichir le type et surtout l'état de la gate;
-6. `✅` ou une formulation explicite de gate terminée/satisfaite/validée dans #55 marque la gate comme franchie;
-7. les sous-tranches WORK continuent aussi de réutiliser les marqueurs GitHub de l'issue active.
-
-Aucun état local n'enregistre qu'une gate est terminée. Si #55 ne la marque plus comme satisfaite, le Cockpit la reconsidère comme ouverte au prochain refresh.
-
-Exemple de trajectoire :
+Format exact :
 
 ```text
-WORK → WORK → WORK
-          ↓
-ARCHITECTURE_GATE
-          ↓
-WORK → WORK → WORK
-          ↓
-ENVIRONMENT_GATE
+<!-- COCKPIT_PIPELINE_V1 -->
+KEY | TYPE | STATUS | PARENT | LANE | TITLE
+ASTRA-399 | ARCHITECTURE_GATE | DONE | #399 | MAIN | analyse architecture de l'annulation
+399A | WORK | READY | #399 | MAIN | état persistant + politique commune
+399B | WORK | BLOCKED | #399 | MAIN | acceptation atomique humain + actif
+408 | WORK | READY | #408 | PARALLEL | cycle de vie et filtres
+ENV-263 | ENVIRONMENT_GATE | BLOCKED | #263 | MAIN | validation environnement
+<!-- /COCKPIT_PIPELINE_V1 -->
 ```
 
-Le dashboard principal affiche une projection compacte du pipeline sous **Maintenant / Parallèle disponible / Ensuite**. Le panneau **Product Owner** conserve la trajectoire détaillée et rétractable sous **Maintenant / En parallèle / Ensuite / Plus tard**.
+Les six colonnes sont obligatoires et séparées par `|` :
 
-Une ligne du bloc de trajectoire qui commence explicitement par `En parallèle` est classée dans la lane `PARALLEL`. Elle reste visible comme travail READY indépendant mais **ne bloque jamais l'avancement de la lane principale**. Les mentions simplement descriptives de parallélisme dans la table ou dans une justification ne changent pas automatiquement la lane.
+- `KEY` est l'identité stable de l'étape. Un WORK utilise une issue ou sous-tranche (`399`, `399A`). Une gate d'architecture utilise `ASTRA-<issue>`; une gate environnementale utilise `ENV-<issue>`. Un numéro de PR, de CI ou de commit n'est jamais une identité d'étape.
+- `TYPE` vaut exactement `WORK`, `ARCHITECTURE_GATE` ou `ENVIRONMENT_GATE`.
+- `STATUS` vaut exactement `DONE`, `READY` ou `BLOCKED`.
+- `PARENT` vaut exactement `#<issue>`. Pour un WORK, la partie numérique de la clé doit être égale au parent; `399A` appartient donc à `#399`.
+- `LANE` vaut exactement `MAIN` ou `PARALLEL`.
+- `TITLE` est le libellé humain court de l'étape et ne doit pas contenir `|`.
 
-Chaque step y est lui-même rétractable :
-- une sous-tranche DEV charge la section exacte de son issue parent;
-- une issue DEV charge son contenu GitHub;
-- une gate affiche son type, son état et sa justification tirés de #55, avec le contexte de l'issue cible et la documentation associée.
+La lane `MAIN` est strictement ordonnée. Tant qu'elle contient une étape non terminée, elle doit avoir **exactement une** étape `READY`; toutes les étapes MAIN avant elle sont `DONE` et toutes celles après elle sont `BLOCKED`. Une lane MAIN entièrement terminée ne contient aucune étape `READY`. La lane `PARALLEL` peut exposer plusieurs étapes `READY` sans changer le focus principal.
 
-Une gate d'architecture ou d'environnement n'est jamais transformée en tranche DEV. Si elle devient le step courant, le prompt Developer indique explicitement qu'aucune implémentation ne doit démarrer avant que GitHub/#55 documente la gate comme satisfaite.
+Le parser valide notamment :
 
+- marqueurs de début/fin uniques;
+- en-tête et nombre de colonnes;
+- clés uniques;
+- types, statuts et lanes connus;
+- syntaxe de `PARENT`;
+- cohérence clé/parent;
+- rejet explicite des identités PR/CI;
+- ordre MAIN non ambigu et unicité du READY principal.
+
+### Fail closed
+
+Si au moins un marqueur `COCKPIT_PIPELINE_V1` est présent mais que le bloc est incomplet, invalide, ambigu ou incohérent, le cockpit **ne revient jamais** aux heuristiques Markdown historiques. Il retourne `pipeline.valid = false`, aucune étape `now`, aucune issue/tranche active, et un message demandant de corriger #55. Le Developer ne reçoit aucun prompt lui demandant de démarrer une tranche inventée.
+
+Si le bloc canonique est complètement absent, le resolver historique reste disponible comme fallback de compatibilité pour les anciens roadmaps. Ce fallback continue de lire la section `Suite produit` / `Pipeline produit`, son bloc `text`, ses marqueurs et sa table Markdown. Il n'est jamais combiné au bloc canonique V1.
+
+Aucun état local n'enregistre qu'une étape ou une gate est terminée. Toute évolution du produit doit mettre à jour le bloc canonique de #55. Après fusion d'une tranche, son statut passe à `DONE`, la prochaine étape MAIN passe à `READY`, et les suivantes restent `BLOCKED`.
+
+Le dashboard principal affiche une projection compacte sous **Maintenant / Parallèle disponible / Ensuite**. Le panneau **Product Owner** conserve la trajectoire détaillée sous **Maintenant / En parallèle / Ensuite / Plus tard**. Une gate READY reste une gate : elle ne devient jamais une tranche DEV et le prompt Developer interdit explicitement de lancer du travail applicatif tant qu'elle n'est pas passée à `DONE`.
 
 ### PR d'architecture vs travail Developer
 
