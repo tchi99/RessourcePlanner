@@ -551,3 +551,27 @@ class DemandCancellationRejectCommand:
     cancellation_request_id: str
     comment: str
     expected_version: int | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class DemandCancellationAcceptCommand:
+    number: str
+    cancellation_request_id: str
+    comment: str
+    expected_version: int
+    expected_planning_version: int
+    correlation_id: str | None = None
+
+    def __post_init__(self) -> None:
+        if int(self.expected_version) < 1:
+            raise ApplicationValidationError(
+                "La version attendue de la demande doit être au moins 1.",
+                code="demand_version_invalid",
+                context={"expected_version": self.expected_version},
+            )
+        if int(self.expected_planning_version) < 1:
+            raise ApplicationValidationError(
+                "La version attendue du planning doit être au moins 1.",
+                code="planning_version_invalid",
+                context={"expected_planning_version": self.expected_planning_version},
+            )

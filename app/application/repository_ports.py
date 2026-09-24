@@ -61,6 +61,17 @@ class DemandRepositoryPort(Protocol):
         expected_version: int,
     ) -> None: ...
 
+    def accept_cancellation(
+        self,
+        number: str,
+        *,
+        cancellation_request_id: str,
+        comment: str,
+        expected_version: int,
+        planning_version: int,
+        correlation_id: str,
+    ) -> Mapping[str, Any]: ...
+
     def extend_candidate_window(
         self,
         number: str,

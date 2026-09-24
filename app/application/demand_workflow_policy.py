@@ -27,6 +27,7 @@ ACTION_APPROVE = "approve"
 ACTION_CORRECTION = "correction"
 ACTION_CANCEL = "cancel"
 ACTION_REQUEST_CANCELLATION = "request-cancellation"
+ACTION_ACCEPT_CANCELLATION = "accept-cancellation"
 ACTION_REJECT_CANCELLATION = "reject-cancellation"
 ACTION_EMERGENCY_PLAN = "emergency-plan"
 
@@ -37,6 +38,7 @@ DEMAND_WORKFLOW_ACTIONS = (
     ACTION_CORRECTION,
     ACTION_CANCEL,
     ACTION_REQUEST_CANCELLATION,
+    ACTION_ACCEPT_CANCELLATION,
     ACTION_REJECT_CANCELLATION,
     ACTION_EMERGENCY_PLAN,
 )
@@ -103,6 +105,10 @@ _ACTION_PERMISSIONS = {
     ACTION_CORRECTION: (PERMISSION_APPROVE_DEMANDS,),
     ACTION_CANCEL: (PERMISSION_MANAGE_DEMANDS,),
     ACTION_REQUEST_CANCELLATION: (PERMISSION_MANAGE_DEMANDS,),
+    ACTION_ACCEPT_CANCELLATION: (
+        PERMISSION_APPROVE_DEMANDS,
+        PERMISSION_MANAGE_PLANNING,
+    ),
     ACTION_REJECT_CANCELLATION: (
         PERMISSION_APPROVE_DEMANDS,
         PERMISSION_MANAGE_PLANNING,
@@ -117,6 +123,9 @@ _ACTION_STATUSES = {
     ACTION_CORRECTION: frozenset({"Soumise"}),
     ACTION_CANCEL: frozenset({"Brouillon", "À corriger", "Soumise", "En planification"}),
     ACTION_REQUEST_CANCELLATION: frozenset(
+        {"Brouillon", "À corriger", "Soumise", "En planification"}
+    ),
+    ACTION_ACCEPT_CANCELLATION: frozenset(
         {"Brouillon", "À corriger", "Soumise", "En planification"}
     ),
     ACTION_REJECT_CANCELLATION: frozenset(
@@ -157,11 +166,13 @@ def _cancellation_blocks(
         )
 
     if not policy.cancellation_pending:
-        blocks[ACTION_REJECT_CANCELLATION] = DemandWorkflowBlock(
+        resolution_block = DemandWorkflowBlock(
             code="cancellation_not_pending",
             message="Aucune demande d'annulation n'est en attente.",
             error_kind="conflict",
         )
+        blocks[ACTION_ACCEPT_CANCELLATION] = resolution_block
+        blocks[ACTION_REJECT_CANCELLATION] = resolution_block
     return blocks
 
 

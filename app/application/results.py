@@ -71,6 +71,14 @@ class DemandCancellationMutationResult(ApplicationResult):
     status: str
     cancellation_request_id: str
     cancellation_state: str
+    planning_version: int | None = None
+    request_version: int | None = None
+    deleted_human_shifts: int = 0
+    deleted_asset_allocations: int = 0
+    cancelled_workforce_requirements: int = 0
+    cancelled_asset_requirements: int = 0
+    released_locked_human_shifts: int = 0
+    released_locked_asset_allocations: int = 0
 
 
 @dataclass(frozen=True, slots=True)

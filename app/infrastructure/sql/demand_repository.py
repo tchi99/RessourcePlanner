@@ -559,6 +559,20 @@ class SqlDemandRepository(DemandRepositoryPort):
             raise KeyError(f"Demande {wanted} introuvable")
         return request
 
+    def _request_fresh(self, number: str) -> WorkforceRequest:
+        wanted = _text(number)
+        request = self._session.scalar(
+            select(WorkforceRequest)
+            .where(
+                (WorkforceRequest.legacy_demand_number == wanted)
+                | (WorkforceRequest.id == wanted)
+            )
+            .execution_options(populate_existing=True)
+        )
+        if request is None:
+            raise KeyError(f"Demande {wanted} introuvable")
+        return request
+
     def _project(self, number: object) -> Project:
         project_number = _text(number)
         project = self._session.scalar(
@@ -1065,6 +1079,158 @@ class SqlDemandRepository(DemandRepositoryPort):
             },
         )
         self._session.flush()
+
+    def accept_cancellation(
+        self,
+        number: str,
+        *,
+        cancellation_request_id: str,
+        comment: str,
+        expected_version: int,
+        planning_version: int,
+        correlation_id: str,
+    ) -> Mapping[str, Any]:
+        # Called only after ADR-006 planning_version acquisition. Re-read the request
+        # from SQL so the request CAS and cleanup decisions are based on guarded state.
+        request = self._request_fresh(number)
+        previous_status = request.status
+        wanted_cycle = _text(cancellation_request_id)
+        if (
+            request.cancellation_state != "PENDING"
+            or request.cancellation_request_id != wanted_cycle
+        ):
+            raise ApplicationConflictError(
+                "La demande d'annulation à résoudre n'est plus active.",
+                code="cancellation_cycle_conflict",
+                context={
+                    "demand_number": _text(request.legacy_demand_number) or request.id,
+                    "expected_cancellation_request_id": wanted_cycle,
+                    "current_cancellation_request_id": request.cancellation_request_id,
+                    "cancellation_state": request.cancellation_state,
+                },
+            )
+
+        request_version = self._acquire_request_version(request, expected_version)
+
+        workforce_requirements = list(
+            self._session.scalars(
+                select(ResourceRequirement)
+                .where(ResourceRequirement.workforce_request_id == request.id)
+                .order_by(ResourceRequirement.id)
+            ).all()
+        )
+        workforce_requirement_ids = tuple(row.id for row in workforce_requirements)
+        human_shifts = (
+            list(
+                self._session.scalars(
+                    select(Shift)
+                    .where(Shift.resource_requirement_id.in_(workforce_requirement_ids))
+                    .order_by(Shift.id)
+                ).all()
+            )
+            if workforce_requirement_ids
+            else []
+        )
+
+        asset_requirements = list(
+            self._session.scalars(
+                select(AssetRequirement)
+                .where(AssetRequirement.workforce_request_id == request.id)
+                .order_by(AssetRequirement.id)
+            ).all()
+        )
+        asset_requirement_ids = tuple(row.id for row in asset_requirements)
+        asset_allocations = (
+            list(
+                self._session.scalars(
+                    select(AssetAllocation)
+                    .where(AssetAllocation.asset_requirement_id.in_(asset_requirement_ids))
+                    .order_by(AssetAllocation.id)
+                ).all()
+            )
+            if asset_requirement_ids
+            else []
+        )
+
+        human_shift_ids = tuple(row.id for row in human_shifts)
+        asset_allocation_ids = tuple(row.id for row in asset_allocations)
+        locked_human = sum(1 for row in human_shifts if bool(row.locked))
+        locked_assets = sum(1 for row in asset_allocations if bool(row.locked))
+
+        # ADR-009 explicitly authorizes deletion of locked decisions inside this
+        # request-owned cancellation scope. No global force flag is introduced.
+        for row in human_shifts:
+            self._session.delete(row)
+        for row in asset_allocations:
+            self._session.delete(row)
+
+        cancelled_workforce = 0
+        for row in workforce_requirements:
+            if row.status != "Terminé":
+                row.status = "Annulé"
+                cancelled_workforce += 1
+
+        cancelled_assets = 0
+        for row in asset_requirements:
+            if row.status != "Terminé":
+                row.status = "Annulé"
+                cancelled_assets += 1
+
+        occurred_at = utc_now()
+        request.status = "Annulée"
+        request.cancellation_state = "ACCEPTED"
+        request.cancellation_resolved_by_user_id = self._actor_user_id
+        request.cancellation_resolved_at = occurred_at
+        request.cancellation_resolution_comment = _text(comment)
+        self._session.flush()
+
+        self._append_history(
+            request,
+            action="Acceptation d'annulation",
+            comment=_text(comment),
+            previous_status=previous_status,
+            changed_fields=(
+                "status",
+                "cancellation_state",
+                "cancellation_resolved_by_user_id",
+                "cancellation_resolved_at",
+                "cancellation_resolution_comment",
+            ),
+            extra_details={
+                "cancellation_request_id": request.cancellation_request_id,
+                "cancellation_state": request.cancellation_state,
+                "resolution": "ACCEPTED",
+                "correlation_id": _text(correlation_id),
+                "planning_version": int(planning_version),
+                "request_version": int(request_version),
+                "requested_by_user_id": request.cancellation_requested_by_user_id,
+                "requested_at": (
+                    request.cancellation_requested_at.isoformat()
+                    if request.cancellation_requested_at is not None
+                    else None
+                ),
+                "reason": request.cancellation_reason,
+                "resolved_by_user_id": request.cancellation_resolved_by_user_id,
+                "resolved_at": occurred_at.isoformat(),
+                "resolution_comment": request.cancellation_resolution_comment,
+                "deleted_human_shift_ids": list(human_shift_ids),
+                "deleted_asset_allocation_ids": list(asset_allocation_ids),
+                "workforce_requirement_ids": list(workforce_requirement_ids),
+                "asset_requirement_ids": list(asset_requirement_ids),
+                "released_locked_human_shifts": locked_human,
+                "released_locked_asset_allocations": locked_assets,
+            },
+        )
+        self._session.flush()
+        return {
+            "request_version": int(request_version),
+            "deleted_human_shifts": len(human_shifts),
+            "deleted_asset_allocations": len(asset_allocations),
+            "cancelled_workforce_requirements": cancelled_workforce,
+            "cancelled_asset_requirements": cancelled_assets,
+            "released_locked_human_shifts": locked_human,
+            "released_locked_asset_allocations": locked_assets,
+        }
 
     def extend_candidate_window(
         self,
