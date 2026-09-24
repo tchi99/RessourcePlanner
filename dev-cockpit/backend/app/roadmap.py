@@ -21,6 +21,23 @@ PIPELINE_ENVIRONMENT = "ENVIRONMENT_GATE"
 PIPELINE_WORK = "WORK"
 PIPELINE_MAIN = "MAIN"
 PIPELINE_PARALLEL = "PARALLEL"
+PIPELINE_STATUS_DONE = "DONE"
+PIPELINE_STATUS_READY = "READY"
+PIPELINE_STATUS_BLOCKED = "BLOCKED"
+COCKPIT_PIPELINE_START = "<!-- COCKPIT_PIPELINE_V1 -->"
+COCKPIT_PIPELINE_END = "<!-- /COCKPIT_PIPELINE_V1 -->"
+COCKPIT_PIPELINE_HEADER = ("KEY", "TYPE", "STATUS", "PARENT", "LANE", "TITLE")
+VALID_PIPELINE_KINDS = {
+    PIPELINE_WORK,
+    PIPELINE_ARCHITECTURE,
+    PIPELINE_ENVIRONMENT,
+}
+VALID_PIPELINE_STATUSES = {
+    PIPELINE_STATUS_DONE,
+    PIPELINE_STATUS_READY,
+    PIPELINE_STATUS_BLOCKED,
+}
+VALID_PIPELINE_LANES = {PIPELINE_MAIN, PIPELINE_PARALLEL}
 ARCHITECTURE_GATE_WORDS = re.compile(
     r"\b(?:ASTRA|analyse\s+architectur(?:e|ale)|revue\s+architecturale|architecture\s+gate)\b",
     re.IGNORECASE,
@@ -59,6 +76,23 @@ class PipelineStep:
         return asdict(self)
 
 
+@dataclass
+class PipelineContract:
+    present: bool
+    valid: bool
+    source: str
+    steps: list[PipelineStep]
+    errors: list[str]
+
+    def to_dict(self) -> dict:
+        return {
+            "present": self.present,
+            "valid": self.valid,
+            "source": self.source,
+            "errors": list(self.errors),
+        }
+
+
 def normalize_key(value: str) -> str:
     value = value.strip().upper()
     return value[1:] if value.startswith("#") else value
@@ -90,6 +124,213 @@ def _active_order_section(body: str) -> str:
     section = body[marker.start():]
     stop = re.search(r"\n###\s+", section)
     return section[: stop.start()] if stop else section
+
+
+def _canonical_pipeline_key(
+    key: str,
+    kind: str,
+    parent_issue: int,
+) -> str | None:
+    if kind == PIPELINE_WORK:
+        if not re.fullmatch(r"\d+[A-Z]?", key):
+            return None
+        return key if numeric_issue(key) == parent_issue else None
+    if kind == PIPELINE_ARCHITECTURE:
+        match = re.fullmatch(r"ASTRA-(\d+)", key)
+        return key if match and int(match.group(1)) == parent_issue else None
+    if kind == PIPELINE_ENVIRONMENT:
+        match = re.fullmatch(r"ENV-(\d+)", key)
+        return key if match and int(match.group(1)) == parent_issue else None
+    return None
+
+
+def parse_cockpit_pipeline(body: str) -> PipelineContract:
+    start_count = body.count(COCKPIT_PIPELINE_START)
+    end_count = body.count(COCKPIT_PIPELINE_END)
+    present = bool(start_count or end_count)
+    if not present:
+        return PipelineContract(
+            present=False,
+            valid=True,
+            source="legacy",
+            steps=[],
+            errors=[],
+        )
+
+    errors: list[str] = []
+    if start_count != 1 or end_count != 1:
+        errors.append(
+            "COCKPIT_PIPELINE_V1 doit contenir exactement un marqueur de début et un marqueur de fin."
+        )
+        return PipelineContract(
+            present=True,
+            valid=False,
+            source="canonical_v1",
+            steps=[],
+            errors=errors,
+        )
+
+    start = body.index(COCKPIT_PIPELINE_START) + len(COCKPIT_PIPELINE_START)
+    end = body.index(COCKPIT_PIPELINE_END)
+    if end <= start:
+        errors.append("Le marqueur de fin COCKPIT_PIPELINE_V1 précède le début.")
+        return PipelineContract(
+            present=True,
+            valid=False,
+            source="canonical_v1",
+            steps=[],
+            errors=errors,
+        )
+
+    raw_lines = [
+        line.strip()
+        for line in body[start:end].splitlines()
+        if line.strip()
+    ]
+    if not raw_lines:
+        errors.append("COCKPIT_PIPELINE_V1 ne contient aucune ligne.")
+        return PipelineContract(True, False, "canonical_v1", [], errors)
+
+    header = tuple(cell.strip().upper() for cell in raw_lines[0].split("|"))
+    if header != COCKPIT_PIPELINE_HEADER:
+        errors.append(
+            "En-tête COCKPIT_PIPELINE_V1 invalide; attendu: "
+            + " | ".join(COCKPIT_PIPELINE_HEADER)
+            + "."
+        )
+        return PipelineContract(True, False, "canonical_v1", [], errors)
+
+    steps: list[PipelineStep] = []
+    seen_keys: set[str] = set()
+    for line_number, raw in enumerate(raw_lines[1:], start=2):
+        cells = [cell.strip() for cell in raw.split("|")]
+        if len(cells) != 6:
+            errors.append(
+                f"Ligne {line_number}: 6 colonnes requises (KEY | TYPE | STATUS | PARENT | LANE | TITLE)."
+            )
+            continue
+        key_raw, kind_raw, status_raw, parent_raw, lane_raw, title = cells
+        key = normalize_key(key_raw)
+        kind = kind_raw.upper()
+        status = status_raw.upper()
+        lane = lane_raw.upper()
+
+        if not key:
+            errors.append(f"Ligne {line_number}: KEY vide.")
+            continue
+        if key.startswith("PR") or key.startswith("CI"):
+            errors.append(
+                f"Ligne {line_number}: KEY '{key_raw}' invalide; PR/CI ne sont pas des identités d'étape."
+            )
+            continue
+        if key in seen_keys:
+            errors.append(f"Ligne {line_number}: KEY dupliquée '{key}'.")
+            continue
+        if kind not in VALID_PIPELINE_KINDS:
+            errors.append(f"Ligne {line_number}: TYPE invalide '{kind_raw}'.")
+            continue
+        if status not in VALID_PIPELINE_STATUSES:
+            errors.append(f"Ligne {line_number}: STATUS invalide '{status_raw}'.")
+            continue
+        if lane not in VALID_PIPELINE_LANES:
+            errors.append(f"Ligne {line_number}: LANE invalide '{lane_raw}'.")
+            continue
+        parent_match = re.fullmatch(r"#(\d+)", parent_raw)
+        if not parent_match:
+            errors.append(
+                f"Ligne {line_number}: PARENT invalide '{parent_raw}'; attendu #<issue>."
+            )
+            continue
+        parent_issue = int(parent_match.group(1))
+        canonical_key = _canonical_pipeline_key(key, kind, parent_issue)
+        if canonical_key is None:
+            errors.append(
+                f"Ligne {line_number}: KEY '{key_raw}' incohérente avec TYPE '{kind}' et PARENT '{parent_raw}'."
+            )
+            continue
+        if not title:
+            errors.append(f"Ligne {line_number}: TITLE vide.")
+            continue
+
+        seen_keys.add(canonical_key)
+        steps.append(
+            PipelineStep(
+                key=canonical_key,
+                title=title,
+                kind=kind,
+                done=status == PIPELINE_STATUS_DONE,
+                lane=lane,
+                marker="✅" if status == PIPELINE_STATUS_DONE else None,
+                issue_number=parent_issue,
+                status=status,
+                rationale=None,
+            )
+        )
+
+    main_steps = [step for step in steps if step.lane == PIPELINE_MAIN]
+    if not main_steps:
+        errors.append("COCKPIT_PIPELINE_V1 doit contenir au moins une étape MAIN.")
+    else:
+        ready_indexes = [
+            index
+            for index, step in enumerate(main_steps)
+            if step.status == PIPELINE_STATUS_READY
+        ]
+        non_done_indexes = [
+            index
+            for index, step in enumerate(main_steps)
+            if step.status != PIPELINE_STATUS_DONE
+        ]
+        if non_done_indexes:
+            if len(ready_indexes) != 1:
+                errors.append(
+                    "La lane MAIN doit avoir exactement une étape READY tant qu'elle contient du travail non DONE."
+                )
+            else:
+                ready_index = ready_indexes[0]
+                if ready_index != non_done_indexes[0]:
+                    errors.append(
+                        "L'étape READY de la lane MAIN doit être la première étape non DONE."
+                    )
+                if any(
+                    step.status != PIPELINE_STATUS_DONE
+                    for step in main_steps[:ready_index]
+                ):
+                    errors.append(
+                        "Toutes les étapes MAIN précédant READY doivent être DONE."
+                    )
+                if any(
+                    step.status != PIPELINE_STATUS_BLOCKED
+                    for step in main_steps[ready_index + 1 :]
+                ):
+                    errors.append(
+                        "Toutes les étapes MAIN suivant READY doivent être BLOCKED."
+                    )
+        elif ready_indexes:
+            errors.append(
+                "Une lane MAIN entièrement DONE ne doit contenir aucune étape READY."
+            )
+
+    return PipelineContract(
+        present=True,
+        valid=not errors,
+        source="canonical_v1",
+        steps=steps if not errors else [],
+        errors=errors,
+    )
+
+
+def resolve_product_pipeline(body: str) -> PipelineContract:
+    canonical = parse_cockpit_pipeline(body)
+    if canonical.present:
+        return canonical
+    return PipelineContract(
+        present=False,
+        valid=True,
+        source="legacy",
+        steps=product_pipeline(body),
+        errors=[],
+    )
 
 
 def _heading_level(line: str) -> int | None:
