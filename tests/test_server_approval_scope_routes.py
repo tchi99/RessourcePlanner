@@ -131,6 +131,10 @@ class ServerApprovalScopeRouteTests(unittest.TestCase):
                     line_mode=True,
                 )
             )
+            # Materialize all referenced parents before the RequestLine fixture.
+            # The production repositories write these aggregates in separate
+            # operations; this keeps the isolated SQLite fixture equally explicit.
+            session.flush()
             session.add(
                 RequestLine(
                     id="line-1",
