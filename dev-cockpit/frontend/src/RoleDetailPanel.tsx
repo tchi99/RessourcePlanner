@@ -889,7 +889,7 @@ function ArchitectDetails({ dashboard }: { dashboard: Dashboard | null }) {
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    if (!dashboard) return
+    if (!dashboard?.active_work) return
     let cancelled = false
     setArchitecture(null)
     setIssue(null)
