@@ -278,7 +278,7 @@ class ODataProjectContractTests(unittest.TestCase):
 
     def test_invalid_feed_diagnostics_never_include_project_payload_or_secret(self) -> None:
         marker = "sensitive-project-payload"
-        secret = "secret-cookie-value"
+        sensitive_value = "secret-cookie-value"
 
         def handler(_request: httpx.Request) -> httpx.Response:
             return httpx.Response(200, content=f"<feed>{marker}".encode("utf-8"))
@@ -286,7 +286,7 @@ class ODataProjectContractTests(unittest.TestCase):
         source = ODataProjectSource(
             _settings(),
             transport=httpx.MockTransport(handler),
-            request_headers={"Cookie": f"session={secret}"},
+            request_headers={"Cookie": f"session={sensitive_value}"},
         )
         with self.assertLogs(LOGGER, level="WARNING") as captured:
             with self.assertRaises(ApplicationOperationError) as raised:
@@ -297,7 +297,7 @@ class ODataProjectContractTests(unittest.TestCase):
         self.assertEqual(raised.exception.context["reason"], "invalid_xml")
         diagnostic = str(raised.exception.as_dict()) + "\n" + "\n".join(captured.output)
         self.assertNotIn(marker, diagnostic)
-        self.assertNotIn(secret, diagnostic)
+        self.assertNotIn(sensitive_value, diagnostic)
 
 
 class StringPayload:
