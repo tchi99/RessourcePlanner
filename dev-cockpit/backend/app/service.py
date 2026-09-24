@@ -261,7 +261,7 @@ async def _first_matching_dev_pr(
     key: str,
 ) -> dict[str, Any] | None:
     for pr in prs:
-        if not _matches_delivery_key(pr, key):
+        if not matches_work_key(pr, key):
             continue
         if await _pull_is_dev_work(client, repo, pr):
             return pr
@@ -336,7 +336,7 @@ async def _matching_dev_pr_summary(
     for pr in prs:
         if merged_only and not pr.get("merged_at"):
             continue
-        if not matches_work_key(pr, key):
+        if not _matches_delivery_key(pr, key):
             continue
         if not await _pull_is_dev_work(client, repo, pr):
             continue
