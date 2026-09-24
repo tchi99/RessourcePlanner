@@ -33,13 +33,13 @@ def upgrade() -> None:
             "cancellation_state IS NULL OR cancellation_state IN ('PENDING','REJECTED','ACCEPTED')",
         )
         batch_op.create_foreign_key(
-            "fk_workforce_requests_cancellation_requested_by_user_id_app_users",
+            "fk_wr_cancel_requested_user",
             "app_users",
             ["cancellation_requested_by_user_id"],
             ["id"],
         )
         batch_op.create_foreign_key(
-            "fk_workforce_requests_cancellation_resolved_by_user_id_app_users",
+            "fk_wr_cancel_resolved_user",
             "app_users",
             ["cancellation_resolved_by_user_id"],
             ["id"],
@@ -67,11 +67,11 @@ def downgrade() -> None:
         batch_op.drop_index("ix_workforce_requests_cancellation_requested_by_user_id")
         batch_op.drop_index("ix_workforce_requests_cancellation_state")
         batch_op.drop_constraint(
-            "fk_workforce_requests_cancellation_resolved_by_user_id_app_users",
+            "fk_wr_cancel_resolved_user",
             type_="foreignkey",
         )
         batch_op.drop_constraint(
-            "fk_workforce_requests_cancellation_requested_by_user_id_app_users",
+            "fk_wr_cancel_requested_user",
             type_="foreignkey",
         )
         batch_op.drop_constraint("workforce_request_cancellation_state", type_="check")
