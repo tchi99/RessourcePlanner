@@ -90,7 +90,6 @@ def _execution_item(
         "POSSIBLE_STALL": ("WATCH", "Reprise à confirmer"),
         "READY_TO_MERGE": ("ACTION", "PR prête à fusionner"),
         "DELIVERY_UNVERIFIED": ("ACTION", "Livraison fusionnée à vérifier"),
-        "NO_ACTIVE_WORK": ("WATCH", "Aucune tranche active"),
     }
     if phase not in mapping:
         return None
