@@ -7,7 +7,7 @@ import json
 import re
 from typing import Any
 
-from sqlalchemy import delete, func, select, update
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session, aliased
 
 from ...application.demand_completion import (
@@ -21,6 +21,7 @@ from ...application.repository_ports import DemandRepositoryPort
 from ...domain.planning_engine import MISSING_ALLOCATION_TYPE
 from .asset_models import AssetAllocation, AssetRequirement
 from .base import new_id, utc_now
+from .request_version import acquire_request_aggregate_version
 from .models import (
     Competency,
     Project,
@@ -78,33 +79,11 @@ class SqlDemandRepository(DemandRepositoryPort):
         request: WorkforceRequest,
         expected_version: int,
     ) -> int:
-        expected = int(expected_version)
-        result = self._session.execute(
-            update(WorkforceRequest)
-            .where(
-                WorkforceRequest.id == request.id,
-                WorkforceRequest.aggregate_version == expected,
-            )
-            .values(aggregate_version=WorkforceRequest.aggregate_version + 1)
+        return acquire_request_aggregate_version(
+            self._session,
+            request,
+            expected_version,
         )
-        if int(result.rowcount or 0) != 1:
-            actual = self._session.scalar(
-                select(WorkforceRequest.aggregate_version).where(
-                    WorkforceRequest.id == request.id
-                )
-            )
-            raise ApplicationConflictError(
-                "La demande a été modifiée depuis sa lecture.",
-                code="demand_version_conflict",
-                context={
-                    "demand_number": _text(request.legacy_demand_number) or request.id,
-                    "expected_version": expected,
-                    "current_version": int(actual or request.aggregate_version or 1),
-                },
-            )
-        self._session.flush()
-        self._session.refresh(request, attribute_names=["aggregate_version"])
-        return int(request.aggregate_version or expected + 1)
 
     def _read_model(
         self,
