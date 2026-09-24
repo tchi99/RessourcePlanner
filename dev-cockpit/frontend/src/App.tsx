@@ -788,49 +788,6 @@ export default function App() {
             </article>
           </section>
 
-          <section className="next-panel">
-            <div className="next-copy">
-              <span className="panel-kicker">NEXT ACTION</span>
-              <h2>{data.next_action}</h2>
-              <pre className="prompt-preview">{data.dev_prompt}</pre>
-            </div>
-            <div className="actions">
-              <button
-                className="primary"
-                type="button"
-                onClick={() => void copyPrompt()}
-              >
-                {copied ? '✓ Copié' : 'Copier prompt Dev'}
-              </button>
-              <a
-                className={`button ${primaryPr ? '' : 'disabled'}`}
-                href={primaryPr?.url}
-                target="_blank"
-                rel="noreferrer"
-              >
-                Ouvrir PR
-              </a>
-              <a
-                className="button"
-                href={issueUrl}
-                target="_blank"
-                rel="noreferrer"
-              >
-                Ouvrir Issue
-              </a>
-              {run?.url && (
-                <a
-                  className="button"
-                  href={run.url}
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  Ouvrir Run
-                </a>
-              )}
-            </div>
-          </section>
-
           <footer>
             <span>
               Dernier commit de main (référence) :{' '}
