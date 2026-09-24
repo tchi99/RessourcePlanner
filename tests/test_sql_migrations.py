@@ -16,6 +16,9 @@ ROOT = Path(__file__).resolve().parents[1]
 MIGRATIONS = ROOT / "migrations"
 INITIAL_REVISION = MIGRATIONS / "versions" / "0001_initial_planning_schema.py"
 EXPECTED_TABLES = {
+    "approval_scopes",
+    "approval_scope_approvers",
+    "task_approval_scope_mappings",
     "business_contacts",
     "command_idempotency_receipts",
     "planning_mutation_state",
@@ -169,6 +172,11 @@ class SqlMigrationTests(unittest.TestCase):
             self.assertIn("DEFAULT_HOURS_PER_DAY", ddl, url)
             self.assertIn("REQUIRED_RESOURCE_CLASS", ddl, url)
             self.assertIn("CREATE TABLE BUSINESS_CONTACTS", ddl, url)
+            self.assertIn("CREATE TABLE APPROVAL_SCOPES", ddl, url)
+            self.assertIn("CREATE TABLE APPROVAL_SCOPE_APPROVERS", ddl, url)
+            self.assertIn("CREATE TABLE TASK_APPROVAL_SCOPE_MAPPINGS", ddl, url)
+            self.assertIn("FK_SCOPE_APPROVER_USER", ddl, url)
+            self.assertIn("FK_TASK_SCOPE_MAPPING_TASK", ddl, url)
             self.assertIn("PROJECT_MANAGER_CONTACT_ID", ddl, url)
             self.assertIn("OPERATIONAL_RESPONSIBLE_CONTACT_ID", ddl, url)
             self.assertIn("COORDINATOR_CONTACT_ID", ddl, url)
