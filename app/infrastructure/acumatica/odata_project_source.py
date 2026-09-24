@@ -210,13 +210,13 @@ class ODataProjectSourceSettings:
     timeout_seconds: float = 30.0
     page_size: int = 100
     username: str | None = field(default=None, repr=False)
-    password: str | None = field(default=None, repr=False)
+    credential: str | None = field(default=None, repr=False)
 
     def __post_init__(self) -> None:
         if self.page_size <= 0:
             raise ValueError("page_size must be positive")
-        if bool(self.username) != bool(self.password):
-            raise ValueError("username and password must be configured together")
+        if bool(self.username) != bool(self.credential):
+            raise ValueError("username and credential must be configured together")
 
     def safe_summary(self) -> dict[str, object]:
         return {
@@ -302,8 +302,8 @@ class ODataProjectSource(ProjectSourcePort):
             **self._request_headers,
         }
         auth = (
-            httpx.BasicAuth(self._settings.username, self._settings.password)
-            if self._settings.username and self._settings.password
+            httpx.BasicAuth(self._settings.username, self._settings.credential)
+            if self._settings.username and self._settings.credential
             else None
         )
         records: list[ODataProjectRecord] = []
