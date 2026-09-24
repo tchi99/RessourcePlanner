@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import replace
+import re
 from datetime import datetime, timezone
 from typing import Any
 from urllib.parse import quote
@@ -307,6 +308,23 @@ def _pull_evidence(pr: dict[str, Any], *, run_state: str | None = None) -> dict[
     }
 
 
+def _matches_delivery_key(pr: dict[str, Any], key: str) -> bool:
+    title = str(pr.get("title") or "")
+    head_raw = pr.get("head")
+    if isinstance(head_raw, dict):
+        head = str(head_raw.get("ref") or "")
+    else:
+        head = str(head_raw or "")
+    if matches_work_key(title, key) or matches_work_key(head, key):
+        return True
+
+    body = str(pr.get("body") or "")
+    explicit_reference = re.compile(
+        rf"(?im)^\s*(?:refs?|closes?|fixes?|slice|tranche)\s*:?[ \t]+#?{re.escape(key)}(?![A-Z0-9])"
+    )
+    return bool(explicit_reference.search(body))
+
+
 async def _matching_dev_pr_summary(
     client: GitHubClient,
     repo: str,
@@ -318,7 +336,7 @@ async def _matching_dev_pr_summary(
     for pr in prs:
         if merged_only and not pr.get("merged_at"):
             continue
-        if not matches_work_key(pr, key):
+        if not _matches_delivery_key(pr, key):
             continue
         if not await _pull_is_dev_work(client, repo, pr):
             continue
