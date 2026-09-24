@@ -305,8 +305,11 @@ class DemandService:
     ) -> DemandCancellationMaterializationReadModel:
         if self._queries is None:
             return DemandCancellationMaterializationReadModel(demand_number=number)
+        reader = getattr(self._queries, "demand_cancellation_materialization", None)
+        if not callable(reader):
+            return DemandCancellationMaterializationReadModel(demand_number=number)
         return call_application_port(
-            lambda: self._queries.demand_cancellation_materialization(number),
+            lambda: reader(number),
             code_prefix="demand_cancellation_materialization",
             context={"demand_number": number},
         )
