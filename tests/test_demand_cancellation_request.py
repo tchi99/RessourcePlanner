@@ -485,6 +485,133 @@ class DemandCancellationRequestTests(unittest.TestCase):
             finally:
                 engine.dispose()
 
+    def test_accept_cancellation_deletes_locked_human_scope_without_rebuild(self) -> None:
+        with TemporaryDirectory() as directory:
+            database_url = self._database(directory)
+            app = create_api_app(
+                database_url,
+                auth_resolver=TEST_CANCELLATION_ADMIN_AUTH_RESOLVER,
+            )
+            with TestClient(app, raise_server_exceptions=False) as client:
+                requested = client.post(
+                    "/api/v1/demands/DMO-CANCEL-HUMAN/request-cancellation",
+                    json={"reason": "Mandat abandonné", "expected_version": 4},
+                )
+                self.assertEqual(requested.status_code, 200, requested.text)
+                cycle_id = requested.json()["cancellation_request_id"]
+
+                accepted = client.post(
+                    "/api/v1/demands/DMO-CANCEL-HUMAN/accept-cancellation",
+                    json={
+                        "cancellation_request_id": cycle_id,
+                        "comment": "Annulation confirmée par la coordination",
+                        "expected_version": 5,
+                        "expected_planning_version": 9,
+                    },
+                    headers={"Idempotency-Key": "accept-human-1"},
+                )
+            self.assertEqual(accepted.status_code, 200, accepted.text)
+            payload = accepted.json()
+            self.assertEqual(payload["status"], "Annulée")
+            self.assertEqual(payload["cancellation_state"], "ACCEPTED")
+            self.assertEqual(payload["planning_version"], 10)
+            self.assertEqual(payload["request_version"], 6)
+            self.assertEqual(payload["deleted_human_shifts"], 1)
+            self.assertEqual(payload["released_locked_human_shifts"], 1)
+            self.assertEqual(payload["deleted_asset_allocations"], 0)
+
+            engine = create_sql_engine(database_url)
+            factory = create_session_factory(engine)
+            try:
+                with factory() as session:
+                    request = session.get(WorkforceRequest, "D-HUMAN")
+                    requirement = session.get(ResourceRequirement, "REQ-HUMAN")
+                    self.assertIsNotNone(request)
+                    self.assertIsNotNone(requirement)
+                    assert request is not None
+                    assert requirement is not None
+                    self.assertEqual(request.status, "Annulée")
+                    self.assertEqual(request.aggregate_version, 6)
+                    self.assertEqual(request.cancellation_state, "ACCEPTED")
+                    self.assertEqual(requirement.status, "Annulé")
+                    self.assertIsNone(session.get(Shift, "SHIFT-HUMAN"))
+                    # D-EMPTY remains untouched: an immediate global rebuild would be
+                    # allowed to materialize other active planning output.
+                    self.assertEqual(
+                        int(session.scalar(select(func.count()).select_from(Shift)) or 0),
+                        0,
+                    )
+                    planning_version = session.scalar(
+                        select(PlanningMutationState.version).where(
+                            PlanningMutationState.id == "GLOBAL"
+                        )
+                    )
+                    self.assertEqual(int(planning_version or 0), 10)
+                    history = session.scalar(
+                        select(WorkforceRequestHistory).where(
+                            WorkforceRequestHistory.workforce_request_id == "D-HUMAN",
+                            WorkforceRequestHistory.action == "Acceptation d'annulation",
+                        )
+                    )
+                    self.assertIsNotNone(history)
+                    assert history is not None
+                    details = json.loads(history.details or "{}")
+                    self.assertEqual(details["correlation_id"], "accept-human-1")
+                    self.assertEqual(details["planning_version"], 10)
+                    self.assertEqual(details["resolution"], "ACCEPTED")
+                    self.assertEqual(details["deleted_human_shift_ids"], ["SHIFT-HUMAN"])
+            finally:
+                engine.dispose()
+
+    def test_accept_cancellation_deletes_locked_asset_scope(self) -> None:
+        with TemporaryDirectory() as directory:
+            database_url = self._database(directory)
+            app = create_api_app(
+                database_url,
+                auth_resolver=TEST_CANCELLATION_ADMIN_AUTH_RESOLVER,
+            )
+            with TestClient(app, raise_server_exceptions=False) as client:
+                requested = client.post(
+                    "/api/v1/demands/DMO-CANCEL-ASSET/request-cancellation",
+                    json={"reason": "Actif non requis", "expected_version": 2},
+                )
+                self.assertEqual(requested.status_code, 200, requested.text)
+                cycle_id = requested.json()["cancellation_request_id"]
+                accepted = client.post(
+                    "/api/v1/demands/DMO-CANCEL-ASSET/accept-cancellation",
+                    json={
+                        "cancellation_request_id": cycle_id,
+                        "comment": "Annulation coordonnée",
+                        "expected_version": 3,
+                        "expected_planning_version": 9,
+                    },
+                    headers={"Idempotency-Key": "accept-asset-1"},
+                )
+            self.assertEqual(accepted.status_code, 200, accepted.text)
+            payload = accepted.json()
+            self.assertEqual(payload["deleted_asset_allocations"], 1)
+            self.assertEqual(payload["released_locked_asset_allocations"], 1)
+            self.assertEqual(payload["cancelled_asset_requirements"], 1)
+
+            engine = create_sql_engine(database_url)
+            factory = create_session_factory(engine)
+            try:
+                with factory() as session:
+                    request = session.get(WorkforceRequest, "D-ASSET")
+                    requirement = session.get(AssetRequirement, "AREQ-1")
+                    self.assertIsNotNone(request)
+                    self.assertIsNotNone(requirement)
+                    assert request is not None
+                    assert requirement is not None
+                    self.assertEqual(request.status, "Annulée")
+                    self.assertEqual(request.cancellation_state, "ACCEPTED")
+                    self.assertEqual(requirement.status, "Annulé")
+                    self.assertIsNone(session.get(AssetAllocation, "ALLOC-ASSET"))
+                    # Human planning owned by another demand is out of scope.
+                    self.assertIsNotNone(session.get(Shift, "SHIFT-HUMAN"))
+            finally:
+                engine.dispose()
+
     def test_repository_cas_rejects_stale_request_without_partial_write(self) -> None:
         with TemporaryDirectory() as directory:
             database_url = self._database(directory)
