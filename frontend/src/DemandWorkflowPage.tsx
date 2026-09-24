@@ -1,10 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
 
-import { ApiError, type DemandReadModel, getDemand, getDemands } from "./api";
+import {
+  ApiError,
+  type DemandDetailReadModel,
+  type DemandReadModel,
+  getDemandDetail,
+  getDemands,
+} from "./api";
 import {
   approveDemand,
   cancelDemand,
-  getDemandWorkflowState,
   requestDemandCorrection,
   submitDemand,
   type DemandWorkflowResult,
@@ -93,16 +98,20 @@ function unavailableDeltaMessage(reason: string | null): string {
 
 type DemandWorkflowPageProps = {
   demandNumber?: string;
+  canonicalDetail?: DemandDetailReadModel | null;
   embedded?: boolean;
-  onChanged?: () => void;
+  onChanged?: () => void | Promise<void>;
   refreshToken?: number;
+  hasUnsavedChanges?: boolean;
 };
 
 export default function DemandWorkflowPage({
   demandNumber,
+  canonicalDetail,
   embedded = false,
   onChanged,
   refreshToken = 0,
+  hasUnsavedChanges = false,
 }: DemandWorkflowPageProps = {}) {
   const [demands, setDemands] = useState<DemandReadModel[]>([]);
   const [selectedNumber, setSelectedNumber] = useState("");
@@ -120,8 +129,15 @@ export default function DemandWorkflowPage({
   const [planDeltaLoading, setPlanDeltaLoading] = useState(false);
   const [planDeltaError, setPlanDeltaError] = useState<string | null>(null);
 
+  const currentDemand = canonicalDetail?.demand ?? selectedDemand;
+  const currentWorkflowState = canonicalDetail
+    ? canonicalDetail.workflow as DemandWorkflowState
+    : workflowState;
+
   async function refresh(number?: string) {
-    const rows = demandNumber ? [await getDemand(demandNumber)] : await getDemands();
+    const rows = demandNumber
+      ? [(await getDemandDetail(demandNumber)).demand]
+      : await getDemands();
     setDemands(rows);
     const wanted = demandNumber || number || selectedNumber || rows[0]?.number || "";
     const nextNumber = rows.some((row) => row.number === wanted) ? wanted : rows[0]?.number || "";
@@ -131,20 +147,26 @@ export default function DemandWorkflowPage({
       setWorkflowState(null);
       return;
     }
-    const [detail, workflow] = await Promise.all([
-      getDemand(nextNumber),
-      getDemandWorkflowState(nextNumber),
-    ]);
-    setSelectedDemand(detail);
-    setWorkflowState(workflow);
+    const detail = await getDemandDetail(nextNumber);
+    setSelectedDemand(detail.demand);
+    setWorkflowState(detail.workflow as DemandWorkflowState);
   }
 
   useEffect(() => {
+    if (canonicalDetail) {
+      setDemands([canonicalDetail.demand]);
+      setSelectedNumber(canonicalDetail.demand.number);
+      setSelectedDemand(canonicalDetail.demand);
+      setWorkflowState(canonicalDetail.workflow as DemandWorkflowState);
+      setLoading(false);
+      setError(null);
+      return;
+    }
     let active = true;
     setLoading(true);
     setWorkflowState(null);
     const demandRequest = demandNumber
-      ? getDemand(demandNumber).then((row) => [row])
+      ? getDemandDetail(demandNumber).then((detail) => [detail.demand])
       : getDemands();
     demandRequest
       .then(async (rows) => {
@@ -153,13 +175,10 @@ export default function DemandWorkflowPage({
         const first = demandNumber || rows[0]?.number || "";
         setSelectedNumber(first);
         if (first) {
-          const [detail, workflow] = await Promise.all([
-            getDemand(first),
-            getDemandWorkflowState(first),
-          ]);
+          const detail = await getDemandDetail(first);
           if (active) {
-            setSelectedDemand(detail);
-            setWorkflowState(workflow);
+            setSelectedDemand(detail.demand);
+            setWorkflowState(detail.workflow as DemandWorkflowState);
           }
         } else if (active) {
           setWorkflowState(null);
@@ -172,20 +191,17 @@ export default function DemandWorkflowPage({
         if (active) setLoading(false);
       });
     return () => { active = false; };
-  }, [demandNumber, refreshToken]);
+  }, [demandNumber, refreshToken, canonicalDetail]);
 
   useEffect(() => {
-    if (!selectedNumber || loading) return;
+    if (canonicalDetail || !selectedNumber || loading) return;
     let active = true;
     setError(null);
-    Promise.all([
-      getDemand(selectedNumber),
-      getDemandWorkflowState(selectedNumber),
-    ])
-      .then(([detail, workflow]) => {
+    getDemandDetail(selectedNumber)
+      .then((detail) => {
         if (active) {
-          setSelectedDemand(detail);
-          setWorkflowState(workflow);
+          setSelectedDemand(detail.demand);
+          setWorkflowState(detail.workflow as DemandWorkflowState);
         }
       })
       .catch((reason: unknown) => {
@@ -195,14 +211,14 @@ export default function DemandWorkflowPage({
   }, [selectedNumber, loading]);
 
   useEffect(() => {
-    if (!selectedDemand) {
+    if (!currentDemand) {
       setApprovalState(null);
       setApprovalStateError(null);
       return;
     }
     let active = true;
     setApprovalStateError(null);
-    getDemandApprovalState(selectedDemand.number)
+    getDemandApprovalState(currentDemand.number)
       .then((state) => {
         if (active) setApprovalState(state);
       })
@@ -213,10 +229,10 @@ export default function DemandWorkflowPage({
         }
       });
     return () => { active = false; };
-  }, [selectedDemand?.number, selectedDemand?.version, selectedDemand?.status]);
+  }, [currentDemand?.number, currentDemand?.version, currentDemand?.status]);
 
   useEffect(() => {
-    if (!selectedDemand || normalStatus(selectedDemand.status) !== "soumise") {
+    if (!currentDemand || normalStatus(currentDemand.status) !== "soumise") {
       setPlanDelta(null);
       setPlanDeltaError(null);
       setPlanDeltaLoading(false);
@@ -225,7 +241,7 @@ export default function DemandWorkflowPage({
     let active = true;
     setPlanDeltaLoading(true);
     setPlanDeltaError(null);
-    getDemandPlanDelta(selectedDemand.number)
+    getDemandPlanDelta(currentDemand.number)
       .then((delta) => {
         if (active) setPlanDelta(delta);
       })
@@ -239,54 +255,62 @@ export default function DemandWorkflowPage({
         if (active) setPlanDeltaLoading(false);
       });
     return () => { active = false; };
-  }, [selectedDemand?.number, selectedDemand?.status]);
+  }, [currentDemand?.number, currentDemand?.status]);
 
   const actions = useMemo(
     () =>
-      (workflowState?.available_actions ?? []).filter(
+      (currentWorkflowState?.available_actions ?? []).filter(
         (action): action is WorkflowButtonAction =>
           action === "submit" ||
           action === "approve" ||
           action === "correction" ||
           action === "cancel",
       ),
-    [workflowState],
+    [currentWorkflowState],
   );
 
   async function runAction(action: WorkflowButtonAction) {
-    if (!selectedDemand || pendingAction) return;
+    if (!currentDemand || pendingAction) return;
+    if (hasUnsavedChanges) {
+      setError("Enregistre les modifications avant de poursuivre.");
+      return;
+    }
     if (action === "correction" && !correctionComment.trim()) {
       setError("Un commentaire est requis pour demander une correction.");
       return;
     }
-    if (action === "cancel" && !window.confirm(`Annuler la demande ${selectedDemand.number}?`)) return;
+    if (action === "cancel" && !window.confirm(`Annuler la demande ${currentDemand.number}?`)) return;
 
     setPendingAction(action);
     setError(null);
     setNotice(null);
     try {
-      const expectedVersion = workflowState?.version ?? selectedDemand.version;
+      const expectedVersion = currentWorkflowState?.version ?? currentDemand.version;
       let result: DemandWorkflowResult;
       if (action === "submit") {
-        result = await submitDemand(selectedDemand.number, expectedVersion);
+        result = await submitDemand(currentDemand.number, expectedVersion);
       } else if (action === "approve") {
         result = await approveDemand(
-          selectedDemand.number,
+          currentDemand.number,
           approvalComment.trim(),
           expectedVersion,
         );
       } else if (action === "correction") {
         result = await requestDemandCorrection(
-          selectedDemand.number,
+          currentDemand.number,
           correctionComment.trim(),
           expectedVersion,
         );
       } else {
-        result = await cancelDemand(selectedDemand.number, expectedVersion);
+        result = await cancelDemand(currentDemand.number, expectedVersion);
       }
 
-      await refresh(result.demand_number);
-      onChanged?.();
+      if (canonicalDetail) {
+        await onChanged?.();
+      } else {
+        await refresh(result.demand_number);
+        await onChanged?.();
+      }
       if (action === "approve") {
         const planning = result.planning;
         setNotice(
@@ -326,6 +350,11 @@ export default function DemandWorkflowPage({
 
       {error && <div className="error-panel"><strong>Action impossible.</strong><span>{error}</span></div>}
       {notice && <div className="demand-notice" role="status">{notice}</div>}
+      {hasUnsavedChanges && (
+        <div className="demand-notice workflow-dirty-warning" role="status">
+          Enregistre les modifications avant de poursuivre.
+        </div>
+      )}
 
       <div className={`workflow-layout ${embedded ? "embedded" : ""}`}>
         {!embedded && (        <aside className="workflow-list-panel">
@@ -349,27 +378,27 @@ export default function DemandWorkflowPage({
               ))}
             </select>
           </label>
-          {selectedDemand && (
+          {currentDemand && (
             <div className="workflow-summary-card">
-              <strong>{selectedDemand.number}</strong>
-              <span>{selectedDemand.project_number} — {selectedDemand.project_name || "Projet"}</span>
-              <span>{selectedDemand.requester ? `Demandeur : ${selectedDemand.requester}` : "Demandeur non défini"}</span>
+              <strong>{currentDemand.number}</strong>
+              <span>{currentDemand.project_number} — {currentDemand.project_name || "Projet"}</span>
+              <span>{currentDemand.requester ? `Demandeur : ${currentDemand.requester}` : "Demandeur non défini"}</span>
             </div>
           )}
         </aside>)}
 
         <div className="workflow-detail-panel">
-          {selectedDemand ? (
+          {currentDemand ? (
             <>
               <div className="workflow-state-grid">
                 <div className="workflow-state-card">
                   <span>Approbation / statut</span>
-                  <strong>{selectedDemand.status || "Non défini"}</strong>
+                  <strong>{currentDemand.status || "Non défini"}</strong>
                   <small>Ce statut pilote le cycle de vie de la demande.</small>
                 </div>
                 <div className="workflow-state-card">
                   <span>Confirmation</span>
-                  <strong>{selectedDemand.confirmation || "Confirmée"}</strong>
+                  <strong>{currentDemand.confirmation || "Confirmée"}</strong>
                   <small>La confirmation décrit la certitude du besoin, indépendamment de son approbation.</small>
                 </div>
                 {approvalState && (
@@ -414,7 +443,7 @@ export default function DemandWorkflowPage({
                 </div>
               )}
 
-              {normalStatus(selectedDemand.status) === "soumise" && (
+              {normalStatus(currentDemand.status) === "soumise" && (
                 <div className="plan-delta-panel" data-testid="plan-delta-preview">
                   <div className="plan-delta-heading">
                     <div>
@@ -519,29 +548,29 @@ export default function DemandWorkflowPage({
               <div className="workflow-actions">
                 {actions.length === 0 && <span className="workflow-terminal-state">Aucune transition usuelle disponible pour ce statut.</span>}
                 {actions.includes("submit") && (
-                  <button type="button" className="primary-button" disabled={busy} onClick={() => runAction("submit")}>
+                  <button type="button" className="primary-button" disabled={busy || hasUnsavedChanges} onClick={() => runAction("submit")}>
                     {pendingAction === "submit" ? "Soumission…" : actionLabel("submit")}
                   </button>
                 )}
                 {actions.includes("approve") && (
-                  <button type="button" className="primary-button" disabled={busy} onClick={() => runAction("approve")}>
+                  <button type="button" className="primary-button" disabled={busy || hasUnsavedChanges} onClick={() => runAction("approve")}>
                     {pendingAction === "approve" ? "Approbation…" : actionLabel("approve")}
                   </button>
                 )}
                 {actions.includes("correction") && (
-                  <button type="button" className="secondary-button" disabled={busy || !correctionComment.trim()} onClick={() => runAction("correction")}>
+                  <button type="button" className="secondary-button" disabled={busy || hasUnsavedChanges || !correctionComment.trim()} onClick={() => runAction("correction")}>
                     {pendingAction === "correction" ? "Envoi…" : actionLabel("correction")}
                   </button>
                 )}
                 {actions.includes("cancel") && (
-                  <button type="button" className="secondary-button workflow-cancel" disabled={busy} onClick={() => runAction("cancel")}>
+                  <button type="button" className="secondary-button workflow-cancel" disabled={busy || hasUnsavedChanges} onClick={() => runAction("cancel")}>
                     {pendingAction === "cancel" ? "Annulation…" : actionLabel("cancel")}
                   </button>
                 )}
               </div>
 
               <small className="workflow-authority-note">
-                L’interface suggère les transitions usuelles selon le statut affiché; FastAPI demeure l’autorité pour accepter ou refuser chaque commande.
+                Les actions affichées proviennent de la projection backend canonique; FastAPI demeure l’autorité pour accepter ou refuser chaque commande.
               </small>
             </>
           ) : (

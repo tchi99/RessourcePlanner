@@ -281,8 +281,25 @@ test("V2 local acceptance path runs through React, Chromium, FastAPI and SQLite"
     await alternatives.nth(0).getByRole("button", { name: "Retenir cette option" }).click();
     await expect(alternatives.nth(0).getByRole("button", { name: "Option retenue" })).toBeVisible();
 
-    await workflowSelect(page, demandNumber);
-    await page.getByRole("button", { name: "Soumettre", exact: true }).click();
+    await labelled(editor, "Description / contexte de la demande", "textarea").fill(
+      "Demande acceptation navigateur V2 modifiée avant soumission",
+    );
+    const workflowSection = page.locator(".demand-detail-section").filter({ hasText: "Workflow et impact" }).first();
+    if (!(await workflowSection.evaluate((node) => (node as HTMLDetailsElement).open))) {
+      await workflowSection.locator("summary").click();
+    }
+    const submitButton = workflowSection.getByRole("button", { name: "Soumettre", exact: true });
+    await expect(submitButton).toBeDisabled();
+    await expect(
+      workflowSection.getByText("Enregistre les modifications avant de poursuivre.", { exact: true }),
+    ).toBeVisible();
+
+    await editor.getByRole("button", { name: "Enregistrer les modifications" }).click();
+    await expect(
+      page.locator(".demand-notice").filter({ hasText: "Modification enregistrée." }),
+    ).toBeVisible();
+    await expect(submitButton).toBeEnabled();
+    await submitButton.click();
     await expect(page.locator(".demand-notice").filter({ hasText: "soumise pour approbation" })).toContainText("soumise pour approbation");
     await expect(page.getByTestId("plan-delta-preview")).toBeVisible();
 

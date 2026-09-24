@@ -569,5 +569,134 @@ class ServerCommandRouteTests(unittest.TestCase):
                 self.assertNotIn("correction", available)
 
 
+    def test_saved_demand_reloads_canonical_version_and_real_concurrency_still_conflicts(self) -> None:
+        with TemporaryDirectory() as directory:
+            database_url, _ = self._database(directory)
+            first_app = create_api_app(
+                database_url,
+                actor_name="Jean",
+                auth_resolver=test_admin_auth_resolver("Jean"),
+            )
+            concurrent_app = create_api_app(
+                database_url,
+                actor_name="Marie",
+                auth_resolver=test_admin_auth_resolver("Marie"),
+            )
+            with (
+                TestClient(first_app, raise_server_exceptions=False) as first_client,
+                TestClient(concurrent_app, raise_server_exceptions=False) as concurrent_client,
+            ):
+                created = first_client.post(
+                    "/api/v1/demands",
+                    json={
+                        "project_number": "P-1",
+                        "desired_start": WORK_DAY.isoformat(),
+                        "estimated_hours": 8,
+                        "priority": "Normale",
+                    },
+                )
+                self.assertEqual(created.status_code, 201, created.text)
+                number = created.json()["demand_number"]
+
+                before_save = first_client.get(
+                    f"/api/v1/demands/{number}/detail"
+                )
+                self.assertEqual(before_save.status_code, 200, before_save.text)
+                stale_version = before_save.json()["version"]
+
+                saved = first_client.patch(
+                    f"/api/v1/demands/{number}",
+                    json={
+                        "description": "Modification avant soumission",
+                        "expected_version": stale_version,
+                    },
+                )
+                self.assertEqual(saved.status_code, 200, saved.text)
+
+                canonical = first_client.get(
+                    f"/api/v1/demands/{number}/detail"
+                )
+                self.assertEqual(canonical.status_code, 200, canonical.text)
+                canonical_body = canonical.json()
+                self.assertGreater(canonical_body["version"], stale_version)
+                self.assertEqual(
+                    canonical_body["workflow"]["version"],
+                    canonical_body["version"],
+                )
+                self.assertEqual(
+                    canonical_body["policy"]["expected_request_version"],
+                    canonical_body["version"],
+                )
+
+                submitted = first_client.post(
+                    f"/api/v1/demands/{number}/submit",
+                    json={"expected_version": canonical_body["workflow"]["version"]},
+                )
+                self.assertEqual(submitted.status_code, 200, submitted.text)
+                self.assertEqual(submitted.json()["status"], "Soumise")
+
+                created_concurrent = first_client.post(
+                    "/api/v1/demands",
+                    json={
+                        "project_number": "P-1",
+                        "desired_start": WORK_DAY.isoformat(),
+                        "estimated_hours": 4,
+                        "priority": "Normale",
+                    },
+                )
+                self.assertEqual(
+                    created_concurrent.status_code,
+                    201,
+                    created_concurrent.text,
+                )
+                concurrent_number = created_concurrent.json()["demand_number"]
+                first_snapshot = first_client.get(
+                    f"/api/v1/demands/{concurrent_number}/detail"
+                )
+                self.assertEqual(first_snapshot.status_code, 200, first_snapshot.text)
+                first_body = first_snapshot.json()
+
+                concurrent_change = concurrent_client.patch(
+                    f"/api/v1/demands/{concurrent_number}",
+                    json={
+                        "description": "Modification réellement concurrente",
+                        "expected_version": first_body["version"],
+                    },
+                )
+                self.assertEqual(
+                    concurrent_change.status_code,
+                    200,
+                    concurrent_change.text,
+                )
+
+                stale_submit = first_client.post(
+                    f"/api/v1/demands/{concurrent_number}/submit",
+                    json={"expected_version": first_body["workflow"]["version"]},
+                )
+                self.assertEqual(stale_submit.status_code, 409, stale_submit.text)
+                self.assertEqual(
+                    stale_submit.json()["error"]["code"],
+                    "demand_version_conflict",
+                )
+
+                refreshed = first_client.get(
+                    f"/api/v1/demands/{concurrent_number}/detail"
+                )
+                self.assertEqual(refreshed.status_code, 200, refreshed.text)
+                refreshed_body = refreshed.json()
+                self.assertGreater(refreshed_body["version"], first_body["version"])
+                self.assertEqual(
+                    refreshed_body["workflow"]["version"],
+                    refreshed_body["version"],
+                )
+
+                retried_submit = first_client.post(
+                    f"/api/v1/demands/{concurrent_number}/submit",
+                    json={"expected_version": refreshed_body["workflow"]["version"]},
+                )
+                self.assertEqual(retried_submit.status_code, 200, retried_submit.text)
+                self.assertEqual(retried_submit.json()["status"], "Soumise")
+
+
 if __name__ == "__main__":
     unittest.main()

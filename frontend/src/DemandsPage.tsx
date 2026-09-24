@@ -1094,7 +1094,9 @@ export default function DemandsPage() {
           {!creating && selectedDemand && (
             <DemandDetail
               demandNumber={selectedDemand.number}
-              onChanged={() => void reloadDemand(selectedDemand.number)}
+              canonicalDetail={selectedDetail}
+              hasUnsavedChanges={editorDirty || contextDirty}
+              onChanged={() => reloadDemand(selectedDemand.number)}
               onDirtyChange={setContextDirty}
             />
           )}

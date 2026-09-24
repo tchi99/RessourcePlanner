@@ -22,6 +22,7 @@ class ReactDemandPeriodsContractTests(unittest.TestCase):
         self.assertNotIn("Périodes & alternatives", workspace)
         self.assertIn("<DemandPeriodsPage", detail)
         self.assertIn("demandNumber={demandNumber}", detail)
+        self.assertIn("canonicalDemand={detail.demand}", detail)
         self.assertIn('import "./demand-periods.css"', main)
 
     def test_api_client_uses_existing_period_and_selection_endpoints(self) -> None:
@@ -67,6 +68,8 @@ class ReactDemandPeriodsContractTests(unittest.TestCase):
         self.assertIn("le plan approuvé précédent reste inchangé", source)
         self.assertIn("await selectDemandAlternative(selectedDemand.number, group, periodId)", source)
         self.assertIn("await selectDemandLineAlternative(", source)
+        self.assertIn("await onChanged()", source)
+        self.assertIn("canonicalDemand", source)
         self.assertNotIn("projected_hours_without_double_counting", source)
 
 
