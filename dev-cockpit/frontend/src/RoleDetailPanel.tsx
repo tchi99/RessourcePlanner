@@ -1072,9 +1072,10 @@ function MissionBlock({
   const [copied, setCopied] = useState(false)
   const mission = dashboard?.execution.missions[role.avatar] ?? null
   if (!mission) return null
+  const missionPrompt = mission.prompt
 
   function handoff() {
-    void navigator.clipboard.writeText(mission.prompt)
+    void navigator.clipboard.writeText(missionPrompt)
     setCopied(true)
     window.setTimeout(() => setCopied(false), 1600)
     if (role.chat_url) {
