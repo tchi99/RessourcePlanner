@@ -254,7 +254,7 @@ class ODataProjectContractTests(unittest.TestCase):
 
         settings = _settings(
             username="odata-user",
-            password="dummy-passphrase",
+            credential="dummy-passphrase",
             page_size=2,
         )
         source = ODataProjectSource(
