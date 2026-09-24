@@ -145,6 +145,54 @@ Chemin principal retenu :
 """
 
 
+CANONICAL_399A_ROADMAP = """
+# Roadmap maître
+
+#407 est terminé via PR #412. ASTRA #399 est terminé.
+
+<!-- COCKPIT_PIPELINE_V1 -->
+KEY | TYPE | STATUS | PARENT | LANE | TITLE
+407 | WORK | DONE | #407 | MAIN | cohérence sauvegarde → workflow
+ASTRA-399 | ARCHITECTURE_GATE | DONE | #399 | MAIN | analyse architecture #399
+399A | WORK | READY | #399 | MAIN | état persistant + politique commune
+399B | WORK | BLOCKED | #399 | MAIN | acceptation atomique humain + actif
+399C | WORK | BLOCKED | #399 | MAIN | concurrence + invariants
+399D | WORK | BLOCKED | #399 | MAIN | React + E2E
+276 | WORK | BLOCKED | #276 | MAIN | routage approbation
+410 | WORK | BLOCKED | #410 | MAIN | périmètre coordonnateur
+278 | WORK | BLOCKED | #278 | MAIN | dashboard coordonnateur
+<!-- /COCKPIT_PIPELINE_V1 -->
+
+### Suite produit
+```text
+#407 ✅ → ASTRA #399 ✅ → #399A → #399B → #399C → #399D
+```
+"""
+
+INVALID_CANONICAL_ROADMAP = """
+# Roadmap maître
+
+### Suite produit
+```text
+#399A
+```
+
+<!-- COCKPIT_PIPELINE_V1 -->
+KEY | TYPE | STATUS | PARENT | LANE | TITLE
+399A | WORK | READY | #399 | MAIN | A
+399B | WORK | READY | #399 | MAIN | B
+<!-- /COCKPIT_PIPELINE_V1 -->
+"""
+
+ISSUE_399_CONTRADICTORY = """
+# #399 — annulation
+
+### #399A — état persistant — DONE (PR #413)
+### #399B — acceptation atomique
+### #399C — concurrence
+### #399D — React
+"""
+
 ROADMAP_291_READY = """
 **L'analyse ASTRA est terminée. La prochaine tranche active est #291, avec 291A READY.**
 
@@ -903,6 +951,156 @@ class ServiceTests(unittest.IsolatedAsyncioTestCase):
             [step["key"] for step in dashboard["pipeline"]["next"]],
             ["399", "276", "410"],
         )
+
+    async def test_canonical_pipeline_ignores_merged_pr_number_and_human_status(self):
+        merged_412 = {
+            "number": 412,
+            "title": "fix: keep demand workflow aligned with canonical saved version (#407)",
+            "body": "Refs #407 #55",
+            "html_url": "https://github.test/pull/412",
+            "merged_at": "2026-09-24T00:22:21Z",
+            "updated_at": "2026-09-24T00:22:21Z",
+            "state": "closed",
+            "draft": False,
+            "mergeable": True,
+            "mergeable_state": "clean",
+            "head": {"ref": "fix/407-demand-workflow-coherence", "sha": "pr412"},
+            "base": {"ref": "main"},
+        }
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            path = request.url.path
+            query = dict(request.url.params)
+            if path == "/repos/tchi99/RessourcePlanner/issues/55":
+                return response({
+                    "number": 55,
+                    "title": "Roadmap maître",
+                    "body": CANONICAL_399A_ROADMAP,
+                    "html_url": "https://github.test/issues/55",
+                    "updated_at": "2026-09-24T00:30:00Z",
+                    "state": "open",
+                })
+            if path == "/repos/tchi99/RessourcePlanner/issues/399":
+                return response({
+                    "number": 399,
+                    "title": "Demande annulation",
+                    "body": ISSUE_399_CONTRADICTORY,
+                    "state": "open",
+                    "html_url": "https://github.test/issues/399",
+                    "updated_at": "2026-09-24T00:25:00Z",
+                })
+            if path == "/repos/tchi99/RessourcePlanner/issues/407":
+                raise AssertionError("Le pipeline canonique ne doit pas revenir à #407.")
+            if path == "/repos/tchi99/RessourcePlanner/issues/412":
+                raise AssertionError("Un numéro de PR ne peut jamais devenir une issue active.")
+            if path == "/repos/tchi99/RessourcePlanner/pulls":
+                return response([merged_412] if query.get("state") == "closed" else [])
+            if path == "/repos/tchi99/RessourcePlanner/pulls/412/files":
+                return response([{"filename": "frontend/src/App.tsx", "status": "modified"}])
+            if path == "/repos/tchi99/RessourcePlanner/commits":
+                return response([{
+                    "sha": "main-after-412",
+                    "html_url": "https://github.test/commit/main-after-412",
+                    "commit": {
+                        "message": "main",
+                        "author": {"date": "2026-09-24T00:23:00Z"},
+                    },
+                }])
+            if path == "/repos/tchi99/RessourcePlanner/contents/AGENTS.md":
+                return response(encoded_file(AGENTS))
+            if path == "/repos/tchi99/RessourcePlanner/contents/docs/architecture":
+                return response([])
+            if path == "/repos/tchi99/RessourcePlanner/branches":
+                return response([
+                    {"name": "main", "commit": {"sha": "main-after-412"}},
+                    {"name": "fix/407-old", "commit": {"sha": "pr412"}},
+                ])
+            if path == "/repos/tchi99/RessourcePlanner/commits/pr412":
+                return response({
+                    "sha": "pr412",
+                    "html_url": "https://github.test/commit/pr412",
+                    "commit": {"message": "407", "author": {"date": "2026-09-24T00:20:00Z"}},
+                })
+            if path == "/repos/tchi99/RessourcePlanner/actions/runs":
+                return response({"workflow_runs": []})
+            raise AssertionError(f"Unexpected request: {request.method} {request.url} {query}")
+
+        settings = Settings(
+            github_token="test",
+            repository="tchi99/RessourcePlanner",
+            roadmap_issue=55,
+            stalled_after_minutes=20,
+            github_api_url="https://api.github.test",
+        )
+        client = GitHubClient(settings, transport=httpx.MockTransport(handler))
+        try:
+            dashboard = await build_dashboard(client, settings, "tchi99/RessourcePlanner")
+        finally:
+            await client.close()
+
+        self.assertTrue(dashboard["pipeline"]["valid"])
+        self.assertEqual(dashboard["pipeline"]["source"], "canonical_v1")
+        self.assertEqual(dashboard["pipeline"]["now"]["key"], "399A")
+        self.assertEqual(dashboard["roadmap"]["active_issue"], 399)
+        self.assertEqual(dashboard["roadmap"]["effective_active"], "399A")
+        self.assertEqual(dashboard["active_work"]["key"], "399A")
+        self.assertEqual(dashboard["active_work"]["subitem_key"], "399A")
+        self.assertIsNone(dashboard["active_work"]["primary_pr"])
+        self.assertNotEqual(dashboard["roadmap"]["effective_active"], "412")
+        self.assertNotEqual(dashboard["roadmap"]["effective_active"], "ASTRA-399")
+        self.assertIn("399A", dashboard["next_action"])
+
+    async def test_invalid_canonical_pipeline_fails_closed_without_active_issue(self):
+        def handler(request: httpx.Request) -> httpx.Response:
+            path = request.url.path
+            if path == "/repos/tchi99/RessourcePlanner/issues/55":
+                return response({
+                    "number": 55,
+                    "title": "Roadmap maître",
+                    "body": INVALID_CANONICAL_ROADMAP,
+                    "html_url": "https://github.test/issues/55",
+                    "updated_at": "2026-09-24T01:00:00Z",
+                    "state": "open",
+                })
+            if path == "/repos/tchi99/RessourcePlanner/pulls":
+                return response([])
+            if path == "/repos/tchi99/RessourcePlanner/commits":
+                return response([{
+                    "sha": "main-invalid",
+                    "html_url": "https://github.test/commit/main-invalid",
+                    "commit": {"message": "main", "author": {"date": "2026-09-24T01:00:00Z"}},
+                }])
+            if path == "/repos/tchi99/RessourcePlanner/contents/AGENTS.md":
+                return response(encoded_file(AGENTS))
+            if path == "/repos/tchi99/RessourcePlanner/contents/docs/architecture":
+                return response([])
+            if path == "/repos/tchi99/RessourcePlanner/branches":
+                return response([{"name": "main", "commit": {"sha": "main-invalid"}}])
+            if path.startswith("/repos/tchi99/RessourcePlanner/issues/"):
+                raise AssertionError("Pipeline invalide: aucune issue active ne doit être inventée.")
+            raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+        settings = Settings(
+            github_token="test",
+            repository="tchi99/RessourcePlanner",
+            roadmap_issue=55,
+            stalled_after_minutes=20,
+            github_api_url="https://api.github.test",
+        )
+        client = GitHubClient(settings, transport=httpx.MockTransport(handler))
+        try:
+            dashboard = await build_dashboard(client, settings, "tchi99/RessourcePlanner")
+        finally:
+            await client.close()
+
+        self.assertFalse(dashboard["pipeline"]["valid"])
+        self.assertEqual(dashboard["pipeline"]["source"], "canonical_v1")
+        self.assertIsNone(dashboard["pipeline"]["now"])
+        self.assertIsNone(dashboard["roadmap"]["active_issue"])
+        self.assertIsNone(dashboard["roadmap"]["effective_active"])
+        self.assertIsNone(dashboard["active_work"])
+        self.assertIn("invalide", dashboard["next_action"].lower())
+        self.assertIn("ne démarre", dashboard["dev_prompt"].lower())
 
 
 if __name__ == "__main__":

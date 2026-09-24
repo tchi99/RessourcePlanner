@@ -19,7 +19,7 @@ from .roadmap import (
     merge_subitems,
     numeric_issue,
     pipeline_window,
-    product_pipeline,
+    resolve_product_pipeline,
     referenced_adrs,
     referenced_issue_numbers,
     subitems_from_text,
@@ -269,6 +269,97 @@ def _merged_pr_summary(pr: dict[str, Any] | None) -> dict[str, Any] | None:
     }
 
 
+def _architecture_entries(architecture_raw: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [
+        {
+            "name": entry.get("name"),
+            "url": entry.get("html_url"),
+        }
+        for entry in architecture_raw
+        if str(entry.get("name") or "").startswith("ADR-")
+        and str(entry.get("name") or "").endswith(".md")
+    ]
+
+
+def _dashboard_without_active_work(
+    *,
+    repo: str,
+    settings: Settings,
+    roadmap_raw: dict[str, Any],
+    latest_repo_commit: dict[str, Any],
+    architecture_raw: list[dict[str, Any]],
+    top_items: list[Any],
+    legacy_declared_key: str | None,
+    pipeline_contract: Any,
+    pipeline_projection: dict[str, Any],
+) -> dict[str, Any]:
+    invalid = not pipeline_contract.valid
+    errors = list(pipeline_contract.errors)
+    if invalid:
+        next_action = (
+            f"Pipeline canonique GitHub #{settings.roadmap_issue} invalide — corriger COCKPIT_PIPELINE_V1."
+        )
+        dev_prompt = (
+            f"Le bloc COCKPIT_PIPELINE_V1 du roadmap GitHub #{settings.roadmap_issue} est invalide. "
+            "Ne démarre, ne reprends et n'associe aucune tranche DEV tant que le contrat n'est pas corrigé. "
+            + " ".join(errors)
+        )
+        warnings = [
+            "Pipeline canonique invalide : " + error
+            for error in errors
+        ]
+    else:
+        next_action = (
+            f"Le pipeline canonique GitHub #{settings.roadmap_issue} ne contient aucune étape MAIN active."
+        )
+        dev_prompt = (
+            f"Aucune tranche DEV active n'est déclarée dans COCKPIT_PIPELINE_V1 de "
+            f"GitHub #{settings.roadmap_issue}. Ne déduis pas une prochaine tranche depuis le texte humain."
+        )
+        warnings = []
+
+    adr_entries = _architecture_entries(architecture_raw)
+    return {
+        "repo": repo,
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "config": {
+            "roadmap_issue": settings.roadmap_issue,
+            "stalled_after_minutes": settings.stalled_after_minutes,
+            "token_configured": bool(settings.github_token),
+        },
+        "pipeline": {
+            "steps": [step.to_dict() for step in pipeline_contract.steps],
+            "valid": pipeline_contract.valid,
+            "source": pipeline_contract.source,
+            "errors": errors,
+            **pipeline_projection,
+        },
+        "roadmap": {
+            "number": roadmap_raw.get("number"),
+            "title": roadmap_raw.get("title"),
+            "url": roadmap_raw.get("html_url"),
+            "updated_at": roadmap_raw.get("updated_at"),
+            "declared_active": legacy_declared_key,
+            "active_issue": None,
+            "effective_active": None,
+            "items": [item.to_dict() for item in top_items],
+        },
+        "active_work": None,
+        "architecture": {
+            "path": "docs/architecture/",
+            "url": f"https://github.com/{repo}/tree/main/docs/architecture",
+            "adrs": adr_entries,
+            "referenced_adrs": [],
+        },
+        "open_prs": [],
+        "related_issues": [],
+        "latest_commit": commit_summary(latest_repo_commit),
+        "next_action": next_action,
+        "dev_prompt": dev_prompt,
+        "warnings": warnings,
+    }
+
+
 async def build_dashboard(client: GitHubClient, settings: Settings, repo: str) -> dict[str, Any]:
     repo = client.validate_repo(repo)
     roadmap_raw, open_raw, closed_raw, latest_repo_commit, agents_text, architecture_raw, branches_raw = await asyncio.gather(
@@ -284,23 +375,56 @@ async def build_dashboard(client: GitHubClient, settings: Settings, repo: str) -
     roadmap_body = roadmap_raw.get("body") or ""
     top_items = top_level_items(roadmap_body)
     legacy_declared_key = extract_declared_active(roadmap_body)
-
-    # The explicit product pipeline is canonical when it exists. The legacy
-    # "Ordre actif" resolver remains a compatibility fallback for older roadmaps.
-    pipeline_steps = product_pipeline(roadmap_body)
-    pipeline_projection = pipeline_window(pipeline_steps)
-    pipeline_now = pipeline_projection.get("now")
-    pipeline_work_key = (
-        str(pipeline_now.get("key"))
-        if pipeline_now and pipeline_now.get("kind") == "WORK"
-        else None
+    pipeline_contract = resolve_product_pipeline(roadmap_body)
+    pipeline_steps = pipeline_contract.steps
+    pipeline_projection = (
+        pipeline_window(pipeline_steps)
+        if pipeline_contract.valid
+        else {
+            "completed_count": 0,
+            "now": None,
+            "parallel": [],
+            "next": [],
+            "later": [],
+        }
     )
-    declared_key = pipeline_work_key or legacy_declared_key
-    declared_parent = numeric_issue(declared_key or "")
-    if declared_parent is None:
-        first_top = first_unfinished(top_items)
-        declared_parent = numeric_issue(first_top.key) if first_top else settings.roadmap_issue
-    parent_issue = declared_parent or settings.roadmap_issue
+    pipeline_now = pipeline_projection.get("now")
+
+    if pipeline_contract.present and (
+        not pipeline_contract.valid or pipeline_now is None
+    ):
+        return _dashboard_without_active_work(
+            repo=repo,
+            settings=settings,
+            roadmap_raw=roadmap_raw,
+            latest_repo_commit=latest_repo_commit,
+            architecture_raw=architecture_raw,
+            top_items=top_items,
+            legacy_declared_key=legacy_declared_key,
+            pipeline_contract=pipeline_contract,
+            pipeline_projection=pipeline_projection,
+        )
+
+    canonical_mode = pipeline_contract.present
+    if canonical_mode:
+        parent_issue = int(pipeline_now.get("issue_number"))
+        declared_key = str(pipeline_now.get("key"))
+    else:
+        pipeline_work_key = (
+            str(pipeline_now.get("key"))
+            if pipeline_now and pipeline_now.get("kind") == "WORK"
+            else None
+        )
+        declared_key = pipeline_work_key or legacy_declared_key
+        declared_parent = numeric_issue(declared_key or "")
+        if declared_parent is None:
+            first_top = first_unfinished(top_items)
+            declared_parent = (
+                numeric_issue(first_top.key)
+                if first_top
+                else settings.roadmap_issue
+            )
+        parent_issue = declared_parent or settings.roadmap_issue
 
     active_issue_raw = await client.get_issue(repo, parent_issue)
     issue_body = active_issue_raw.get("body") or ""
@@ -308,9 +432,11 @@ async def build_dashboard(client: GitHubClient, settings: Settings, repo: str) -
     issue_subitems = subitems_from_text(issue_body, parent_issue)
     roadmap_subitems = subitems_from_text(roadmap_block, parent_issue)
     subitems = merge_subitems(issue_subitems, roadmap_subitems)
-    pipeline_steps = merge_pipeline_work_status(pipeline_steps, subitems)
-    pipeline_projection = pipeline_window(pipeline_steps)
-    pipeline_now = pipeline_projection.get("now")
+    if not canonical_mode:
+        pipeline_steps = merge_pipeline_work_status(pipeline_steps, subitems)
+        pipeline_projection = pipeline_window(pipeline_steps)
+        pipeline_now = pipeline_projection.get("now")
+
     pipeline_active_key = (
         str(pipeline_now.get("key"))
         if (
@@ -322,37 +448,54 @@ async def build_dashboard(client: GitHubClient, settings: Settings, repo: str) -
     )
 
     parent_item = next((item for item in top_items if item.key == str(parent_issue)), None)
-    block_done = bool(
-        active_issue_raw.get("state") == "closed"
-        or (subitems and all(item.done for item in subitems))
-        or (parent_item and parent_item.done)
-    )
-    if block_done:
-        active_subitem = None
-    elif pipeline_active_key and pipeline_active_key != str(parent_issue):
-        active_subitem = next(
-            (item for item in subitems if item.key == pipeline_active_key),
-            first_unfinished(subitems),
+    if canonical_mode:
+        block_done = False
+        active_key = str(pipeline_now.get("key"))
+        active_subitem = (
+            next(
+                (item for item in subitems if item.key == active_key),
+                None,
+            )
+            if pipeline_now.get("kind") == "WORK"
+            and active_key != str(parent_issue)
+            else None
         )
     else:
-        active_subitem = first_unfinished(subitems)
-    active_key = (
-        pipeline_active_key
-        if pipeline_active_key and not block_done
-        else active_subitem.key if active_subitem else str(parent_issue)
-    )
-    explicit_in_progress = bool(
-        (
-            active_subitem
-            and (
-                active_subitem.marker == "🟡"
-                or "en cours" in active_subitem.title.lower()
-            )
+        block_done = bool(
+            active_issue_raw.get("state") == "closed"
+            or (subitems and all(item.done for item in subitems))
+            or (parent_item and parent_item.done)
         )
-        or (
-            active_subitem is None
-            and parent_item
-            and parent_item.marker == "🟡"
+        if block_done:
+            active_subitem = None
+        elif pipeline_active_key and pipeline_active_key != str(parent_issue):
+            active_subitem = next(
+                (item for item in subitems if item.key == pipeline_active_key),
+                first_unfinished(subitems),
+            )
+        else:
+            active_subitem = first_unfinished(subitems)
+        active_key = (
+            pipeline_active_key
+            if pipeline_active_key and not block_done
+            else active_subitem.key if active_subitem else str(parent_issue)
+        )
+    explicit_in_progress = (
+        False
+        if canonical_mode
+        else bool(
+            (
+                active_subitem
+                and (
+                    active_subitem.marker == "🟡"
+                    or "en cours" in active_subitem.title.lower()
+                )
+            )
+            or (
+                active_subitem is None
+                and parent_item
+                and parent_item.marker == "🟡"
+            )
         )
     )
 
@@ -363,7 +506,7 @@ async def build_dashboard(client: GitHubClient, settings: Settings, repo: str) -
         open_prs,
         active_key,
     )
-    if not primary_pr and active_subitem is None:
+    if not canonical_mode and not primary_pr and active_subitem is None:
         primary_pr = await _first_matching_dev_pr(
             client,
             repo,
@@ -372,7 +515,12 @@ async def build_dashboard(client: GitHubClient, settings: Settings, repo: str) -
         )
 
     merged_but_unmarked_raw = None
-    if not block_done and active_subitem and not primary_pr:
+    if (
+        not block_done
+        and not primary_pr
+        and (active_subitem or canonical_mode)
+        and pipeline_now.get("kind") == "WORK"
+    ):
         merged_candidates = [
             pr
             for pr in closed_raw
@@ -413,9 +561,13 @@ async def build_dashboard(client: GitHubClient, settings: Settings, repo: str) -
         else await _runs_for_sha(client, repo, active_sha)
     )
 
-    blocked_by_roadmap = bool(
-        (active_subitem and (active_subitem.marker == "⏳" or "bloqu" in active_subitem.title.lower()))
-        or (parent_item and parent_item.marker == "⏳")
+    blocked_by_roadmap = (
+        False
+        if canonical_mode
+        else bool(
+            (active_subitem and (active_subitem.marker == "⏳" or "bloqu" in active_subitem.title.lower()))
+            or (parent_item and parent_item.marker == "⏳")
+        )
     )
     derived = derive_states(
         block_done=block_done,
@@ -430,11 +582,42 @@ async def build_dashboard(client: GitHubClient, settings: Settings, repo: str) -
         blocked_by_roadmap=blocked_by_roadmap,
     )
 
-    can_chain_block = bool(
-        not block_done
-        and has_explicit_block_order(issue_body, roadmap_block, subitems)
-        and agents_allow_chaining(agents_text)
-    )
+    if canonical_mode:
+        current_index = next(
+            (
+                index
+                for index, step in enumerate(pipeline_steps)
+                if step.key == active_key and step.lane == "MAIN"
+            ),
+            None,
+        )
+        remaining_subitems = (
+            [
+                step.key
+                for step in pipeline_steps[current_index:]
+                if (
+                    current_index is not None
+                    and step.lane == "MAIN"
+                    and step.kind == "WORK"
+                    and step.issue_number == parent_issue
+                    and not step.done
+                )
+            ]
+            if current_index is not None
+            else [active_key]
+        )
+        can_chain_block = bool(
+            len(remaining_subitems) > 1
+            and agents_allow_chaining(agents_text)
+        )
+    else:
+        remaining_subitems = [item.key for item in subitems if not item.done]
+        can_chain_block = bool(
+            not block_done
+            and has_explicit_block_order(issue_body, roadmap_block, subitems)
+            and agents_allow_chaining(agents_text)
+        )
+
     next_action, dev_prompt = build_next_action_and_prompt(
         parent_issue=parent_issue,
         active_key=active_key,
@@ -445,7 +628,7 @@ async def build_dashboard(client: GitHubClient, settings: Settings, repo: str) -
         derived=derived,
         roadmap_issue=settings.roadmap_issue,
         merged_but_unmarked_pr=merged_but_unmarked,
-        remaining_subitems=[item.key for item in subitems if not item.done],
+        remaining_subitems=remaining_subitems,
     )
     pipeline_prompt = _pipeline_next_action_and_prompt(
         pipeline_now=pipeline_projection.get("now"),
@@ -467,14 +650,7 @@ async def build_dashboard(client: GitHubClient, settings: Settings, repo: str) -
         if isinstance(issue, dict) and "pull_request" not in issue
     ]
 
-    adr_entries = [
-        {
-            "name": entry.get("name"),
-            "url": entry.get("html_url"),
-        }
-        for entry in architecture_raw
-        if str(entry.get("name") or "").startswith("ADR-") and str(entry.get("name") or "").endswith(".md")
-    ]
+    adr_entries = _architecture_entries(architecture_raw)
     adr_names = [str(entry["name"]) for entry in adr_entries if entry.get("name")]
     referenced = referenced_adrs(issue_body + "\n" + roadmap_block, adr_names)
 
@@ -495,6 +671,9 @@ async def build_dashboard(client: GitHubClient, settings: Settings, repo: str) -
         },
         "pipeline": {
             "steps": [step.to_dict() for step in pipeline_steps],
+            "valid": pipeline_contract.valid,
+            "source": pipeline_contract.source,
+            "errors": list(pipeline_contract.errors),
             **pipeline_projection,
         },
         "roadmap": {
@@ -510,12 +689,25 @@ async def build_dashboard(client: GitHubClient, settings: Settings, repo: str) -
         "active_work": {
             "key": active_key,
             "issue_number": parent_issue,
-            "title": active_subitem.title if active_subitem else active_issue_raw.get("title"),
+            "title": (
+                str(pipeline_now.get("title"))
+                if canonical_mode and pipeline_now
+                else active_subitem.title if active_subitem else active_issue_raw.get("title")
+            ),
             "issue": _issue_summary(active_issue_raw),
-            "subitem_key": active_subitem.key if active_subitem else None,
+            "subitem_key": (
+                active_key
+                if (
+                    canonical_mode
+                    and pipeline_now
+                    and pipeline_now.get("kind") == "WORK"
+                    and active_key != str(parent_issue)
+                )
+                else active_subitem.key if active_subitem else None
+            ),
             "block_done": block_done,
             "can_chain_block": can_chain_block,
-            "remaining_subitems": [item.key for item in subitems if not item.done],
+            "remaining_subitems": remaining_subitems,
             "primary_pr": primary_pr,
             "active_branch": active_branch,
             "last_commit": active_commit_info,

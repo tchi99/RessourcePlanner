@@ -17,6 +17,8 @@ class FrontendPipelineContractTests(unittest.TestCase):
 
         self.assertIn("data.pipeline.now", app)
         self.assertIn("data.pipeline.parallel", app)
+        self.assertIn("data.pipeline.valid", app)
+        self.assertIn("Pipeline #55 invalide", app)
         self.assertIn("PARALLÈLE DISPONIBLE", app)
         self.assertIn("ENSUITE", app)
 
@@ -29,6 +31,7 @@ class FrontendPipelineContractTests(unittest.TestCase):
         self.assertIn("dashboard.pipeline.later", panel)
         self.assertIn("PipelineHorizonGroup", panel)
         self.assertIn("PipelineStepAccordion", panel)
+        self.assertIn("PipelineUnavailable", panel)
         self.assertIn("/api/details/issues/", panel)
         self.assertIn("exactSection", panel)
 
@@ -39,6 +42,10 @@ class FrontendPipelineContractTests(unittest.TestCase):
         self.assertIn("rationale: string | null", types)
         self.assertIn("lane: 'MAIN' | 'PARALLEL'", types)
         self.assertIn("parallel: PipelineStep[]", types)
+        self.assertIn("valid: boolean", types)
+        self.assertIn("source: 'canonical_v1' | 'legacy'", types)
+        self.assertIn("errors: string[]", types)
+        self.assertIn("active_issue: number | null", types)
 
 
 if __name__ == "__main__":

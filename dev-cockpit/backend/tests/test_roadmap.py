@@ -6,8 +6,10 @@ from app.roadmap import (
     first_unfinished,
     has_explicit_block_order,
     merge_subitems,
+    parse_cockpit_pipeline,
     pipeline_window,
     product_pipeline,
+    resolve_product_pipeline,
     subitems_from_text,
     top_level_items,
 )
@@ -172,6 +174,31 @@ analyse architecture #362 ✅ — main@4fb40665
 """
 
 
+CANONICAL_PIPELINE_ROADMAP = """
+# Roadmap humain
+
+#407 est terminé via PR #412.
+L'analyse ASTRA #399 est terminée.
+
+<!-- COCKPIT_PIPELINE_V1 -->
+KEY | TYPE | STATUS | PARENT | LANE | TITLE
+407 | WORK | DONE | #407 | MAIN | cohérence sauvegarde et workflow
+ASTRA-399 | ARCHITECTURE_GATE | DONE | #399 | MAIN | analyse architecture annulation
+399A | WORK | READY | #399 | MAIN | état persistant + politique commune
+399B | WORK | BLOCKED | #399 | MAIN | acceptation atomique humain + actif
+399C | WORK | BLOCKED | #399 | MAIN | concurrence + invariants
+399D | WORK | BLOCKED | #399 | MAIN | React + E2E
+408 | WORK | READY | #408 | PARALLEL | cycle de vie et filtres
+276 | WORK | BLOCKED | #276 | MAIN | routage d'approbation
+410 | WORK | BLOCKED | #410 | MAIN | périmètre coordonnateur
+278 | WORK | BLOCKED | #278 | MAIN | dashboard coordonnateur
+ENV-263 | ENVIRONMENT_GATE | BLOCKED | #263 | MAIN | validation environnement
+<!-- /COCKPIT_PIPELINE_V1 -->
+
+Texte humain volontairement contradictoire pour le test : PR #412 serait NEXT.
+"""
+
+
 ISSUE = """
 # #13 — périodes + enveloppe approuvée commune
 
@@ -186,6 +213,88 @@ Ordre obligatoire :
 
 
 class RoadmapTests(unittest.TestCase):
+    def test_canonical_pipeline_v1_is_deterministic_and_authoritative(self):
+        contract = resolve_product_pipeline(CANONICAL_PIPELINE_ROADMAP)
+        self.assertTrue(contract.present)
+        self.assertTrue(contract.valid)
+        self.assertEqual(contract.source, "canonical_v1")
+        self.assertEqual(contract.errors, [])
+
+        window = pipeline_window(contract.steps)
+        self.assertEqual(window["now"]["key"], "399A")
+        self.assertEqual(window["now"]["issue_number"], 399)
+        self.assertEqual(window["now"]["kind"], "WORK")
+        self.assertEqual(
+            [step["key"] for step in window["next"]],
+            ["399B", "399C", "399D"],
+        )
+        self.assertEqual(
+            [step["key"] for step in window["parallel"]],
+            ["408"],
+        )
+        by_key = {step.key: step for step in contract.steps}
+        self.assertTrue(by_key["ASTRA-399"].done)
+        self.assertFalse(by_key["399A"].done)
+        self.assertNotIn("412", by_key)
+
+    def test_canonical_pipeline_v1_rejects_invalid_contract_without_legacy_fallback(self):
+        invalid = """
+#399A serait NEXT dans le texte humain.
+
+<!-- COCKPIT_PIPELINE_V1 -->
+KEY | TYPE | STATUS | PARENT | LANE | TITLE
+PR-412 | WORK | READY | #399 | MAIN | mauvaise identité
+399A | WORK | READY | #398 | MAIN | mauvais parent
+399A | WORK | READY | #399 | MAIN | doublon
+399B | WRONG | BLOCKED | #399 | MAIN | mauvais type
+399C | WORK | UNKNOWN | #399 | MAIN | mauvais statut
+399D | WORK | BLOCKED | issue-399 | MAIN | mauvaise référence
+<!-- /COCKPIT_PIPELINE_V1 -->
+
+### Suite produit
+```text
+#399A
+```
+"""
+        contract = resolve_product_pipeline(invalid)
+        self.assertTrue(contract.present)
+        self.assertFalse(contract.valid)
+        self.assertEqual(contract.source, "canonical_v1")
+        self.assertEqual(contract.steps, [])
+        self.assertGreaterEqual(len(contract.errors), 5)
+
+    def test_canonical_pipeline_v1_rejects_ambiguous_main_ready_order(self):
+        body = """
+<!-- COCKPIT_PIPELINE_V1 -->
+KEY | TYPE | STATUS | PARENT | LANE | TITLE
+399A | WORK | READY | #399 | MAIN | A
+399B | WORK | READY | #399 | MAIN | B
+<!-- /COCKPIT_PIPELINE_V1 -->
+"""
+        contract = parse_cockpit_pipeline(body)
+        self.assertFalse(contract.valid)
+        self.assertTrue(any("exactement une étape READY" in error for error in contract.errors))
+
+    def test_canonical_pipeline_v1_rejects_missing_closing_marker(self):
+        body = """
+<!-- COCKPIT_PIPELINE_V1 -->
+KEY | TYPE | STATUS | PARENT | LANE | TITLE
+399A | WORK | READY | #399 | MAIN | A
+"""
+        contract = resolve_product_pipeline(body)
+        self.assertTrue(contract.present)
+        self.assertFalse(contract.valid)
+        self.assertEqual(contract.steps, [])
+
+    def test_legacy_pipeline_remains_fallback_when_canonical_block_is_absent(self):
+        contract = resolve_product_pipeline(CURRENT_PARALLEL_PIPELINE_ROADMAP)
+        self.assertFalse(contract.present)
+        self.assertTrue(contract.valid)
+        self.assertEqual(contract.source, "legacy")
+        self.assertEqual(
+            [step.key for step in contract.steps[:4]],
+            ["291A", "291B", "291C", "291D"],
+        )
     def test_extracts_active_parent_and_first_subitem(self):
         self.assertEqual(extract_declared_active(ROADMAP), "13")
         top = top_level_items(ROADMAP)

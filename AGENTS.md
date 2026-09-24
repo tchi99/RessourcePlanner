@@ -554,6 +554,24 @@ After merging an issue/sub-issue:
 
 A task is not complete merely because code exists on a branch.
 
+### Dev Cockpit pipeline contract
+
+When roadmap #55 contains a versioned `COCKPIT_PIPELINE_V1` block, that block is the machine-readable contract used by the Dev Cockpit. Human roadmap prose, tables, PR numbers, CI numbers and commit SHAs must never be used as substitute step identities.
+
+Any change to the work order or completion state in #55 must:
+
+- update `COCKPIT_PIPELINE_V1` in the same roadmap edit;
+- preserve stable issue/sub-slice identity (`399`, `399A`, etc.);
+- mark a merged/completed step `DONE` and promote the actual next MAIN step to `READY`;
+- keep later MAIN steps `BLOCKED`;
+- keep the human roadmap text consistent with the canonical block;
+- never use a PR, CI run or commit number as `KEY`;
+- verify after the roadmap edit that the canonical parser resolves the expected active step.
+
+Do not store the current next issue or current active step in this file. AGENTS.md contains only the durable rules of the contract; #55 contains the current product state.
+
+If a canonical block exists but is invalid, do not work around it by editing the cockpit heuristics or by inferring a different active step from surrounding Markdown. Correct #55 so the canonical contract becomes valid again.
+
 ---
 
 ## 20. Chained execution
