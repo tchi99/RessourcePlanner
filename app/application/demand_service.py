@@ -1363,6 +1363,10 @@ class DemandService:
                 code_prefix="demand_correction",
                 context={"demand_number": number},
             )
+            self._invalidate_active_approval_cycle(
+                number,
+                reason="RETURNED_FOR_CORRECTION",
+            )
 
     def request_cancellation_command(
         self,
@@ -1402,6 +1406,10 @@ class DemandService:
                     "demand_number": number,
                     "cancellation_request_id": cancellation_request_id,
                 },
+            )
+            self._invalidate_active_approval_cycle(
+                number,
+                reason="CANCELLATION_REQUESTED",
             )
         return existing.status, cancellation_request_id
 
@@ -1563,6 +1571,10 @@ class DemandService:
                 code_prefix="demand_cancel",
                 context={"demand_number": number},
             )
+            self._invalidate_active_approval_cycle(
+                number,
+                reason="DEMAND_CANCELLED",
+            )
             if callable(cancel_materialized):
                 call_application_port(
                     self._planning.rebuild,
@@ -1588,7 +1600,7 @@ class DemandService:
     def submit(self, number: str) -> None:
         self.submit_command(DemandSubmitCommand(number))
 
-    def approve(self, number: str, comment: str = "") -> dict[str, Any]:
+    def approve(self, number: str, comment: str = "") -> ApprovalVoteOutcome:
         return self.approve_command(DemandApproveCommand(number, comment))
 
     def request_correction(self, number: str, comment: str) -> None:
