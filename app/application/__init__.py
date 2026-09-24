@@ -157,6 +157,7 @@ from .project_sync import (
     ProjectSyncService,
 )
 from .query_models import (
+    DemandCancellationMaterializationReadModel,
     DemandHistoryReadModel,
     DemandMaterializedRequirementReadModel,
     DemandMaterializedResourceReadModel,
@@ -292,6 +293,7 @@ __all__ = [
     "DemandDetailService",
     "DemandDetailWorkflowReadModel",
     "DemandMaterializedPlanSummaryReadModel",
+    "DemandCancellationMaterializationReadModel",
     "DemandHistoryReadModel",
     "DemandMaterializedRequirementReadModel",
     "DemandMaterializedResourceReadModel",
