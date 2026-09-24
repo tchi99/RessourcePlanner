@@ -19,6 +19,9 @@ DOMAIN_ENGINE = ROOT / "app" / "domain" / "planning_engine.py"
 DAY = date(2026, 8, 26)
 
 EXPECTED_TABLES = {
+    "approval_scopes",
+    "approval_scope_approvers",
+    "task_approval_scope_mappings",
     "asset_types",
     "asset_type_competencies",
     "assets",

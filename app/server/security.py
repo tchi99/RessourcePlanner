@@ -52,7 +52,7 @@ def required_permission(method: str, path: str) -> str | None:
         return None
     if path.startswith("/api/v1/dev/user-switcher"):
         return None
-    if path.startswith("/api/v1/admin/settings"):
+    if path.startswith("/api/v1/admin/settings") or path.startswith("/api/v1/admin/approval-scopes"):
         return PERMISSION_ADMIN_SETTINGS
     if path.startswith("/api/v1/admin/users"):
         return PERMISSION_ADMIN_USERS
