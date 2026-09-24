@@ -253,9 +253,28 @@ export type DemandRequesterReadModel = {
   roles: string[];
 };
 
+export type DemandCancellationPolicyReadModel = {
+  has_operational_decisions: boolean;
+  direct_cancel: boolean;
+  request_cancellation: boolean;
+  cancellation_pending: boolean;
+  resolve_cancellation: boolean;
+  reason_code: string | null;
+  reason: string | null;
+};
+
 export type DemandReadModel = {
   number: string;
   status: string;
+  cancellation_request_id: string | null;
+  cancellation_state: "PENDING" | "REJECTED" | "ACCEPTED" | null;
+  cancellation_requested_by_user_id: string | null;
+  cancellation_requested_at: string | null;
+  cancellation_reason: string | null;
+  cancellation_resolved_by_user_id: string | null;
+  cancellation_resolved_at: string | null;
+  cancellation_resolution_comment: string | null;
+  cancellation_policy: DemandCancellationPolicyReadModel | null;
   project_number: string | null;
   project_name: string | null;
   client: string | null;
@@ -289,6 +308,7 @@ export type DemandDetailWorkflowActionReadModel = {
   action: string;
   allowed: boolean;
   required_permission: string;
+  required_permissions: string[];
   reason_code: string | null;
   reason: string | null;
 };
@@ -388,6 +408,7 @@ export type DemandDetailReadModel = {
     version: number;
     available_actions: string[];
     actions: DemandDetailWorkflowActionReadModel[];
+    cancellation: DemandCancellationPolicyReadModel | null;
   };
   approval_state: {
     active_revision_id: string | null;
