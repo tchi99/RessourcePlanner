@@ -17,6 +17,7 @@ from ..application import (
     DemandOperationalConfirmationCommand,
     DemandApproveCommand,
     DemandCancelCommand,
+    DemandCancellationAcceptCommand,
     DemandCancellationRejectCommand,
     DemandCancellationRequestCommand,
     DemandCorrectionCommand,
@@ -55,6 +56,7 @@ from .schemas import (
     AvailabilityRuleUpdateRequest,
     DemandAlternativeSelectionRequest,
     DemandApprovalRequest,
+    DemandCancellationAcceptRequest,
     DemandCancellationRejectRequest,
     DemandCancellationRequest,
     DemandOperationalConfirmationRequest,
@@ -570,6 +572,37 @@ def build_command_router(
                     expected_version=body.expected_version,
                 )
             )
+        )
+
+    @router.post("/demands/{number}/accept-cancellation")
+    def accept_demand_cancellation(
+        number: str,
+        body: DemandCancellationAcceptRequest,
+        idempotency_key: str = Header(alias="Idempotency-Key"),
+        facade: ApplicationFacade = Depends(facade_dependency),
+        idempotency: IdempotentCommandExecutor = Depends(stable_idempotency),
+    ) -> dict[str, Any]:
+        request_payload = {
+            "operation": "ACCEPT_CANCELLATION",
+            "demand_number": number,
+            "body": _json_body(body),
+        }
+        return idempotency.execute(
+            scope="demand_cancellation.accept",
+            key=idempotency_key,
+            request_payload=request_payload,
+            action=lambda: _payload(
+                facade.accept_demand_cancellation(
+                    DemandCancellationAcceptCommand(
+                        number=number,
+                        cancellation_request_id=body.cancellation_request_id,
+                        comment=body.comment,
+                        expected_version=body.expected_version,
+                        expected_planning_version=body.expected_planning_version,
+                        correlation_id=idempotency_key,
+                    )
+                )
+            ),
         )
 
     @router.post("/demands/{number}/reject-cancellation")
