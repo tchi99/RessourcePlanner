@@ -388,6 +388,19 @@ export type DemandDetailAssetRequirementReadModel = {
   required_competency_names: string[];
 };
 
+export type DemandDetailTechnicalContextReadModel = {
+  request_version: number;
+  workflow_version: number;
+  expected_request_version: number;
+  expected_operational_version: number | null;
+  active_revision_id: string | null;
+  approved_request_version: number | null;
+  operational_version: number | null;
+  envelope_decision: string | null;
+  envelope_reason: string | null;
+  diagnostics: string[];
+};
+
 export type DemandDetailReadModel = {
   demand: DemandReadModel;
   version: number;
@@ -432,6 +445,7 @@ export type DemandDetailReadModel = {
     reapproval_required: boolean;
   };
   diagnostics: string[];
+  technical_context: DemandDetailTechnicalContextReadModel | null;
 };
 
 export type SegmentMobilizedResourceReadModel = {
