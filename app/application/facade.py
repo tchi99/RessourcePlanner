@@ -233,44 +233,7 @@ class ApplicationFacade:
 
     def approve_demand(self, command: DemandApproveCommand) -> ApprovalVoteOutcome:
         # 276C owns the planning CAS decision: partial votes must not consume it.
-        summary = self._demands.approve_command(command)
-        quorum = summary.get("quorum")
-        if quorum is not None:
-            return quorum
-        return ApprovalVoteOutcome(
-            workforce_request_id=str(summary.get("workforce_request_id") or ""),
-            demand_number=str(summary.get("demand_number") or _identifier(command.number)),
-            approval_cycle_id=str(summary.get("approval_cycle_id") or ""),
-            action_id=(
-                str(summary.get("action_id"))
-                if summary.get("action_id") is not None
-                else None
-            ),
-            request_version=int(summary.get("request_version") or 1),
-            status=str(summary.get("status") or "Soumise"),
-            quorum=self._demands.approval_quorum_from_mapping(summary),
-            approval_revision_id=(
-                str(summary.get("approval_revision_id"))
-                if summary.get("approval_revision_id")
-                else None
-            ),
-            planning_version=(
-                int(summary.get("planning_version"))
-                if summary.get("planning_version") is not None
-                else None
-            ),
-            planning=summary.get("planning"),
-            conflict_code=(
-                str(summary.get("conflict_code"))
-                if summary.get("conflict_code")
-                else None
-            ),
-            conflict_message=(
-                str(summary.get("conflict_message"))
-                if summary.get("conflict_message")
-                else None
-            ),
-        )
+        return self._demands.approve_command(command)
 
     def vote_demand_approval(
         self,
