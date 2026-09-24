@@ -5,6 +5,7 @@ import type {
   CockpitConfig,
   Dashboard,
   Job,
+  PipelineReconciliation,
   PipelineStep,
   PullRequest,
   Run,
@@ -81,6 +82,96 @@ function PipelineRoadmapRow({
   )
 }
 
+function RoadmapReconciliationPanel({
+  reconciliation,
+  copied,
+  onCopy,
+}: {
+  reconciliation: PipelineReconciliation
+  copied: boolean
+  onCopy: () => void
+}) {
+  if (reconciliation.status === 'legacy') return null
+
+  const tone =
+    reconciliation.status === 'coherent'
+      ? 'coherent'
+      : reconciliation.status === 'stale'
+        ? 'stale'
+        : reconciliation.status === 'invalid'
+          ? 'invalid'
+          : 'attention'
+  const label =
+    reconciliation.status === 'coherent'
+      ? 'COHÉRENT'
+      : reconciliation.status === 'stale'
+        ? 'ROADMAP STALE'
+        : reconciliation.status === 'invalid'
+          ? 'INVALID'
+          : 'ATTENTION'
+
+  return (
+    <section className={`reconciliation-panel ${tone}`}>
+      <div className="reconciliation-header">
+        <div>
+          <span className="panel-kicker">COHÉRENCE ROADMAP</span>
+          <h2>Contrat #55 ↔ réalité GitHub</h2>
+        </div>
+        <span className={`reconciliation-status ${tone}`}>{label}</span>
+      </div>
+
+      <p className="reconciliation-summary">{reconciliation.summary}</p>
+
+      {reconciliation.findings.length > 0 && (
+        <div className="reconciliation-findings">
+          {reconciliation.findings.map((finding) => (
+            <article key={`${finding.code}:${finding.key}`} className={finding.severity}>
+              <strong>{finding.key}</strong>
+              <span>{finding.message}</span>
+              {finding.evidence.length > 0 && (
+                <div className="reconciliation-evidence">
+                  {finding.evidence.map((evidence) =>
+                    evidence.url ? (
+                      <a
+                        key={`${finding.code}:${evidence.label}`}
+                        href={evidence.url}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        {evidence.label} ↗
+                      </a>
+                    ) : (
+                      <span key={`${finding.code}:${evidence.label}`}>
+                        {evidence.label}
+                      </span>
+                    ),
+                  )}
+                </div>
+              )}
+            </article>
+          ))}
+        </div>
+      )}
+
+      {reconciliation.proposal && (
+        <div className="reconciliation-proposal">
+          <div>
+            <strong>Proposition déterministe</strong>
+            <span>
+              {reconciliation.proposal.changes
+                .map((change) => `${change.key}: ${change.from} → ${change.to}`)
+                .join(' · ')}
+            </span>
+          </div>
+          <button className="primary" type="button" onClick={onCopy}>
+            {copied ? 'Bloc copié ✓' : 'Préparer la mise à jour de #55'}
+          </button>
+        </div>
+      )}
+    </section>
+  )
+}
+
 function JobLine({ job }: { job: Job }) {
   const running = job.status && job.status !== 'completed'
   const success = job.conclusion === 'success'
@@ -117,6 +208,7 @@ export default function App() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
+  const [roadmapCopied, setRoadmapCopied] = useState(false)
 
   async function load(targetRepo: string) {
     if (!targetRepo) return
@@ -177,6 +269,14 @@ export default function App() {
     await navigator.clipboard.writeText(data.dev_prompt)
     setCopied(true)
     window.setTimeout(() => setCopied(false), 1400)
+  }
+
+  async function copyRoadmapProposal() {
+    const block = data?.reconciliation.proposal?.pipeline_block
+    if (!block) return
+    await navigator.clipboard.writeText(block)
+    setRoadmapCopied(true)
+    window.setTimeout(() => setRoadmapCopied(false), 1800)
   }
 
   const activeWork = data?.active_work ?? null
@@ -267,6 +367,12 @@ export default function App() {
               ))}
             </div>
           )}
+
+          <RoadmapReconciliationPanel
+            reconciliation={data.reconciliation}
+            copied={roadmapCopied}
+            onCopy={() => void copyRoadmapProposal()}
+          />
 
           <section className="dashboard-grid">
             <article className="panel roadmap-panel">
