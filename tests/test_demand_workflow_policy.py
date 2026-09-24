@@ -7,6 +7,8 @@ from app.application.demand_workflow_policy import (
     ACTION_CANCEL,
     ACTION_CORRECTION,
     ACTION_EMERGENCY_PLAN,
+    ACTION_REJECT_CANCELLATION,
+    ACTION_REQUEST_CANCELLATION,
     ACTION_MODIFY,
     ACTION_SUBMIT,
     assert_demand_action,
@@ -16,9 +18,11 @@ from app.application.errors import (
     ApplicationAuthorizationError,
     ApplicationConflictError,
 )
+from app.application.query_models import DemandCancellationMaterializationReadModel
 from app.application.read_models import DemandReadModel
 from app.application.security import (
     ROLE_ADMIN,
+    ROLE_COORDINATOR,
     ROLE_MANAGER,
     ROLE_PROJECT_MANAGER,
     permissions_for_roles,
@@ -63,6 +67,62 @@ class DemandWorkflowPolicyTests(unittest.TestCase):
         self.assertEqual(state.available_actions, ())
         self.assertTrue(
             all(row.reason_code == "demand_transition_invalid" for row in state.actions)
+        )
+
+    def test_materialized_demand_requires_cancellation_request_instead_of_direct_cancel(self) -> None:
+        state = demand_workflow_state(
+            DemandReadModel(number="DMO-MAT", status="En planification", version=4),
+            permissions=permissions_for_roles((ROLE_PROJECT_MANAGER,)),
+            materialization=DemandCancellationMaterializationReadModel(
+                demand_number="DMO-MAT",
+                human_shift_count=1,
+                locked_human_shift_count=1,
+            ),
+        )
+
+        self.assertNotIn(ACTION_CANCEL, state.available_actions)
+        self.assertIn(ACTION_REQUEST_CANCELLATION, state.available_actions)
+        self.assertTrue(state.cancellation.has_operational_decisions)
+        self.assertFalse(state.cancellation.direct_cancel)
+        self.assertTrue(state.cancellation.request_cancellation)
+
+    def test_pending_cancellation_exposes_resolution_only_to_coordinator(self) -> None:
+        demand = DemandReadModel(
+            number="DMO-PENDING",
+            status="En planification",
+            version=5,
+            cancellation_request_id="11111111-1111-1111-1111-111111111111",
+            cancellation_state="PENDING",
+        )
+        materialization = DemandCancellationMaterializationReadModel(
+            demand_number=demand.number,
+            asset_allocation_count=1,
+        )
+
+        coordinator = demand_workflow_state(
+            demand,
+            permissions=permissions_for_roles((ROLE_COORDINATOR,)),
+            materialization=materialization,
+        )
+        project_manager = demand_workflow_state(
+            demand,
+            permissions=permissions_for_roles((ROLE_PROJECT_MANAGER,)),
+            materialization=materialization,
+        )
+
+        self.assertIn(ACTION_REJECT_CANCELLATION, coordinator.available_actions)
+        self.assertNotIn(ACTION_REQUEST_CANCELLATION, coordinator.available_actions)
+        self.assertNotIn(ACTION_CANCEL, coordinator.available_actions)
+        self.assertTrue(coordinator.cancellation.cancellation_pending)
+        self.assertTrue(coordinator.cancellation.resolve_cancellation)
+        self.assertNotIn(ACTION_REJECT_CANCELLATION, project_manager.available_actions)
+        rejection = {
+            row.action: row for row in project_manager.actions
+        }[ACTION_REJECT_CANCELLATION]
+        self.assertEqual(rejection.reason_code, "permission_denied")
+        self.assertEqual(
+            set(rejection.required_permissions),
+            {"approve_demands", "manage_planning"},
         )
 
     def test_invalid_direct_transition_is_conflict(self) -> None:

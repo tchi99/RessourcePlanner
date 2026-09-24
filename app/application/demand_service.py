@@ -4,6 +4,7 @@ from collections.abc import Callable, Mapping, Sequence
 from contextlib import nullcontext
 from datetime import date, datetime
 from typing import Any, ContextManager
+from uuid import uuid4
 
 from ..domain.demand_periods import DemandPeriodDefinition, validate_period_definitions
 from ..domain.request_lines import default_legacy_hours
@@ -13,6 +14,8 @@ from .commands import (
     DemandOperationalConfirmationCommand,
     DemandApproveCommand,
     DemandCancelCommand,
+    DemandCancellationRejectCommand,
+    DemandCancellationRequestCommand,
     DemandCorrectionCommand,
     DemandCreateCommand,
     DemandPeriodsReplaceCommand,
@@ -43,6 +46,8 @@ from .demand_workflow_policy import (
     ACTION_APPROVE,
     ACTION_CANCEL,
     ACTION_CORRECTION,
+    ACTION_REJECT_CANCELLATION,
+    ACTION_REQUEST_CANCELLATION,
     ACTION_MODIFY,
     ACTION_SUBMIT,
     DemandWorkflowBlock,
@@ -57,6 +62,8 @@ from .security import (
     ROLE_COORDINATOR,
     ROLE_PROJECT_MANAGER,
 )
+from .query_models import DemandCancellationMaterializationReadModel
+from .query_ports import PlannerQueryPort
 from .read_models import DemandOperationalChoiceReadModel, DemandPeriodReadModel
 from .repository_ports import (
     DemandApprovalEnvelopePolicyPort,
@@ -117,6 +124,7 @@ class DemandService:
         permissions: Sequence[str] | None = None,
         roles: Sequence[str] | None = None,
         planning_versions: PlanningMutationVersionPort | None = None,
+        queries: PlannerQueryPort | None = None,
         batch: Callable[[str], ContextManager[Any]] | None = None,
     ) -> None:
         self._demands = demands
@@ -134,6 +142,7 @@ class DemandService:
         )
         self._roles = tuple(str(role).strip().upper() for role in (roles or ()) if str(role).strip())
         self._planning_versions = planning_versions
+        self._queries = queries
         self._batch = batch
 
     def _context(self, label: str) -> ContextManager[Any]:
@@ -290,6 +299,21 @@ class DemandService:
     ) -> Mapping[str, DemandWorkflowBlock]:
         return {}
 
+    def _cancellation_materialization(
+        self,
+        number: str,
+    ) -> DemandCancellationMaterializationReadModel:
+        if self._queries is None:
+            return DemandCancellationMaterializationReadModel(demand_number=number)
+        reader = getattr(self._queries, "demand_cancellation_materialization", None)
+        if not callable(reader):
+            return DemandCancellationMaterializationReadModel(demand_number=number)
+        return call_application_port(
+            lambda: reader(number),
+            code_prefix="demand_cancellation_materialization",
+            context={"demand_number": number},
+        )
+
     def workflow_state(self, number: str) -> DemandWorkflowReadModel:
         identifier = self._required_identifier(number, entity="demand")
         existing = self._demand_or_not_found(identifier)
@@ -297,6 +321,7 @@ class DemandService:
             existing,
             permissions=self._permissions,
             business_blocks=self._workflow_business_blocks(existing),
+            materialization=self._cancellation_materialization(identifier),
         )
 
     @staticmethod
@@ -322,11 +347,22 @@ class DemandService:
         expected_version: int | None = None,
     ) -> None:
         self._assert_expected_version(existing, expected_version)
+        materialization = (
+            self._cancellation_materialization(existing.number)
+            if action
+            in {
+                ACTION_CANCEL,
+                ACTION_REQUEST_CANCELLATION,
+                ACTION_REJECT_CANCELLATION,
+            }
+            else None
+        )
         assert_demand_action(
             existing,
             action,
             permissions=self._permissions,
             business_blocks=self._workflow_business_blocks(existing),
+            materialization=materialization,
         )
 
     def _envelope_actor_role(self) -> str | None:
@@ -1291,6 +1327,101 @@ class DemandService:
                 context={"demand_number": number},
             )
 
+    def request_cancellation_command(
+        self,
+        command: DemandCancellationRequestCommand,
+    ) -> tuple[str, str]:
+        number = self._required_identifier(command.number, entity="demand")
+        reason = str(command.reason or "").strip()
+        if not reason:
+            raise ApplicationValidationError(
+                "Un motif d'annulation est requis.",
+                code="cancellation_reason_required",
+                context={"demand_number": number},
+            )
+        if command.expected_version is None:
+            raise ApplicationValidationError(
+                "expected_version est requis pour demander l'annulation.",
+                code="demand_version_required",
+                context={"demand_number": number},
+            )
+        existing = self._demand_or_not_found(number)
+        self._assert_workflow_action(
+            existing,
+            ACTION_REQUEST_CANCELLATION,
+            expected_version=command.expected_version,
+        )
+        cancellation_request_id = str(uuid4())
+        with self._context("request demand cancellation"):
+            call_application_port(
+                lambda: self._demands.request_cancellation(
+                    number,
+                    cancellation_request_id=cancellation_request_id,
+                    reason=reason,
+                    expected_version=int(command.expected_version),
+                ),
+                code_prefix="demand_cancellation_request",
+                context={
+                    "demand_number": number,
+                    "cancellation_request_id": cancellation_request_id,
+                },
+            )
+        return existing.status, cancellation_request_id
+
+    def reject_cancellation_command(
+        self,
+        command: DemandCancellationRejectCommand,
+    ) -> str:
+        number = self._required_identifier(command.number, entity="demand")
+        cycle_id = self._required_identifier(
+            command.cancellation_request_id,
+            entity="cancellation_request",
+        )
+        comment = str(command.comment or "").strip()
+        if not comment:
+            raise ApplicationValidationError(
+                "Un commentaire de résolution est requis.",
+                code="cancellation_resolution_comment_required",
+                context={"demand_number": number},
+            )
+        if command.expected_version is None:
+            raise ApplicationValidationError(
+                "expected_version est requis pour refuser l'annulation.",
+                code="demand_version_required",
+                context={"demand_number": number},
+            )
+        existing = self._demand_or_not_found(number)
+        self._assert_workflow_action(
+            existing,
+            ACTION_REJECT_CANCELLATION,
+            expected_version=command.expected_version,
+        )
+        if existing.cancellation_request_id != cycle_id:
+            raise ApplicationConflictError(
+                "La demande d'annulation à résoudre n'est plus active.",
+                code="cancellation_cycle_conflict",
+                context={
+                    "demand_number": number,
+                    "expected_cancellation_request_id": cycle_id,
+                    "current_cancellation_request_id": existing.cancellation_request_id,
+                },
+            )
+        with self._context("reject demand cancellation"):
+            call_application_port(
+                lambda: self._demands.reject_cancellation(
+                    number,
+                    cancellation_request_id=cycle_id,
+                    comment=comment,
+                    expected_version=int(command.expected_version),
+                ),
+                code_prefix="demand_cancellation_reject",
+                context={
+                    "demand_number": number,
+                    "cancellation_request_id": cycle_id,
+                },
+            )
+        return existing.status
+
     def cancel_command(self, command: DemandCancelCommand) -> None:
         number = self._required_identifier(command.number, entity="demand")
         existing = self._demand_or_not_found(number)
@@ -1310,7 +1441,14 @@ class DemandService:
             call_application_port(
                 lambda: self._demands.update(
                     number,
-                    {"Statut": "Annulée"},
+                    {
+                        "Statut": "Annulée",
+                        **(
+                            {"ExpectedVersion": int(command.expected_version)}
+                            if command.expected_version is not None
+                            else {}
+                        ),
+                    },
                     action="Annulation",
                     comment="Demande annulée",
                 ),

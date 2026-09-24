@@ -12,6 +12,8 @@ from .commands import (
     DemandOperationalConfirmationCommand,
     DemandApproveCommand,
     DemandCancelCommand,
+    DemandCancellationRejectCommand,
+    DemandCancellationRequestCommand,
     DemandCorrectionCommand,
     DemandCreateCommand,
     DemandPeriodsReplaceCommand,
@@ -50,6 +52,7 @@ from .results import (
     AllocationMutationResult,
     CompositeAllocationMutationResult,
     DemandAlternativeSelectionResult,
+    DemandCancellationMutationResult,
     DemandMutationResult,
     DemandOperationalConfirmationResult,
     DemandPeriodsMutationResult,
@@ -241,6 +244,32 @@ class ApplicationFacade:
     ) -> DemandMutationResult:
         self._demands.request_correction_command(command)
         return DemandMutationResult(_identifier(command.number), status="À corriger")
+
+    def request_demand_cancellation(
+        self,
+        command: DemandCancellationRequestCommand,
+    ) -> DemandCancellationMutationResult:
+        status, cancellation_request_id = self._demands.request_cancellation_command(
+            command
+        )
+        return DemandCancellationMutationResult(
+            _identifier(command.number),
+            status=status,
+            cancellation_request_id=cancellation_request_id,
+            cancellation_state="PENDING",
+        )
+
+    def reject_demand_cancellation(
+        self,
+        command: DemandCancellationRejectCommand,
+    ) -> DemandCancellationMutationResult:
+        status = self._demands.reject_cancellation_command(command)
+        return DemandCancellationMutationResult(
+            _identifier(command.number),
+            status=status,
+            cancellation_request_id=_identifier(command.cancellation_request_id),
+            cancellation_state="REJECTED",
+        )
 
     def cancel_demand(self, command: DemandCancelCommand) -> DemandMutationResult:
         self._demands.cancel_command(command)

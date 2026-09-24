@@ -66,6 +66,14 @@ class DemandMutationResult(ApplicationResult):
 
 
 @dataclass(frozen=True, slots=True)
+class DemandCancellationMutationResult(ApplicationResult):
+    demand_number: str
+    status: str
+    cancellation_request_id: str
+    cancellation_state: str
+
+
+@dataclass(frozen=True, slots=True)
 class DemandPeriodsMutationResult(ApplicationResult):
     demand_number: str
     period_count: int

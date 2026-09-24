@@ -7,12 +7,15 @@ import json
 import re
 from typing import Any
 
-from sqlalchemy import delete, select, update
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.orm import Session, aliased
 
 from ...application.errors import ApplicationConflictError
+from ...application.query_models import DemandCancellationMaterializationReadModel
 from ...application.read_models import DemandLineReadModel, DemandReadModel
 from ...application.repository_ports import DemandRepositoryPort
+from ...domain.planning_engine import MISSING_ALLOCATION_TYPE
+from .asset_models import AssetAllocation, AssetRequirement
 from .base import new_id, utc_now
 from .models import (
     Competency,
@@ -20,6 +23,8 @@ from .models import (
     RequestLine,
     RequestLineCompetency,
     Resource,
+    ResourceRequirement,
+    Shift,
     TaskCatalogEntry,
     WorkforceRequest,
     WorkforceRequestCompetency,
@@ -112,6 +117,20 @@ class SqlDemandRepository(DemandRepositoryPort):
             # this compatibility name later without changing the application port.
             number=_text(request.legacy_demand_number) or request.id,
             status=_text(request.status),
+            cancellation_request_id=_optional_text(request.cancellation_request_id),
+            cancellation_state=_optional_text(request.cancellation_state),
+            cancellation_requested_by_user_id=_optional_text(
+                request.cancellation_requested_by_user_id
+            ),
+            cancellation_requested_at=request.cancellation_requested_at,
+            cancellation_reason=_optional_text(request.cancellation_reason),
+            cancellation_resolved_by_user_id=_optional_text(
+                request.cancellation_resolved_by_user_id
+            ),
+            cancellation_resolved_at=request.cancellation_resolved_at,
+            cancellation_resolution_comment=_optional_text(
+                request.cancellation_resolution_comment
+            ),
             project_number=_optional_text(project.number),
             project_name=_optional_text(project.name),
             client=_optional_text(project.client),
@@ -162,16 +181,78 @@ class SqlDemandRepository(DemandRepositoryPort):
     ) -> tuple[
         dict[str, tuple[str, ...]],
         dict[str, tuple[DemandLineReadModel, ...]],
+        dict[str, tuple[int, int, int, int]],
     ]:
-        """Load request competencies and RequestLine projections in one batch query."""
+        """Load child projections and cancellation materialization in one batch query."""
 
         identifiers = tuple(str(value) for value in request_ids if str(value))
         if not identifiers:
-            return {}, {}
+            return {}, {}, {}
 
         request_competency = aliased(WorkforceRequestCompetency)
         line_competency = aliased(RequestLineCompetency)
         proposed_resource = aliased(Resource)
+
+        human_shift_count = (
+            select(func.count(Shift.id))
+            .select_from(Shift)
+            .join(
+                ResourceRequirement,
+                Shift.resource_requirement_id == ResourceRequirement.id,
+            )
+            .where(
+                ResourceRequirement.workforce_request_id == WorkforceRequest.id,
+                ResourceRequirement.origin == "REQUEST",
+                (Shift.allocation_type.is_(None))
+                | (Shift.allocation_type != MISSING_ALLOCATION_TYPE),
+            )
+            .correlate(WorkforceRequest)
+            .scalar_subquery()
+        )
+        locked_human_shift_count = (
+            select(func.count(Shift.id))
+            .select_from(Shift)
+            .join(
+                ResourceRequirement,
+                Shift.resource_requirement_id == ResourceRequirement.id,
+            )
+            .where(
+                ResourceRequirement.workforce_request_id == WorkforceRequest.id,
+                ResourceRequirement.origin == "REQUEST",
+                (Shift.allocation_type.is_(None))
+                | (Shift.allocation_type != MISSING_ALLOCATION_TYPE),
+                Shift.locked.is_(True),
+            )
+            .correlate(WorkforceRequest)
+            .scalar_subquery()
+        )
+        asset_allocation_count = (
+            select(func.count(AssetAllocation.id))
+            .select_from(AssetAllocation)
+            .join(
+                AssetRequirement,
+                AssetAllocation.asset_requirement_id == AssetRequirement.id,
+            )
+            .where(
+                AssetRequirement.workforce_request_id == WorkforceRequest.id,
+            )
+            .correlate(WorkforceRequest)
+            .scalar_subquery()
+        )
+        locked_asset_allocation_count = (
+            select(func.count(AssetAllocation.id))
+            .select_from(AssetAllocation)
+            .join(
+                AssetRequirement,
+                AssetAllocation.asset_requirement_id == AssetRequirement.id,
+            )
+            .where(
+                AssetRequirement.workforce_request_id == WorkforceRequest.id,
+                AssetAllocation.locked.is_(True),
+            )
+            .correlate(WorkforceRequest)
+            .scalar_subquery()
+        )
 
         rows = self._session.execute(
             select(
@@ -181,6 +262,10 @@ class SqlDemandRepository(DemandRepositoryPort):
                 proposed_resource,
                 request_competency.competency_id,
                 line_competency.competency_id,
+                human_shift_count,
+                locked_human_shift_count,
+                asset_allocation_count,
+                locked_asset_allocation_count,
             )
             .select_from(WorkforceRequest)
             .outerjoin(
@@ -221,6 +306,7 @@ class SqlDemandRepository(DemandRepositoryPort):
             str,
             tuple[str, RequestLine, WorkPackage | None, Resource | None],
         ] = {}
+        cancellation_counts: dict[str, tuple[int, int, int, int]] = {}
 
         for (
             request_id,
@@ -229,7 +315,20 @@ class SqlDemandRepository(DemandRepositoryPort):
             resource,
             request_competency_id,
             line_competency_id,
+            human_count,
+            locked_human_count,
+            asset_count,
+            locked_asset_count,
         ) in rows:
+            cancellation_counts.setdefault(
+                request_id,
+                (
+                    int(human_count or 0),
+                    int(locked_human_count or 0),
+                    int(asset_count or 0),
+                    int(locked_asset_count or 0),
+                ),
+            )
             if request_competency_id is not None:
                 request_competencies.setdefault(request_id, set()).add(
                     request_competency_id
@@ -319,6 +418,7 @@ class SqlDemandRepository(DemandRepositoryPort):
                 request_id: tuple(values)
                 for request_id, values in grouped_lines.items()
             },
+            cancellation_counts,
         )
 
     def _row_query(self):
@@ -333,11 +433,29 @@ class SqlDemandRepository(DemandRepositoryPort):
             )
         )
 
-    def list(
+    @staticmethod
+    def _cancellation_materialization(
+        request: WorkforceRequest,
+        counts: tuple[int, int, int, int] | None,
+    ) -> DemandCancellationMaterializationReadModel:
+        human_count, locked_human_count, asset_count, locked_asset_count = (
+            counts or (0, 0, 0, 0)
+        )
+        return DemandCancellationMaterializationReadModel(
+            demand_number=_text(request.legacy_demand_number) or request.id,
+            human_shift_count=human_count,
+            locked_human_shift_count=locked_human_count,
+            asset_allocation_count=asset_count,
+            locked_asset_allocation_count=locked_asset_count,
+        )
+
+    def list_with_cancellation_materialization(
         self,
         *,
         project_ids: Sequence[str] | None = None,
-    ) -> Sequence[DemandReadModel]:
+    ) -> Sequence[
+        tuple[DemandReadModel, DemandCancellationMaterializationReadModel]
+    ]:
         statement = self._row_query()
         if project_ids is not None:
             identifiers = tuple(str(value) for value in project_ids if str(value))
@@ -354,20 +472,45 @@ class SqlDemandRepository(DemandRepositoryPort):
         request_ids = tuple(
             request.id for request, _project, _work_package, _resource in rows
         )
-        competency_ids, lines_by_request = self._aggregate_children(request_ids)
+        (
+            competency_ids,
+            lines_by_request,
+            cancellation_counts,
+        ) = self._aggregate_children(request_ids)
         return tuple(
-            self._read_model(
-                request,
-                project,
-                work_package,
-                proposed_resource,
-                competency_ids.get(request.id, ()),
-                lines_by_request.get(request.id, ()),
+            (
+                self._read_model(
+                    request,
+                    project,
+                    work_package,
+                    proposed_resource,
+                    competency_ids.get(request.id, ()),
+                    lines_by_request.get(request.id, ()),
+                ),
+                self._cancellation_materialization(
+                    request,
+                    cancellation_counts.get(request.id),
+                ),
             )
             for request, project, work_package, proposed_resource in rows
         )
 
-    def get(self, number: str) -> DemandReadModel | None:
+    def list(
+        self,
+        *,
+        project_ids: Sequence[str] | None = None,
+    ) -> Sequence[DemandReadModel]:
+        return tuple(
+            demand
+            for demand, _materialization in self.list_with_cancellation_materialization(
+                project_ids=project_ids
+            )
+        )
+
+    def get_with_cancellation_materialization(
+        self,
+        number: str,
+    ) -> tuple[DemandReadModel, DemandCancellationMaterializationReadModel] | None:
         wanted = _text(number)
         if not wanted:
             return None
@@ -380,15 +523,29 @@ class SqlDemandRepository(DemandRepositoryPort):
         if row is None:
             return None
         request, project, work_package, proposed_resource = row
-        competency_ids, lines_by_request = self._aggregate_children((request.id,))
-        return self._read_model(
-            request,
-            project,
-            work_package,
-            proposed_resource,
-            competency_ids.get(request.id, ()),
-            lines_by_request.get(request.id, ()),
+        (
+            competency_ids,
+            lines_by_request,
+            cancellation_counts,
+        ) = self._aggregate_children((request.id,))
+        return (
+            self._read_model(
+                request,
+                project,
+                work_package,
+                proposed_resource,
+                competency_ids.get(request.id, ()),
+                lines_by_request.get(request.id, ()),
+            ),
+            self._cancellation_materialization(
+                request,
+                cancellation_counts.get(request.id),
+            ),
         )
+
+    def get(self, number: str) -> DemandReadModel | None:
+        row = self.get_with_cancellation_materialization(number)
+        return row[0] if row is not None else None
 
     def _request(self, number: str) -> WorkforceRequest:
         wanted = _text(number)
@@ -808,6 +965,107 @@ class SqlDemandRepository(DemandRepositoryPort):
         self._session.flush()
         return number
 
+    def request_cancellation(
+        self,
+        number: str,
+        *,
+        cancellation_request_id: str,
+        reason: str,
+        expected_version: int,
+    ) -> None:
+        request = self._request(number)
+        previous_status = request.status
+        self._acquire_request_version(request, expected_version)
+        occurred_at = utc_now()
+        request.cancellation_request_id = _text(cancellation_request_id)
+        request.cancellation_state = "PENDING"
+        request.cancellation_requested_by_user_id = self._actor_user_id
+        request.cancellation_requested_at = occurred_at
+        request.cancellation_reason = _text(reason)
+        request.cancellation_resolved_by_user_id = None
+        request.cancellation_resolved_at = None
+        request.cancellation_resolution_comment = None
+        self._session.flush()
+        self._append_history(
+            request,
+            action="Demande d'annulation",
+            comment=_text(reason),
+            previous_status=previous_status,
+            changed_fields=(
+                "cancellation_request_id",
+                "cancellation_state",
+                "cancellation_requested_by_user_id",
+                "cancellation_requested_at",
+                "cancellation_reason",
+            ),
+            extra_details={
+                "cancellation_request_id": request.cancellation_request_id,
+                "cancellation_state": request.cancellation_state,
+                "requested_by_user_id": request.cancellation_requested_by_user_id,
+                "requested_at": occurred_at.isoformat(),
+                "reason": request.cancellation_reason,
+            },
+        )
+        self._session.flush()
+
+    def reject_cancellation(
+        self,
+        number: str,
+        *,
+        cancellation_request_id: str,
+        comment: str,
+        expected_version: int,
+    ) -> None:
+        request = self._request(number)
+        previous_status = request.status
+        wanted_cycle = _text(cancellation_request_id)
+        if request.cancellation_state != "PENDING" or request.cancellation_request_id != wanted_cycle:
+            raise ApplicationConflictError(
+                "La demande d'annulation à résoudre n'est plus active.",
+                code="cancellation_cycle_conflict",
+                context={
+                    "demand_number": _text(request.legacy_demand_number) or request.id,
+                    "expected_cancellation_request_id": wanted_cycle,
+                    "current_cancellation_request_id": request.cancellation_request_id,
+                    "cancellation_state": request.cancellation_state,
+                },
+            )
+        self._acquire_request_version(request, expected_version)
+        occurred_at = utc_now()
+        request.cancellation_state = "REJECTED"
+        request.cancellation_resolved_by_user_id = self._actor_user_id
+        request.cancellation_resolved_at = occurred_at
+        request.cancellation_resolution_comment = _text(comment)
+        self._session.flush()
+        self._append_history(
+            request,
+            action="Refus d'annulation",
+            comment=_text(comment),
+            previous_status=previous_status,
+            changed_fields=(
+                "cancellation_state",
+                "cancellation_resolved_by_user_id",
+                "cancellation_resolved_at",
+                "cancellation_resolution_comment",
+            ),
+            extra_details={
+                "cancellation_request_id": request.cancellation_request_id,
+                "cancellation_state": request.cancellation_state,
+                "requested_by_user_id": request.cancellation_requested_by_user_id,
+                "requested_at": (
+                    request.cancellation_requested_at.isoformat()
+                    if request.cancellation_requested_at is not None
+                    else None
+                ),
+                "reason": request.cancellation_reason,
+                "resolved_by_user_id": request.cancellation_resolved_by_user_id,
+                "resolved_at": occurred_at.isoformat(),
+                "resolution_comment": request.cancellation_resolution_comment,
+                "resolution": "REJECTED",
+            },
+        )
+        self._session.flush()
+
     def extend_candidate_window(
         self,
         number: str,
@@ -1050,13 +1308,17 @@ class SqlDemandRepository(DemandRepositoryPort):
         comment: str,
         previous_status: str | None = None,
         changed_fields: tuple[str, ...] = (),
+        extra_details: Mapping[str, Any] | None = None,
     ) -> None:
+        detail_payload: dict[str, Any] = {
+            "aggregate_version": int(request.aggregate_version or 1),
+            "line_mode": bool(request.line_mode),
+            "changed_fields": list(dict.fromkeys(changed_fields)),
+        }
+        if extra_details:
+            detail_payload.update(dict(extra_details))
         details = json.dumps(
-            {
-                "aggregate_version": int(request.aggregate_version or 1),
-                "line_mode": bool(request.line_mode),
-                "changed_fields": list(dict.fromkeys(changed_fields)),
-            },
+            detail_payload,
             sort_keys=True,
             separators=(",", ":"),
         )

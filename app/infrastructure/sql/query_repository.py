@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from ...application.query_models import (
     AssetPlanningWindowReadModel,
     AssetRequirementReadModel,
+    DemandCancellationMaterializationReadModel,
     DemandMaterializedRequirementReadModel,
     DemandMaterializedResourceReadModel,
     MediumTermUnlinkedSegmentReadModel,
@@ -298,8 +299,57 @@ class SqlPlannerQueryRepository(PlannerQueryPort):
     ) -> tuple[DemandReadModel, ...]:
         return tuple(self._demands.list(project_ids=project_ids))
 
+    def list_demands_with_cancellation_materialization(
+        self,
+        *,
+        project_ids: Sequence[str] | None = None,
+    ) -> tuple[
+        tuple[DemandReadModel, DemandCancellationMaterializationReadModel],
+        ...,
+    ]:
+        return tuple(
+            self._demands.list_with_cancellation_materialization(
+                project_ids=project_ids
+            )
+        )
+
     def get_demand(self, number: str) -> DemandReadModel | None:
         return self._demands.get(number)
+
+    def get_demand_with_cancellation_materialization(
+        self,
+        number: str,
+    ) -> tuple[DemandReadModel, DemandCancellationMaterializationReadModel] | None:
+        return self._demands.get_with_cancellation_materialization(number)
+
+    def demand_cancellation_materialization(
+        self,
+        number: str,
+    ) -> DemandCancellationMaterializationReadModel:
+        row = self.get_demand_with_cancellation_materialization(number)
+        if row is not None:
+            return row[1]
+        return DemandCancellationMaterializationReadModel(
+            demand_number=_text(number),
+        )
+
+    def list_demand_cancellation_materializations(
+        self,
+        numbers: Sequence[str],
+    ) -> tuple[DemandCancellationMaterializationReadModel, ...]:
+        wanted = tuple(dict.fromkeys(_text(value) for value in numbers if _text(value)))
+        if not wanted:
+            return ()
+        pairs = self.list_demands_with_cancellation_materialization()
+        by_number = {
+            demand.number: materialization
+            for demand, materialization in pairs
+        }
+        return tuple(
+            by_number[number]
+            for number in wanted
+            if number in by_number
+        )
 
     def list_demand_periods(
         self,

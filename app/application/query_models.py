@@ -47,6 +47,19 @@ class ResourceReadModel:
 
 
 @dataclass(frozen=True, slots=True)
+class DemandCancellationMaterializationReadModel:
+    demand_number: str
+    human_shift_count: int = 0
+    locked_human_shift_count: int = 0
+    asset_allocation_count: int = 0
+    locked_asset_allocation_count: int = 0
+
+    @property
+    def has_operational_decisions(self) -> bool:
+        return self.human_shift_count > 0 or self.asset_allocation_count > 0
+
+
+@dataclass(frozen=True, slots=True)
 class DemandMaterializedResourceReadModel:
     resource_id: str
     resource_name: str

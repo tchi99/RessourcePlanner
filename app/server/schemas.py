@@ -277,6 +277,17 @@ class DemandWorkflowRequiredCommentRequest(DemandWorkflowVersionRequest):
     comment: str = Field(min_length=1)
 
 
+class DemandCancellationRequest(StrictRequest):
+    reason: str = Field(min_length=1)
+    expected_version: int = Field(ge=1)
+
+
+class DemandCancellationRejectRequest(StrictRequest):
+    cancellation_request_id: str = Field(min_length=1)
+    comment: str = Field(min_length=1)
+    expected_version: int = Field(ge=1)
+
+
 class DemandApprovalRequest(DemandWorkflowOptionalCommentRequest):
     expected_planning_version: int | None = Field(default=None, ge=1)
 

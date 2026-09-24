@@ -81,6 +81,15 @@ class DemandReadModel:
 
     number: str
     status: str
+    cancellation_request_id: str | None = None
+    cancellation_state: str | None = None
+    cancellation_requested_by_user_id: str | None = None
+    cancellation_requested_at: datetime | None = None
+    cancellation_reason: str | None = None
+    cancellation_resolved_by_user_id: str | None = None
+    cancellation_resolved_at: datetime | None = None
+    cancellation_resolution_comment: str | None = None
+    cancellation_policy: Mapping[str, Any] | None = None
     project_number: str | None = None
     project_name: str | None = None
     client: str | None = None
@@ -118,6 +127,28 @@ class DemandReadModel:
         return cls(
             number=_text(row.get("NoDemande")),
             status=_text(row.get("Statut")),
+            cancellation_request_id=_optional_text(row.get("CancellationRequestId")),
+            cancellation_state=_optional_text(row.get("CancellationState")),
+            cancellation_requested_by_user_id=_optional_text(
+                row.get("CancellationRequestedByUserId")
+            ),
+            cancellation_requested_at=(
+                row.get("CancellationRequestedAt")
+                if isinstance(row.get("CancellationRequestedAt"), datetime)
+                else None
+            ),
+            cancellation_reason=_optional_text(row.get("CancellationReason")),
+            cancellation_resolved_by_user_id=_optional_text(
+                row.get("CancellationResolvedByUserId")
+            ),
+            cancellation_resolved_at=(
+                row.get("CancellationResolvedAt")
+                if isinstance(row.get("CancellationResolvedAt"), datetime)
+                else None
+            ),
+            cancellation_resolution_comment=_optional_text(
+                row.get("CancellationResolutionComment")
+            ),
             project_number=_optional_text(row.get("NumeroProjet")),
             project_name=_optional_text(row.get("NomProjet")),
             client=_optional_text(row.get("Client")),

@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Sequence
 
+from .demand_cancellation import DemandCancellationPolicyReadModel
 from .demand_workflow_policy import (
     ACTION_MODIFY,
     DemandWorkflowActionReadModel,
@@ -66,6 +67,7 @@ class DemandDetailWorkflowReadModel:
     version: int
     available_actions: tuple[str, ...]
     actions: tuple[DemandWorkflowActionReadModel, ...]
+    cancellation: DemandCancellationPolicyReadModel | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -143,7 +145,17 @@ class DemandDetailService:
         *,
         permissions: Sequence[str],
     ) -> DemandDetailReadModel:
-        demand = self._queries.get_demand(number)
+        combined_reader = getattr(
+            self._queries,
+            "get_demand_with_cancellation_materialization",
+            None,
+        )
+        combined = combined_reader(number) if callable(combined_reader) else None
+        if combined is not None:
+            demand, cancellation_materialization = combined
+        else:
+            demand = self._queries.get_demand(number)
+            cancellation_materialization = None
         if demand is None:
             raise ApplicationNotFoundError(
                 f"Demande {number} introuvable",
@@ -246,6 +258,7 @@ class DemandDetailService:
         workflow_state = demand_workflow_state(
             demand,
             permissions=permissions,
+            materialization=cancellation_materialization,
         )
         workflow = DemandDetailWorkflowReadModel(
             demand_number=workflow_state.demand_number,
@@ -253,6 +266,7 @@ class DemandDetailService:
             version=workflow_state.version,
             available_actions=workflow_state.available_actions,
             actions=workflow_state.actions,
+            cancellation=workflow_state.cancellation,
         )
         can_modify = ACTION_MODIFY in workflow.available_actions
         operational_version = (
@@ -282,8 +296,16 @@ class DemandDetailService:
             reapproval_required=envelope_decision == "REAPPROVAL_REQUIRED",
         )
 
+        decorated_demand = replace(
+            demand,
+            cancellation_policy=(
+                workflow_state.cancellation.to_dict()
+                if workflow_state.cancellation is not None
+                else None
+            ),
+        )
         return DemandDetailReadModel(
-            demand=demand,
+            demand=decorated_demand,
             version=int(demand.version),
             lines=tuple(detail_lines),
             periods=periods,

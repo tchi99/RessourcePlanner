@@ -89,6 +89,7 @@ def required_permission(method: str, path: str) -> str | None:
         if (
             path.endswith("/approve")
             or path.endswith("/correction")
+            or path.endswith("/reject-cancellation")
             or path.endswith("/emergency-plan")
         ):
             return PERMISSION_APPROVE_DEMANDS

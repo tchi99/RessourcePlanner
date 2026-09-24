@@ -18,18 +18,38 @@ export type DemandWorkflowResult = {
   planning: PlanningResult | null;
 };
 
+export type DemandCancellationMutationResult = {
+  demand_number: string;
+  status: string;
+  cancellation_request_id: string;
+  cancellation_state: "PENDING" | "REJECTED";
+};
+
+export type DemandCancellationPolicyState = {
+  has_operational_decisions: boolean;
+  direct_cancel: boolean;
+  request_cancellation: boolean;
+  cancellation_pending: boolean;
+  resolve_cancellation: boolean;
+  reason_code: string | null;
+  reason: string | null;
+};
+
 export type WorkflowAction =
   | "modify"
   | "submit"
   | "approve"
   | "emergency-plan"
   | "correction"
-  | "cancel";
+  | "cancel"
+  | "request-cancellation"
+  | "reject-cancellation";
 
 export type DemandWorkflowActionState = {
   action: WorkflowAction;
   allowed: boolean;
   required_permission: string;
+  required_permissions?: string[];
   reason_code: string | null;
   reason: string | null;
 };
@@ -40,6 +60,7 @@ export type DemandWorkflowState = {
   version: number;
   available_actions: WorkflowAction[];
   actions: DemandWorkflowActionState[];
+  cancellation?: DemandCancellationPolicyState | null;
 };
 
 type ApiErrorPayload = {
@@ -142,4 +163,49 @@ export function requestDemandCorrection(
 
 export function cancelDemand(number: string, expectedVersion?: number) {
   return workflowPost(number, "cancel", versionBody(expectedVersion));
+}
+
+export async function requestDemandCancellation(
+  number: string,
+  reason: string,
+  expectedVersion: number,
+): Promise<DemandCancellationMutationResult> {
+  const response = await fetch(
+    `${API_BASE}/api/v1/demands/${encodeURIComponent(number)}/request-cancellation`,
+    {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ reason, expected_version: expectedVersion }),
+    },
+  );
+  if (!response.ok) throw await apiError(response);
+  return response.json() as Promise<DemandCancellationMutationResult>;
+}
+
+export async function rejectDemandCancellation(
+  number: string,
+  cancellationRequestId: string,
+  comment: string,
+  expectedVersion: number,
+): Promise<DemandCancellationMutationResult> {
+  const response = await fetch(
+    `${API_BASE}/api/v1/demands/${encodeURIComponent(number)}/reject-cancellation`,
+    {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        cancellation_request_id: cancellationRequestId,
+        comment,
+        expected_version: expectedVersion,
+      }),
+    },
+  );
+  if (!response.ok) throw await apiError(response);
+  return response.json() as Promise<DemandCancellationMutationResult>;
 }
