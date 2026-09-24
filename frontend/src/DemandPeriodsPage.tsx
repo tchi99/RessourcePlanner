@@ -453,13 +453,6 @@ export default function DemandPeriodsPage({
       const refreshed = selectedLine
         ? await getDemandLinePeriods(selectedDemand.number, selectedLine.line_id)
         : await getDemandPeriods(selectedDemand.number);
-      setPeriods(refreshed.map(fromRead));
-      setDirty(false);
-      setNotice(
-        result.reapproval_required
-          ? "Périodes enregistrées. L'enveloppe ayant changé, la demande doit être approuvée de nouveau; le plan approuvé précédent reste inchangé jusque-là."
-          : "Périodes enregistrées.",
-      );
       if (onChanged) {
         await onChanged();
       } else {
@@ -468,6 +461,13 @@ export default function DemandPeriodsPage({
           : await getDemands();
         setDemands(demandRows);
       }
+      setPeriods(refreshed.map(fromRead));
+      setDirty(false);
+      setNotice(
+        result.reapproval_required
+          ? "Périodes enregistrées. L'enveloppe ayant changé, la demande doit être approuvée de nouveau; le plan approuvé précédent reste inchangé jusque-là."
+          : "Périodes enregistrées.",
+      );
     } catch (reason: unknown) {
       setError(errorMessage(reason));
     } finally {
@@ -494,8 +494,6 @@ export default function DemandPeriodsPage({
       const refreshed = selectedLine
         ? await getDemandLinePeriods(selectedDemand.number, selectedLine.line_id)
         : await getDemandPeriods(selectedDemand.number);
-      setPeriods(refreshed.map(fromRead));
-      setNotice(`Option ${periodId} retenue pour ${group}. Les autres options du groupe restent alternatives et ne sont pas matérialisées en parallèle.`);
       if (onChanged) {
         await onChanged();
       } else {
@@ -504,6 +502,8 @@ export default function DemandPeriodsPage({
           : await getDemands();
         setDemands(demandRows);
       }
+      setPeriods(refreshed.map(fromRead));
+      setNotice(`Option ${periodId} retenue pour ${group}. Les autres options du groupe restent alternatives et ne sont pas matérialisées en parallèle.`);
     } catch (reason: unknown) {
       setError(errorMessage(reason));
     } finally {
