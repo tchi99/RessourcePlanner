@@ -8,6 +8,7 @@ from .plan_delta import DemandApprovalStateReadModel, DemandPlanDeltaReadModel
 from .query_models import (
     AssetPlanningWindowReadModel,
     AssetRequirementReadModel,
+    DemandCancellationMaterializationReadModel,
     DemandHistoryReadModel,
     DemandMaterializedRequirementReadModel,
     MediumTermUnlinkedSegmentReadModel,
@@ -68,6 +69,16 @@ class PlannerQueryPort(Protocol):
     ) -> Sequence[DemandReadModel]: ...
 
     def get_demand(self, number: str) -> DemandReadModel | None: ...
+
+    def demand_cancellation_materialization(
+        self,
+        number: str,
+    ) -> DemandCancellationMaterializationReadModel: ...
+
+    def list_demand_cancellation_materializations(
+        self,
+        numbers: Sequence[str],
+    ) -> Sequence[DemandCancellationMaterializationReadModel]: ...
 
     def list_demand_history(self, number: str) -> Sequence[DemandHistoryReadModel]: ...
 
