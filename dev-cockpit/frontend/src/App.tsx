@@ -356,8 +356,8 @@ export default function App() {
   }
 
   async function copyPrompt() {
-    if (!data?.dev_prompt) return
-    await navigator.clipboard.writeText(data.dev_prompt)
+    if (!data?.execution.prompt) return
+    await navigator.clipboard.writeText(data.execution.prompt)
     setCopied(true)
     window.setTimeout(() => setCopied(false), 1400)
   }
