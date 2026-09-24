@@ -12,6 +12,7 @@ from .commands import (
     DemandOperationalConfirmationCommand,
     DemandApproveCommand,
     DemandCancelCommand,
+    DemandCancellationAcceptCommand,
     DemandCancellationRejectCommand,
     DemandCancellationRequestCommand,
     DemandCorrectionCommand,
@@ -257,6 +258,34 @@ class ApplicationFacade:
             status=status,
             cancellation_request_id=cancellation_request_id,
             cancellation_state="PENDING",
+        )
+
+    def accept_demand_cancellation(
+        self,
+        command: DemandCancellationAcceptCommand,
+    ) -> DemandCancellationMutationResult:
+        summary = self._demands.accept_cancellation_command(command)
+        return DemandCancellationMutationResult(
+            demand_number=_identifier(command.number),
+            status="Annulée",
+            cancellation_request_id=_identifier(command.cancellation_request_id),
+            cancellation_state="ACCEPTED",
+            planning_version=int(summary.get("planning_version") or 0) or None,
+            request_version=int(summary.get("request_version") or 0) or None,
+            deleted_human_shifts=int(summary.get("deleted_human_shifts") or 0),
+            deleted_asset_allocations=int(summary.get("deleted_asset_allocations") or 0),
+            cancelled_workforce_requirements=int(
+                summary.get("cancelled_workforce_requirements") or 0
+            ),
+            cancelled_asset_requirements=int(
+                summary.get("cancelled_asset_requirements") or 0
+            ),
+            released_locked_human_shifts=int(
+                summary.get("released_locked_human_shifts") or 0
+            ),
+            released_locked_asset_allocations=int(
+                summary.get("released_locked_asset_allocations") or 0
+            ),
         )
 
     def reject_demand_cancellation(
