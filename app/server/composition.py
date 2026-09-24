@@ -124,6 +124,7 @@ def build_sql_facade(
         versioning=planning_versions,
         journal=journal,
     )
+    query_port = SqlPlannerQueryRepositoryWithLoadProfiles(session)
     approved_sync = EmergencyAwareApprovedDemandSyncAdapter(
         SqlPeriodAwareApprovedDemandSyncAdapter(session),
         journal,
@@ -151,6 +152,7 @@ def build_sql_facade(
             permissions=permissions,
             roles=roles,
             planning_versions=planning_versions,
+            queries=query_port,
         ),
         segments=SegmentService(segments, planning_commands, planning_authorization),
         allocations=AllocationService(allocation_commands),
