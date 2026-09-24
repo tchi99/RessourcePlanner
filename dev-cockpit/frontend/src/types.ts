@@ -142,6 +142,8 @@ export type ExecutionPhase =
   | 'PR_OPEN'
   | 'CI_RUNNING'
   | 'CI_RED'
+  | 'STALLED'
+  | 'POSSIBLE_STALL'
   | 'READY_TO_MERGE'
   | 'DELIVERY_UNVERIFIED'
   | 'NO_ACTIVE_WORK'
