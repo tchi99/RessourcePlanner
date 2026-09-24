@@ -650,6 +650,16 @@ def _dashboard_without_active_work(
             "errors": errors,
             **pipeline_projection,
         },
+        "reconciliation": {
+            "status": "invalid" if invalid else "coherent",
+            "summary": (
+                "Pipeline canonique invalide; la reconciliation GitHub est suspendue."
+                if invalid
+                else "Aucune etape MAIN active; aucun ecart actionnable detecte."
+            ),
+            "findings": [],
+            "proposal": None,
+        },
         "roadmap": {
             "number": roadmap_raw.get("number"),
             "title": roadmap_raw.get("title"),
@@ -969,6 +979,14 @@ async def build_dashboard(client: GitHubClient, settings: Settings, repo: str) -
     adr_names = [str(entry["name"]) for entry in adr_entries if entry.get("name")]
     referenced = referenced_adrs(issue_body + "\n" + roadmap_block, adr_names)
 
+    reconciliation = await _reconcile_canonical_pipeline(
+        client,
+        repo,
+        pipeline_contract=pipeline_contract,
+        open_raw=open_raw,
+        closed_raw=closed_raw,
+    )
+
     warnings: list[str] = []
     if merged_but_unmarked:
         warnings.append(
@@ -991,6 +1009,7 @@ async def build_dashboard(client: GitHubClient, settings: Settings, repo: str) -
             "errors": list(pipeline_contract.errors),
             **pipeline_projection,
         },
+        "reconciliation": reconciliation,
         "roadmap": {
             "number": roadmap_raw.get("number"),
             "title": roadmap_raw.get("title"),
