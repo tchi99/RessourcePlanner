@@ -9,6 +9,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from ...application.command_ports import ApprovedDemandSyncPort
+from ...application.errors import ApplicationConflictError
 from ...domain.active_days import split_total_workforce_hours
 from ...domain.confirmation import CONFIRMATION_CONFIRMED, normalize_confirmation
 from ...domain.demand_periods import PERIOD_KIND_CUMULATIVE
@@ -39,6 +40,7 @@ from .request_plan_preparation import (
     PreparedRequirementSpec,
     SqlRequestPlanPreparer,
 )
+from .planning_version import SqlPlanningMutationVersionRepository
 from .segment_repository import SqlSegmentRepository
 
 
@@ -84,6 +86,34 @@ class SqlPeriodAwareApprovedDemandSyncAdapter(ApprovedDemandSyncPort):
         )
         if request is None:
             raise KeyError(f"Demande {wanted} introuvable après approbation")
+        return request
+
+    def _guarded_materialization_request(self, number: str) -> WorkforceRequest:
+        # ADR-006/009: serialize every path capable of (re)materializing the active
+        # plan, then refresh the request under that guard. A stale ORM identity from
+        # before a concurrent cancellation must never resurrect terminal output.
+        SqlPlanningMutationVersionRepository(self._session).acquire()
+        wanted = _text(number)
+        request = self._session.scalar(
+            select(WorkforceRequest)
+            .where(
+                (WorkforceRequest.legacy_demand_number == wanted)
+                | (WorkforceRequest.id == wanted)
+            )
+            .execution_options(populate_existing=True)
+        )
+        if request is None:
+            raise KeyError(f"Demande {wanted} introuvable après approbation")
+        if request.status == "Annulée" or request.cancellation_state == "ACCEPTED":
+            raise ApplicationConflictError(
+                "Une demande annulée ne peut pas être rematérialisée.",
+                code="cancelled_demand_materialization_forbidden",
+                context={
+                    "demand_number": _text(request.legacy_demand_number) or request.id,
+                    "status": request.status,
+                    "cancellation_state": request.cancellation_state,
+                },
+            )
         return request
 
     @staticmethod
@@ -915,7 +945,7 @@ class SqlPeriodAwareApprovedDemandSyncAdapter(ApprovedDemandSyncPort):
     def sync_operational_choices(self, demand_number: str) -> None:
         """Resync active planning from approved authorization, never from candidate data."""
 
-        request = self._request(demand_number)
+        request = self._guarded_materialization_request(demand_number)
         current = self._active_requirements(request.id)
         prepared = self._plan_preparer.prepare_active(
             request,
@@ -997,7 +1027,7 @@ class SqlPeriodAwareApprovedDemandSyncAdapter(ApprovedDemandSyncPort):
         self._session.flush()
 
     def sync_approved(self, demand_number: str) -> None:
-        request = self._request(demand_number)
+        request = self._guarded_materialization_request(demand_number)
         periods = self._active_periods(request.id)
         current_before = self._active_requirements(request.id)
         prepared = self._plan_preparer.prepare(
