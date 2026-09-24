@@ -11,7 +11,9 @@ from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 
 from app.application.errors import ApplicationConflictError
+from app.application.security import AuthPrincipal, ROLE_ADMIN
 from app.infrastructure.sql import (
+    AppUser,
     Asset,
     AssetAllocation,
     AssetRequirement,
@@ -31,10 +33,22 @@ from app.infrastructure.sql import (
     create_sql_engine,
 )
 from app.server import create_api_app
-from tests.http_test_auth import TEST_ADMIN_AUTH_RESOLVER
+from app.server.security import static_auth_resolver
 
 
 DAY = date(2026, 9, 23)
+
+TEST_CANCELLATION_ADMIN_AUTH_RESOLVER = static_auth_resolver(
+    AuthPrincipal.from_roles(
+        local_user_id="U-ADMIN",
+        issuer="urn:resourceplanner:test",
+        subject="cancellation-admin",
+        display_name="Coordonnateur annulation",
+        email=None,
+        roles=(ROLE_ADMIN,),
+        auth_mode="test",
+    )
+)
 
 
 class DemandCancellationRequestTests(unittest.TestCase):
@@ -48,6 +62,14 @@ class DemandCancellationRequestTests(unittest.TestCase):
         with factory.begin() as session:
             session.add_all(
                 [
+                    AppUser(
+                        id="U-ADMIN",
+                        issuer="urn:resourceplanner:test",
+                        subject="cancellation-admin",
+                        display_name="Coordonnateur annulation",
+                        roles_json='["ADMIN"]',
+                        active=True,
+                    ),
                     Project(id="P1", number="P-1", name="Projet annulation"),
                     Resource(id="R1", name="Alice", active=True),
                     AssetType(
@@ -253,7 +275,7 @@ class DemandCancellationRequestTests(unittest.TestCase):
             database_url = self._database(directory)
             app = create_api_app(
                 database_url,
-                auth_resolver=TEST_ADMIN_AUTH_RESOLVER,
+                auth_resolver=TEST_CANCELLATION_ADMIN_AUTH_RESOLVER,
             )
             with TestClient(app, raise_server_exceptions=False) as client:
                 listed = client.get("/api/v1/demands")
@@ -311,7 +333,7 @@ class DemandCancellationRequestTests(unittest.TestCase):
             database_url = self._database(directory)
             app = create_api_app(
                 database_url,
-                auth_resolver=TEST_ADMIN_AUTH_RESOLVER,
+                auth_resolver=TEST_CANCELLATION_ADMIN_AUTH_RESOLVER,
             )
 
             before, planning_before, shifts_before = self._row(
@@ -399,6 +421,7 @@ class DemandCancellationRequestTests(unittest.TestCase):
             self.assertEqual(after.aggregate_version, 7)
             self.assertEqual(after.cancellation_state, "PENDING")
             self.assertEqual(after.cancellation_request_id, second_cycle)
+            self.assertEqual(after.cancellation_requested_by_user_id, "U-ADMIN")
             self.assertEqual(
                 after.cancellation_reason,
                 "Nouvelle demande après discussion",
