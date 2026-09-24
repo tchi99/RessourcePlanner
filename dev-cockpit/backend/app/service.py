@@ -432,23 +432,6 @@ async def _reconcile_canonical_pipeline(
         for step in steps
         if step.kind == PIPELINE_WORK and step.status != PIPELINE_STATUS_DONE
     ]
-    issue_numbers = sorted(
-        {
-            int(step.issue_number)
-            for step in work_steps
-            if step.issue_number is not None
-        }
-    )
-    issue_results = await asyncio.gather(
-        *[client.get_issue(repo, number) for number in issue_numbers],
-        return_exceptions=True,
-    )
-    issues_by_number = {
-        number: issue
-        for number, issue in zip(issue_numbers, issue_results)
-        if isinstance(issue, dict)
-    }
-
     findings: list[dict[str, Any]] = []
     completed_ready_keys: set[str] = set()
 
@@ -469,9 +452,6 @@ async def _reconcile_canonical_pipeline(
                 merged_only=True,
             ),
         )
-        parent_issue = issues_by_number.get(int(step.issue_number or 0))
-        parent_closed = bool(parent_issue and parent_issue.get("state") == "closed")
-
         if step.status == PIPELINE_STATUS_READY and merged_pr:
             run_state = _delivery_run_state(merged_pr.get("runs") or [])
             if run_state == "green":
@@ -528,27 +508,6 @@ async def _reconcile_canonical_pipeline(
                         "Aucune reorganisation automatique du pipeline n'est effectuee."
                     ),
                     "evidence": [_pull_evidence(merged_pr, run_state=run_state)],
-                }
-            )
-
-        if parent_closed:
-            findings.append(
-                {
-                    "code": "parent_closed_pending_step",
-                    "severity": "attention",
-                    "key": step.key,
-                    "message": (
-                        f"Le parent GitHub #{step.issue_number} est ferme alors que {step.key} "
-                        f"reste {step.status} dans le pipeline canonique."
-                    ),
-                    "evidence": [
-                        {
-                            "kind": "issue",
-                            "label": f"Issue #{step.issue_number} fermee",
-                            "url": parent_issue.get("html_url"),
-                            "state": "closed",
-                        }
-                    ],
                 }
             )
 
