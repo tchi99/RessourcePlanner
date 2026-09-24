@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import replace
 from datetime import datetime, timezone
 from typing import Any
 from urllib.parse import quote
@@ -18,7 +19,15 @@ from .roadmap import (
     merge_pipeline_work_status,
     merge_subitems,
     numeric_issue,
+    PIPELINE_MAIN,
+    PIPELINE_PARALLEL,
+    PIPELINE_STATUS_BLOCKED,
+    PIPELINE_STATUS_DONE,
+    PIPELINE_STATUS_READY,
+    PIPELINE_WORK,
+    PipelineStep,
     pipeline_window,
+    render_cockpit_pipeline,
     resolve_product_pipeline,
     referenced_adrs,
     referenced_issue_numbers,
@@ -266,6 +275,313 @@ def _merged_pr_summary(pr: dict[str, Any] | None) -> dict[str, Any] | None:
         "title": pr.get("title"),
         "url": pr.get("html_url"),
         "merged_at": pr.get("merged_at"),
+    }
+
+
+def _delivery_run_state(runs: list[dict[str, Any]]) -> str:
+    if not runs:
+        return "unknown"
+    if any(str(run.get("status") or "").lower() != "completed" for run in runs):
+        return "pending"
+    conclusions = [str(run.get("conclusion") or "").lower() for run in runs]
+    if any(value not in {"success", "neutral", "skipped"} for value in conclusions):
+        return "failed"
+    return "green" if any(value == "success" for value in conclusions) else "unknown"
+
+
+def _pull_evidence(pr: dict[str, Any], *, run_state: str | None = None) -> dict[str, Any]:
+    suffix = ""
+    if run_state == "green":
+        suffix = " · CI verte"
+    elif run_state == "failed":
+        suffix = " · CI non verte"
+    elif run_state == "pending":
+        suffix = " · CI en cours"
+    elif run_state == "unknown":
+        suffix = " · CI non vérifiable"
+    return {
+        "kind": "pull_request",
+        "label": f"PR #{pr.get('number')}{suffix}",
+        "url": pr.get("url") or pr.get("html_url"),
+        "state": run_state,
+    }
+
+
+async def _matching_dev_pr_summary(
+    client: GitHubClient,
+    repo: str,
+    prs: list[dict[str, Any]],
+    key: str,
+    *,
+    merged_only: bool,
+) -> dict[str, Any] | None:
+    for pr in prs:
+        if merged_only and not pr.get("merged_at"):
+            continue
+        if not matches_work_key(pr, key):
+            continue
+        if not await _pull_is_dev_work(client, repo, pr):
+            continue
+        return await _pr_summary(client, repo, pr)
+    return None
+
+
+def _proposed_pipeline(
+    steps: list[PipelineStep],
+    *,
+    completed_ready_keys: set[str],
+) -> tuple[list[PipelineStep], list[dict[str, str]]]:
+    proposed = list(steps)
+    changes: list[dict[str, str]] = []
+
+    main_ready_index = next(
+        (
+            index
+            for index, step in enumerate(proposed)
+            if step.lane == PIPELINE_MAIN
+            and step.status == PIPELINE_STATUS_READY
+        ),
+        None,
+    )
+    main_ready_completed = bool(
+        main_ready_index is not None
+        and proposed[main_ready_index].key in completed_ready_keys
+    )
+
+    for index, step in enumerate(proposed):
+        if (
+            step.lane == PIPELINE_PARALLEL
+            and step.status == PIPELINE_STATUS_READY
+            and step.key in completed_ready_keys
+        ):
+            proposed[index] = replace(
+                step,
+                done=True,
+                marker="✅",
+                status=PIPELINE_STATUS_DONE,
+            )
+            changes.append(
+                {"key": step.key, "from": PIPELINE_STATUS_READY, "to": PIPELINE_STATUS_DONE}
+            )
+
+    if main_ready_completed and main_ready_index is not None:
+        current = proposed[main_ready_index]
+        proposed[main_ready_index] = replace(
+            current,
+            done=True,
+            marker="✅",
+            status=PIPELINE_STATUS_DONE,
+        )
+        changes.append(
+            {"key": current.key, "from": PIPELINE_STATUS_READY, "to": PIPELINE_STATUS_DONE}
+        )
+        next_index = next(
+            (
+                index
+                for index in range(main_ready_index + 1, len(proposed))
+                if proposed[index].lane == PIPELINE_MAIN
+                and proposed[index].status != PIPELINE_STATUS_DONE
+            ),
+            None,
+        )
+        if next_index is not None:
+            following = proposed[next_index]
+            proposed[next_index] = replace(
+                following,
+                done=False,
+                marker=None,
+                status=PIPELINE_STATUS_READY,
+            )
+            changes.append(
+                {
+                    "key": following.key,
+                    "from": str(following.status or PIPELINE_STATUS_BLOCKED),
+                    "to": PIPELINE_STATUS_READY,
+                }
+            )
+
+    return proposed, changes
+
+
+async def _reconcile_canonical_pipeline(
+    client: GitHubClient,
+    repo: str,
+    *,
+    pipeline_contract: Any,
+    open_raw: list[dict[str, Any]],
+    closed_raw: list[dict[str, Any]],
+) -> dict[str, Any]:
+    if pipeline_contract.source != "canonical_v1":
+        return {
+            "status": "legacy",
+            "summary": "Reconciliation disponible seulement avec COCKPIT_PIPELINE_V1.",
+            "findings": [],
+            "proposal": None,
+        }
+    if not pipeline_contract.valid:
+        return {
+            "status": "invalid",
+            "summary": "Pipeline canonique invalide; aucune reconciliation GitHub n'est inferee.",
+            "findings": [],
+            "proposal": None,
+        }
+
+    steps: list[PipelineStep] = pipeline_contract.steps
+    work_steps = [
+        step
+        for step in steps
+        if step.kind == PIPELINE_WORK and step.status != PIPELINE_STATUS_DONE
+    ]
+    issue_numbers = sorted(
+        {
+            int(step.issue_number)
+            for step in work_steps
+            if step.issue_number is not None
+        }
+    )
+    issue_results = await asyncio.gather(
+        *[client.get_issue(repo, number) for number in issue_numbers],
+        return_exceptions=True,
+    )
+    issues_by_number = {
+        number: issue
+        for number, issue in zip(issue_numbers, issue_results)
+        if isinstance(issue, dict)
+    }
+
+    findings: list[dict[str, Any]] = []
+    completed_ready_keys: set[str] = set()
+
+    for step in work_steps:
+        open_pr, merged_pr = await asyncio.gather(
+            _matching_dev_pr_summary(
+                client,
+                repo,
+                open_raw,
+                step.key,
+                merged_only=False,
+            ),
+            _matching_dev_pr_summary(
+                client,
+                repo,
+                closed_raw,
+                step.key,
+                merged_only=True,
+            ),
+        )
+        parent_issue = issues_by_number.get(int(step.issue_number or 0))
+        parent_closed = bool(parent_issue and parent_issue.get("state") == "closed")
+
+        if step.status == PIPELINE_STATUS_READY and merged_pr:
+            run_state = _delivery_run_state(merged_pr.get("runs") or [])
+            if run_state == "green":
+                completed_ready_keys.add(step.key)
+                findings.append(
+                    {
+                        "code": "ready_merged_green",
+                        "severity": "stale",
+                        "key": step.key,
+                        "message": (
+                            f"{step.key} est encore READY dans #55, mais une PR DEV correspondante "
+                            "est fusionnee et ses workflows observes sont verts."
+                        ),
+                        "evidence": [_pull_evidence(merged_pr, run_state=run_state)],
+                    }
+                )
+            else:
+                findings.append(
+                    {
+                        "code": "ready_merged_unverified",
+                        "severity": "attention",
+                        "key": step.key,
+                        "message": (
+                            f"{step.key} est READY et une PR DEV est fusionnee, mais la CI "
+                            "n'est pas entierement verte/verifiable; aucune promotion n'est proposee."
+                        ),
+                        "evidence": [_pull_evidence(merged_pr, run_state=run_state)],
+                    }
+                )
+
+        if step.status == PIPELINE_STATUS_BLOCKED and open_pr:
+            findings.append(
+                {
+                    "code": "blocked_open_pr",
+                    "severity": "attention",
+                    "key": step.key,
+                    "message": (
+                        f"{step.key} est BLOCKED dans la lane {step.lane}, mais une PR DEV ouverte "
+                        "lui correspond. Le cockpit conserve l'ordre canonique."
+                    ),
+                    "evidence": [_pull_evidence(open_pr)],
+                }
+            )
+
+        if step.status == PIPELINE_STATUS_BLOCKED and merged_pr:
+            run_state = _delivery_run_state(merged_pr.get("runs") or [])
+            findings.append(
+                {
+                    "code": "blocked_merged_pr",
+                    "severity": "attention",
+                    "key": step.key,
+                    "message": (
+                        f"{step.key} est BLOCKED dans #55, mais une PR DEV correspondante est deja fusionnee. "
+                        "Aucune reorganisation automatique du pipeline n'est effectuee."
+                    ),
+                    "evidence": [_pull_evidence(merged_pr, run_state=run_state)],
+                }
+            )
+
+        if parent_closed:
+            findings.append(
+                {
+                    "code": "parent_closed_pending_step",
+                    "severity": "attention",
+                    "key": step.key,
+                    "message": (
+                        f"Le parent GitHub #{step.issue_number} est ferme alors que {step.key} "
+                        f"reste {step.status} dans le pipeline canonique."
+                    ),
+                    "evidence": [
+                        {
+                            "kind": "issue",
+                            "label": f"Issue #{step.issue_number} fermee",
+                            "url": parent_issue.get("html_url"),
+                            "state": "closed",
+                        }
+                    ],
+                }
+            )
+
+    proposed_steps, changes = _proposed_pipeline(
+        steps,
+        completed_ready_keys=completed_ready_keys,
+    )
+    proposal = (
+        {
+            "changes": changes,
+            "pipeline_block": render_cockpit_pipeline(proposed_steps),
+        }
+        if changes
+        else None
+    )
+
+    status = (
+        "stale"
+        if changes
+        else "attention"
+        if findings
+        else "coherent"
+    )
+    summary = {
+        "stale": "Le contrat #55 semble en retard sur une livraison GitHub verifiee.",
+        "attention": "Des ecarts GitHub meritent une verification sans changer automatiquement l'ordre.",
+        "coherent": "Aucun ecart actionnable detecte entre le pipeline canonique et GitHub.",
+    }[status]
+    return {
+        "status": status,
+        "summary": summary,
+        "findings": findings,
+        "proposal": proposal,
     }
 
 
