@@ -1062,6 +1062,59 @@ function ReviewerDetails({ dashboard }: { dashboard: Dashboard | null }) {
   )
 }
 
+function MissionBlock({
+  role,
+  dashboard,
+}: {
+  role: RoleConfig
+  dashboard: Dashboard | null
+}) {
+  const [copied, setCopied] = useState(false)
+  const mission = dashboard?.execution.missions[role.avatar] ?? null
+  if (!mission) return null
+  const missionPrompt = mission.prompt
+
+  function handoff() {
+    void navigator.clipboard.writeText(missionPrompt)
+    setCopied(true)
+    window.setTimeout(() => setCopied(false), 1600)
+    if (role.chat_url) {
+      window.open(role.chat_url, '_blank', 'noopener,noreferrer')
+    }
+  }
+
+  return (
+    <section className={`role-detail-section mission-block ${mission.state}`}>
+      <div className="role-detail-section-title">Mission courante</div>
+      <div className="mission-heading">
+        <strong>{mission.title}</strong>
+        <span>{mission.state}</span>
+      </div>
+      <p className="role-detail-muted">{mission.detail}</p>
+      <pre className="mission-prompt">{mission.prompt}</pre>
+      <div className="mission-actions">
+        <button type="button" className="primary" onClick={handoff}>
+          {copied
+            ? 'Mission copiée ✓'
+            : role.chat_url
+              ? 'Copier mission + ouvrir ChatGPT ↗'
+              : 'Copier la mission'}
+        </button>
+        {mission.primary_link && (
+          <a
+            className="button"
+            href={mission.primary_link.url}
+            target="_blank"
+            rel="noreferrer"
+          >
+            {mission.primary_link.label} ↗
+          </a>
+        )}
+      </div>
+    </section>
+  )
+}
+
 export default function RoleDetailPanel({
   role,
   dashboard,
@@ -1137,6 +1190,7 @@ export default function RoleDetailPanel({
         </header>
 
         <div className="role-detail-content">
+          <MissionBlock role={role} dashboard={dashboard} />
           {details}
           <ChatStatusBlock role={role} chatStatus={chatStatus} />
         </div>

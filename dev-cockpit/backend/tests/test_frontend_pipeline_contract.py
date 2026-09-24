@@ -11,6 +11,9 @@ class FrontendPipelineContractTests(unittest.TestCase):
         panel = (cockpit_root / "frontend" / "src" / "RoleDetailPanel.tsx").read_text(
             encoding="utf-8"
         )
+        roles = (cockpit_root / "frontend" / "src" / "RoleCards.tsx").read_text(
+            encoding="utf-8"
+        )
         types = (cockpit_root / "frontend" / "src" / "types.ts").read_text(
             encoding="utf-8"
         )
@@ -22,6 +25,10 @@ class FrontendPipelineContractTests(unittest.TestCase):
         self.assertIn("COHÉRENCE ROADMAP", app)
         self.assertIn("Préparer la mise à jour de #55", app)
         self.assertIn("data.reconciliation", app)
+        self.assertIn("CONTRÔLEUR D'EXÉCUTION", app)
+        self.assertIn("TIMELINE GITHUB", app)
+        self.assertIn("data.execution", app)
+        self.assertIn("Copier le prompt de reprise", app)
         self.assertIn("PARALLÈLE DISPONIBLE", app)
         self.assertIn("ENSUITE", app)
 
@@ -35,6 +42,9 @@ class FrontendPipelineContractTests(unittest.TestCase):
         self.assertIn("PipelineHorizonGroup", panel)
         self.assertIn("PipelineStepAccordion", panel)
         self.assertIn("PipelineUnavailable", panel)
+        self.assertIn("MissionBlock", panel)
+        self.assertIn("Mission courante", panel)
+        self.assertIn("Copier mission + ouvrir ChatGPT", panel)
         self.assertIn("/api/details/issues/", panel)
         self.assertIn("exactSection", panel)
 
@@ -53,6 +63,14 @@ class FrontendPipelineContractTests(unittest.TestCase):
         self.assertIn("reconciliation: PipelineReconciliation", types)
         self.assertIn("'coherent' | 'stale' | 'attention' | 'invalid' | 'legacy'", types)
         self.assertIn("pipeline_block: string", types)
+        self.assertIn("ExecutionControl", types)
+        self.assertIn("ExecutionTimelineEvent", types)
+        self.assertIn("RoleMission", types)
+        self.assertIn("execution: ExecutionControl", types)
+
+        self.assertIn("dashboard?.execution.missions", roles)
+        self.assertIn("Copier mission + ouvrir", roles)
+        self.assertIn("handoffRole", roles)
 
 
 if __name__ == "__main__":

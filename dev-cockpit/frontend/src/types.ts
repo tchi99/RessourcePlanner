@@ -50,6 +50,7 @@ export type PullRequest = {
   head: string
   head_sha: string
   base: string
+  created_at: string | null
   updated_at: string
   merged_at: string | null
   runs: Run[]
@@ -131,6 +132,56 @@ export type PipelineReconciliation = {
   } | null
 }
 
+export type ExecutionPhase =
+  | 'PIPELINE_INVALID'
+  | 'ROADMAP_UPDATE_REQUIRED'
+  | 'ARCHITECTURE_GATE'
+  | 'ENVIRONMENT_GATE'
+  | 'READY'
+  | 'DEVELOPING'
+  | 'PR_OPEN'
+  | 'CI_RUNNING'
+  | 'CI_RED'
+  | 'STALLED'
+  | 'POSSIBLE_STALL'
+  | 'READY_TO_MERGE'
+  | 'DELIVERY_UNVERIFIED'
+  | 'NO_ACTIVE_WORK'
+
+export type ExecutionLink = {
+  label: string
+  url: string
+}
+
+export type ExecutionTimelineEvent = {
+  kind: 'roadmap' | 'commit' | 'pull_request' | 'ci'
+  label: string
+  detail: string
+  at: string
+  url: string | null
+  status: string | null
+}
+
+export type RoleMission = {
+  state: 'action' | 'waiting' | 'clear' | 'blocked'
+  title: string
+  detail: string
+  prompt: string
+  primary_link: ExecutionLink | null
+}
+
+export type ExecutionControl = {
+  phase: ExecutionPhase
+  label: string
+  summary: string
+  next_action: string
+  prompt: string
+  responsible_role: 'product-owner' | 'developer' | 'architect' | 'reviewer'
+  primary_link: ExecutionLink | null
+  timeline: ExecutionTimelineEvent[]
+  missions: Record<AvatarPreset, RoleMission>
+}
+
 export type Dashboard = {
   repo: string
   generated_at: string
@@ -151,6 +202,7 @@ export type Dashboard = {
     later: PipelineStep[]
   }
   reconciliation: PipelineReconciliation
+  execution: ExecutionControl
   roadmap: {
     number: number
     title: string

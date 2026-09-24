@@ -947,6 +947,12 @@ class ServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(dashboard["roadmap"]["effective_active"], "407")
         self.assertEqual(dashboard["active_work"]["issue_number"], 407)
         self.assertEqual(dashboard["pipeline"]["now"]["key"], "407")
+        self.assertEqual(dashboard["execution"]["phase"], "READY")
+        self.assertEqual(
+            dashboard["execution"]["missions"]["developer"]["state"],
+            "action",
+        )
+        self.assertIn("407", dashboard["execution"]["next_action"])
         self.assertEqual(
             [step["key"] for step in dashboard["pipeline"]["next"]],
             ["399", "276", "410"],
@@ -1096,6 +1102,11 @@ class ServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(dashboard["pipeline"]["valid"])
         self.assertEqual(dashboard["pipeline"]["source"], "canonical_v1")
         self.assertIsNone(dashboard["pipeline"]["now"])
+        self.assertEqual(dashboard["execution"]["phase"], "PIPELINE_INVALID")
+        self.assertEqual(
+            dashboard["execution"]["missions"]["developer"]["state"],
+            "blocked",
+        )
         self.assertIsNone(dashboard["roadmap"]["active_issue"])
         self.assertIsNone(dashboard["roadmap"]["effective_active"])
         self.assertIsNone(dashboard["active_work"])

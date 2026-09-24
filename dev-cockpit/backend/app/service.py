@@ -9,6 +9,7 @@ from urllib.parse import quote
 
 from .config import Settings
 from .derive import build_next_action_and_prompt, commit_summary, derive_states, matches_work_key
+from .execution import build_execution_control
 from .github import GitHubClient, GitHubError
 from .roadmap import (
     active_block,
@@ -109,6 +110,7 @@ async def _pr_summary(client: GitHubClient, repo: str, pr: dict[str, Any]) -> di
         "head": head.get("ref"),
         "head_sha": sha,
         "base": (details.get("base") or {}).get("ref"),
+        "created_at": details.get("created_at"),
         "updated_at": details.get("updated_at"),
         "merged_at": details.get("merged_at"),
         "runs": runs,
@@ -637,6 +639,26 @@ def _dashboard_without_active_work(
             "findings": [],
             "proposal": None,
         },
+        "execution": build_execution_control(
+            roadmap_issue=settings.roadmap_issue,
+            roadmap_url=roadmap_raw.get("html_url"),
+            roadmap_updated_at=roadmap_raw.get("updated_at"),
+            pipeline_valid=pipeline_contract.valid,
+            pipeline_now=pipeline_projection.get("now"),
+            reconciliation={
+                "status": "invalid" if invalid else "coherent",
+                "summary": (
+                    "Pipeline canonique invalide; la reconciliation GitHub est suspendue."
+                    if invalid
+                    else "Aucune etape MAIN active; aucun ecart actionnable detecte."
+                ),
+                "findings": [],
+                "proposal": None,
+            },
+            active_work=None,
+            fallback_next_action=next_action,
+            fallback_dev_prompt=dev_prompt,
+        ),
         "roadmap": {
             "number": roadmap_raw.get("number"),
             "title": roadmap_raw.get("title"),
@@ -964,6 +986,52 @@ async def build_dashboard(client: GitHubClient, settings: Settings, repo: str) -
         closed_raw=closed_raw,
     )
 
+    active_work_projection = {
+        "key": active_key,
+        "issue_number": parent_issue,
+        "title": (
+            str(pipeline_now.get("title"))
+            if canonical_mode and pipeline_now
+            else active_subitem.title if active_subitem else active_issue_raw.get("title")
+        ),
+        "issue": _issue_summary(active_issue_raw),
+        "subitem_key": (
+            active_key
+            if (
+                canonical_mode
+                and pipeline_now
+                and pipeline_now.get("kind") == "WORK"
+                and active_key != str(parent_issue)
+            )
+            else active_subitem.key if active_subitem else None
+        ),
+        "block_done": block_done,
+        "can_chain_block": can_chain_block,
+        "remaining_subitems": remaining_subitems,
+        "primary_pr": primary_pr,
+        "active_branch": active_branch,
+        "last_commit": active_commit_info,
+        "states": derived["states"],
+        "stalled": derived["stalled"],
+        "stall_level": derived["stall_level"],
+        "stalled_details": derived["stalled_details"],
+        "failed_jobs": derived["failed_jobs"],
+        "explicit_in_progress": explicit_in_progress,
+        "active_runs": active_runs,
+        "merged_but_unmarked_pr": merged_but_unmarked,
+    }
+    execution = build_execution_control(
+        roadmap_issue=settings.roadmap_issue,
+        roadmap_url=roadmap_raw.get("html_url"),
+        roadmap_updated_at=roadmap_raw.get("updated_at"),
+        pipeline_valid=pipeline_contract.valid,
+        pipeline_now=pipeline_projection.get("now"),
+        reconciliation=reconciliation,
+        active_work=active_work_projection,
+        fallback_next_action=next_action,
+        fallback_dev_prompt=dev_prompt,
+    )
+
     warnings: list[str] = []
     if merged_but_unmarked:
         warnings.append(
@@ -987,6 +1055,7 @@ async def build_dashboard(client: GitHubClient, settings: Settings, repo: str) -
             **pipeline_projection,
         },
         "reconciliation": reconciliation,
+        "execution": execution,
         "roadmap": {
             "number": roadmap_raw.get("number"),
             "title": roadmap_raw.get("title"),
@@ -997,40 +1066,7 @@ async def build_dashboard(client: GitHubClient, settings: Settings, repo: str) -
             "effective_active": active_key,
             "items": [item.to_dict() for item in focus_items(top_items, subitems, parent_issue)],
         },
-        "active_work": {
-            "key": active_key,
-            "issue_number": parent_issue,
-            "title": (
-                str(pipeline_now.get("title"))
-                if canonical_mode and pipeline_now
-                else active_subitem.title if active_subitem else active_issue_raw.get("title")
-            ),
-            "issue": _issue_summary(active_issue_raw),
-            "subitem_key": (
-                active_key
-                if (
-                    canonical_mode
-                    and pipeline_now
-                    and pipeline_now.get("kind") == "WORK"
-                    and active_key != str(parent_issue)
-                )
-                else active_subitem.key if active_subitem else None
-            ),
-            "block_done": block_done,
-            "can_chain_block": can_chain_block,
-            "remaining_subitems": remaining_subitems,
-            "primary_pr": primary_pr,
-            "active_branch": active_branch,
-            "last_commit": active_commit_info,
-            "states": derived["states"],
-            "stalled": derived["stalled"],
-            "stall_level": derived["stall_level"],
-            "stalled_details": derived["stalled_details"],
-            "failed_jobs": derived["failed_jobs"],
-            "explicit_in_progress": explicit_in_progress,
-            "active_runs": active_runs,
-            "merged_but_unmarked_pr": merged_but_unmarked,
-        },
+        "active_work": active_work_projection,
         "architecture": {
             "path": "docs/architecture/",
             "url": f"https://github.com/{repo}/tree/main/docs/architecture",
