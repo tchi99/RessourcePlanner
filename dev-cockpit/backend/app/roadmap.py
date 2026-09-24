@@ -333,6 +333,33 @@ def resolve_product_pipeline(body: str) -> PipelineContract:
     )
 
 
+def render_cockpit_pipeline(steps: list[PipelineStep]) -> str:
+    lines = [
+        COCKPIT_PIPELINE_START,
+        " | ".join(COCKPIT_PIPELINE_HEADER),
+    ]
+    for step in steps:
+        if step.issue_number is None:
+            raise ValueError(f"L'étape {step.key} n'a pas de parent GitHub.")
+        status = step.status or (
+            PIPELINE_STATUS_DONE if step.done else PIPELINE_STATUS_BLOCKED
+        )
+        lines.append(
+            " | ".join(
+                (
+                    step.key,
+                    step.kind,
+                    status,
+                    f"#{step.issue_number}",
+                    step.lane,
+                    step.title,
+                )
+            )
+        )
+    lines.append(COCKPIT_PIPELINE_END)
+    return "\n".join(lines)
+
+
 def _heading_level(line: str) -> int | None:
     match = re.match(r"^(?P<marks>#{1,6})\s+", line.strip())
     return len(match.group("marks")) if match else None

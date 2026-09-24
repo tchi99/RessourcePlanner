@@ -19,6 +19,9 @@ class FrontendPipelineContractTests(unittest.TestCase):
         self.assertIn("data.pipeline.parallel", app)
         self.assertIn("data.pipeline.valid", app)
         self.assertIn("Pipeline #55 invalide", app)
+        self.assertIn("COHÉRENCE ROADMAP", app)
+        self.assertIn("Préparer la mise à jour de #55", app)
+        self.assertIn("data.reconciliation", app)
         self.assertIn("PARALLÈLE DISPONIBLE", app)
         self.assertIn("ENSUITE", app)
 
@@ -46,6 +49,10 @@ class FrontendPipelineContractTests(unittest.TestCase):
         self.assertIn("source: 'canonical_v1' | 'legacy'", types)
         self.assertIn("errors: string[]", types)
         self.assertIn("active_issue: number | null", types)
+        self.assertIn("PipelineReconciliation", types)
+        self.assertIn("reconciliation: PipelineReconciliation", types)
+        self.assertIn("'coherent' | 'stale' | 'attention' | 'invalid' | 'legacy'", types)
+        self.assertIn("pipeline_block: string", types)
 
 
 if __name__ == "__main__":
