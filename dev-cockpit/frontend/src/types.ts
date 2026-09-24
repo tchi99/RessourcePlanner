@@ -241,6 +241,47 @@ export type AttentionCenter = {
   items: AttentionItem[]
 }
 
+export type RoadmapWritebackPreview = {
+  status: 'ready'
+  repo: string
+  roadmap_issue: number
+  roadmap_url: string | null
+  expected_updated_at: string
+  expected_body_sha256: string
+  proposal_sha256: string
+  proposed_body_sha256: string
+  changes: Array<{
+    key: string
+    from: string
+    to: string
+  }>
+  current_block: string
+  proposed_block: string
+  diff: string
+  safety: {
+    only_canonical_block: boolean
+    reconciler_status: 'stale'
+    explicit_confirmation_required: boolean
+    optimistic_lock: string
+  }
+}
+
+export type RoadmapWritebackResult = {
+  status: 'applied'
+  repo: string
+  roadmap_issue: number
+  roadmap_url: string | null
+  previous_body_sha256: string
+  body_sha256: string
+  updated_at: string | null
+  changes: Array<{
+    key: string
+    from: string
+    to: string
+  }>
+  pipeline_block: string
+}
+
 export type Dashboard = {
   repo: string
   generated_at: string
