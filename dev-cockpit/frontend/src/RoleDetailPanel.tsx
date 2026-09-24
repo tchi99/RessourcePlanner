@@ -34,10 +34,30 @@ function formatAge(seconds: number | null | undefined): string {
 }
 
 function latestRun(dashboard: Dashboard): Run | null {
+  if (!dashboard.active_work) return null
   return (
     dashboard.active_work.primary_pr?.runs?.[0] ??
     dashboard.active_work.active_runs?.[0] ??
     null
+  )
+}
+
+function PipelineUnavailable({ dashboard }: { dashboard: Dashboard }) {
+  const invalid = !dashboard.pipeline.valid
+  return (
+    <section className="role-detail-section">
+      <div className="role-detail-section-title">
+        {invalid ? 'Pipeline #55 invalide' : 'Aucune étape active'}
+      </div>
+      <p className="role-detail-muted">{dashboard.next_action}</p>
+      {invalid && dashboard.pipeline.errors.length > 0 && (
+        <div className="role-detail-warning-list">
+          {dashboard.pipeline.errors.map((error) => (
+            <div key={error}>⚠ {error}</div>
+          ))}
+        </div>
+      )}
+    </section>
   )
 }
 
@@ -418,7 +438,7 @@ function ProductOwnerDetails({ dashboard }: { dashboard: Dashboard | null }) {
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    if (!dashboard) return
+    if (!dashboard?.active_work) return
     let cancelled = false
     setRoadmap(null)
     setError(null)
@@ -440,6 +460,9 @@ function ProductOwnerDetails({ dashboard }: { dashboard: Dashboard | null }) {
 
   if (!dashboard) {
     return <p className="role-detail-muted">Données GitHub indisponibles.</p>
+  }
+  if (!dashboard.pipeline.valid || !dashboard.active_work) {
+    return <PipelineUnavailable dashboard={dashboard} />
   }
 
   return (
@@ -549,7 +572,7 @@ function DeveloperDetails({ dashboard }: { dashboard: Dashboard | null }) {
   const [commitError, setCommitError] = useState<string | null>(null)
 
   useEffect(() => {
-    if (!dashboard) return
+    if (!dashboard?.active_work) return
     let cancelled = false
     setIssue(null)
     setCommit(null)
@@ -591,12 +614,15 @@ function DeveloperDetails({ dashboard }: { dashboard: Dashboard | null }) {
     }
   }, [
     dashboard?.repo,
-    dashboard?.active_work.issue_number,
-    dashboard?.active_work.last_commit?.sha,
+    dashboard?.active_work?.issue_number,
+    dashboard?.active_work?.last_commit?.sha,
   ])
 
   if (!dashboard) {
     return <p className="role-detail-muted">Données GitHub indisponibles.</p>
+  }
+  if (!dashboard.pipeline.valid || !dashboard.active_work) {
+    return <PipelineUnavailable dashboard={dashboard} />
   }
 
   const work = dashboard.active_work
@@ -895,10 +921,13 @@ function ArchitectDetails({ dashboard }: { dashboard: Dashboard | null }) {
     return () => {
       cancelled = true
     }
-  }, [dashboard?.repo, dashboard?.active_work.issue_number])
+  }, [dashboard?.repo, dashboard?.active_work?.issue_number])
 
   if (!dashboard) {
     return <p className="role-detail-muted">Données GitHub indisponibles.</p>
+  }
+  if (!dashboard.pipeline.valid || !dashboard.active_work) {
+    return <PipelineUnavailable dashboard={dashboard} />
   }
 
   const referenced = new Set(dashboard.architecture.referenced_adrs)
@@ -991,6 +1020,9 @@ function ArchitectDetails({ dashboard }: { dashboard: Dashboard | null }) {
 function ReviewerDetails({ dashboard }: { dashboard: Dashboard | null }) {
   if (!dashboard) {
     return <p className="role-detail-muted">Données GitHub indisponibles.</p>
+  }
+  if (!dashboard.pipeline.valid || !dashboard.active_work) {
+    return <PipelineUnavailable dashboard={dashboard} />
   }
   return (
     <>
