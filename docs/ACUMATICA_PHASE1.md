@@ -32,17 +32,11 @@ Le mapping complet des champs et divisions est centralisé dans [ACUMATICA_ODATA
 
 ## État du code actuel
 
-Le code contient encore un adaptateur historique `AcumaticaProjectSource` qui cible le Contract-Based REST API JSON :
+`ODataProjectSource` est maintenant l'adaptateur projet utilisé par le runtime. Il lit le feed Atom/XML `/oDATA/RP_Projects`, construit un snapshot complet puis remet uniquement le contrat transport-neutre `ExternalProjectRecord` au `ProjectSyncService`.
 
-```text
-<base_url>/entity/<endpoint>/<version>/<entity>
-```
+Le parser conserve aussi `CustomerID`, `StartDate`, `EndDate`, la division, `LastModifiedDateTime` et `BaseType` dans son record d'infrastructure. Le modèle `Project` actuel ne persiste pas encore ces champs supplémentaires; 207A ne l'élargit pas uniquement pour le transport.
 
-Cet adaptateur et ses variables de configuration associées ne représentent **plus la cible de production**.
-
-Ils restent présents tant que la tranche OData n'a pas remplacé cette frontière technique.
-
-Le service applicatif `ProjectSyncService`, le `ProjectSourcePort` et la persistance SQL doivent rester indépendants du protocole ERP afin que seule l'infrastructure Acumatica soit remplacée.
+L'ancien `AcumaticaProjectSource` REST/JSON reste importable pour compatibilité historique, mais le runtime projet ne le compose plus. `ProjectSyncService`, `ProjectSourcePort` et la persistance SQL restent inchangés et indépendants du protocole ERP.
 
 ## Routes RessourcePlanner
 
@@ -84,20 +78,22 @@ Le mécanisme HTTP exact d'authentification du feed OData doit être confirmé a
 
 ## Validation réelle restant à faire
 
-1. implémenter un adaptateur OData Atom/XML derrière `ProjectSourcePort`;
-2. couvrir le parser avec l'échantillon anonymisé de `RP_Projects`;
-3. configurer la base URL et le credential hors dépôt;
-4. effectuer un GET réel de la vue `RP_Projects`;
-5. confirmer `ProjectId` comme identité stable sur plusieurs lectures;
-6. confirmer le support réel du filtrage/pagination OData;
-7. vérifier la fiabilité de `LastModifiedDateTime` pour l'incrémental;
-8. lancer une synchronisation sur une base de développement;
-9. relancer la synchronisation et confirmer l'idempotence;
-10. valider quelques projets connus avant utilisation en production.
+Les étapes locales 207A (adaptateur OData + parser + fixture contractuelle) sont couvertes hors connexion ERP. 207B doit maintenant :
+
+1. configurer la base URL et le credential hors dépôt;
+2. confirmer le mécanisme HTTP exact d'authentification;
+3. effectuer un GET réel de la vue `RP_Projects`;
+4. confirmer `ProjectId` comme identité stable sur plusieurs lectures;
+5. confirmer le support réel du filtrage/pagination OData;
+6. vérifier la fiabilité de `LastModifiedDateTime` pour l'incrémental;
+7. lancer une synchronisation sur une base de développement;
+8. relancer la synchronisation et confirmer l'idempotence;
+9. valider quelques projets connus;
+10. confirmer la règle métier de `BaseType`.
 
 ## Readiness locale
 
-Les tests historiques du client REST restent utiles comme preuve de plusieurs propriétés génériques — erreurs réseau, atomicité, journalisation sûre, idempotence — mais ne constituent plus une validation du protocole cible.
+Les tests OData couvrent désormais le contrat Atom/XML et réutilisent les garanties déjà éprouvées — erreurs réseau/HTTP, snapshot complet, atomicité SQL, journalisation sûre, idempotence et absence de suppression implicite.
 
 Voir [V2_ACUMATICA_READINESS.md](V2_ACUMATICA_READINESS.md) pour la distinction entre capacités réutilisables et travail OData restant.
 
