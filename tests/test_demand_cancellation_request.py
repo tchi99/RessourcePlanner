@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
+from unittest.mock import patch
 from uuid import UUID
 
 from fastapi.testclient import TestClient
@@ -19,6 +20,7 @@ from app.infrastructure.sql import (
     AssetRequirement,
     AssetType,
     Base,
+    CommandIdempotencyReceipt,
     PlanningMutationState,
     Project,
     RequestLine,
@@ -26,6 +28,7 @@ from app.infrastructure.sql import (
     ResourceRequirement,
     Shift,
     SqlDemandRepository,
+    SqlPeriodAwareApprovedDemandSyncAdapter,
     SqlPlannerQueryRepository,
     WorkforceRequest,
     WorkforceRequestHistory,
@@ -609,6 +612,415 @@ class DemandCancellationRequestTests(unittest.TestCase):
                     self.assertIsNone(session.get(AssetAllocation, "ALLOC-ASSET"))
                     # Human planning owned by another demand is out of scope.
                     self.assertIsNotNone(session.get(Shift, "SHIFT-HUMAN"))
+            finally:
+                engine.dispose()
+
+    def test_accept_replay_wins_before_stale_cas_and_records_once(self) -> None:
+        with TemporaryDirectory() as directory:
+            database_url = self._database(directory)
+            app = create_api_app(
+                database_url,
+                auth_resolver=TEST_CANCELLATION_ADMIN_AUTH_RESOLVER,
+            )
+            headers = {"Idempotency-Key": "accept-replay-399c"}
+            with TestClient(app, raise_server_exceptions=False) as client:
+                requested = client.post(
+                    "/api/v1/demands/DMO-CANCEL-HUMAN/request-cancellation",
+                    json={"reason": "Retrait du mandat", "expected_version": 4},
+                )
+                self.assertEqual(requested.status_code, 200, requested.text)
+                body = {
+                    "cancellation_request_id": requested.json()["cancellation_request_id"],
+                    "comment": "Annulation acceptée",
+                    "expected_version": 5,
+                    "expected_planning_version": 9,
+                }
+                first = client.post(
+                    "/api/v1/demands/DMO-CANCEL-HUMAN/accept-cancellation",
+                    json=body,
+                    headers=headers,
+                )
+                replay = client.post(
+                    "/api/v1/demands/DMO-CANCEL-HUMAN/accept-cancellation",
+                    json=body,
+                    headers=headers,
+                )
+                stale_other_key = client.post(
+                    "/api/v1/demands/DMO-CANCEL-HUMAN/accept-cancellation",
+                    json=body,
+                    headers={"Idempotency-Key": "accept-replay-other-key"},
+                )
+
+            self.assertEqual(first.status_code, 200, first.text)
+            self.assertEqual(replay.status_code, 200, replay.text)
+            self.assertEqual(replay.json(), first.json())
+            self.assertEqual(stale_other_key.status_code, 409, stale_other_key.text)
+            self.assertEqual(
+                stale_other_key.json()["error"]["code"],
+                "planning_version_conflict",
+            )
+
+            engine = create_sql_engine(database_url)
+            factory = create_session_factory(engine)
+            try:
+                with factory() as session:
+                    planning_version = session.scalar(
+                        select(PlanningMutationState.version).where(
+                            PlanningMutationState.id == "GLOBAL"
+                        )
+                    )
+                    self.assertEqual(int(planning_version or 0), 10)
+                    audit_count = session.scalar(
+                        select(func.count())
+                        .select_from(WorkforceRequestHistory)
+                        .where(
+                            WorkforceRequestHistory.workforce_request_id == "D-HUMAN",
+                            WorkforceRequestHistory.action == "Acceptation d'annulation",
+                        )
+                    )
+                    self.assertEqual(int(audit_count or 0), 1)
+                    receipt_count = session.scalar(
+                        select(func.count())
+                        .select_from(CommandIdempotencyReceipt)
+                        .where(
+                            CommandIdempotencyReceipt.command_scope
+                            == "demand_cancellation.accept",
+                            CommandIdempotencyReceipt.idempotency_key
+                            == "accept-replay-399c",
+                        )
+                    )
+                    self.assertEqual(int(receipt_count or 0), 1)
+            finally:
+                engine.dispose()
+
+    def test_stale_request_version_rolls_back_planning_guard_and_cleanup(self) -> None:
+        with TemporaryDirectory() as directory:
+            database_url = self._database(directory)
+            app = create_api_app(
+                database_url,
+                auth_resolver=TEST_CANCELLATION_ADMIN_AUTH_RESOLVER,
+            )
+            with TestClient(app, raise_server_exceptions=False) as client:
+                requested = client.post(
+                    "/api/v1/demands/DMO-CANCEL-HUMAN/request-cancellation",
+                    json={"reason": "Retrait", "expected_version": 4},
+                )
+                self.assertEqual(requested.status_code, 200, requested.text)
+                rejected = client.post(
+                    "/api/v1/demands/DMO-CANCEL-HUMAN/accept-cancellation",
+                    json={
+                        "cancellation_request_id": requested.json()["cancellation_request_id"],
+                        "comment": "Version obsolète",
+                        "expected_version": 4,
+                        "expected_planning_version": 9,
+                    },
+                    headers={"Idempotency-Key": "accept-stale-request-399c"},
+                )
+            self.assertEqual(rejected.status_code, 409, rejected.text)
+            self.assertEqual(rejected.json()["error"]["code"], "demand_version_conflict")
+
+            engine = create_sql_engine(database_url)
+            factory = create_session_factory(engine)
+            try:
+                with factory() as session:
+                    request = session.get(WorkforceRequest, "D-HUMAN")
+                    requirement = session.get(ResourceRequirement, "REQ-HUMAN")
+                    assert request is not None
+                    assert requirement is not None
+                    self.assertEqual(request.status, "En planification")
+                    self.assertEqual(request.cancellation_state, "PENDING")
+                    self.assertEqual(request.aggregate_version, 5)
+                    self.assertEqual(requirement.status, "Planifié")
+                    self.assertIsNotNone(session.get(Shift, "SHIFT-HUMAN"))
+                    self.assertEqual(
+                        int(session.get(PlanningMutationState, "GLOBAL").version),
+                        9,
+                    )
+                    self.assertEqual(
+                        int(
+                            session.scalar(
+                                select(func.count())
+                                .select_from(CommandIdempotencyReceipt)
+                                .where(
+                                    CommandIdempotencyReceipt.command_scope
+                                    == "demand_cancellation.accept",
+                                    CommandIdempotencyReceipt.idempotency_key
+                                    == "accept-stale-request-399c",
+                                )
+                            )
+                            or 0
+                        ),
+                        0,
+                    )
+            finally:
+                engine.dispose()
+
+    def test_injected_audit_failure_rolls_back_entire_acceptance(self) -> None:
+        with TemporaryDirectory() as directory:
+            database_url = self._database(directory)
+            app = create_api_app(
+                database_url,
+                auth_resolver=TEST_CANCELLATION_ADMIN_AUTH_RESOLVER,
+            )
+            with TestClient(app, raise_server_exceptions=False) as client:
+                requested = client.post(
+                    "/api/v1/demands/DMO-CANCEL-HUMAN/request-cancellation",
+                    json={"reason": "Retrait", "expected_version": 4},
+                )
+                self.assertEqual(requested.status_code, 200, requested.text)
+                with patch.object(
+                    SqlDemandRepository,
+                    "_append_history",
+                    side_effect=RuntimeError("399C injected audit failure"),
+                ):
+                    failed = client.post(
+                        "/api/v1/demands/DMO-CANCEL-HUMAN/accept-cancellation",
+                        json={
+                            "cancellation_request_id": requested.json()["cancellation_request_id"],
+                            "comment": "Doit rollback",
+                            "expected_version": 5,
+                            "expected_planning_version": 9,
+                        },
+                        headers={"Idempotency-Key": "accept-rollback-399c"},
+                    )
+            self.assertEqual(failed.status_code, 500, failed.text)
+
+            engine = create_sql_engine(database_url)
+            factory = create_session_factory(engine)
+            try:
+                with factory() as session:
+                    request = session.get(WorkforceRequest, "D-HUMAN")
+                    requirement = session.get(ResourceRequirement, "REQ-HUMAN")
+                    assert request is not None
+                    assert requirement is not None
+                    self.assertEqual(request.status, "En planification")
+                    self.assertEqual(request.cancellation_state, "PENDING")
+                    self.assertEqual(request.aggregate_version, 5)
+                    self.assertEqual(requirement.status, "Planifié")
+                    self.assertIsNotNone(session.get(Shift, "SHIFT-HUMAN"))
+                    self.assertEqual(
+                        int(session.get(PlanningMutationState, "GLOBAL").version),
+                        9,
+                    )
+                    self.assertEqual(
+                        int(
+                            session.scalar(
+                                select(func.count())
+                                .select_from(WorkforceRequestHistory)
+                                .where(
+                                    WorkforceRequestHistory.workforce_request_id == "D-HUMAN",
+                                    WorkforceRequestHistory.action == "Acceptation d'annulation",
+                                )
+                            )
+                            or 0
+                        ),
+                        0,
+                    )
+                    self.assertEqual(
+                        int(
+                            session.scalar(
+                                select(func.count())
+                                .select_from(CommandIdempotencyReceipt)
+                                .where(
+                                    CommandIdempotencyReceipt.command_scope
+                                    == "demand_cancellation.accept",
+                                    CommandIdempotencyReceipt.idempotency_key
+                                    == "accept-rollback-399c",
+                                )
+                            )
+                            or 0
+                        ),
+                        0,
+                    )
+            finally:
+                engine.dispose()
+
+    def test_planning_mutation_winner_forces_accept_retry_with_fresh_version(self) -> None:
+        with TemporaryDirectory() as directory:
+            database_url = self._database(directory)
+            app = create_api_app(
+                database_url,
+                auth_resolver=TEST_CANCELLATION_ADMIN_AUTH_RESOLVER,
+            )
+            with TestClient(app, raise_server_exceptions=False) as client:
+                requested = client.post(
+                    "/api/v1/demands/DMO-CANCEL-HUMAN/request-cancellation",
+                    json={"reason": "Retrait", "expected_version": 4},
+                )
+                self.assertEqual(requested.status_code, 200, requested.text)
+                rebuilt = client.post("/api/v1/planning/rebuild")
+                self.assertEqual(rebuilt.status_code, 200, rebuilt.text)
+                stale_accept = client.post(
+                    "/api/v1/demands/DMO-CANCEL-HUMAN/accept-cancellation",
+                    json={
+                        "cancellation_request_id": requested.json()["cancellation_request_id"],
+                        "comment": "Version planning obsolète",
+                        "expected_version": 5,
+                        "expected_planning_version": 9,
+                    },
+                    headers={"Idempotency-Key": "accept-after-planning-399c"},
+                )
+            self.assertEqual(stale_accept.status_code, 409, stale_accept.text)
+            self.assertEqual(
+                stale_accept.json()["error"]["code"],
+                "planning_version_conflict",
+            )
+
+            engine = create_sql_engine(database_url)
+            factory = create_session_factory(engine)
+            try:
+                with factory() as session:
+                    request = session.get(WorkforceRequest, "D-HUMAN")
+                    assert request is not None
+                    self.assertEqual(request.cancellation_state, "PENDING")
+                    self.assertEqual(request.status, "En planification")
+                    self.assertIsNotNone(session.get(Shift, "SHIFT-HUMAN"))
+                    self.assertEqual(
+                        int(session.get(PlanningMutationState, "GLOBAL").version),
+                        10,
+                    )
+            finally:
+                engine.dispose()
+
+    def test_cancelled_request_cannot_be_rematerialized_by_approval_or_selection_sync(self) -> None:
+        with TemporaryDirectory() as directory:
+            database_url = self._database(directory)
+            app = create_api_app(
+                database_url,
+                auth_resolver=TEST_CANCELLATION_ADMIN_AUTH_RESOLVER,
+            )
+            with TestClient(app, raise_server_exceptions=False) as client:
+                requested = client.post(
+                    "/api/v1/demands/DMO-CANCEL-HUMAN/request-cancellation",
+                    json={"reason": "Retrait", "expected_version": 4},
+                )
+                accepted = client.post(
+                    "/api/v1/demands/DMO-CANCEL-HUMAN/accept-cancellation",
+                    json={
+                        "cancellation_request_id": requested.json()["cancellation_request_id"],
+                        "comment": "Annulation finale",
+                        "expected_version": 5,
+                        "expected_planning_version": 9,
+                    },
+                    headers={"Idempotency-Key": "accept-terminal-guard-399c"},
+                )
+                self.assertEqual(accepted.status_code, 200, accepted.text)
+
+            engine = create_sql_engine(database_url)
+            factory = create_session_factory(engine)
+            try:
+                for operation in ("approval", "selection"):
+                    with self.subTest(operation=operation):
+                        with self.assertRaises(ApplicationConflictError) as raised:
+                            with factory.begin() as session:
+                                adapter = SqlPeriodAwareApprovedDemandSyncAdapter(session)
+                                if operation == "approval":
+                                    adapter.sync_approved("DMO-CANCEL-HUMAN")
+                                else:
+                                    adapter.sync_operational_choices("DMO-CANCEL-HUMAN")
+                        self.assertEqual(
+                            raised.exception.code,
+                            "cancelled_demand_materialization_forbidden",
+                        )
+
+                with factory() as session:
+                    request = session.get(WorkforceRequest, "D-HUMAN")
+                    requirement = session.get(ResourceRequirement, "REQ-HUMAN")
+                    assert request is not None
+                    assert requirement is not None
+                    self.assertEqual(request.status, "Annulée")
+                    self.assertEqual(request.cancellation_state, "ACCEPTED")
+                    self.assertEqual(requirement.status, "Annulé")
+                    self.assertIsNone(session.get(Shift, "SHIFT-HUMAN"))
+                    self.assertEqual(
+                        int(session.get(PlanningMutationState, "GLOBAL").version),
+                        10,
+                    )
+            finally:
+                engine.dispose()
+
+    def test_later_global_rebuild_never_rematerializes_cancelled_request(self) -> None:
+        with TemporaryDirectory() as directory:
+            database_url = self._database(directory)
+            app = create_api_app(
+                database_url,
+                auth_resolver=TEST_CANCELLATION_ADMIN_AUTH_RESOLVER,
+            )
+            with TestClient(app, raise_server_exceptions=False) as client:
+                requested = client.post(
+                    "/api/v1/demands/DMO-CANCEL-HUMAN/request-cancellation",
+                    json={"reason": "Retrait", "expected_version": 4},
+                )
+                accepted = client.post(
+                    "/api/v1/demands/DMO-CANCEL-HUMAN/accept-cancellation",
+                    json={
+                        "cancellation_request_id": requested.json()["cancellation_request_id"],
+                        "comment": "Annulation finale",
+                        "expected_version": 5,
+                        "expected_planning_version": 9,
+                    },
+                    headers={"Idempotency-Key": "accept-before-rebuild-399c"},
+                )
+                self.assertEqual(accepted.status_code, 200, accepted.text)
+                rebuilt = client.post("/api/v1/planning/rebuild")
+                self.assertEqual(rebuilt.status_code, 200, rebuilt.text)
+
+                stale_planning_command = client.post(
+                    "/api/v1/allocations/SHIFT-HUMAN/duplicate",
+                    json={
+                        "resource_id": "R1",
+                        "day": DAY.isoformat(),
+                        "expected_planning_version": 9,
+                    },
+                    headers={"Idempotency-Key": "stale-planning-after-cancel-399c"},
+                )
+
+            self.assertEqual(stale_planning_command.status_code, 409, stale_planning_command.text)
+            self.assertEqual(
+                stale_planning_command.json()["error"]["code"],
+                "planning_version_conflict",
+            )
+
+            engine = create_sql_engine(database_url)
+            factory = create_session_factory(engine)
+            try:
+                with factory() as session:
+                    request = session.get(WorkforceRequest, "D-HUMAN")
+                    requirement = session.get(ResourceRequirement, "REQ-HUMAN")
+                    assert request is not None
+                    assert requirement is not None
+                    self.assertEqual(request.status, "Annulée")
+                    self.assertEqual(requirement.status, "Annulé")
+                    self.assertEqual(
+                        int(
+                            session.scalar(
+                                select(func.count())
+                                .select_from(Shift)
+                                .where(Shift.resource_requirement_id == "REQ-HUMAN")
+                            )
+                            or 0
+                        ),
+                        0,
+                    )
+                    self.assertEqual(
+                        int(
+                            session.scalar(
+                                select(func.count())
+                                .select_from(AssetAllocation)
+                                .join(
+                                    AssetRequirement,
+                                    AssetAllocation.asset_requirement_id == AssetRequirement.id,
+                                )
+                                .where(AssetRequirement.workforce_request_id == "D-HUMAN")
+                            )
+                            or 0
+                        ),
+                        0,
+                    )
+                    self.assertEqual(
+                        int(session.get(PlanningMutationState, "GLOBAL").version),
+                        11,
+                    )
             finally:
                 engine.dispose()
 
