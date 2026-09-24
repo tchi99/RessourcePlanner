@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
   ApiError,
@@ -6,10 +6,14 @@ import {
   type DemandReadModel,
   getDemandDetail,
   getDemands,
+  getPlanningSnapshot,
 } from "./api";
 import {
+  acceptDemandCancellation,
   approveDemand,
   cancelDemand,
+  rejectDemandCancellation,
+  requestDemandCancellation,
   requestDemandCorrection,
   submitDemand,
   type DemandWorkflowResult,
@@ -27,8 +31,23 @@ import "./planDelta.css";
 
 type WorkflowButtonAction = Extract<
   WorkflowAction,
+  | "submit"
+  | "approve"
+  | "correction"
+  | "cancel"
+  | "request-cancellation"
+  | "accept-cancellation"
+  | "reject-cancellation"
+>;
+type StandardWorkflowButtonAction = Extract<
+  WorkflowButtonAction,
   "submit" | "approve" | "correction" | "cancel"
 >;
+
+type CancellationAcceptRetry = {
+  fingerprint: string;
+  key: string;
+};
 
 function errorMessage(reason: unknown): string {
   if (reason instanceof ApiError) {
@@ -47,7 +66,15 @@ function actionLabel(action: WorkflowButtonAction): string {
     case "approve": return "Approuver";
     case "correction": return "Demander une correction";
     case "cancel": return "Annuler la demande";
+    case "request-cancellation": return "Demander l’annulation";
+    case "accept-cancellation": return "Annuler la demande et libérer le planning";
+    case "reject-cancellation": return "Refuser";
   }
+}
+
+function idempotencyKey(): string {
+  return globalThis.crypto?.randomUUID?.()
+    ?? `399d-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
 function deltaLabel(change: DemandPlanDeltaItem["change"]): string {
@@ -119,6 +146,13 @@ export default function DemandWorkflowPage({
   const [workflowState, setWorkflowState] = useState<DemandWorkflowState | null>(null);
   const [approvalComment, setApprovalComment] = useState("");
   const [correctionComment, setCorrectionComment] = useState("");
+  const [cancellationReason, setCancellationReason] = useState("");
+  const [cancellationResolutionComment, setCancellationResolutionComment] = useState("");
+  const [cancellationReviewOpen, setCancellationReviewOpen] = useState(false);
+  const [cancellationPlanningVersion, setCancellationPlanningVersion] = useState<number | null>(null);
+  const [cancellationImpactLoading, setCancellationImpactLoading] = useState(false);
+  const [cancellationImpactError, setCancellationImpactError] = useState<string | null>(null);
+  const acceptRetry = useRef<CancellationAcceptRetry | null>(null);
   const [loading, setLoading] = useState(true);
   const [pendingAction, setPendingAction] = useState<WorkflowButtonAction | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -264,12 +298,158 @@ export default function DemandWorkflowPage({
           action === "submit" ||
           action === "approve" ||
           action === "correction" ||
-          action === "cancel",
+          action === "cancel" ||
+          action === "request-cancellation" ||
+          action === "accept-cancellation" ||
+          action === "reject-cancellation",
       ),
     [currentWorkflowState],
   );
 
-  async function runAction(action: WorkflowButtonAction) {
+  async function refreshAfterMutation(number: string) {
+    if (canonicalDetail) {
+      await onChanged?.();
+      return;
+    }
+    await refresh(number);
+    await onChanged?.();
+  }
+
+  async function loadCancellationImpactVersion() {
+    if (!currentDemand) return;
+    setCancellationImpactLoading(true);
+    setCancellationImpactError(null);
+    setCancellationPlanningVersion(null);
+    const fallback = new Date().toISOString().slice(0, 10);
+    const start = currentDemand.desired_start || fallback;
+    const end = currentDemand.desired_end && currentDemand.desired_end >= start
+      ? currentDemand.desired_end
+      : start;
+    try {
+      const planning = await getPlanningSnapshot(start, end);
+      setCancellationPlanningVersion(planning.planning_version);
+    } catch (reason: unknown) {
+      setCancellationImpactError(errorMessage(reason));
+    } finally {
+      setCancellationImpactLoading(false);
+    }
+  }
+
+  async function openCancellationReview() {
+    if (hasUnsavedChanges) {
+      setError("Enregistre les modifications avant de poursuivre.");
+      return;
+    }
+    setError(null);
+    setCancellationReviewOpen(true);
+    await loadCancellationImpactVersion();
+  }
+
+  async function runCancellationRequest() {
+    if (!currentDemand || pendingAction) return;
+    if (hasUnsavedChanges) {
+      setError("Enregistre les modifications avant de poursuivre.");
+      return;
+    }
+    if (!cancellationReason.trim()) {
+      setError("Une raison est requise pour demander l’annulation.");
+      return;
+    }
+    setPendingAction("request-cancellation");
+    setError(null);
+    setNotice(null);
+    try {
+      const expectedVersion = currentWorkflowState?.version ?? currentDemand.version;
+      const result = await requestDemandCancellation(
+        currentDemand.number,
+        cancellationReason.trim(),
+        expectedVersion,
+      );
+      await refreshAfterMutation(result.demand_number);
+      setCancellationReason("");
+      setNotice("Annulation demandée. Le planning reste actif jusqu’à la décision du coordonnateur.");
+    } catch (reason: unknown) {
+      setError(errorMessage(reason));
+    } finally {
+      setPendingAction(null);
+    }
+  }
+
+  async function runCancellationResolution(action: "accept-cancellation" | "reject-cancellation") {
+    if (!currentDemand || pendingAction) return;
+    if (hasUnsavedChanges) {
+      setError("Enregistre les modifications avant de poursuivre.");
+      return;
+    }
+    const requestId = currentDemand.cancellation_request_id;
+    if (!requestId) {
+      setError("L’identité de la demande d’annulation n’est pas disponible. Actualise la demande.");
+      return;
+    }
+    if (!cancellationResolutionComment.trim()) {
+      setError("Un commentaire de résolution est requis.");
+      return;
+    }
+    if (action === "accept-cancellation" && cancellationPlanningVersion === null) {
+      setError("Actualise l’impact du planning avant d’accepter l’annulation.");
+      return;
+    }
+
+    setPendingAction(action);
+    setError(null);
+    setNotice(null);
+    try {
+      const expectedVersion = currentWorkflowState?.version ?? currentDemand.version;
+      if (action === "reject-cancellation") {
+        const result = await rejectDemandCancellation(
+          currentDemand.number,
+          requestId,
+          cancellationResolutionComment.trim(),
+          expectedVersion,
+        );
+        await refreshAfterMutation(result.demand_number);
+        setCancellationResolutionComment("");
+        setCancellationReviewOpen(false);
+        setCancellationPlanningVersion(null);
+        setNotice("Demande d’annulation refusée. Le planning actif est conservé.");
+      } else {
+        const expectedPlanningVersion = cancellationPlanningVersion as number;
+        const fingerprint = JSON.stringify({
+          demand_number: currentDemand.number,
+          cancellation_request_id: requestId,
+          comment: cancellationResolutionComment.trim(),
+          expected_version: expectedVersion,
+          expected_planning_version: expectedPlanningVersion,
+        });
+        const key = acceptRetry.current?.fingerprint === fingerprint
+          ? acceptRetry.current.key
+          : idempotencyKey();
+        acceptRetry.current = { fingerprint, key };
+        const result = await acceptDemandCancellation(
+          currentDemand.number,
+          requestId,
+          cancellationResolutionComment.trim(),
+          expectedVersion,
+          expectedPlanningVersion,
+          key,
+        );
+        acceptRetry.current = null;
+        await refreshAfterMutation(result.demand_number);
+        setCancellationResolutionComment("");
+        setCancellationReviewOpen(false);
+        setCancellationPlanningVersion(null);
+        setNotice(
+          `Demande annulée. Planning libéré : ${result.deleted_human_shifts ?? 0} quart(s) et ${result.deleted_asset_allocations ?? 0} réservation(s) d’actif supprimés.`,
+        );
+      }
+    } catch (reason: unknown) {
+      setError(errorMessage(reason));
+    } finally {
+      setPendingAction(null);
+    }
+  }
+
+  async function runAction(action: StandardWorkflowButtonAction) {
     if (!currentDemand || pendingAction) return;
     if (hasUnsavedChanges) {
       setError("Enregistre les modifications avant de poursuivre.");
@@ -305,12 +485,7 @@ export default function DemandWorkflowPage({
         result = await cancelDemand(currentDemand.number, expectedVersion);
       }
 
-      if (canonicalDetail) {
-        await onChanged?.();
-      } else {
-        await refresh(result.demand_number);
-        await onChanged?.();
-      }
+      await refreshAfterMutation(result.demand_number);
       if (action === "approve") {
         const planning = result.planning;
         setNotice(
@@ -418,6 +593,18 @@ export default function DemandWorkflowPage({
                   </div>
                 )}
               </div>
+
+              {currentDemand.cancellation_state === "PENDING" && (
+                <div className="workflow-cancellation-state" data-testid="cancellation-pending-state">
+                  <strong>Annulation demandée</strong>
+                  <span>
+                    Le statut opérationnel reste {currentDemand.status}; le planning demeure actif jusqu’à une décision explicite.
+                  </span>
+                  {currentDemand.cancellation_reason && (
+                    <small>Raison : {currentDemand.cancellation_reason}</small>
+                  )}
+                </div>
+              )}
 
               <div className="workflow-separation-note">
                 <strong>Approbation ≠ confirmation.</strong>
@@ -543,6 +730,157 @@ export default function DemandWorkflowPage({
                     placeholder="Indiquer précisément ce qui doit être corrigé…"
                   />
                 </label>
+              )}
+
+              {actions.includes("request-cancellation") && (
+                <div className="workflow-cancellation-request" data-testid="cancellation-request-panel">
+                  <label className="workflow-comment-field">
+                    <span>Raison de la demande d’annulation (requise)</span>
+                    <textarea
+                      rows={3}
+                      value={cancellationReason}
+                      onChange={(event) => setCancellationReason(event.target.value)}
+                      disabled={busy}
+                      placeholder="Pourquoi ce plan doit-il être annulé?"
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    className="secondary-button workflow-cancel"
+                    disabled={busy || hasUnsavedChanges || !cancellationReason.trim()}
+                    onClick={() => void runCancellationRequest()}
+                  >
+                    {pendingAction === "request-cancellation" ? "Envoi…" : actionLabel("request-cancellation")}
+                  </button>
+                </div>
+              )}
+
+              {(actions.includes("accept-cancellation") || actions.includes("reject-cancellation")) && !cancellationReviewOpen && (
+                <div className="workflow-cancellation-treatment">
+                  <button
+                    type="button"
+                    className="primary-button"
+                    disabled={busy || hasUnsavedChanges}
+                    onClick={() => void openCancellationReview()}
+                  >
+                    Traiter l’annulation
+                  </button>
+                </div>
+              )}
+
+              {(actions.includes("accept-cancellation") || actions.includes("reject-cancellation")) && cancellationReviewOpen && (
+                <div className="workflow-cancellation-review" data-testid="cancellation-review">
+                  <div className="plan-delta-heading">
+                    <div>
+                      <span className="eyebrow">Impact avant décision</span>
+                      <h3>Planning qui sera libéré</h3>
+                      <p>Ce résumé provient du détail matérialisé backend. Aucun élément n’est supprimé tant que l’acceptation explicite n’a pas réussi.</p>
+                    </div>
+                    {cancellationPlanningVersion !== null && (
+                      <strong>Planning v{cancellationPlanningVersion}</strong>
+                    )}
+                  </div>
+
+                  {cancellationImpactLoading && <div className="plan-delta-empty">Actualisation de la version du planning…</div>}
+                  {cancellationImpactError && (
+                    <div className="plan-delta-unavailable">
+                      <span>{cancellationImpactError}</span>
+                      <button type="button" className="text-button" onClick={() => void loadCancellationImpactVersion()}>
+                        Réessayer
+                      </button>
+                    </div>
+                  )}
+
+                  {canonicalDetail && (
+                    <>
+                      <div className="cancellation-impact-grid">
+                        <article>
+                          <span>Plan humain</span>
+                          <strong>{canonicalDetail.materialized_plan.requirement_count} besoin(s)</strong>
+                          <small>
+                            {canonicalDetail.materialized_plan.covered_hours} h couvertes · {canonicalDetail.materialized_plan.locked_hours} h verrouillées
+                          </small>
+                        </article>
+                        <article>
+                          <span>Actifs réservés</span>
+                          <strong>{canonicalDetail.materialized_plan.asset_assigned_count} unité(s)</strong>
+                          <small>{canonicalDetail.materialized_plan.asset_usage_hours} h d’usage budgétées</small>
+                        </article>
+                      </div>
+                      {canonicalDetail.materialized_plan.requirements.length > 0 && (
+                        <div className="cancellation-impact-list">
+                          {canonicalDetail.materialized_plan.requirements.map((requirement) => (
+                            <div key={requirement.requirement_id}>
+                              <strong>{requirement.segment_id}</strong>
+                              <span>
+                                {requirement.covered_hours} h affectées · {requirement.locked_hours} h verrouillées
+                                {requirement.mobilized_resources.length > 0
+                                  ? ` · ${requirement.mobilized_resources.map((resource) => resource.resource_name).join(", ")}`
+                                  : ""}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {canonicalDetail.materialized_plan.asset_requirements.some((requirement) => requirement.allocation_id) && (
+                        <div className="cancellation-impact-list">
+                          {canonicalDetail.materialized_plan.asset_requirements
+                            .filter((requirement) => requirement.allocation_id)
+                            .map((requirement) => (
+                              <div key={requirement.requirement_id}>
+                                <strong>{requirement.asset_type_code} — {requirement.asset_type_label}</strong>
+                                <span>
+                                  {requirement.asset_code || "Unité réservée"}
+                                  {requirement.allocation_locked ? " · verrouillée" : ""}
+                                </span>
+                              </div>
+                            ))}
+                        </div>
+                      )}
+                    </>
+                  )}
+
+                  <label className="workflow-comment-field">
+                    <span>Commentaire de résolution (requis)</span>
+                    <textarea
+                      rows={3}
+                      value={cancellationResolutionComment}
+                      onChange={(event) => setCancellationResolutionComment(event.target.value)}
+                      disabled={busy}
+                      placeholder="Documenter la décision…"
+                    />
+                  </label>
+
+                  <div className="workflow-actions">
+                    {actions.includes("reject-cancellation") && (
+                      <button
+                        type="button"
+                        className="secondary-button"
+                        disabled={busy || hasUnsavedChanges || !cancellationResolutionComment.trim()}
+                        onClick={() => void runCancellationResolution("reject-cancellation")}
+                      >
+                        {pendingAction === "reject-cancellation" ? "Refus…" : "Refuser"}
+                      </button>
+                    )}
+                    {actions.includes("accept-cancellation") && (
+                      <button
+                        type="button"
+                        className="secondary-button workflow-cancel"
+                        disabled={
+                          busy ||
+                          hasUnsavedChanges ||
+                          !cancellationResolutionComment.trim() ||
+                          cancellationPlanningVersion === null
+                        }
+                        onClick={() => void runCancellationResolution("accept-cancellation")}
+                      >
+                        {pendingAction === "accept-cancellation"
+                          ? "Annulation…"
+                          : "Annuler la demande et libérer le planning"}
+                      </button>
+                    )}
+                  </div>
+                </div>
               )}
 
               <div className="workflow-actions">
