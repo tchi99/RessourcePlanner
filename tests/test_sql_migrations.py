@@ -16,6 +16,9 @@ ROOT = Path(__file__).resolve().parents[1]
 MIGRATIONS = ROOT / "migrations"
 INITIAL_REVISION = MIGRATIONS / "versions" / "0001_initial_planning_schema.py"
 EXPECTED_TABLES = {
+    "approval_decisions",
+    "approval_requirement_approvers",
+    "approval_requirements",
     "approval_scopes",
     "approval_scope_approvers",
     "task_approval_scope_mappings",
@@ -23,6 +26,7 @@ EXPECTED_TABLES = {
     "command_idempotency_receipts",
     "planning_mutation_state",
     "projects",
+    "request_approval_cycles",
     "request_approval_references",
     "request_approval_revisions",
     "request_operational_states",
@@ -173,6 +177,13 @@ class SqlMigrationTests(unittest.TestCase):
             self.assertIn("REQUIRED_RESOURCE_CLASS", ddl, url)
             self.assertIn("CREATE TABLE BUSINESS_CONTACTS", ddl, url)
             self.assertIn("CREATE TABLE APPROVAL_SCOPES", ddl, url)
+            self.assertIn("CREATE TABLE REQUEST_APPROVAL_CYCLES", ddl, url)
+            self.assertIn("CREATE TABLE APPROVAL_REQUIREMENTS", ddl, url)
+            self.assertIn("CREATE TABLE APPROVAL_REQUIREMENT_APPROVERS", ddl, url)
+            self.assertIn("CREATE TABLE APPROVAL_DECISIONS", ddl, url)
+            self.assertIn("SUBJECT_FINGERPRINT", ddl, url)
+            self.assertIn("SUBMITTED_REQUEST_VERSION", ddl, url)
+            self.assertIn("ACTION_ID", ddl, url)
             self.assertIn("CREATE TABLE APPROVAL_SCOPE_APPROVERS", ddl, url)
             self.assertIn("CREATE TABLE TASK_APPROVAL_SCOPE_MAPPINGS", ddl, url)
             self.assertIn("FK_SCOPE_APPROVER_USER", ddl, url)
