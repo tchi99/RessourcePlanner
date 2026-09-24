@@ -68,7 +68,20 @@ class PlannerQueryPort(Protocol):
         project_ids: Sequence[str] | None = None,
     ) -> Sequence[DemandReadModel]: ...
 
+    def list_demands_with_cancellation_materialization(
+        self,
+        *,
+        project_ids: Sequence[str] | None = None,
+    ) -> Sequence[
+        tuple[DemandReadModel, DemandCancellationMaterializationReadModel]
+    ]: ...
+
     def get_demand(self, number: str) -> DemandReadModel | None: ...
+
+    def get_demand_with_cancellation_materialization(
+        self,
+        number: str,
+    ) -> tuple[DemandReadModel, DemandCancellationMaterializationReadModel] | None: ...
 
     def demand_cancellation_materialization(
         self,
