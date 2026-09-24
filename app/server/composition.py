@@ -19,7 +19,9 @@ from ..application import (
     ResourceAdminService,
     WorkPackageService,
 )
+from ..application.approval_cycles import ApprovalCycleService
 from ..application.approval_scopes import ApprovalScopeService
+from ..application.approval_voting import ApprovalVoteService
 from ..application.communications import CommunicationService, CommunicationTransportPort
 from ..application.operational_contacts import OperationalContactService
 from ..application.project_communications import ProjectCommunicationService
@@ -36,6 +38,7 @@ from ..infrastructure.sql import (
     LoadProfileAuditedSegmentRepository,
     OverallocationAuditedAllocationCommandAdapter,
     OverallocationAuditedSegmentRepository,
+    SqlApprovalCycleRepository,
     SqlApprovalScopeRepository,
     SqlBusinessContactAdminRepository,
     SqlCommandIdempotencyAdapter,
@@ -133,6 +136,26 @@ def build_sql_facade(
         session,
         versioning=planning_versions,
     )
+    approval_scope_service = ApprovalScopeService(SqlApprovalScopeRepository(session))
+    approval_cycle_repository = SqlApprovalCycleRepository(
+        session,
+        actor_user_id=actor_user_id,
+        actor_name=actor,
+    )
+    approval_cycle_service = ApprovalCycleService(
+        approval_cycle_repository,
+        approval_scope_service,
+    )
+    approval_vote_service = ApprovalVoteService(
+        cycles=approval_cycle_service,
+        repository=approval_cycle_repository,
+        planning_versions=planning_versions,
+        approved_sync=approved_sync,
+        planning=planning_commands,
+        current_user_id=actor_user_id,
+        current_user_name=actor,
+        permissions=tuple(permissions or ()),
+    )
 
     return EmergencyApplicationFacade(
         demands=EmergencyDemandService(
@@ -155,6 +178,8 @@ def build_sql_facade(
             roles=roles,
             planning_versions=planning_versions,
             queries=query_port,
+            approval_cycles=approval_cycle_service,
+            approval_votes=approval_vote_service,
         ),
         segments=SegmentService(segments, planning_commands, planning_authorization),
         allocations=AllocationService(allocation_commands),
