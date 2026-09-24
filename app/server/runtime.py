@@ -128,10 +128,6 @@ def _positive_float(
     return parsed
 
 
-def _acumatica_page_size(value: object) -> int:
-    return _positive_int(value, default=200, label=ACUMATICA_PAGE_SIZE_ENV, maximum=1000)
-
-
 def _acumatica_settings(values: Mapping[str, str]) -> ODataProjectSourceSettings | None:
     base_url = _text(values.get(ACUMATICA_BASE_URL_ENV))
     if not base_url:
