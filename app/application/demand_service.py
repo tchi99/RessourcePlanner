@@ -14,6 +14,7 @@ from .commands import (
     DemandOperationalConfirmationCommand,
     DemandApproveCommand,
     DemandCancelCommand,
+    DemandCancellationAcceptCommand,
     DemandCancellationRejectCommand,
     DemandCancellationRequestCommand,
     DemandCorrectionCommand,
@@ -46,6 +47,7 @@ from .demand_workflow_policy import (
     ACTION_APPROVE,
     ACTION_CANCEL,
     ACTION_CORRECTION,
+    ACTION_ACCEPT_CANCELLATION,
     ACTION_REJECT_CANCELLATION,
     ACTION_REQUEST_CANCELLATION,
     ACTION_MODIFY,
@@ -1367,6 +1369,77 @@ class DemandService:
                 },
             )
         return existing.status, cancellation_request_id
+
+    def accept_cancellation_command(
+        self,
+        command: DemandCancellationAcceptCommand,
+    ) -> Mapping[str, Any]:
+        number = self._required_identifier(command.number, entity="demand")
+        cycle_id = self._required_identifier(
+            command.cancellation_request_id,
+            entity="cancellation_request",
+        )
+        correlation_id = self._required_identifier(
+            command.correlation_id,
+            entity="correlation",
+        )
+        comment = str(command.comment or "").strip()
+        if not comment:
+            raise ApplicationValidationError(
+                "Un commentaire de résolution est requis.",
+                code="cancellation_resolution_comment_required",
+                context={"demand_number": number},
+            )
+        if self._planning_versions is None:
+            raise ApplicationOperationError(
+                "La garde de version du planning n'est pas configurée.",
+                code="planning_version_unavailable",
+                context={"demand_number": number},
+            )
+
+        # ADR-006: acquire the global mutation guard before any decision read.
+        planning_version = self._planning_versions.acquire(
+            int(command.expected_planning_version)
+        )
+        existing = self._demand_or_not_found(number)
+        self._assert_workflow_action(
+            existing,
+            ACTION_ACCEPT_CANCELLATION,
+            expected_version=command.expected_version,
+        )
+        if existing.cancellation_request_id != cycle_id:
+            raise ApplicationConflictError(
+                "La demande d'annulation à résoudre n'est plus active.",
+                code="cancellation_cycle_conflict",
+                context={
+                    "demand_number": number,
+                    "expected_cancellation_request_id": cycle_id,
+                    "current_cancellation_request_id": existing.cancellation_request_id,
+                },
+            )
+
+        with self._context("accept demand cancellation"):
+            persisted = call_application_port(
+                lambda: self._demands.accept_cancellation(
+                    number,
+                    cancellation_request_id=cycle_id,
+                    comment=comment,
+                    expected_version=int(command.expected_version),
+                    planning_version=int(planning_version),
+                    correlation_id=correlation_id,
+                ),
+                code_prefix="demand_cancellation_accept",
+                context={
+                    "demand_number": number,
+                    "cancellation_request_id": cycle_id,
+                    "correlation_id": correlation_id,
+                },
+            )
+        return {
+            **dict(persisted),
+            "status": "Annulée",
+            "planning_version": int(planning_version),
+        }
 
     def reject_cancellation_command(
         self,
