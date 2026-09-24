@@ -115,6 +115,12 @@ class ODataProjectContractTests(unittest.TestCase):
         self.assertEqual(raised.exception.reason, "invalid_xml")
         self.assertNotIn("sensitive-project-payload", str(raised.exception))
 
+    def test_well_formed_non_atom_xml_is_not_treated_as_empty_snapshot(self) -> None:
+        with self.assertRaises(ODataProjectFeedError) as raised:
+            parse_rp_projects_feed(b"<html><body>login page</body></html>")
+
+        self.assertEqual(raised.exception.reason, "invalid_feed_root")
+
     def test_required_fields_are_rejected_explicitly(self) -> None:
         cases = {
             "ProjectId": (
