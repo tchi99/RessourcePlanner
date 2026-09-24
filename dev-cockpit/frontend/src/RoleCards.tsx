@@ -84,6 +84,8 @@ function companionBubble(status: ChatConversationStatus | null): string | null {
 
 function developerBubble(dashboard: Dashboard | null): string {
   if (!dashboard) return 'En attente des données GitHub.'
+  if (!dashboard.pipeline.valid) return 'Pipeline #55 invalide · aucune tranche DEV déduite.'
+  if (!dashboard.active_work) return 'Aucune tranche DEV active déclarée.'
   const active = dashboard.active_work
   const states = new Set(active.states)
   const key = active.subitem_key || `#${active.issue_number}`
@@ -124,7 +126,10 @@ function roleBubble(
   }
 
   if (role.avatar === 'product-owner') {
-    return `Roadmap #${dashboard.roadmap.number} · actif: ${dashboard.roadmap.effective_active}.`
+    if (!dashboard.pipeline.valid) {
+      return `Roadmap #${dashboard.roadmap.number} · pipeline canonique invalide.`
+    }
+    return `Roadmap #${dashboard.roadmap.number} · actif: ${dashboard.roadmap.effective_active ?? 'aucun'}.`
   }
   if (role.avatar === 'architect') {
     const referenced = dashboard.architecture.referenced_adrs.length
@@ -133,7 +138,7 @@ function roleBubble(
       : 'Consulter les ADR applicables au besoin.'
   }
   if (role.avatar === 'reviewer') {
-    const failed = dashboard.active_work.failed_jobs.length
+    const failed = dashboard.active_work?.failed_jobs.length ?? 0
     return failed
       ? `${failed} job(s) CI en échec à examiner.`
       : 'Aucun job CI en échec sur le travail actif.'
@@ -144,7 +149,7 @@ function roleBubble(
 }
 
 function isDeveloperWorking(role: RoleConfig, dashboard: Dashboard | null): boolean {
-  if (role.avatar !== 'developer' || !dashboard) return false
+  if (role.avatar !== 'developer' || !dashboard?.active_work) return false
   const states = new Set(dashboard.active_work.states)
   if (
     states.has('STALLED') ||
@@ -327,7 +332,7 @@ export default function RoleCards({ dashboard }: { dashboard: Dashboard | null }
             const working = Boolean(chatWorking || githubWorking)
             const stalled = Boolean(
               chatStatus?.effective_state === 'possible_stall' ||
-                (role.avatar === 'developer' && dashboard?.active_work.stalled),
+                (role.avatar === 'developer' && dashboard?.active_work?.stalled),
             )
             return (
               <article
