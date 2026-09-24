@@ -519,6 +519,7 @@ async def build_dashboard(client: GitHubClient, settings: Settings, repo: str) -
         not block_done
         and not primary_pr
         and (active_subitem or canonical_mode)
+        and pipeline_now
         and pipeline_now.get("kind") == "WORK"
     ):
         merged_candidates = [
