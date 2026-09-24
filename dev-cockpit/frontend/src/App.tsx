@@ -430,6 +430,14 @@ export default function App() {
 
       <RoleCards dashboard={data} />
 
+      {data && (
+        <ExecutionControllerPanel
+          execution={data.execution}
+          copied={copied}
+          onCopy={() => void copyPrompt()}
+        />
+      )}
+
       {data && !data.pipeline.valid && (
         <section className="error-panel pipeline-invalid">
           <strong>Pipeline #55 invalide</strong>
