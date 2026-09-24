@@ -651,7 +651,7 @@ class RequestLineMaterializationHttpTests(unittest.TestCase):
             finally:
                 engine.dispose()
 
-    def test_locked_manual_work_blocks_destructive_cancel_then_unlocked_cancel_cleans_plan(self) -> None:
+    def test_materialized_work_requires_cancellation_request_without_destructive_cleanup(self) -> None:
         with TemporaryDirectory() as directory:
             database_url = self._database(directory)
             app = create_api_app(
@@ -705,43 +705,65 @@ class RequestLineMaterializationHttpTests(unittest.TestCase):
                     shift_id = shift.id
                 engine.dispose()
 
-                blocked = client.post(f"/api/v1/demands/{number}/cancel")
-                self.assertEqual(blocked.status_code, 422, blocked.text)
+                locked_blocked = client.post(f"/api/v1/demands/{number}/cancel")
+                self.assertEqual(locked_blocked.status_code, 409, locked_blocked.text)
                 self.assertEqual(
-                    blocked.json()["error"]["code"],
-                    "demand_cancel_materialized_invalid",
+                    locked_blocked.json()["error"]["code"],
+                    "active_operational_decisions",
                 )
 
                 engine = create_sql_engine(database_url)
                 factory = create_session_factory(engine)
                 with factory.begin() as session:
-                    request = session.scalar(
-                        select(WorkforceRequest).where(
-                            WorkforceRequest.legacy_demand_number == number
-                        )
-                    )
-                    assert request is not None
-                    self.assertEqual(request.status, "En planification")
-                    requirement = session.get(ResourceRequirement, requirement_id)
                     shift = session.get(Shift, shift_id)
-                    assert requirement is not None and shift is not None
-                    self.assertNotEqual(requirement.status, "Annulé")
+                    assert shift is not None
                     self.assertTrue(shift.locked)
                     shift.locked = False
                 engine.dispose()
 
-                cancelled = client.post(f"/api/v1/demands/{number}/cancel")
-                self.assertEqual(cancelled.status_code, 200, cancelled.text)
-                self.assertEqual(cancelled.json()["status"], "Annulée")
+                unlocked_blocked = client.post(f"/api/v1/demands/{number}/cancel")
+                self.assertEqual(
+                    unlocked_blocked.status_code,
+                    409,
+                    unlocked_blocked.text,
+                )
+                self.assertEqual(
+                    unlocked_blocked.json()["error"]["code"],
+                    "active_operational_decisions",
+                )
+
+                current = client.get(f"/api/v1/demands/{number}")
+                self.assertEqual(current.status_code, 200, current.text)
+                current_version = current.json()["version"]
+                requested = client.post(
+                    f"/api/v1/demands/{number}/request-cancellation",
+                    json={
+                        "reason": "Annuler sans détruire le plan dans #399A",
+                        "expected_version": current_version,
+                    },
+                )
+                self.assertEqual(requested.status_code, 200, requested.text)
+                self.assertEqual(requested.json()["status"], "En planification")
+                self.assertEqual(requested.json()["cancellation_state"], "PENDING")
 
             engine = create_sql_engine(database_url)
             factory = create_session_factory(engine)
             try:
                 with factory() as session:
+                    request = session.scalar(
+                        select(WorkforceRequest).where(
+                            WorkforceRequest.legacy_demand_number == number
+                        )
+                    )
                     requirement = session.get(ResourceRequirement, requirement_id)
+                    shift = session.get(Shift, shift_id)
+                    assert request is not None
                     assert requirement is not None
-                    self.assertEqual(requirement.status, "Annulé")
-                    self.assertIsNone(session.get(Shift, shift_id))
+                    assert shift is not None
+                    self.assertEqual(request.status, "En planification")
+                    self.assertEqual(request.cancellation_state, "PENDING")
+                    self.assertNotEqual(requirement.status, "Annulé")
+                    self.assertFalse(shift.locked)
             finally:
                 engine.dispose()
 
