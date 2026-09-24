@@ -22,7 +22,6 @@ from ...domain.approval_cycles import (
     APPROVAL_CYCLE_STATE_OPEN,
 )
 from .approval_cycle_models import (
-    ApprovalDecision,
     ApprovalRequirement,
     ApprovalRequirementApprover,
     RequestApprovalCycle,
