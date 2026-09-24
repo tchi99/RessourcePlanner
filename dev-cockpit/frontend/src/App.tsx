@@ -179,15 +179,15 @@ export default function App() {
     window.setTimeout(() => setCopied(false), 1400)
   }
 
-  const primaryPr = data?.active_work.primary_pr ?? null
-  const run =
-    latestRun(primaryPr) ?? data?.active_work.active_runs?.[0] ?? null
-  const issueUrl = data?.active_work.issue.url
-  const stallDetails = data?.active_work.stalled_details
+  const activeWork = data?.active_work ?? null
+  const primaryPr = activeWork?.primary_pr ?? null
+  const run = latestRun(primaryPr) ?? activeWork?.active_runs?.[0] ?? null
+  const issueUrl = activeWork?.issue.url
+  const stallDetails = activeWork?.stalled_details
   const stallTitle =
-    data?.active_work.stall_level === 'confirmed'
+    activeWork?.stall_level === 'confirmed'
       ? '⚠ Dev probablement arrêté — CI rouge abandonnée'
-      : data?.active_work.stall_level === 'possible'
+      : activeWork?.stall_level === 'possible'
         ? '⚠ Travail possiblement interrompu'
         : '⚠ Dev probablement arrêté'
 
@@ -239,7 +239,26 @@ export default function App() {
 
       <RoleCards dashboard={data} />
 
-      {data && (
+      {data && !data.pipeline.valid && (
+        <section className="error-panel pipeline-invalid">
+          <strong>Pipeline #55 invalide</strong>
+          <span>
+            Le bloc COCKPIT_PIPELINE_V1 doit être corrigé avant de déterminer
+            une étape active.
+          </span>
+          {data.pipeline.errors.map((message) => (
+            <span key={message}>• {message}</span>
+          ))}
+        </section>
+      )}
+
+      {data && data.pipeline.valid && !data.active_work && (
+        <section className="loading-panel">
+          Aucune étape MAIN active n'est déclarée dans le pipeline canonique.
+        </section>
+      )}
+
+      {data && data.pipeline.valid && data.active_work && (
         <>
           {data.warnings.length > 0 && (
             <div className="warnings">
