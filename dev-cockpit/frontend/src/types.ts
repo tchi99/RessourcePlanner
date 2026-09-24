@@ -209,6 +209,38 @@ export type ExecutionControl = {
   missions: Record<AvatarPreset, RoleMission>
 }
 
+export type AttentionLevel = 'ACTION' | 'WATCH' | 'CLEAR'
+
+export type AttentionItem = {
+  id: string
+  code: string
+  level: 'ACTION' | 'WATCH'
+  role: AvatarPreset
+  role_label: string
+  key: string
+  title: string
+  detail: string
+  action: string
+  primary_link: ExecutionLink | null
+  handoff_confidence: HandoffConfidence | null
+}
+
+export type AttentionCenter = {
+  status: AttentionLevel
+  action_count: number
+  watch_count: number
+  summary: string
+  roles: Record<
+    'product-owner' | 'developer' | 'architect' | 'reviewer',
+    {
+      label: string
+      actions: number
+      watches: number
+    }
+  >
+  items: AttentionItem[]
+}
+
 export type Dashboard = {
   repo: string
   generated_at: string
@@ -231,6 +263,7 @@ export type Dashboard = {
   reconciliation: PipelineReconciliation
   execution: ExecutionControl
   handoff: HandoffProjection
+  attention: AttentionCenter
   roadmap: {
     number: number
     title: string

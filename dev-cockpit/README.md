@@ -267,6 +267,34 @@ Une étape `PARALLEL READY` prouvée livrée peut être proposée `DONE` sans mo
 
 Le bouton **Préparer la mise à jour de #55** copie seulement le bloc proposé dans le presse-papiers. Il n'écrit jamais dans GitHub. La mise à jour de #55 reste une action explicite, ce qui maintient GitHub comme source de vérité et évite un second stockage d'état produit dans le cockpit.
 
+### Attention Center
+
+Le dashboard commence maintenant par un **Attention Center** qui agrège les signaux déjà dérivés par le pipeline canonique, le Roadmap Reconciler, le Contrôleur d'exécution et les Handoff Packs.
+
+Il n'ajoute aucun état produit : la file est recalculée à chaque lecture GitHub.
+
+Trois niveaux seulement sont exposés :
+
+- **ACTION** : une intervention humaine est requise maintenant;
+- **WATCH** : aucun geste immédiat n'est requis, mais un état doit être surveillé;
+- **CLEAR** : aucun signal actionnable n'est présent.
+
+Exemples :
+
+- CI rouge / stall confirmé → ACTION Developer;
+- PR verte et mergeable → ACTION Reviewer;
+- roadmap stale ou pipeline invalide → ACTION Product Owner;
+- gate architecture → ACTION Architecte;
+- CI en cours / possible stall / développement en cours → WATCH;
+- PR ouverte sur une étape canonique BLOCKED → WATCH Product Owner;
+- Handoff Pack PARTIAL → WATCH du rôle uniquement si aucun signal plus fort ne couvre déjà le même rôle et la même tranche.
+
+La déduplication se fait par **rôle + sujet** et conserve toujours le signal le plus fort (`ACTION > WATCH`). Une CI rouge ne produit donc pas trois entrées distinctes parce qu'elle est également visible dans les missions et le Handoff Pack.
+
+Chaque entrée propose **Préparer la reprise**, qui copie le Handoff Pack déjà dérivé pour le rôle, ainsi que le lien GitHub primaire lorsqu'il existe. Il n'existe aucun bouton dismiss : l'entrée disparaît uniquement lorsque la condition GitHub qui l'a créée disparaît.
+
+Le résumé supérieur affiche le nombre d'actions et d'attentes ainsi qu'une ventilation par rôle. Quand aucun signal ne subsiste, l'état devient explicitement **CLEAR — Aucune intervention requise**.
+
 ### Contrôleur d'exécution
 
 Le cockpit dérive maintenant une **phase d'exécution** à partir du contrat canonique, du Roadmap Reconciler et des artefacts GitHub de la tranche active. Cette phase n'est jamais persistée localement.
