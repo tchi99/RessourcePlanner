@@ -9,7 +9,7 @@ from uuid import uuid4
 from ..domain.demand_periods import DemandPeriodDefinition, validate_period_definitions
 from ..domain.request_lines import default_legacy_hours
 from .approval_cycles import ApprovalCycleService
-from .approval_voting import ApprovalVoteService
+from .approval_voting import ApprovalVoteCommand, ApprovalVoteOutcome, ApprovalVoteService
 from .command_ports import ApprovedDemandSyncPort, PlanningCommandPort
 from .commands import (
     DemandAlternativeSelectCommand,
@@ -1321,6 +1321,18 @@ class DemandService:
             expected_planning_version=command.expected_planning_version,
         )
         return outcome.to_dict()
+
+    def vote_approval_command(
+        self,
+        command: ApprovalVoteCommand,
+    ) -> ApprovalVoteOutcome:
+        if self._approval_votes is None:
+            raise ApplicationOperationError(
+                "Le workflow de quorum d'approbation n'est pas configuré.",
+                code="approval_quorum_unavailable",
+                context={"demand_number": command.workforce_request_id},
+            )
+        return self._approval_votes.vote(command)
 
     def request_correction_command(self, command: DemandCorrectionCommand) -> None:
         number = self._required_identifier(command.number, entity="demand")
