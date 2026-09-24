@@ -3,12 +3,14 @@ from __future__ import annotations
 from typing import Any, Callable
 
 from fastapi import APIRouter, Depends, Header, status
+from fastapi.responses import JSONResponse
 from ..application import (
     AllocationDropEvaluateCommand,
     AllocationDuplicateCommand,
     AllocationExtendMoveCommand,
     AllocationSplitCommand,
     AllocationWindowExtensionProposalCommand,
+    ApprovalVoteCommand,
     ApplicationFacade,
     AvailabilityRuleCreateCommand,
     CompetencyCatalogService,
@@ -56,6 +58,7 @@ from .schemas import (
     AvailabilityRuleUpdateRequest,
     DemandAlternativeSelectionRequest,
     DemandApprovalRequest,
+    DemandApprovalVoteRequest,
     DemandCancellationAcceptRequest,
     DemandCancellationRejectRequest,
     DemandCancellationRequest,
@@ -510,18 +513,93 @@ def build_command_router(
     def approve_demand(
         number: str,
         body: DemandApprovalRequest,
+        idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
         facade: ApplicationFacade = Depends(facade_dependency),
-    ) -> dict[str, Any]:
-        return _payload(
-            facade.approve_demand(
-                DemandApproveCommand(
-                    number=number,
-                    comment=body.comment,
-                    expected_version=body.expected_version,
-                    expected_planning_version=body.expected_planning_version,
+        idempotency: IdempotentCommandExecutor = Depends(stable_idempotency),
+    ) -> Any:
+        request_payload = {
+            "operation": "APPROVE_ELIGIBLE_REQUIREMENTS",
+            "demand_number": number,
+            "body": _json_body(body),
+        }
+        result = idempotency.execute(
+            scope="demand_approval.approve_eligible",
+            key=idempotency_key,
+            request_payload=request_payload,
+            action=lambda: _payload(
+                facade.approve_demand(
+                    DemandApproveCommand(
+                        number=number,
+                        comment=body.comment,
+                        expected_version=body.expected_version,
+                        expected_planning_version=body.expected_planning_version,
+                    )
                 )
-            )
+            ),
         )
+        if result.get("conflict_code"):
+            return JSONResponse(
+                status_code=status.HTTP_409_CONFLICT,
+                content={
+                    "error": {
+                        "code": result["conflict_code"],
+                        "message": result.get("conflict_message") or "Conflit d'approbation.",
+                        "context": {
+                            "approval_cycle_id": result.get("approval_cycle_id"),
+                            "request_version": result.get("request_version"),
+                        },
+                    }
+                },
+            )
+        return result
+
+    @router.post("/demands/{number}/approval-votes")
+    def vote_demand_approval(
+        number: str,
+        body: DemandApprovalVoteRequest,
+        idempotency_key: str = Header(alias="Idempotency-Key"),
+        facade: ApplicationFacade = Depends(facade_dependency),
+        idempotency: IdempotentCommandExecutor = Depends(stable_idempotency),
+    ) -> Any:
+        request_payload = {
+            "operation": "VOTE_APPROVAL_REQUIREMENTS",
+            "demand_number": number,
+            "body": _json_body(body),
+        }
+        result = idempotency.execute(
+            scope="demand_approval.vote",
+            key=idempotency_key,
+            request_payload=request_payload,
+            action=lambda: _payload(
+                facade.vote_demand_approval(
+                    ApprovalVoteCommand(
+                        workforce_request_id=number,
+                        approval_cycle_id=body.approval_cycle_id,
+                        expected_request_version=body.expected_request_version,
+                        requirement_ids=tuple(body.requirement_ids),
+                        request_line_ids=tuple(body.request_line_ids),
+                        decision=body.decision,
+                        comment=body.comment,
+                        expected_planning_version=body.expected_planning_version,
+                    )
+                )
+            ),
+        )
+        if result.get("conflict_code"):
+            return JSONResponse(
+                status_code=status.HTTP_409_CONFLICT,
+                content={
+                    "error": {
+                        "code": result["conflict_code"],
+                        "message": result.get("conflict_message") or "Conflit d'approbation.",
+                        "context": {
+                            "approval_cycle_id": result.get("approval_cycle_id"),
+                            "request_version": result.get("request_version"),
+                        },
+                    }
+                },
+            )
+        return result
 
     @router.post("/demands/{number}/emergency-plan")
     def emergency_plan_demand(
