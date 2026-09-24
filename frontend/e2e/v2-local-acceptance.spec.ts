@@ -1474,12 +1474,12 @@ test("mixed asset demand uses authoritative reservations, conflicts, refresh and
 
 test("materialized demand cancellation is requested, reviewed, rejected or accepted through React", async ({ browser }) => {
   test.setTimeout(180_000);
-  const { d1, d2 } = acceptanceDates();
+  const { d5 } = acceptanceDates();
 
   const requester = await openAs(browser, "PROJECT_MANAGER");
   const editor = await createDemand(requester.page, {
-    start: d1,
-    end: d2,
+    start: d5,
+    end: d5,
     hours: "8",
     activeDays: "1",
     description: "Demande dédiée annulation matérialisée #399D",
@@ -1490,6 +1490,21 @@ test("materialized demand cancellation is requested, reviewed, rejected or accep
   await expect(createdNotice).toContainText("créée en brouillon");
   const cancellationDemand = demandNumberFrom(await createdNotice.textContent());
 
+  await periodsSelect(requester.page, cancellationDemand);
+  await requester.page.getByRole("button", { name: /Période cumulative/ }).click();
+  const materializedPeriod = requester.page.locator(".period-card.cumulative").first();
+  await labelled(materializedPeriod, "Début", "input").fill(d5);
+  await labelled(materializedPeriod, "Fin", "input").fill(d5);
+  await labelled(materializedPeriod, "Heures totales", "input").fill("8");
+  await labelled(materializedPeriod, "Ressources simultanées", "input").fill("1");
+  await labelled(materializedPeriod, "Jours actifs souhaités", "input").fill("1");
+  await labelled(materializedPeriod, "Confirmation", "select").selectOption("Confirmée");
+  await labelled(materializedPeriod, "Ressource proposée", "select").selectOption("Alice");
+  await requester.page.getByRole("button", { name: "Enregistrer les périodes" }).click();
+  await expect(
+    requester.page.locator(".demand-notice").filter({ hasText: "Périodes enregistrées." }).first(),
+  ).toHaveText("Périodes enregistrées.");
+
   await workflowSelect(requester.page, cancellationDemand);
   await requester.page.getByRole("button", { name: "Soumettre", exact: true }).click();
   await expect(requester.page.locator(".demand-notice").filter({ hasText: "soumise pour approbation" }).first()).toContainText("soumise pour approbation");
@@ -1499,6 +1514,10 @@ test("materialized demand cancellation is requested, reviewed, rejected or accep
   await approver.page.getByLabel(/Commentaire d’approbation/).fill("Matérialiser le plan #399D");
   await approver.page.getByRole("button", { name: "Approuver", exact: true }).click();
   await expect(approver.page.locator(".demand-notice").filter({ hasText: "Demande approuvée" }).first()).toContainText("Demande approuvée");
+  await navigateMain(approver.page, "Planning opérationnel");
+  await approver.page.getByRole("button", { name: /Suivante/ }).click();
+  await approver.page.getByLabel("Recherche").fill(cancellationDemand);
+  await expect(approver.page.locator(".shift-card")).not.toHaveCount(0);
   await closeContext(approver.context);
 
   await requester.page.reload();
