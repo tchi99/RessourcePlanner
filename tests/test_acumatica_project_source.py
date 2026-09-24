@@ -44,6 +44,22 @@ def _feed(properties: str = "", *, entry: bool = True) -> bytes:
     ).encode("utf-8")
 
 
+def _feed_entries(*properties_blocks: str) -> bytes:
+    body = "".join(
+        "<entry><content type=\"application/xml\"><m:properties>"
+        + properties
+        + "</m:properties></content></entry>"
+        for properties in properties_blocks
+    )
+    return (
+        "<?xml version=\"1.0\" encoding=\"utf-8\"?>"
+        "<feed xmlns=\"http://www.w3.org/2005/Atom\" "
+        "xmlns:d=\"http://schemas.microsoft.com/ado/2007/08/dataservices\" "
+        "xmlns:m=\"http://schemas.microsoft.com/ado/2007/08/dataservices/metadata\">"
+        f"{body}</feed>"
+    ).encode("utf-8")
+
+
 def _minimal_properties(
     *,
     project_id: str = "101",
@@ -203,9 +219,97 @@ class ODataProjectContractTests(unittest.TestCase):
         self.assertIn("application/atom+xml", requests[0].headers["Accept"])
         self.assertEqual(
             source._settings.safe_summary(),
-            {"protocol": "odata", "feed_path": "/oDATA/RP_Projects"},
+            {
+                "protocol": "odata",
+                "feed_path": "/oDATA/RP_Projects",
+                "authentication": "none",
+                "pagination": {
+                    "mode": "top_skip",
+                    "orderby": "ProjectId asc",
+                    "page_size": 100,
+                },
+            },
         )
         self.assertNotIn("opaque-test-value", repr(source._settings))
+
+    def test_source_uses_basic_auth_and_observed_top_skip_pagination(self) -> None:
+        requests: list[httpx.Request] = []
+        first_page = _feed_entries(
+            _minimal_properties(project_id="101", project_code="P-0101", project_name="Projet 101"),
+            _minimal_properties(project_id="102", project_code="P-0102", project_name="Projet 102"),
+        )
+        second_page = _feed_entries(
+            _minimal_properties(project_id="103", project_code="P-0103", project_name="Projet 103"),
+        )
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            requests.append(request)
+            self.assertTrue(request.headers.get("Authorization", "").startswith("Basic "))
+            skip = request.url.params.get("$skip")
+            if skip == "0":
+                return httpx.Response(200, content=first_page)
+            if skip == "2":
+                return httpx.Response(200, content=second_page)
+            self.fail(f"unexpected pagination offset: {skip}")
+
+        settings = _settings(
+            username="odata-user",
+            password="dummy-passphrase",
+            page_size=2,
+        )
+        source = ODataProjectSource(
+            settings,
+            transport=httpx.MockTransport(handler),
+        )
+
+        rows = source.list_projects()
+
+        self.assertEqual([row.external_id for row in rows], ["101", "102", "103"])
+        self.assertEqual(len(requests), 2)
+        for request, expected_skip in zip(requests, ("0", "2"), strict=True):
+            self.assertEqual(request.url.params.get("$orderby"), "ProjectId asc")
+            self.assertEqual(request.url.params.get("$top"), "2")
+            self.assertEqual(request.url.params.get("$skip"), expected_skip)
+        self.assertEqual(
+            settings.safe_summary(),
+            {
+                "protocol": "odata",
+                "feed_path": "/oDATA/RP_Projects",
+                "authentication": "basic",
+                "pagination": {
+                    "mode": "top_skip",
+                    "orderby": "ProjectId asc",
+                    "page_size": 2,
+                },
+            },
+        )
+        diagnostic = repr(settings) + str(settings.safe_summary())
+        self.assertNotIn("odata-user", diagnostic)
+        self.assertNotIn("dummy-passphrase", diagnostic)
+
+    def test_duplicate_project_across_pages_fails_closed(self) -> None:
+        page = _feed_entries(
+            _minimal_properties(project_id="101", project_code="P-0101", project_name="Projet 101"),
+        )
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(200, content=page)
+
+        source = ODataProjectSource(
+            _settings(page_size=1),
+            transport=httpx.MockTransport(handler),
+        )
+        with self.assertLogs(LOGGER, level="WARNING") as captured:
+            with self.assertRaises(ApplicationOperationError) as raised:
+                source.list_projects()
+
+        self.assertEqual(raised.exception.code, "acumatica_project_response_invalid")
+        self.assertEqual(
+            raised.exception.context["reason"],
+            "pagination_duplicate_project",
+        )
+        self.assertNotIn("P-0101", str(raised.exception.as_dict()))
+        self.assertNotIn("Projet 101", "\n".join(captured.output))
 
     def test_http_failures_are_classified_without_leaking_body_or_headers(self) -> None:
         cases = (
