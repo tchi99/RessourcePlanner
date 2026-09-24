@@ -152,11 +152,6 @@ class ApprovalRequirement(TimestampMixin, Base):
 class ApprovalRequirementApprover(Base):
     __tablename__ = "approval_requirement_approvers"
     __table_args__ = (
-        UniqueConstraint(
-            "requirement_id",
-            "app_user_id",
-            name="uq_approval_requirement_approver",
-        ),
         Index(
             "ix_approval_requirement_approvers_user",
             "app_user_id",
