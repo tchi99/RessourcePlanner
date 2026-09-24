@@ -20,6 +20,10 @@ function hours(value: number) {
   return new Intl.NumberFormat("fr-CA", { maximumFractionDigits: 1 }).format(value);
 }
 
+function technicalValue(value: string | number | null | undefined) {
+  return value === null || value === undefined || value === "" ? "—" : String(value);
+}
+
 export default function DemandDetail({
   demandNumber,
   onChanged,
@@ -82,6 +86,7 @@ export default function DemandDetail({
   const activeLines = detail.lines.filter((row) => row.line.active);
   const availableActions = detail.workflow.available_actions;
   const approval = detail.approval_state;
+  const technicalContext = detail.technical_context;
 
   return (
     <section className={`demand-detail-context ${compact ? "compact" : ""}`} data-demand-number={demandNumber}>
@@ -90,7 +95,7 @@ export default function DemandDetail({
           <span className="eyebrow">Contexte unifié</span>
           <h3>{detail.demand.number} · {detail.demand.project_number || "Sans projet"}</h3>
           <p>
-            Version {detail.version} · {activeLines.length} besoin(s) ·
+            {activeLines.length} besoin(s) ·
             {" "}{detail.materialized_plan.requirement_count} besoin(s) humain(s) matérialisé(s) ·
             {" "}{detail.materialized_plan.asset_requirement_count} besoin(s) d’actif matérialisé(s)
           </p>
@@ -107,6 +112,21 @@ export default function DemandDetail({
       </header>
 
       {error && <div className="error-panel"><span>{error}</span></div>}
+
+      <details className="demand-detail-section">
+        <summary>
+          <span>Workflow et impact</span>
+          <small>Actions autoritaires, autorisation active et aperçu plan actuel → plan proposé.</small>
+        </summary>
+        <DemandWorkflowPage
+          demandNumber={demandNumber}
+          canonicalDetail={detail}
+          hasUnsavedChanges={hasUnsavedChanges}
+          embedded
+          onChanged={changed}
+          refreshToken={refreshKey}
+        />
+      </details>
 
       <div className="demand-detail-summary-grid">
         <article>
@@ -126,7 +146,7 @@ export default function DemandDetail({
         <article>
           <span>Autorisation</span>
           <strong>{approval?.approval_reference_status || "Aucune référence active"}</strong>
-          <small>{detail.policy.envelope_decision || "Décision non disponible"}</small>
+          <small>{detail.policy.reapproval_required ? "Réapprobation requise" : "Contexte opérationnel courant"}</small>
         </article>
         <article>
           <span>Actions disponibles</span>
@@ -135,76 +155,6 @@ export default function DemandDetail({
         </article>
       </div>
 
-      {detail.materialized_plan.asset_requirements.length > 0 && (
-        <details className="demand-detail-section asset-detail-section" open>
-          <summary>
-            <span>Actifs matérialisés</span>
-            <small>Types requis, fenêtre approuvée et réservation réelle de chaque unité.</small>
-          </summary>
-          <div className="asset-detail-list">
-            {detail.materialized_plan.asset_requirements.map((requirement) => (
-              <article className="asset-detail-row" key={requirement.requirement_id}>
-                <div>
-                  <strong>{requirement.asset_type_code} — {requirement.asset_type_label}</strong>
-                  <span>{requirement.start_date} → {requirement.end_date}</span>
-                </div>
-                <div>
-                  <strong>{requirement.asset_label || "À réserver"}</strong>
-                  <span>
-                    {requirement.asset_code || requirement.status}
-                    {requirement.allocation_locked ? " · verrouillée" : ""}
-                  </span>
-                </div>
-                <small>
-                  {requirement.usage_hours == null
-                    ? "Occupation par unité/jour — aucun budget d’usage horaire."
-                    : `Budget d’usage : ${hours(requirement.usage_hours)} h (distinct de la capacité humaine).`}
-                </small>
-              </article>
-            ))}
-          </div>
-        </details>
-      )}
-
-      {detail.diagnostics.length > 0 && (
-        <details className="demand-detail-diagnostics">
-          <summary>{detail.diagnostics.length} diagnostic(s) backend</summary>
-          <ul>
-            {detail.diagnostics.map((diagnostic) => <li key={diagnostic}>{diagnostic}</li>)}
-          </ul>
-        </details>
-      )}
-
-      <details className="demand-detail-section" open>
-        <summary>
-          <span>Périodes de travail</span>
-          <small>Définir plusieurs périodes ou plusieurs fenêtres possibles par besoin.</small>
-        </summary>
-        <DemandPeriodsPage
-          demandNumber={demandNumber}
-          canonicalDemand={detail.demand}
-          embedded
-          onChanged={changed}
-          onDirtyChange={onDirtyChange}
-          canEdit={detail.policy.can_edit_periods}
-        />
-      </details>
-
-      <details className="demand-detail-section">
-        <summary>
-          <span>Workflow et impact</span>
-          <small>Actions autoritaires, autorisation active et aperçu plan actuel → plan proposé.</small>
-        </summary>
-        <DemandWorkflowPage
-          demandNumber={demandNumber}
-          canonicalDetail={detail}
-          hasUnsavedChanges={hasUnsavedChanges}
-          embedded
-          onChanged={changed}
-          refreshToken={refreshKey}
-        />
-      </details>
-
       <details className="demand-detail-section">
         <summary>
           <span>Historique</span>
@@ -212,6 +162,112 @@ export default function DemandDetail({
         </summary>
         <DemandHistoryPage demandNumber={demandNumber} embedded refreshToken={refreshKey} />
       </details>
+
+      <details
+        className="demand-detail-section demand-detail-advanced-options"
+        data-testid="demand-advanced-options"
+      >
+        <summary>
+          <span>Options avancées</span>
+          <small>Périodes de travail et réglages secondaires de la demande.</small>
+        </summary>
+        <div className="demand-detail-advanced-content">
+          <div className="demand-detail-subsection-heading">
+            <strong>Périodes de travail</strong>
+            <small>Définir plusieurs périodes ou plusieurs fenêtres possibles par besoin.</small>
+          </div>
+          <DemandPeriodsPage
+            demandNumber={demandNumber}
+            canonicalDemand={detail.demand}
+            embedded
+            onChanged={changed}
+            onDirtyChange={onDirtyChange}
+            canEdit={detail.policy.can_edit_periods}
+          />
+        </div>
+      </details>
+
+      {technicalContext && (
+        <details
+          className="demand-detail-section demand-detail-technical"
+          data-testid="demand-technical-context"
+        >
+          <summary>
+            <span>Diagnostic technique / Contexte backend</span>
+            <small>Versions, concurrence, provenance d’enveloppe et matérialisation détaillée.</small>
+          </summary>
+          <div className="demand-detail-technical-content">
+            <div className="demand-detail-technical-grid">
+              <article>
+                <span>Versions internes</span>
+                <strong>
+                  Demande v{technicalContext.request_version} · workflow v{technicalContext.workflow_version}
+                </strong>
+                <small>
+                  expected_request_version={technicalContext.expected_request_version}
+                  {" · "}expected_operational_version={technicalValue(technicalContext.expected_operational_version)}
+                </small>
+              </article>
+              <article>
+                <span>Enveloppe / concurrence</span>
+                <strong>{technicalValue(technicalContext.envelope_decision)}</strong>
+                <small>
+                  révision={technicalValue(technicalContext.active_revision_id)}
+                  {" · "}version approuvée={technicalValue(technicalContext.approved_request_version)}
+                  {" · "}version opérationnelle={technicalValue(technicalContext.operational_version)}
+                </small>
+              </article>
+              <article>
+                <span>Résolution backend</span>
+                <strong>{technicalValue(technicalContext.envelope_reason)}</strong>
+                <small>{technicalContext.diagnostics.length} diagnostic(s) backend</small>
+              </article>
+            </div>
+
+            {technicalContext.diagnostics.length > 0 && (
+              <div className="demand-detail-diagnostics">
+                <strong>Diagnostics backend</strong>
+                <ul>
+                  {technicalContext.diagnostics.map((diagnostic) => <li key={diagnostic}>{diagnostic}</li>)}
+                </ul>
+              </div>
+            )}
+
+            {detail.materialized_plan.requirements.length > 0 && (
+              <div className="demand-detail-technical-list">
+                <strong>Besoins humains matérialisés</strong>
+                {detail.materialized_plan.requirements.map((requirement) => (
+                  <article key={requirement.requirement_id}>
+                    <span>{requirement.requirement_id} · segment {requirement.segment_id}</span>
+                    <small>
+                      ligne={technicalValue(requirement.source_request_line_id)}
+                      {" · "}révision={technicalValue(requirement.approval_revision_id)}
+                      {" · "}entrée={technicalValue(requirement.approved_entry_key)}
+                    </small>
+                  </article>
+                ))}
+              </div>
+            )}
+
+            {detail.materialized_plan.asset_requirements.length > 0 && (
+              <div className="demand-detail-technical-list">
+                <strong>Actifs matérialisés</strong>
+                {detail.materialized_plan.asset_requirements.map((requirement) => (
+                  <article key={requirement.requirement_id}>
+                    <span>{requirement.requirement_id} · {requirement.asset_type_code} — {requirement.asset_type_label}</span>
+                    <small>
+                      ligne={requirement.source_request_line_id}
+                      {" · "}période={technicalValue(requirement.source_period_id)}
+                      {" · "}révision={technicalValue(requirement.approval_revision_id)}
+                      {" · "}entrée={requirement.approved_entry_key}
+                    </small>
+                  </article>
+                ))}
+              </div>
+            )}
+          </div>
+        </details>
+      )}
     </section>
   );
 }
