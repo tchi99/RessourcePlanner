@@ -116,6 +116,8 @@ function roleBubble(
   dashboard: Dashboard | null,
   chatStatus: ChatConversationStatus | null,
 ): string {
+  const mission = dashboard?.execution.missions[role.avatar]
+  if (mission) return `${mission.title} · ${mission.detail}`
   const companion = companionBubble(chatStatus)
   if (companion) return companion
   if (role.avatar === 'developer') return developerBubble(dashboard)
@@ -175,6 +177,7 @@ export default function RoleCards({ dashboard }: { dashboard: Dashboard | null }
   const [saved, setSaved] = useState(false)
   const [chatStatuses, setChatStatuses] = useState<ChatStatusResponse | null>(null)
   const [selectedRoleId, setSelectedRoleId] = useState<string | null>(null)
+  const [missionCopiedId, setMissionCopiedId] = useState<string | null>(null)
 
   async function loadRoles() {
     setLoading(true)
@@ -276,6 +279,19 @@ export default function RoleCards({ dashboard }: { dashboard: Dashboard | null }
     })
   }
 
+  function handoffRole(role: RoleConfig) {
+    const mission = dashboard?.execution.missions[role.avatar]
+    if (!mission?.prompt) return
+
+    void navigator.clipboard.writeText(mission.prompt)
+    setMissionCopiedId(role.id)
+    window.setTimeout(() => setMissionCopiedId(null), 1600)
+
+    if (role.chat_url) {
+      window.open(role.chat_url, '_blank', 'noopener,noreferrer')
+    }
+  }
+
   async function saveRoles() {
     setSaving(true)
     setError(null)
@@ -327,6 +343,7 @@ export default function RoleCards({ dashboard }: { dashboard: Dashboard | null }
         <div className="role-cards">
           {enabledRoles.map((role) => {
             const chatStatus = chatStatusForRole(role, chatStatuses)
+            const mission = dashboard?.execution.missions[role.avatar] ?? null
             const chatWorking = chatStatus?.effective_state === 'working'
             const githubWorking = isDeveloperWorking(role, dashboard)
             const working = Boolean(chatWorking || githubWorking)
@@ -361,6 +378,11 @@ export default function RoleCards({ dashboard }: { dashboard: Dashboard | null }
                     </button>
                     {working && <span className="role-status">travaille</span>}
                     {stalled && <span className="role-status stalled">silencieux</span>}
+                    {mission && (
+                      <span className={`role-mission-state ${mission.state}`}>
+                        {mission.state}
+                      </span>
+                    )}
                     {role.chat_url && (
                       <span
                         className={`chat-state ${chatStatus?.effective_state ?? 'unknown'}`}
@@ -385,7 +407,19 @@ export default function RoleCards({ dashboard }: { dashboard: Dashboard | null }
                     >
                       Voir détails
                     </button>
-                    {role.chat_url ? (
+                    {mission ? (
+                      <button
+                        className="button role-chat-link"
+                        type="button"
+                        onClick={() => handoffRole(role)}
+                      >
+                        {missionCopiedId === role.id
+                          ? 'Mission copiée ✓'
+                          : role.chat_url
+                            ? 'Copier mission + ouvrir ↗'
+                            : 'Copier mission'}
+                      </button>
+                    ) : role.chat_url ? (
                       <a
                         className="button role-chat-link"
                         href={role.chat_url}
