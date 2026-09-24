@@ -242,6 +242,31 @@ Aucun état local n'enregistre qu'une étape ou une gate est terminée. Toute é
 
 Le dashboard principal affiche une projection compacte sous **Maintenant / Parallèle disponible / Ensuite**. Le panneau **Product Owner** conserve la trajectoire détaillée sous **Maintenant / En parallèle / Ensuite / Plus tard**. Une gate READY reste une gate : elle ne devient jamais une tranche DEV et le prompt Developer interdit explicitement de lancer du travail applicatif tant qu'elle n'est pas passée à `DONE`.
 
+### Roadmap Reconciler
+
+Lorsque `COCKPIT_PIPELINE_V1` est valide, le dashboard compare désormais le contrat canonique à des preuves GitHub observables sans changer la source de vérité.
+
+Le reconciler :
+
+- inspecte les PR DEV correspondant aux étapes `WORK` non terminées;
+- exclut les PR documentation-only de la preuve de livraison;
+- considère une étape `READY` comme **roadmap stale** seulement si une PR DEV correspondante est fusionnée et que les workflows observés sur son HEAD sont terminés et verts;
+- signale une PR ouverte sur une étape future `BLOCKED` comme travail hors ordre, sans promouvoir cette étape;
+- signale une PR fusionnée sur une étape `BLOCKED` sans réordonner le pipeline;
+- ne déduit jamais l'état d'une `ARCHITECTURE_GATE` ou d'une `ENVIRONMENT_GATE` depuis une PR;
+- ne s'exécute pas sur un pipeline canonique invalide et ne remplace jamais le comportement fail-closed.
+
+Lorsqu'une étape MAIN `READY` est prouvée livrée, le cockpit génère une proposition déterministe qui :
+
+1. passe cette étape de `READY` à `DONE`;
+2. promeut la prochaine étape MAIN non terminée de `BLOCKED` à `READY`;
+3. conserve l'ordre, les identités, les lanes et les titres;
+4. produit le bloc `COCKPIT_PIPELINE_V1` complet à recopier dans #55.
+
+Une étape `PARALLEL READY` prouvée livrée peut être proposée `DONE` sans modifier la lane MAIN.
+
+Le bouton **Préparer la mise à jour de #55** copie seulement le bloc proposé dans le presse-papiers. Il n'écrit jamais dans GitHub. La mise à jour de #55 reste une action explicite, ce qui maintient GitHub comme source de vérité et évite un second stockage d'état produit dans le cockpit.
+
 ### PR d'architecture vs travail Developer
 
 Une PR liée à l'issue active n'est pas automatiquement considérée comme une PR d'implémentation. Le Cockpit inspecte les fichiers changés des PR qui correspondent à la tranche active :
