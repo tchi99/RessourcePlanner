@@ -637,6 +637,73 @@ footer a { color: #768aa6; }
   border-color: #3a7bd5;
 }
 
+.handoff-confidence {
+  border: 1px solid #344156;
+  border-radius: 999px;
+  padding: 3px 6px;
+  font-size: 9px;
+  font-weight: 850;
+  letter-spacing: .05em;
+}
+.handoff-confidence.complete {
+  color: #8ce9ae;
+  border-color: #285840;
+  background: #10261a;
+}
+.handoff-confidence.partial {
+  color: #e6d486;
+  border-color: #665627;
+  background: #211d0d;
+}
+.handoff-confidence.blocked {
+  color: #ff9cab;
+  border-color: #61313c;
+  background: #2a1218;
+}
+.handoff-summary {
+  margin-top: 10px;
+  display: grid;
+  gap: 8px;
+  border: 1px solid #26364a;
+  border-radius: 10px;
+  background: #0d151f;
+  padding: 10px;
+}
+.handoff-summary > div:first-child {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+.handoff-missing {
+  margin: 0;
+  padding-left: 18px;
+  color: #d7bf75;
+  font-size: 11px;
+  line-height: 1.45;
+}
+.handoff-sources {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.handoff-sources a {
+  border: 1px solid #314259;
+  border-radius: 7px;
+  padding: 3px 6px;
+  color: #93b9ff;
+  font-size: 10px;
+}
+.handoff-preview {
+  margin-top: 10px;
+}
+.handoff-preview summary {
+  cursor: pointer;
+  color: #8fa8ca;
+  font-size: 11px;
+  font-weight: 750;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .role-card.is-working .role-avatar,
   .role-working-dot {
