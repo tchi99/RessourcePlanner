@@ -49,7 +49,7 @@ export type DemandWorkflowActionState = {
   action: WorkflowAction;
   allowed: boolean;
   required_permission: string;
-  required_permissions: string[];
+  required_permissions?: string[];
   reason_code: string | null;
   reason: string | null;
 };
@@ -60,7 +60,7 @@ export type DemandWorkflowState = {
   version: number;
   available_actions: WorkflowAction[];
   actions: DemandWorkflowActionState[];
-  cancellation: DemandCancellationPolicyState | null;
+  cancellation?: DemandCancellationPolicyState | null;
 };
 
 type ApiErrorPayload = {
