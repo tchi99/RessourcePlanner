@@ -19,6 +19,7 @@ from ..application import (
     ResourceAdminService,
     WorkPackageService,
 )
+from ..application.approval_scopes import ApprovalScopeService
 from ..application.communications import CommunicationService, CommunicationTransportPort
 from ..application.operational_contacts import OperationalContactService
 from ..application.project_communications import ProjectCommunicationService
@@ -35,6 +36,7 @@ from ..infrastructure.sql import (
     LoadProfileAuditedSegmentRepository,
     OverallocationAuditedAllocationCommandAdapter,
     OverallocationAuditedSegmentRepository,
+    SqlApprovalScopeRepository,
     SqlBusinessContactAdminRepository,
     SqlCommandIdempotencyAdapter,
     SqlCompositeAllocationCommandAdapter,
@@ -188,6 +190,12 @@ def build_user_admin_service(session: Session) -> UserAdminService:
     """Compose local identity administration inside the request transaction."""
 
     return UserAdminService(SqlUserIdentityRepository(session))
+
+
+def build_approval_scope_service(session: Session) -> ApprovalScopeService:
+    """Compose #276 approval-scope administration and pure resolution."""
+
+    return ApprovalScopeService(SqlApprovalScopeRepository(session))
 
 
 def build_demand_requester_service(session: Session) -> DemandRequesterService:

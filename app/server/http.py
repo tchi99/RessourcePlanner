@@ -26,6 +26,7 @@ from ..application import (
     PlannerQueryPort,
     ProjectSourcePort,
 )
+from ..application.approval_scopes import ApprovalScopeService
 from ..application.communications import CommunicationService, CommunicationTransportPort
 from ..application.project_communications import ProjectCommunicationService
 from ..application.smtp_settings import (
@@ -44,6 +45,7 @@ from ..infrastructure.sql import (
     transactional_session,
 )
 from .composition import (
+    build_approval_scope_service,
     build_business_contact_admin_service,
     build_communication_service,
     build_project_communication_service,
@@ -66,6 +68,7 @@ from .performance import (
 )
 from .readiness import DatabaseReadinessError, check_database_readiness
 from .routes_admin_settings import build_admin_settings_router
+from .routes_approval_scopes import build_approval_scope_router
 from .routes_assets import build_asset_router
 from .routes_auth import build_auth_router
 from .routes_business_contacts import build_business_contact_router
@@ -94,6 +97,7 @@ ProjectCommunicationDependency = Callable[..., Any]
 SmtpSettingsDependency = Callable[..., Any]
 CompetencyDependency = Callable[[], Iterator[CompetencyCatalogService]]
 BusinessContactDependency = Callable[[], Iterator[BusinessContactAdminService]]
+ApprovalScopeDependency = Callable[[], Iterator[ApprovalScopeService]]
 UserViewContextDependency = Callable[[], Iterator[UserViewContextRepositoryPort]]
 
 
@@ -371,6 +375,21 @@ def make_business_contact_dependency(
     return dependency
 
 
+def make_approval_scope_dependency(
+    factory: SqlSessionFactory,
+    *,
+    session_dependency: SessionDependency | None = None,
+) -> ApprovalScopeDependency:
+    request_session = session_dependency or make_session_dependency(factory)
+
+    def dependency(
+        session: Session = Depends(request_session),
+    ) -> Iterator[ApprovalScopeService]:
+        yield build_approval_scope_service(session)
+
+    return dependency
+
+
 def make_communication_dependency(
     factory: SqlSessionFactory,
     *,
@@ -497,6 +516,10 @@ def create_api_app(
         factory,
         session_dependency=session_dependency,
     )
+    approval_scope_dependency = make_approval_scope_dependency(
+        factory,
+        session_dependency=session_dependency,
+    )
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
@@ -528,6 +551,7 @@ def create_api_app(
     app.state.project_communication_dependency = project_communication_dependency
     app.state.competency_dependency = competency_dependency
     app.state.business_contact_dependency = business_contact_dependency
+    app.state.approval_scope_dependency = approval_scope_dependency
     app.state.runtime_dependencies = dict(runtime_dependencies or {})
     app.state.dev_user_switcher_enabled = dev_user_switcher_runtime is not None
 
@@ -609,6 +633,7 @@ def create_api_app(
         app.include_router(build_dev_user_switcher_router(dev_user_switcher_runtime))
     app.include_router(build_user_admin_router(user_admin_dependency))
     app.include_router(build_admin_settings_router(smtp_settings_dependency))
+    app.include_router(build_approval_scope_router(approval_scope_dependency))
     app.include_router(
         build_command_router(
             facade_dependency,
