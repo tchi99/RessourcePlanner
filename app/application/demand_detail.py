@@ -145,7 +145,17 @@ class DemandDetailService:
         *,
         permissions: Sequence[str],
     ) -> DemandDetailReadModel:
-        demand = self._queries.get_demand(number)
+        combined_reader = getattr(
+            self._queries,
+            "get_demand_with_cancellation_materialization",
+            None,
+        )
+        combined = combined_reader(number) if callable(combined_reader) else None
+        if combined is not None:
+            demand, cancellation_materialization = combined
+        else:
+            demand = self._queries.get_demand(number)
+            cancellation_materialization = None
         if demand is None:
             raise ApplicationNotFoundError(
                 f"Demande {number} introuvable",
@@ -245,20 +255,10 @@ class DemandDetailService:
             asset_requirements=asset_requirements,
         )
 
-        materialization_reader = getattr(
-            self._queries,
-            "demand_cancellation_materialization",
-            None,
-        )
-        materialization = (
-            materialization_reader(demand.number)
-            if callable(materialization_reader)
-            else None
-        )
         workflow_state = demand_workflow_state(
             demand,
             permissions=permissions,
-            materialization=materialization,
+            materialization=cancellation_materialization,
         )
         workflow = DemandDetailWorkflowReadModel(
             demand_number=workflow_state.demand_number,
