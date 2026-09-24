@@ -1278,7 +1278,7 @@ class DemandService:
             )
             self._initialize_approval_cycle_after_submission(number)
 
-    def approve_command(self, command: DemandApproveCommand) -> dict[str, Any]:
+    def approve_command(self, command: DemandApproveCommand) -> ApprovalVoteOutcome:
         number = self._required_identifier(command.number, entity="demand")
         if self._approval_cycles is None or self._approval_votes is None:
             raise ApplicationOperationError(
@@ -1320,7 +1320,7 @@ class DemandService:
             comment=str(command.comment or ""),
             expected_planning_version=command.expected_planning_version,
         )
-        return outcome.to_dict()
+        return outcome
 
     def vote_approval_command(
         self,
