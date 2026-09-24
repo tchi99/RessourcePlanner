@@ -170,6 +170,33 @@ export type RoleMission = {
   primary_link: ExecutionLink | null
 }
 
+export type HandoffConfidence = 'COMPLETE' | 'PARTIAL' | 'BLOCKED'
+
+export type HandoffSource = {
+  label: string
+  url: string
+  kind: 'roadmap' | 'issue' | 'pull_request' | 'branch' | 'commit' | 'adr'
+}
+
+export type HandoffPack = {
+  role: AvatarPreset
+  role_label: string
+  confidence: HandoffConfidence
+  missing: string[]
+  title: string
+  prompt: string
+  sources: HandoffSource[]
+  section: {
+    title: string
+    content: string
+  } | null
+}
+
+export type HandoffProjection = {
+  active_key: string | null
+  packs: Record<AvatarPreset, HandoffPack>
+}
+
 export type ExecutionControl = {
   phase: ExecutionPhase
   label: string
@@ -180,6 +207,38 @@ export type ExecutionControl = {
   primary_link: ExecutionLink | null
   timeline: ExecutionTimelineEvent[]
   missions: Record<AvatarPreset, RoleMission>
+}
+
+export type AttentionLevel = 'ACTION' | 'WATCH' | 'CLEAR'
+
+export type AttentionItem = {
+  id: string
+  code: string
+  level: 'ACTION' | 'WATCH'
+  role: AvatarPreset
+  role_label: string
+  key: string
+  title: string
+  detail: string
+  action: string
+  primary_link: ExecutionLink | null
+  handoff_confidence: HandoffConfidence | null
+}
+
+export type AttentionCenter = {
+  status: AttentionLevel
+  action_count: number
+  watch_count: number
+  summary: string
+  roles: Record<
+    'product-owner' | 'developer' | 'architect' | 'reviewer',
+    {
+      label: string
+      actions: number
+      watches: number
+    }
+  >
+  items: AttentionItem[]
 }
 
 export type Dashboard = {
@@ -203,6 +262,8 @@ export type Dashboard = {
   }
   reconciliation: PipelineReconciliation
   execution: ExecutionControl
+  handoff: HandoffProjection
+  attention: AttentionCenter
   roadmap: {
     number: number
     title: string

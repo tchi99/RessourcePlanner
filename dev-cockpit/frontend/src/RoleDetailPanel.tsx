@@ -1071,11 +1071,12 @@ function MissionBlock({
 }) {
   const [copied, setCopied] = useState(false)
   const mission = dashboard?.execution.missions[role.avatar] ?? null
-  if (!mission) return null
-  const missionPrompt = mission.prompt
+  const pack = dashboard?.handoff.packs[role.avatar] ?? null
+  if (!mission || !pack) return null
+  const handoffPrompt = pack.prompt
 
   function handoff() {
-    void navigator.clipboard.writeText(missionPrompt)
+    void navigator.clipboard.writeText(handoffPrompt)
     setCopied(true)
     window.setTimeout(() => setCopied(false), 1600)
     if (role.chat_url) {
@@ -1091,14 +1092,44 @@ function MissionBlock({
         <span>{mission.state}</span>
       </div>
       <p className="role-detail-muted">{mission.detail}</p>
-      <pre className="mission-prompt">{mission.prompt}</pre>
+
+      <div className="handoff-summary">
+        <div>
+          <span className="section-label">HANDOFF PACK</span>
+          <strong className={`handoff-confidence ${pack.confidence.toLowerCase()}`}>
+            {pack.confidence}
+          </strong>
+        </div>
+        {pack.missing.length > 0 && (
+          <ul className="handoff-missing">
+            {pack.missing.map((item) => (
+              <li key={item}>{item}</li>
+            ))}
+          </ul>
+        )}
+        {pack.sources.length > 0 && (
+          <div className="handoff-sources">
+            {pack.sources.map((source) => (
+              <a key={`${source.kind}:${source.url}`} href={source.url} target="_blank" rel="noreferrer">
+                {source.label} ↗
+              </a>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <details className="handoff-preview">
+        <summary>Voir le pack de reprise</summary>
+        <pre className="mission-prompt">{handoffPrompt}</pre>
+      </details>
+
       <div className="mission-actions">
         <button type="button" className="primary" onClick={handoff}>
           {copied
-            ? 'Mission copiée ✓'
+            ? 'Handoff copié ✓'
             : role.chat_url
-              ? 'Copier mission + ouvrir ChatGPT ↗'
-              : 'Copier la mission'}
+              ? 'Préparer la reprise + ouvrir ChatGPT ↗'
+              : 'Préparer la reprise'}
         </button>
         {mission.primary_link && (
           <a
