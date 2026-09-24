@@ -155,6 +155,37 @@ export default function DemandDetail({
         </article>
       </div>
 
+      {detail.materialized_plan.asset_requirements.length > 0 && (
+        <details className="demand-detail-section asset-detail-section" open>
+          <summary>
+            <span>Actifs matérialisés</span>
+            <small>Types requis, fenêtre approuvée et réservation réelle de chaque unité.</small>
+          </summary>
+          <div className="asset-detail-list">
+            {detail.materialized_plan.asset_requirements.map((requirement) => (
+              <article className="asset-detail-row" key={requirement.requirement_id}>
+                <div>
+                  <strong>{requirement.asset_type_code} — {requirement.asset_type_label}</strong>
+                  <span>{requirement.start_date} → {requirement.end_date}</span>
+                </div>
+                <div>
+                  <strong>{requirement.asset_label || "À réserver"}</strong>
+                  <span>
+                    {requirement.asset_code || requirement.status}
+                    {requirement.allocation_locked ? " · verrouillée" : ""}
+                  </span>
+                </div>
+                <small>
+                  {requirement.usage_hours == null
+                    ? "Occupation par unité/jour — aucun budget d’usage horaire."
+                    : `Budget d’usage : ${hours(requirement.usage_hours)} h (distinct de la capacité humaine).`}
+                </small>
+              </article>
+            ))}
+          </div>
+        </details>
+      )}
+
       <details className="demand-detail-section">
         <summary>
           <span>Historique</span>
