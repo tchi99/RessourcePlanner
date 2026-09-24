@@ -112,6 +112,9 @@ export type Dashboard = {
   }
   pipeline: {
     steps: PipelineStep[]
+    valid: boolean
+    source: 'canonical_v1' | 'legacy'
+    errors: string[]
     completed_count: number
     now: PipelineStep | null
     parallel: PipelineStep[]
@@ -124,8 +127,8 @@ export type Dashboard = {
     url: string
     updated_at: string
     declared_active: string | null
-    active_issue: number
-    effective_active: string
+    active_issue: number | null
+    effective_active: string | null
     items: RoadmapItem[]
   }
   active_work: {
