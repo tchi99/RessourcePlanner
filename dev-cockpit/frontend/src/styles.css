@@ -96,6 +96,154 @@ h2 { margin: 4px 0 0; font-size: 20px; letter-spacing: -.02em; }
 .reconciliation-proposal span { color: #8fa1b8; font-size: 12px; }
 .reconciliation-proposal .primary { white-space: nowrap; }
 
+.attention-center {
+  margin-bottom: 14px;
+  border: 1px solid #2b3a4e;
+  border-radius: 16px;
+  background: linear-gradient(120deg, rgba(15, 23, 35, .99), rgba(10, 15, 23, .99));
+  padding: 16px;
+}
+.attention-center.action { border-color: #6b3943; }
+.attention-center.watch { border-color: #665627; }
+.attention-center.clear { border-color: #285840; }
+
+.attention-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+.attention-header h2 { margin-top: 4px; }
+.attention-header p {
+  margin: 6px 0 0;
+  color: #8fa1b8;
+  font-size: 12px;
+}
+.attention-overall {
+  border: 1px solid #344156;
+  border-radius: 999px;
+  padding: 5px 8px;
+  font-size: 10px;
+  font-weight: 850;
+  letter-spacing: .06em;
+}
+.attention-overall.action { color: #ff9cab; border-color: #61313c; background: #2a1218; }
+.attention-overall.watch { color: #e6d486; border-color: #665627; background: #211d0d; }
+.attention-overall.clear { color: #8ce9ae; border-color: #285840; background: #10261a; }
+
+.attention-role-summary {
+  margin-top: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.attention-role-summary span {
+  border: 1px solid #2b3a4e;
+  border-radius: 999px;
+  background: #0d151f;
+  padding: 4px 7px;
+  color: #93a5bc;
+  font-size: 10px;
+}
+
+.attention-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+.attention-list article {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  border: 1px solid #2c394a;
+  border-radius: 12px;
+  background: #0f1620;
+  padding: 11px 12px;
+}
+.attention-list article.action { border-color: #5f3740; }
+.attention-list article.watch { border-color: #544a27; }
+
+.attention-item-main {
+  min-width: 0;
+  display: grid;
+  gap: 5px;
+}
+.attention-item-title {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.attention-item-title strong { font-size: 13px; color: #edf3ff; }
+.attention-level {
+  border-radius: 999px;
+  padding: 3px 6px;
+  font-size: 9px;
+  font-weight: 850;
+  letter-spacing: .06em;
+}
+.attention-level.action { color: #ff9cab; background: #2a1218; border: 1px solid #61313c; }
+.attention-level.watch { color: #e6d486; background: #211d0d; border: 1px solid #665627; }
+.attention-role {
+  color: #71839c;
+  font-size: 10px;
+  font-weight: 750;
+  text-transform: uppercase;
+}
+.attention-item-main p {
+  margin: 0;
+  color: #9aabc2;
+  font-size: 12px;
+  line-height: 1.45;
+}
+.attention-action {
+  display: grid;
+  gap: 2px;
+  border-left: 2px solid #425a7a;
+  padding-left: 8px;
+}
+.attention-action span {
+  color: #61738d;
+  font-size: 9px;
+  font-weight: 850;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+.attention-action strong {
+  color: #dfe9f8;
+  font-size: 11px;
+  line-height: 1.4;
+}
+.attention-item-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+.attention-clear {
+  margin-top: 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid #285840;
+  border-radius: 11px;
+  background: #0f2117;
+  padding: 11px 12px;
+}
+.attention-clear > span {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  background: #173824;
+  color: #8ce9ae;
+  font-weight: 900;
+}
+.attention-clear > div { display: grid; gap: 2px; }
+.attention-clear small { color: #7f9888; }
+
 .execution-panel {
   margin-bottom: 14px;
   display: grid;
@@ -253,6 +401,9 @@ footer a { color: #768aa6; }
   .ci-panel { grid-column: auto; }
   .panel { min-height: 0; }
   .next-panel { align-items: stretch; flex-direction: column; }
+  .attention-header { align-items: stretch; flex-direction: column; }
+  .attention-list article { grid-template-columns: 1fr; }
+  .attention-item-actions { justify-content: flex-start; }
   .execution-panel { grid-template-columns: 1fr; }
   .execution-timeline { border-left: 0; border-top: 1px solid #273446; padding: 14px 0 0; }
   .execution-heading { align-items: stretch; flex-direction: column; }
