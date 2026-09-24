@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from app.application.security import AuthPrincipal, ROLE_ADMIN, ROLE_PROJECT_MANAGER
+from app.application.security import AuthPrincipal, ROLE_ADMIN, ROLE_COORDINATOR, ROLE_PROJECT_MANAGER
 from app.server.security import static_auth_resolver
 
 
@@ -19,6 +19,25 @@ def test_admin_auth_resolver(display_name: str = "Administrateur de test explici
 
 
 TEST_ADMIN_AUTH_RESOLVER = test_admin_auth_resolver()
+
+
+def test_coordinator_auth_resolver(
+    display_name: str = "Coordonnateur de test explicite",
+):
+    return static_auth_resolver(
+        AuthPrincipal.from_roles(
+            local_user_id=None,
+            issuer="urn:resourceplanner:test",
+            subject="explicit-test-coordinator",
+            display_name=display_name,
+            email=None,
+            roles=(ROLE_COORDINATOR,),
+            auth_mode="test",
+        )
+    )
+
+
+TEST_COORDINATOR_AUTH_RESOLVER = test_coordinator_auth_resolver()
 
 
 def test_project_manager_auth_resolver(

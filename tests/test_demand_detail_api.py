@@ -29,6 +29,7 @@ from app.infrastructure.sql import (
 from app.server import create_api_app
 from tests.http_test_auth import (
     TEST_ADMIN_AUTH_RESOLVER,
+    TEST_COORDINATOR_AUTH_RESOLVER,
     TEST_PROJECT_MANAGER_AUTH_RESOLVER,
 )
 
@@ -288,6 +289,54 @@ class DemandDetailApiTests(unittest.TestCase):
             self.assertNotIn("approve", pm.json()["workflow"]["available_actions"])
             self.assertIn("approve", admin.json()["workflow"]["available_actions"])
             self.assertTrue(pm.json()["policy"]["can_modify_candidate"])
+
+    def test_technical_context_is_admin_only_without_changing_business_contract(self) -> None:
+        with TemporaryDirectory() as directory:
+            database_url = self._database(directory, status="Soumise")
+            pm_app = create_api_app(
+                database_url,
+                auth_resolver=TEST_PROJECT_MANAGER_AUTH_RESOLVER,
+            )
+            coordinator_app = create_api_app(
+                database_url,
+                auth_resolver=TEST_COORDINATOR_AUTH_RESOLVER,
+            )
+            admin_app = create_api_app(
+                database_url,
+                auth_resolver=TEST_ADMIN_AUTH_RESOLVER,
+            )
+            with TestClient(pm_app, raise_server_exceptions=False) as client:
+                pm = client.get("/api/v1/demands/DMO-329-1/detail")
+            with TestClient(coordinator_app, raise_server_exceptions=False) as client:
+                coordinator = client.get("/api/v1/demands/DMO-329-1/detail")
+            with TestClient(admin_app, raise_server_exceptions=False) as client:
+                admin = client.get("/api/v1/demands/DMO-329-1/detail")
+
+            self.assertEqual(pm.status_code, 200, pm.text)
+            self.assertEqual(coordinator.status_code, 200, coordinator.text)
+            self.assertEqual(admin.status_code, 200, admin.text)
+
+            pm_body = pm.json()
+            coordinator_body = coordinator.json()
+            admin_body = admin.json()
+
+            self.assertIsNone(pm_body["technical_context"])
+            self.assertIsNone(coordinator_body["technical_context"])
+            self.assertEqual(pm_body["diagnostics"], [])
+            self.assertEqual(coordinator_body["diagnostics"], [])
+
+            technical = admin_body["technical_context"]
+            self.assertIsNotNone(technical)
+            self.assertEqual(technical["request_version"], 7)
+            self.assertEqual(technical["workflow_version"], admin_body["workflow"]["version"])
+            self.assertEqual(technical["expected_request_version"], 7)
+            self.assertEqual(technical["diagnostics"], admin_body["diagnostics"])
+
+            for body in (pm_body, coordinator_body, admin_body):
+                self.assertEqual(body["policy"]["expected_request_version"], 7)
+                self.assertEqual(len(body["lines"][0]["periods"]), 2)
+                self.assertIn("available_actions", body["workflow"])
+                self.assertEqual(body["materialized_plan"]["requirement_count"], 1)
 
     def test_detail_supports_legacy_single_line_request(self) -> None:
         with TemporaryDirectory() as directory:

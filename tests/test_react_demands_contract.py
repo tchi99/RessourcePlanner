@@ -66,6 +66,25 @@ class ReactDemandsContractTests(unittest.TestCase):
         )
         self.assertNotIn("desired_start) -", source)
 
+    def test_role_simplification_uses_backend_technical_projection(self) -> None:
+        detail = (ROOT / "frontend" / "src" / "DemandDetail.tsx").read_text(
+            encoding="utf-8"
+        )
+        demands = (ROOT / "frontend" / "src" / "DemandsPage.tsx").read_text(
+            encoding="utf-8"
+        )
+        api = (ROOT / "frontend" / "src" / "api.ts").read_text(encoding="utf-8")
+
+        self.assertIn("DemandDetailTechnicalContextReadModel", api)
+        self.assertIn("technical_context: DemandDetailTechnicalContextReadModel | null", api)
+        self.assertIn("const technicalContext = detail.technical_context", detail)
+        self.assertIn("{technicalContext && (", detail)
+        self.assertIn("Diagnostic technique / Contexte backend", detail)
+        self.assertIn('data-testid="demand-technical-context"', detail)
+        self.assertNotIn("principal?.roles", detail)
+        self.assertNotIn("Contexte backend v{selectedDetail.version}", demands)
+        self.assertNotIn("Version {detail.version}", detail)
+
     def test_creation_reuses_idempotency_key_for_identical_retry(self) -> None:
         source = (ROOT / "frontend" / "src" / "DemandsPage.tsx").read_text(
             encoding="utf-8"
