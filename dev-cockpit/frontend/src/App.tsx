@@ -173,6 +173,96 @@ function RoadmapReconciliationPanel({
   )
 }
 
+function ExecutionControllerPanel({
+  execution,
+  copied,
+  onCopy,
+}: {
+  execution: ExecutionControl
+  copied: boolean
+  onCopy: () => void
+}) {
+  const tone =
+    execution.phase === 'CI_RED' ||
+    execution.phase === 'PIPELINE_INVALID'
+      ? 'danger'
+      : execution.phase === 'ROADMAP_UPDATE_REQUIRED' ||
+          execution.phase === 'DELIVERY_UNVERIFIED'
+        ? 'warning'
+        : execution.phase === 'READY_TO_MERGE'
+          ? 'success'
+          : execution.phase === 'CI_RUNNING'
+            ? 'progress'
+            : 'neutral'
+
+  return (
+    <section className={`execution-panel ${tone}`}>
+      <div className="execution-main">
+        <div className="execution-heading">
+          <div>
+            <span className="panel-kicker">CONTRÔLEUR D'EXÉCUTION</span>
+            <h2>{execution.label}</h2>
+          </div>
+          <span className={`execution-phase ${tone}`}>{execution.phase}</span>
+        </div>
+
+        <p className="execution-summary">{execution.summary}</p>
+
+        <div className="execution-next">
+          <span>PROCHAINE ACTION · {execution.responsible_role}</span>
+          <strong>{execution.next_action}</strong>
+        </div>
+
+        <pre className="prompt-preview execution-prompt">{execution.prompt}</pre>
+
+        <div className="actions execution-actions">
+          <button className="primary" type="button" onClick={onCopy}>
+            {copied ? '✓ Prompt copié' : 'Copier le prompt de reprise'}
+          </button>
+          {execution.primary_link && (
+            <a
+              className="button"
+              href={execution.primary_link.url}
+              target="_blank"
+              rel="noreferrer"
+            >
+              {execution.primary_link.label} ↗
+            </a>
+          )}
+        </div>
+      </div>
+
+      <div className="execution-timeline">
+        <div className="section-label">TIMELINE GITHUB</div>
+        {execution.timeline.length ? (
+          <div className="timeline-list">
+            {execution.timeline.map((event) => (
+              <article key={`${event.at}:${event.label}`}>
+                <span className={`timeline-dot ${event.kind}`} />
+                <div>
+                  <strong>
+                    {event.url ? (
+                      <a href={event.url} target="_blank" rel="noreferrer">
+                        {event.label}
+                      </a>
+                    ) : (
+                      event.label
+                    )}
+                  </strong>
+                  <small>{event.detail}</small>
+                  <time>{formatDate(event.at)}</time>
+                </div>
+              </article>
+            ))}
+          </div>
+        ) : (
+          <div className="empty compact">Aucun événement GitHub pertinent.</div>
+        )}
+      </div>
+    </section>
+  )
+}
+
 function JobLine({ job }: { job: Job }) {
   const running = job.status && job.status !== 'completed'
   const success = job.conclusion === 'success'
