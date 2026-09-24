@@ -245,3 +245,66 @@
   border-top: 1px solid var(--border);
   border-radius: 0;
 }
+
+
+.demand-detail-advanced-content,
+.demand-detail-technical-content {
+  display: grid;
+  gap: .75rem;
+  padding: .8rem;
+}
+
+.demand-detail-subsection-heading {
+  display: grid;
+  gap: .15rem;
+}
+
+.demand-detail-subsection-heading strong {
+  font-size: .78rem;
+}
+
+.demand-detail-subsection-heading small {
+  color: var(--muted);
+  font-size: .62rem;
+}
+
+.demand-detail-technical-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: .55rem;
+}
+
+.demand-detail-technical-grid article,
+.demand-detail-technical-list article {
+  display: grid;
+  gap: .15rem;
+  padding: .65rem .7rem;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: #f8fafc;
+}
+
+.demand-detail-technical-grid span,
+.demand-detail-technical-grid small,
+.demand-detail-technical-list span,
+.demand-detail-technical-list small {
+  color: var(--muted);
+  font-size: .61rem;
+  overflow-wrap: anywhere;
+}
+
+.demand-detail-technical-grid strong,
+.demand-detail-technical-list > strong {
+  font-size: .72rem;
+}
+
+.demand-detail-technical-list {
+  display: grid;
+  gap: .45rem;
+}
+
+@media (max-width: 760px) {
+  .demand-detail-technical-grid {
+    grid-template-columns: 1fr;
+  }
+}
