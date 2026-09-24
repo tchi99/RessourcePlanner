@@ -6,6 +6,16 @@ historical implementation modules.
 """
 
 from .allocation_service import AllocationService
+from .approval_voting import (
+    APPROVAL_DECISION_APPROVE,
+    ApprovalDecisionRecord,
+    ApprovalQuorumProjection,
+    ApprovalVoteCommand,
+    ApprovalVoteOutcome,
+    ApprovalVoteRepositoryPort,
+    ApprovalVoteService,
+    project_approval_quorum,
+)
 from .composite_allocation_service import CompositeAllocationService
 from .business_contact_admin import (
     BusinessContactAdminRepositoryPort,
