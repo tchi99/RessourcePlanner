@@ -476,7 +476,10 @@ class ApprovalVoteService:
             actor_name=self._current_user_name,
             comment=str(command.comment or ""),
         )
-        self._approved_sync.sync_approved(request.number)
+        self._approved_sync.sync_approved(
+            request.number,
+            approved_request_version=cycle.submitted_request_version,
+        )
         planning = dict(self._planning.rebuild())
         revision_id = self._repository.active_revision_id(request.id)
         if not revision_id:
