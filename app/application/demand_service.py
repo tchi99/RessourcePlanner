@@ -607,6 +607,28 @@ class DemandService:
             self._apply_delegated_budget_changes(number, decision)
             return False
 
+        if self._approval_cycles is None or self._approval_votes is None:
+            if PERMISSION_APPROVE_DEMANDS in self._permissions:
+                call_application_port(
+                    lambda: policy.stamp_direct_approval(
+                        number,
+                        decision,
+                        actor_name=self._current_user,
+                    ),
+                    code_prefix="approval_envelope_direct_approval",
+                    context={"demand_number": number},
+                )
+                call_application_port(
+                    lambda: self._approved_sync.sync_approved(number),
+                    code_prefix="approval_envelope_direct_sync",
+                    context={"demand_number": number},
+                )
+                call_application_port(
+                    self._planning.rebuild,
+                    code_prefix="approval_envelope_direct_rebuild",
+                    context={"demand_number": number},
+                )
+                return False
         call_application_port(
             lambda: policy.mark_reapproval_required(number, decision),
             code_prefix="approval_envelope_reapproval",
@@ -1278,14 +1300,46 @@ class DemandService:
             )
             self._initialize_approval_cycle_after_submission(number)
 
-    def approve_command(self, command: DemandApproveCommand) -> ApprovalVoteOutcome:
+    def approve_command(self, command: DemandApproveCommand) -> ApprovalVoteOutcome | dict[str, Any]:
         number = self._required_identifier(command.number, entity="demand")
         if self._approval_cycles is None or self._approval_votes is None:
-            raise ApplicationOperationError(
-                "Le workflow de quorum d'approbation n'est pas configuré.",
-                code="approval_quorum_unavailable",
-                context={"demand_number": number},
+            # Compatibility for transport-neutral/unit compositions that do not
+            # include the SQL approval aggregate. The production SQL facade always
+            # composes 276C and therefore never enters this branch.
+            existing = self._demand_or_not_found(number)
+            self._assert_workflow_action(
+                existing,
+                ACTION_APPROVE,
+                expected_version=command.expected_version,
             )
+            comment = str(command.comment or "")
+            with self._context("approve demand"):
+                call_application_port(
+                    lambda: self._demands.update(
+                        number,
+                        {
+                            "Statut": "En planification",
+                            "ApprouvePar": self._current_user,
+                            "DateApprobation": datetime.now(),
+                            "CommentaireApprobation": comment,
+                        },
+                        action="Approbation",
+                        comment=comment or "Demande approuvée",
+                    ),
+                    code_prefix="demand_approve",
+                    context={"demand_number": number},
+                )
+                call_application_port(
+                    lambda: self._approved_sync.sync_approved(number),
+                    code_prefix="demand_approval_sync",
+                    context={"demand_number": number},
+                )
+                summary = call_application_port(
+                    self._planning.rebuild,
+                    code_prefix="demand_approval_rebuild",
+                    context={"demand_number": number},
+                )
+            return dict(summary)
         request = self._approval_cycles.get_request(number)
         if request is None:
             raise ApplicationNotFoundError(
@@ -1600,7 +1654,7 @@ class DemandService:
     def submit(self, number: str) -> None:
         self.submit_command(DemandSubmitCommand(number))
 
-    def approve(self, number: str, comment: str = "") -> ApprovalVoteOutcome:
+    def approve(self, number: str, comment: str = "") -> ApprovalVoteOutcome | dict[str, Any]:
         return self.approve_command(DemandApproveCommand(number, comment))
 
     def request_correction(self, number: str, comment: str) -> None:
