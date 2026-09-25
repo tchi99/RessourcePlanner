@@ -122,7 +122,7 @@ test("276D multi-métier : votes partiels puis quorum complet dans React", async
   await expect(coordinatorProgress).toContainText("0 / 2 satisfaites");
   await expect(coordinatorProgress).toContainText("210 — AUTOMATISATION E2E");
   await expect(coordinatorProgress).toContainText("110 — INSTALLATION ÉLECTRIQUE E2E");
-  await coordinatorWorkflow.getByRole("button", { name: "Approuver mes lignes (1)" }).click();
+  await coordinatorWorkflow.getByTestId("approval-action").click();
   await expect(coordinator.page.locator(".demand-notice")).toContainText(
     "Approbation enregistrée — 1 lignes sur 2 satisfaites",
   );
@@ -134,9 +134,9 @@ test("276D multi-métier : votes partiels puis quorum complet dans React", async
   const managerProgress = managerWorkflow.getByTestId("approval-progress");
   await expect(managerProgress).toContainText("1 / 2 satisfaites");
   await expect(managerProgress).toContainText("Coordonnateur Démo");
-  await managerWorkflow.getByRole("button", { name: "Approuver mes lignes (1)" }).click();
-  await expect(manager.page.locator(".demand-notice")).toContainText("Demande approuvée — quorum complet");
+  await managerWorkflow.getByTestId("approval-action").click();
   await expect(managerWorkflow.locator(".workflow-state-card").first()).toContainText("En planification");
+  await expect(manager.page.locator(".demand-notice")).toContainText("Demande approuvée — quorum complet");
   await expect(managerWorkflow.getByTestId("approval-progress")).toContainText("2 / 2 satisfaites");
   await closeContext(manager.context);
 });
