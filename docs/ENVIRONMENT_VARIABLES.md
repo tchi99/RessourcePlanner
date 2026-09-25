@@ -54,10 +54,15 @@ Les synchronisations métier Acumatica utilisent **OData**. Le contrat projet es
 
 | Variable | Usage actuel | Secret |
 | --- | --- | --- |
-| `RESOURCEPLANNER_ACUMATICA_BASE_URL` | Base de l'instance Acumatica; active la source projet OData | Non |
+| `RESOURCEPLANNER_ACUMATICA_BASE_URL` | Base de l'instance Acumatica; active la source projet OData | Non, mais ne pas exposer l'URL réelle dans les diagnostics publics |
+| `RESOURCEPLANNER_ACUMATICA_USERNAME` | Compte OData utilisé par HTTP Basic; compte nominatif temporaire en développement, compte de service cible | Donnée sensible |
+| `RESOURCEPLANNER_ACUMATICA_PASSWORD` | Mot de passe HTTP Basic OData | **Oui** |
+| `RESOURCEPLANNER_ACUMATICA_PAGE_SIZE` | Taille de page cliente pour `$top/$skip`; défaut 100 | Non |
 | `RESOURCEPLANNER_ACUMATICA_TIMEOUT_SECONDS` | Timeout HTTP du lecteur OData; défaut 30 s | Non |
 
-207A ne fixe volontairement **aucun mécanisme d'authentification HTTP**. Le transport expose une frontière permettant à 207B d'injecter les credentials appropriés après validation réelle de l'instance. Aucun mot de passe, token, cookie ou compte de service n'est requis par les tests contractuels.
+Le smoke réel #207B du 2026-09-24 a confirmé **HTTP Basic** pour `/oDATA/RP_Projects`. Le runtime exige donc username + mot de passe ensemble lorsque l'intégration est activée. Ils sont transmis à `httpx.BasicAuth` et ne sont jamais inclus dans `safe_summary()`, les routes de statut ou les logs.
+
+La pagination réelle observée utilise `$orderby=ProjectId asc` avec `$top` et `$skip`; aucun lien Atom `rel="next"` n'a été observé. La valeur par défaut 100 est une taille de lot cliente configurable, pas une affirmation sur une limite maximale serveur.
 
 ### Variables REST historiques
 
