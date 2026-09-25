@@ -7,7 +7,9 @@ import EmergencyOverridePage from "./EmergencyOverridePage";
 
 type DemandWorkspaceView = "requests" | "segments" | "emergency";
 
-export default function DemandsWorkspace() {
+type DemandsWorkspaceProps = { initialDemandNumber?: string | null };
+
+export default function DemandsWorkspace({ initialDemandNumber = null }: DemandsWorkspaceProps) {
   const { can } = useAuth();
   const canManagePlanning = can("manage_planning");
   const canApprove = can("approve_demands");
@@ -49,7 +51,7 @@ export default function DemandsWorkspace() {
       </nav>
 
       {view === "requests" ? (
-        <DemandsPage />
+        <DemandsPage initialDemandNumber={initialDemandNumber} />
       ) : view === "segments" ? (
         <DemandSegmentsPage />
       ) : (
