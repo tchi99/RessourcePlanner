@@ -25,32 +25,29 @@ Implémenté localement :
 - auto-provisionnement **désactivé par défaut**;
 - si activé, seul le rôle `TECHNICIAN` (lecture) peut être attribué automatiquement.
 
-Non implémenté avant que le **contrat #232** soit suffisamment défini :
+Le contrat Employee/User est maintenant partiellement stabilisé :
 
-- feed/vue OData Employee/User validé par le PO/opérateur autorisé;
-- noms réels des champs Employee/User transmis sous forme de contrat;
-- identifiant externe employé stable confirmé;
-- fixture anonymisée fidèle permettant les tests locaux;
-- claim OIDC contenant éventuellement un identifiant employé;
-- résolution automatique `(issuer, sub) → employee_external_id`;
-- règles organisationnelles propres à l'instance réelle.
+- `RP_Employees` est le feed ressources/employés;
+- `EmployeID` est sa clé unique et devient l'identité externe canonique de `Resource`;
+- `RP_Users` est le feed utilisateurs ERP;
+- `UserID` est sa clé unique;
+- `RP_Users.EmployeID` référence `RP_Employees.EmployeID`;
+- les fixtures anonymisées sont disponibles sous `tests/fixtures/acumatica/`;
+- la relation exacte `OIDC (issuer, subject) → RP_Users.UserID` reste à confirmer dans #223/#256.
 
-Le développeur n'a pas besoin d'un accès direct à Acumatica. La règle est : **PO valide le feed réel → fournit contrat + sample anonymisé → DEV implémente localement → PO exécute le smoke réel**. Voir [ACUMATICA_CONTRACT_WORKFLOW.md](ACUMATICA_CONTRACT_WORKFLOW.md).
-
-### Statut du contract gate Employee/User
-
-Au 2026-09-25, le dépôt ne contient pas encore de contrat Employee/User validé par le PO/opérateur autorisé. Aucun nom de feed, champ Employee/User, identifiant stable, règle de planifiabilité ou relation User ↔ Employee ne doit donc être codé comme une vérité ERP avant que #232 fournisse ce contrat et sa fixture anonymisée.
-
-Les capacités observées sur `RP_Projects` ne sont pas héritées implicitement par le futur feed Employee. #256 demeure bloqué par ce **manque de contrat**, et non par l'absence d'accès direct du développeur à Acumatica.
+Le développeur n'a pas besoin d'un accès direct à Acumatica. La règle reste : **PO valide le feed réel → fournit contrat + sample anonymisé → DEV implémente localement → PO exécute le smoke réel**. Voir [ACUMATICA_CONTRACT_WORKFLOW.md](ACUMATICA_CONTRACT_WORKFLOW.md) et [integrations/acumatica/RP_EMPLOYEES_USERS.md](integrations/acumatica/RP_EMPLOYEES_USERS.md).
 
 ## Propriété des données
 
-Acumatica possédera uniquement les attributs organisationnels retenus dans le contrat réel. La fondation locale limite volontairement la synchronisation à :
+Acumatica possède les attributs organisationnels issus de `RP_Employees` et `RP_Users`. RessourcePlanner doit toutefois séparer explicitement :
 
-- identifiant employé externe;
-- nom affiché;
-- courriel descriptif;
-- actif/inactif.
+- **état source ERP** de l'employé/utilisateur;
+- **activation locale RessourcePlanner** décidée par un ADMIN;
+- **état effectif utilisable** résultant des deux.
+
+Une nouvelle ressource ou un nouvel utilisateur synchronisé est désactivé localement par défaut, même si l'ERP le déclare actif.
+
+La synchronisation peut mettre à jour les attributs ERP autoritaires, mais elle ne doit pas activer automatiquement une ressource/utilisateur ni écraser silencieusement l'autorisation locale.
 
 RessourcePlanner reste propriétaire de :
 
@@ -105,7 +102,9 @@ resources
 
 Un adaptateur OData réel remplacera plus tard la source simulée, sans modifier le service métier.
 
-Lorsqu'un `external_id` existe déjà, seuls `name`, `email` et `active` sont mis à jour. Les champs de planification locaux sont préservés.
+Lorsqu'un `external_id` existe déjà, les champs organisationnels possédés par l'ERP peuvent être mis à jour, mais l'activation locale RessourcePlanner doit être préservée. Le comportement actuel où `ExternalEmployeeRecord.active` écrit directement `Resource.active` doit être revu dans #256 afin de ne plus confondre statut ERP et activation locale.
+
+Les champs de planification locaux restent préservés.
 
 Si une ressource locale non liée possède déjà exactement le même nom qu'un nouvel employé externe, la synchronisation échoue explicitement plutôt que d'adopter la ressource par nom. L'administrateur devra confirmer le bon identifiant externe.
 
@@ -155,7 +154,13 @@ En parallèle du développement local :
 - #223 : OIDC réel;
 - #162 : SQL Server réel.
 
-#207 projets est terminé. Pour Employees/Users, le **contract gate** de #232 remplace l'ancien besoin implicite d'accès ERP développeur. Dès que le PO fournit le feed retenu, la clé stable, le mapping utile et une fixture anonymisée fidèle, #256 peut être implémentée entièrement contre des données synthétiques.
+#207 projets est terminé. Le contract gate Employees/Users a maintenant fixé les feeds et identités principales :
+
+- `RP_Employees.EmployeID` = clé ressource;
+- `RP_Users.UserID` = clé utilisateur ERP;
+- `RP_Users.EmployeID` = lien vers l'employé.
+
+#256 peut donc commencer les adaptateurs Employee/User et l'administration d'activation locale sans accès ERP développeur. La relation OIDC vers `UserID` demeure un gate séparé.
 
 Le smoke réel final reste une validation environnementale exécutée par une personne autorisée.
 
