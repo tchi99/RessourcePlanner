@@ -51,7 +51,11 @@ export default function DemandsWorkspace({ initialDemandNumber = null }: Demands
       </nav>
 
       {view === "requests" ? (
-        <DemandsPage initialDemandNumber={initialDemandNumber} />
+        {initialDemandNumber ? (
+          <DemandsPage initialDemandNumber={initialDemandNumber} />
+        ) : (
+          <DemandsPage />
+        )}
       ) : view === "segments" ? (
         <DemandSegmentsPage />
       ) : (
