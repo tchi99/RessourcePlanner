@@ -37,6 +37,12 @@ Non implémenté avant que le **contrat #232** soit suffisamment défini :
 
 Le développeur n'a pas besoin d'un accès direct à Acumatica. La règle est : **PO valide le feed réel → fournit contrat + sample anonymisé → DEV implémente localement → PO exécute le smoke réel**. Voir [ACUMATICA_CONTRACT_WORKFLOW.md](ACUMATICA_CONTRACT_WORKFLOW.md).
 
+### Statut du contract gate Employee/User
+
+Au 2026-09-25, le dépôt ne contient pas encore de contrat Employee/User validé par le PO/opérateur autorisé. Aucun nom de feed, champ Employee/User, identifiant stable, règle de planifiabilité ou relation User ↔ Employee ne doit donc être codé comme une vérité ERP avant que #232 fournisse ce contrat et sa fixture anonymisée.
+
+Les capacités observées sur `RP_Projects` ne sont pas héritées implicitement par le futur feed Employee. #256 demeure bloqué par ce **manque de contrat**, et non par l'absence d'accès direct du développeur à Acumatica.
+
 ## Propriété des données
 
 Acumatica possédera uniquement les attributs organisationnels retenus dans le contrat réel. La fondation locale limite volontairement la synchronisation à :

@@ -157,6 +157,20 @@ Le feed/vue Employee/User exact, ses champs, sa clé stable et la relation avec 
 
 Voir [ACUMATICA_CONTRACT_WORKFLOW.md](ACUMATICA_CONTRACT_WORKFLOW.md).
 
+### Statut contractuel Employee/User
+
+Au 2026-09-25, aucun contrat OData Employee/User/ressource n'a encore été fourni au dépôt sous la forme validée attendue par #232. Les seules observations ERP réelles déjà stabilisées dans le dépôt concernent `RP_Projects`.
+
+En conséquence :
+
+- un nom historique ou proposé comme `RP_Employees` n'est **pas** un contrat tant que le PO/opérateur autorisé ne l'a pas validé dans Acumatica et transmis sous forme désensibilisée;
+- aucun champ supposé (`EmployeeID`, `UserID` ou équivalent) ne doit être déclaré clé externe stable sans contrat validé;
+- aucune règle de planifiabilité ne doit être dérivée d'un nom de champ supposé;
+- aucune jointure User ↔ Employee par nom ou courriel n'est autoritaire;
+- les capacités démontrées pour `RP_Projects` (`$filter`, `$orderby`, `$top/$skip`, `LastModifiedDateTime`) ne sont pas automatiquement transposées au futur feed Employee.
+
+La reprise de #232 doit donc commencer par une validation du feed côté PO/opérateur autorisé, puis par la transmission au développeur du **contrat + fixture anonymisée structurellement fidèle**. Le développeur n'a pas besoin d'accéder à l'ERP réel; il implémente ensuite #256 contre ce contrat local et la CI reste indépendante d'Acumatica.
+
 ## Outillage contractuel local
 
 Les enveloppes Atom/OData communes sont centralisées dans `app/infrastructure/acumatica/odata_atom.py`. Cette primitive couvre uniquement la structure commune réellement réutilisable : namespaces Atom/`d`/`m`, `m:properties`, `m:null`, type `m:type`, `xml:space`, métadonnées d'entité/liens et classification HTTP stable.
@@ -181,20 +195,16 @@ L'ancien `AcumaticaProjectSource` REST/JSON reste présent uniquement comme comp
 
 ## Validation restante
 
-207B a maintenant confirmé sur l'instance réelle :
+#207 est terminé. Le smoke réel du 2026-09-24 et la synchronisation de développement ont confirmé :
 
 1. HTTP Basic avec credentials hors dépôt;
 2. GET réel de `RP_Projects` en Atom/XML;
-3. `ProjectId` comme identité stable attendue et `ProjectCode` comme numéro métier;
-4. `$filter`, `$orderby`, pagination `$top/$skip` sans `rel="next"`, et comportement décrit ci-dessus de `LastModifiedDateTime`;
-5. valeurs `BaseType` observées `P` / `R`, sans décision d'exclusion.
+3. `ProjectId` comme identité stable et `ProjectCode` comme numéro métier;
+4. `$filter`, `$orderby`, pagination `$top/$skip` sans `rel="next"`, et le comportement décrit ci-dessus de `LastModifiedDateTime`;
+5. une première synchronisation de 1286 projets puis un replay idempotent avec 1286 entrées inchangées, sans doublon ni suppression locale implicite.
 
-Restent à valider avant de déclarer #207B terminé :
+La signification métier exacte de `BaseType=R` et le remplacement du compte nominatif par un compte de service restent des sujets séparés du contrat projet livré; ils ne rouvrent pas #207.
 
-1. exécuter `POST /api/v1/integrations/acumatica/projects/sync` sur une base RessourcePlanner de développement;
-2. vérifier plusieurs projets réels et l'absence de duplication;
-3. rejouer la synchronisation pour confirmer l'idempotence réelle;
-4. confirmer fonctionnellement la signification et la règle métier de `BaseType=R`;
-5. remplacer le compte nominatif par un compte de service avant exploitation durable.
+La validation encore structurante pour les ressources est le **contract gate #232** : feed Employee/User validé par le PO, clé externe stable, admissibilité à la planification, relation User ↔ Employee, capacités de synchronisation propres à ce feed et fixture anonymisée fidèle. Une fois ce paquet fourni, #256 peut être développé sans accès ERP direct.
 
 Refs : #207 #232 #256
