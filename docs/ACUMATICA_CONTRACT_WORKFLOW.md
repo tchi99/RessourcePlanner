@@ -235,13 +235,36 @@ Le contrat `RP_Projects` est déjà connu, implémenté et validé. Les fixtures
 
 ### Employees / Users
 
-Pour #232/#256, le prochain gate n'est pas « donner Acumatica au développeur ».
+Le contract gate principal est maintenant satisfait.
 
-Le gate est :
+Contrats confirmés :
 
-> fournir le feed/vue OData retenu pour les employés/utilisateurs, sa clé stable, son mapping utile, les règles métier nécessaires et un échantillon anonymisé fidèle.
+```text
+RP_Employees.EmployeID = clé unique Employee
+RP_Users.UserID = clé unique User
+RP_Users.EmployeID → RP_Employees.EmployeID
+```
 
-Une fois ce paquet disponible, #256 peut être développé contre le contrat local. Le smoke réel final sera exécuté par le PO/opérateur autorisé.
+Fixtures :
+
+- `tests/fixtures/acumatica/rp_employees_atom.xml`;
+- `tests/fixtures/acumatica/rp_users_atom.xml`.
+
+Décision d'autorisation :
+
+- toute nouvelle ressource synchronisée est désactivée localement par défaut;
+- toute nouvelle entrée User ERP est désactivée localement par défaut;
+- l'état ERP et l'activation RessourcePlanner sont distincts;
+- seul un ADMIN active l'usage local et attribue les rôles;
+- la synchronisation ERP ne doit jamais accorder automatiquement un rôle ni écraser le choix local.
+
+La relation OIDC `(issuer, subject) → RP_Users.UserID` reste à confirmer séparément. Elle ne bloque pas le développement des adaptateurs OData ni de la surface ADMIN.
+
+Voir `docs/integrations/acumatica/RP_EMPLOYEES_USERS.md`.
+
+### Tâches / budgets
+
+Le PO dispose également d'un feed OData tâches incluant les budgets. Tant que son chemin, sa clé, ses champs budget et sa fixture anonymisée ne sont pas fournis, #271 demeure le fallback temporaire. Ne pas inventer ce contrat.
 
 ## Sécurité
 

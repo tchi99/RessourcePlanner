@@ -147,29 +147,82 @@ La cible d'exploitation est un **compte de service ERP dédié à RessourcePlann
 
 Le smoke réel du 2026-09-24 a confirmé **HTTP Basic** sur cette instance. Le runtime utilise un username et un mot de passe injectés uniquement par l'environnement/secrets; aucun credential ni hostname réel n'est exposé par les diagnostics sûrs. Le compte nominatif utilisé pour le smoke reste temporaire et doit être remplacé par un compte de service dédié avant exploitation durable.
 
-## Ressources / employés
+## Ressources / employés / utilisateurs
 
-La même décision s'applique aux futures données organisationnelles Acumatica : les adaptateurs réels devront consommer des sources OData, et non le Contract-Based REST API.
+Le contrat Employee/User est maintenant connu et documenté dans [integrations/acumatica/RP_EMPLOYEES_USERS.md](integrations/acumatica/RP_EMPLOYEES_USERS.md).
 
-Le développement Employees/Users suit désormais un modèle **contract-first sans accès ERP développeur**. Le PO/opérateur autorisé valide la vue OData réelle, puis fournit au dépôt uniquement le contrat nécessaire et un échantillon entièrement anonymisé mais structurellement fidèle. Le développeur implémente ensuite l'adaptateur et ses tests contre ce contrat local; le smoke réel est exécuté séparément par le PO/opérateur autorisé.
+### RP_Employees
 
-Le feed/vue Employee/User exact, ses champs, sa clé stable et la relation avec l'identité OIDC restent à fournir dans #232 avant l'implémentation de #256. L'accès direct à Acumatica par le développeur n'est pas un prérequis.
+Feed :
 
-Voir [ACUMATICA_CONTRACT_WORKFLOW.md](ACUMATICA_CONTRACT_WORKFLOW.md).
+```text
+/oDATA/RP_Employees
+```
 
-### Statut contractuel Employee/User
+Décision PO confirmée :
 
-Au 2026-09-25, aucun contrat OData Employee/User/ressource n'a encore été fourni au dépôt sous la forme validée attendue par #232. Les seules observations ERP réelles déjà stabilisées dans le dépôt concernent `RP_Projects`.
+```text
+RP_Employees.EmployeID = clé unique Employee
+Resource.external_id = trim(EmployeID)
+```
 
-En conséquence :
+Le feed expose notamment `DisplayName`, `Email`, `Status`, département, classe ERP, superviseur, branche et `ContactID`.
 
-- un nom historique ou proposé comme `RP_Employees` n'est **pas** un contrat tant que le PO/opérateur autorisé ne l'a pas validé dans Acumatica et transmis sous forme désensibilisée;
-- aucun champ supposé (`EmployeeID`, `UserID` ou équivalent) ne doit être déclaré clé externe stable sans contrat validé;
-- aucune règle de planifiabilité ne doit être dérivée d'un nom de champ supposé;
-- aucune jointure User ↔ Employee par nom ou courriel n'est autoritaire;
-- les capacités démontrées pour `RP_Projects` (`$filter`, `$orderby`, `$top/$skip`, `LastModifiedDateTime`) ne sont pas automatiquement transposées au futur feed Employee.
+`ContactID` n'est pas l'identité canonique RessourcePlanner.
 
-La reprise de #232 doit donc commencer par une validation du feed côté PO/opérateur autorisé, puis par la transmission au développeur du **contrat + fixture anonymisée structurellement fidèle**. Le développeur n'a pas besoin d'accéder à l'ERP réel; il implémente ensuite #256 contre ce contrat local et la CI reste indépendante d'Acumatica.
+Fixture anonymisée :
+
+```text
+tests/fixtures/acumatica/rp_employees_atom.xml
+```
+
+### RP_Users
+
+Feed :
+
+```text
+/oDATA/RP_Users
+```
+
+Requête PO validée pour le périmètre courant :
+
+```text
+/oDATA/RP_Users?$filter=EmployeStatus eq 'Actif'&$orderby=UserID asc
+```
+
+Décisions PO confirmées :
+
+```text
+RP_Users.UserID = clé unique User
+RP_Users.EmployeID = FK logique vers RP_Employees.EmployeID
+```
+
+La relation métier autoritaire est donc `UserID → EmployeID → Resource.external_id`; le nom et le courriel ne servent jamais de clé ou jointure autoritaire.
+
+Fixture anonymisée :
+
+```text
+tests/fixtures/acumatica/rp_users_atom.xml
+```
+
+### Activation RessourcePlanner
+
+L'état source Acumatica et l'activation locale RessourcePlanner sont distincts.
+
+- une ressource importée depuis `RP_Employees` est désactivée localement par défaut;
+- un utilisateur découvert depuis `RP_Users` est désactivé localement par défaut;
+- une synchronisation ERP ne doit pas activer automatiquement l'un ou l'autre;
+- une ressource est effectivement planifiable uniquement si son statut ERP est admissible **et** si un ADMIN l'a activée localement;
+- un utilisateur peut utiliser RessourcePlanner uniquement si son état source est admissible, s'il a été activé localement, si son identité OIDC est résolue et si des rôles locaux lui ont été attribués;
+- aucun rôle privilégié n'est dérivé automatiquement de l'ERP.
+
+La relation exacte `OIDC (issuer, subject) → RP_Users.UserID` reste à confirmer; ne pas supposer que `sub == UserID`.
+
+Le développement reste contract-first : le développeur n'a pas besoin d'accès direct à Acumatica.
+
+### Tâches / budgets
+
+Le PO a confirmé qu'un feed OData Acumatica existe aussi pour les tâches et inclut les budgets. Son chemin exact, sa clé, ses champs et la sémantique des budgets restent à documenter à partir d'un sample anonymisé avant remplacement du fallback Excel/CSV de #271.
 
 ## Outillage contractuel local
 

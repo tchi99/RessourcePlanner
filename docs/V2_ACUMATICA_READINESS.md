@@ -149,14 +149,30 @@ Validation RessourcePlanner réelle également confirmée le 2026-09-24 :
 Restent à confirmer ou décider :
 
 - support et syntaxe de `$select`;
-- volume total, limite maximale et taille de page optimale du feed;
+- volume total, limite maximale et taille de page optimale du feed projet;
 - garantie temporelle exacte de `LastModifiedDateTime` avant toute synchro incrémentale;
-- liste exhaustive des statuts;
+- liste exhaustive des statuts projet;
 - règle métier de `BaseType` (`R` semble correspondre aux templates, sans exclusion automatique);
-- feed OData Employee/User;
-- clé stable des employés;
-- relation entre identité OIDC et employé;
+- relation `OIDC (issuer, subject) → RP_Users.UserID`;
+- capacités pagination/incrémentales propres à `RP_Employees` et `RP_Users` si nécessaires;
+- contrat OData tâches/budgets (feed disponible côté PO, sample/mapping encore à documenter);
 - embedding réel.
+
+## Contrat Employee/User désormais connu
+
+Les feeds et identités ERP principales sont maintenant stabilisés :
+
+```text
+RP_Employees.EmployeID = clé unique Employee
+RP_Users.UserID = clé unique User
+RP_Users.EmployeID → RP_Employees.EmployeID
+```
+
+Les fixtures anonymisées sont disponibles dans `tests/fixtures/acumatica/rp_employees_atom.xml` et `rp_users_atom.xml`.
+
+Décision produit : état ERP et activation locale RessourcePlanner sont distincts. Toute nouvelle ressource ou entrée User synchronisée est désactivée localement par défaut; seul un ADMIN active son usage local. La synchronisation ne doit jamais attribuer automatiquement de rôle privilégié ni réactiver silencieusement une entrée.
+
+Voir [integrations/acumatica/RP_EMPLOYEES_USERS.md](integrations/acumatica/RP_EMPLOYEES_USERS.md).
 
 ## Ce qui n'est volontairement pas considéré comme livré
 
@@ -170,10 +186,12 @@ Restent à confirmer ou décider :
 
 ## Ordre recommandé
 
-1. confirmer la règle métier de `BaseType=R` avant tout filtrage;
+1. confirmer la règle métier de `BaseType=R` avant tout filtrage projet;
 2. remplacer le compte nominatif temporaire par un compte de service avant exploitation durable;
-3. conserver la synchro incrémentale hors scope jusqu'à définition d'un curseur robuste;
-4. compléter #232 pour Employee/User et identité;
-5. implémenter ensuite #256 avec la source OData réellement observée.
+3. conserver les synchros incrémentales hors scope jusqu'à définition de curseurs robustes par feed;
+4. implémenter #256A/#256B contre les fixtures RP_Employees/RP_Users;
+5. ajouter l'administration d'activation locale #256C;
+6. confirmer la relation OIDC → UserID avant #256D;
+7. contractualiser ensuite le feed tâches/budgets afin de remplacer le fallback #271.
 
 Le but est de conserver les garanties applicatives déjà acquises tout en remplaçant uniquement la frontière de transport devenue obsolète.
