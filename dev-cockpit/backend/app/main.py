@@ -5,6 +5,7 @@ from pathlib import Path
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel, Field
 
 from .chat_status import ChatHeartbeat, ChatStatusStore
 from .config import Settings
@@ -17,8 +18,20 @@ from .details import (
 from .github import GitHubClient, GitHubError
 from .roles import RoleStore, RolesConfig
 from .service import build_dashboard
+from .writeback import (
+    RoadmapWritebackError,
+    apply_roadmap_writeback,
+    build_roadmap_writeback_preview,
+)
 
 PROJECT_DIR = Path(__file__).resolve().parents[2]
+
+
+class RoadmapWritebackApplyRequest(BaseModel):
+    expected_updated_at: str = Field(min_length=1)
+    expected_body_sha256: str = Field(min_length=64, max_length=64)
+    expected_proposal_sha256: str = Field(min_length=64, max_length=64)
+    confirm: bool = False
 
 
 def create_app(app_settings: Settings | None = None) -> FastAPI:
@@ -129,6 +142,59 @@ def create_app(app_settings: Settings | None = None) -> FastAPI:
         return await github_detail(
             build_architecture_detail,
             repo or settings.repository,
+        )
+
+    async def roadmap_writeback_call(builder, target_repo: str, *args, **kwargs) -> dict:
+        if not settings.github_token:
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    "DEV_COCKPIT_GITHUB_TOKEN n'est pas configuré. "
+                    "Le Safe Writeback exige un token GitHub avec accès Issues en écriture."
+                ),
+            )
+        try:
+            async with GitHubClient(settings) as client:
+                return await builder(client, settings, target_repo, *args, **kwargs)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        except RoadmapWritebackError as exc:
+            raise HTTPException(status_code=exc.status_code, detail=exc.to_detail()) from exc
+        except GitHubError as exc:
+            status = 502 if exc.status_code >= 500 else exc.status_code
+            detail = {
+                "code": "GITHUB_WRITE_FAILED",
+                "message": (
+                    "GitHub a refusé l'écriture. Vérifie que DEV_COCKPIT_GITHUB_TOKEN "
+                    "possède l'autorisation Issues: write."
+                    if exc.status_code in {401, 403}
+                    else f"GitHub: {exc.message}"
+                ),
+                "context": {"github_status": exc.status_code},
+            }
+            raise HTTPException(status_code=status, detail=detail) from exc
+
+    @app.post("/api/roadmap-writeback/preview")
+    async def roadmap_writeback_preview(
+        repo: str | None = Query(default=None),
+    ) -> dict:
+        return await roadmap_writeback_call(
+            build_roadmap_writeback_preview,
+            repo or settings.repository,
+        )
+
+    @app.post("/api/roadmap-writeback/apply")
+    async def roadmap_writeback_apply(
+        payload: RoadmapWritebackApplyRequest,
+        repo: str | None = Query(default=None),
+    ) -> dict:
+        return await roadmap_writeback_call(
+            apply_roadmap_writeback,
+            repo or settings.repository,
+            expected_updated_at=payload.expected_updated_at,
+            expected_body_sha256=payload.expected_body_sha256,
+            expected_proposal_sha256=payload.expected_proposal_sha256,
+            confirm=payload.confirm,
         )
 
     @app.get("/api/dashboard")

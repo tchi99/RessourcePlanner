@@ -10,6 +10,7 @@ import type {
   ExecutionControl,
   Job,
   PipelineReconciliation,
+  RoadmapWritebackPreview,
   PipelineStep,
   PullRequest,
   Run,
@@ -88,13 +89,26 @@ function PipelineRoadmapRow({
 
 function RoadmapReconciliationPanel({
   reconciliation,
-  copied,
-  onCopy,
+  repo,
+  onApplied,
 }: {
   reconciliation: PipelineReconciliation
-  copied: boolean
-  onCopy: () => void
+  repo: string
+  onApplied: () => Promise<void>
 }) {
+  const [preview, setPreview] = useState<RoadmapWritebackPreview | null>(null)
+  const [previewLoading, setPreviewLoading] = useState(false)
+  const [applyLoading, setApplyLoading] = useState(false)
+  const [writeError, setWriteError] = useState<string | null>(null)
+  const [copied, setCopied] = useState(false)
+  const [applied, setApplied] = useState(false)
+
+  useEffect(() => {
+    setPreview(null)
+    setWriteError(null)
+    setApplied(false)
+  }, [reconciliation.status, reconciliation.proposal?.pipeline_block])
+
   if (reconciliation.status === 'legacy') return null
 
   const tone =
@@ -113,6 +127,101 @@ function RoadmapReconciliationPanel({
         : reconciliation.status === 'invalid'
           ? 'INVALID'
           : 'ATTENTION'
+
+  function apiError(payload: unknown, fallback: string): string {
+    if (
+      payload &&
+      typeof payload === 'object' &&
+      'detail' in payload
+    ) {
+      const detail = (payload as { detail?: unknown }).detail
+      if (typeof detail === 'string') return detail
+      if (
+        detail &&
+        typeof detail === 'object' &&
+        'message' in detail &&
+        typeof (detail as { message?: unknown }).message === 'string'
+      ) {
+        const typed = detail as { code?: unknown; message: string }
+        return typeof typed.code === 'string'
+          ? `${typed.code} — ${typed.message}`
+          : typed.message
+      }
+    }
+    return fallback
+  }
+
+  async function loadPreview() {
+    setPreviewLoading(true)
+    setWriteError(null)
+    setApplied(false)
+    try {
+      const response = await fetch(
+        `/api/roadmap-writeback/preview?repo=${encodeURIComponent(repo)}`,
+        { method: 'POST' },
+      )
+      const payload = await response.json()
+      if (!response.ok) {
+        throw new Error(apiError(payload, `Erreur HTTP ${response.status}`))
+      }
+      setPreview(payload as RoadmapWritebackPreview)
+    } catch (caught) {
+      setPreview(null)
+      setWriteError(
+        caught instanceof Error ? caught.message : 'Erreur de preview inconnue',
+      )
+    } finally {
+      setPreviewLoading(false)
+    }
+  }
+
+  async function applyWriteback() {
+    if (!preview) return
+    setApplyLoading(true)
+    setWriteError(null)
+    try {
+      const response = await fetch(
+        `/api/roadmap-writeback/apply?repo=${encodeURIComponent(repo)}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            expected_updated_at: preview.expected_updated_at,
+            expected_body_sha256: preview.expected_body_sha256,
+            expected_proposal_sha256: preview.proposal_sha256,
+            confirm: true,
+          }),
+        },
+      )
+      const payload = await response.json()
+      if (!response.ok) {
+        throw new Error(apiError(payload, `Erreur HTTP ${response.status}`))
+      }
+      setApplied(true)
+      setPreview(null)
+      await onApplied()
+    } catch (caught) {
+      setWriteError(
+        caught instanceof Error ? caught.message : 'Erreur de writeback inconnue',
+      )
+      if (
+        caught instanceof Error &&
+        /ROADMAP_CHANGED|PROPOSAL_CHANGED|changé|changed|nouveau diff|recharge/i.test(caught.message)
+      ) {
+        setPreview(null)
+      }
+    } finally {
+      setApplyLoading(false)
+    }
+  }
+
+  async function copyProposal() {
+    const block = preview?.proposed_block ?? reconciliation.proposal?.pipeline_block
+    if (!block) return
+    await navigator.clipboard.writeText(block)
+    setCopied(true)
+    window.setTimeout(() => setCopied(false), 1600)
+  }
 
   return (
     <section className={`reconciliation-panel ${tone}`}>
@@ -167,9 +276,80 @@ function RoadmapReconciliationPanel({
                 .join(' · ')}
             </span>
           </div>
-          <button className="primary" type="button" onClick={onCopy}>
-            {copied ? 'Bloc copié ✓' : 'Préparer la mise à jour de #55'}
-          </button>
+          <div className="actions">
+            <button
+              className="primary"
+              type="button"
+              onClick={() => void loadPreview()}
+              disabled={previewLoading || applyLoading}
+            >
+              {previewLoading ? 'Préparation…' : preview ? 'Rafraîchir le diff' : 'Voir le diff'}
+            </button>
+            <button
+              className="button"
+              type="button"
+              onClick={() => void copyProposal()}
+              disabled={applyLoading}
+            >
+              {copied ? 'Bloc copié ✓' : 'Copier le bloc'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {writeError && (
+        <div className="writeback-error">
+          <strong>Writeback non appliqué</strong>
+          <span>{writeError}</span>
+        </div>
+      )}
+
+      {applied && (
+        <div className="writeback-success">
+          ✓ #55 a été mis à jour et le dashboard a été rechargé.
+        </div>
+      )}
+
+      {preview && (
+        <div className="writeback-preview">
+          <div className="writeback-preview-header">
+            <div>
+              <span className="section-label">SAFE WRITEBACK · PREVIEW OBLIGATOIRE</span>
+              <strong>
+                {preview.changes
+                  .map((change) => `${change.key}: ${change.from} → ${change.to}`)
+                  .join(' · ')}
+              </strong>
+            </div>
+            <span className="writeback-lock">CAS · updated_at + SHA-256</span>
+          </div>
+
+          <pre className="writeback-diff">{preview.diff}</pre>
+
+          <div className="writeback-guards">
+            <span>✓ uniquement COCKPIT_PIPELINE_V1</span>
+            <span>✓ preuve Reconciler = stale</span>
+            <span>✓ proposition recalculée avant PATCH</span>
+            <span>✓ refus si #55 change</span>
+          </div>
+
+          <div className="writeback-confirm">
+            <div>
+              <strong>Confirmation explicite requise</strong>
+              <small>
+                Le backend relira #55 et recalculera la preuve GitHub avant toute écriture.
+                Une modification concurrente produit ROADMAP_CHANGED et aucune écriture.
+              </small>
+            </div>
+            <button
+              className="danger-action"
+              type="button"
+              onClick={() => void applyWriteback()}
+              disabled={applyLoading}
+            >
+              {applyLoading ? 'Validation GitHub…' : 'Confirmer et appliquer à #55'}
+            </button>
+          </div>
         </div>
       )}
     </section>
@@ -421,7 +601,6 @@ export default function App() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
-  const [roadmapCopied, setRoadmapCopied] = useState(false)
   const [attentionCopiedId, setAttentionCopiedId] = useState<string | null>(null)
 
   async function load(targetRepo: string) {
@@ -483,14 +662,6 @@ export default function App() {
     await navigator.clipboard.writeText(data.execution.prompt)
     setCopied(true)
     window.setTimeout(() => setCopied(false), 1400)
-  }
-
-  async function copyRoadmapProposal() {
-    const block = data?.reconciliation.proposal?.pipeline_block
-    if (!block) return
-    await navigator.clipboard.writeText(block)
-    setRoadmapCopied(true)
-    window.setTimeout(() => setRoadmapCopied(false), 1800)
   }
 
   async function prepareAttention(item: AttentionItem) {
@@ -609,8 +780,8 @@ export default function App() {
 
           <RoadmapReconciliationPanel
             reconciliation={data.reconciliation}
-            copied={roadmapCopied}
-            onCopy={() => void copyRoadmapProposal()}
+            repo={repo}
+            onApplied={() => load(repo)}
           />
 
           <section className="dashboard-grid">

@@ -572,6 +572,24 @@ Do not store the current next issue or current active step in this file. AGENTS.
 
 If a canonical block exists but is invalid, do not work around it by editing the cockpit heuristics or by inferring a different active step from surrounding Markdown. Correct #55 so the canonical contract becomes valid again.
 
+### Dev Cockpit Safe Writeback
+
+The Dev Cockpit may apply a roadmap reconciliation to #55 only through the explicit Safe Writeback flow.
+
+Durable invariants:
+
+- preview is mandatory before apply;
+- apply must require explicit confirmation;
+- the backend must recompute the current Reconciler proposal instead of trusting a pipeline block sent by the browser;
+- only the exact `COCKPIT_PIPELINE_V1` block may change; all Markdown outside the block must remain byte-for-byte unchanged;
+- writeback must fail closed when the pipeline is legacy, invalid, non-stale, or the proposal is no longer the one previewed;
+- use optimistic concurrency against the complete issue body and GitHub `updated_at`; a concurrent roadmap edit must produce a conflict rather than being overwritten;
+- never auto-complete architecture or environment gates from PR/CI evidence;
+- never trigger writeback from dashboard polling, refresh, Attention Center, or agent activity;
+- GitHub remains the source of truth; no local roadmap mutation state may be introduced to make writeback easier.
+
+A writeback conflict must be resolved by refreshing GitHub state and reviewing a new preview. Do not bypass the conflict check.
+
 ---
 
 ## 20. Chained execution
