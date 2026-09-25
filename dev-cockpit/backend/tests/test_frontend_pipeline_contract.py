@@ -41,6 +41,8 @@ class FrontendPipelineContractTests(unittest.TestCase):
         self.assertIn("Charger l'analyse du flux", app)
         self.assertIn("CYCLES CI OBSERVABLES", app)
         self.assertIn("TIMELINE DE LIVRAISON", app)
+        self.assertIn("Cette analyse est chargée séparément du polling du", app)
+        self.assertNotIn("setInterval(() => void loadAnalytics", app)
         self.assertIn("data.execution", app)
         self.assertIn("Copier le prompt de reprise", app)
         self.assertIn("PARALLÈLE DISPONIBLE", app)
