@@ -263,7 +263,7 @@ Ne pas faire passer les lignes budgétaires brutes directement dans le service a
 
 ## État d'implémentation #452
 
-La tranche #452 introduit un chemin découplé de #454 :
+Cette tranche introduit un chemin découplé de la résolution classe/coût décrite dans #454 :
 
 - parser Atom/XML `RP_ProjectTasks` avec `TaskID`, `TaskCD`, `ProjectCD`/`ProjetCD`, `AccountGroup`, `BudgetAmount` et `BudgetActual`;
 - source OData ciblée par projet avec pagination `$top/$skip` et ordre candidat `TaskID asc`;
