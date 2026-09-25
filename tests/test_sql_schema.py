@@ -52,6 +52,8 @@ EXPECTED_TABLES = {
     "request_lines",
     "request_line_competencies",
     "resource_requirement_competencies",
+    "resource_class_configs",
+    "project_task_class_overrides",
     "resources",
     "work_packages",
     "workforce_requests",
@@ -67,6 +69,7 @@ EXPECTED_TABLES = {
     "smtp_configuration_audit",
     "shifts",
     "task_catalog_items",
+    "task_class_standards",
 }
 
 
@@ -114,8 +117,20 @@ class SqlSchemaTests(unittest.TestCase):
         approval_revisions = Base.metadata.tables["request_approval_revisions"].c
         approval_references = Base.metadata.tables["request_approval_references"].c
         operational_states = Base.metadata.tables["request_operational_states"].c
+        resource_classes = Base.metadata.tables["resource_class_configs"].c
+        task_class_standards = Base.metadata.tables["task_class_standards"].c
+        project_task_overrides = Base.metadata.tables["project_task_class_overrides"].c
 
         self.assertFalse(operational_states.budget_overrides_text.nullable)
+        self.assertFalse(resource_classes.code.nullable)
+        self.assertTrue(resource_classes.average_hourly_cost_cad.nullable)
+        self.assertFalse(resource_classes.version.nullable)
+        self.assertFalse(task_class_standards.task_code.nullable)
+        self.assertFalse(task_class_standards.resource_class_code.nullable)
+        self.assertFalse(project_task_overrides.project_id.nullable)
+        self.assertFalse(project_task_overrides.task_code.nullable)
+        self.assertTrue(project_task_overrides.resource_class_code.nullable)
+        self.assertFalse(project_task_overrides.excluded.nullable)
         self.assertFalse(planning_state.id.nullable)
         self.assertFalse(planning_state.version.nullable)
 
