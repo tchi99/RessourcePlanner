@@ -235,6 +235,62 @@ class ServerAcumaticaRouteTests(unittest.TestCase):
             self.assertEqual(projects.json()[0]["number"], "P-EXISTING")
             self.assertEqual(projects.json()[0]["name"], "Nom local conservé")
 
+    def test_failed_later_odata_page_does_not_apply_first_page(self) -> None:
+        with TemporaryDirectory() as directory:
+            database_url = self._database(directory)
+            engine = create_sql_engine(database_url)
+            factory = create_session_factory(engine)
+            try:
+                with transactional_session(factory) as session:
+                    session.add(
+                        Project(
+                            id="EXISTING",
+                            erp_external_id="101",
+                            number="P-EXISTING",
+                            name="Nom local conservé",
+                            status="Active",
+                        )
+                    )
+            finally:
+                engine.dispose()
+
+            first_page = b"""<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom"
+      xmlns:d="http://schemas.microsoft.com/ado/2007/08/dataservices"
+      xmlns:m="http://schemas.microsoft.com/ado/2007/08/dataservices/metadata">
+  <entry><content type="application/xml"><m:properties>
+    <d:ProjectId m:type="Edm.Int32">101</d:ProjectId>
+    <d:ProjectCode>P-EXISTING</d:ProjectCode>
+    <d:ProjectName>Nom distant non applique</d:ProjectName>
+  </m:properties></content></entry>
+</feed>"""
+
+            def handler(request: httpx.Request) -> httpx.Response:
+                if request.url.params.get("$skip") == "0":
+                    return httpx.Response(200, content=first_page)
+                return httpx.Response(503, text="upstream unavailable")
+
+            source = ODataProjectSource(
+                ODataProjectSourceSettings(
+                    base_url="https://erp.example.test/Instance",
+                    page_size=1,
+                ),
+                transport=httpx.MockTransport(handler),
+            )
+            app = create_api_app(database_url, project_source=source)
+            with TestClient(app) as client:
+                sync = client.post("/api/v1/integrations/acumatica/projects/sync")
+                projects = client.get("/api/v1/projects")
+
+            self.assertEqual(sync.status_code, 500)
+            self.assertEqual(
+                sync.json()["error"]["context"]["failure_kind"],
+                "upstream_5xx",
+            )
+            self.assertEqual(len(projects.json()), 1)
+            self.assertEqual(projects.json()[0]["number"], "P-EXISTING")
+            self.assertEqual(projects.json()[0]["name"], "Nom local conservé")
+
     def test_mid_sync_conflict_rolls_back_every_project_written_by_that_pull(self) -> None:
         with TemporaryDirectory() as directory:
             database_url = self._database(directory)
