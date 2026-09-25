@@ -53,6 +53,13 @@ class ProjectScopeResolution:
 
 
 @dataclass(frozen=True, slots=True)
+class DemandScopeResolution:
+    scope: str
+    project_ids: tuple[str, ...] | None
+    demand_ids: tuple[str, ...] | None
+
+
+@dataclass(frozen=True, slots=True)
 class UserViewResourceReadModel:
     id: str | None
     link_status: str
@@ -94,6 +101,11 @@ class UserViewContextRepositoryPort(Protocol):
     def list_participating_project_ids(
         self,
         resource_id: str,
+    ) -> tuple[str, ...]: ...
+
+    def list_coordinated_demand_ids(
+        self,
+        local_user_id: str,
     ) -> tuple[str, ...]: ...
 
 
@@ -196,6 +208,31 @@ class UserViewContextService:
         return ProjectScopeResolution(
             scope=scope,
             project_ids=relations.personal_project_ids,
+        )
+
+    def resolve_demand_scope(
+        self,
+        principal: AuthPrincipal,
+        requested_scope: str | None = None,
+    ) -> DemandScopeResolution:
+        project_scope = self.resolve_project_scope(principal, requested_scope)
+        if project_scope.project_ids is None:
+            return DemandScopeResolution(
+                scope=project_scope.scope,
+                project_ids=None,
+                demand_ids=None,
+            )
+
+        local_user_id = str(principal.local_user_id or "").strip()
+        demand_ids = (
+            tuple(self._repository.list_coordinated_demand_ids(local_user_id))
+            if local_user_id
+            else ()
+        )
+        return DemandScopeResolution(
+            scope=project_scope.scope,
+            project_ids=project_scope.project_ids,
+            demand_ids=demand_ids,
         )
 
     def read(self, principal: AuthPrincipal) -> UserViewContextReadModel:
