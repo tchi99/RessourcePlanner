@@ -12,6 +12,7 @@ from sqlalchemy import select
 from app.infrastructure.sql import (
     Base,
     Project,
+    RequestApprovalCycle,
     RequestApprovalReference,
     RequestApprovalRevision,
     ResourceRequirement,
@@ -159,9 +160,16 @@ class ApprovalRevisionCaptureTests(unittest.TestCase):
                     )
                     self.assertIsNotNone(revision)
                     assert revision is not None
+                    completed_cycle = session.scalar(
+                        select(RequestApprovalCycle).where(
+                            RequestApprovalCycle.approved_revision_id == revision.id
+                        )
+                    )
+                    self.assertIsNotNone(completed_cycle)
+                    assert completed_cycle is not None
                     self.assertEqual(
                         revision.request_version,
-                        request.aggregate_version,
+                        completed_cycle.submitted_request_version,
                     )
                     self.assertEqual(revision.approved_by_name, "Administrateur de test explicite")
                     payload = json.loads(revision.payload_text)
