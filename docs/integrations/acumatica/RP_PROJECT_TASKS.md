@@ -88,9 +88,13 @@ Décision PO confirmée :
 - `BudgetAmount` est un montant monétaire en **CAD**;
 - `BudgetActual` est un montant monétaire réalisé en **CAD**;
 - un budget peut être négatif;
-- le réalisé peut dépasser le budget.
+- le réalisé peut dépasser le budget;
+- pour les usages workforce, **seules les lignes dont `trim(AccountGroup) == "DEPMO"` sont importées**;
+- `DEPMO` représente les lignes de main-d'œuvre : après ce filtre, `BudgetAmount` ne contient pas de matériel ni d'autres coûts à distinguer.
 
 Les montants restent des `Decimal`.
+
+Le filtre `AccountGroup = DEPMO` est une **règle métier autoritaire**, pas seulement une optimisation de performance. Le PO a observé environ **5 075 lignes** après application de ce filtre sur le feed au 2026-09-25; ce volume est indicatif et ne constitue pas une constante de contrat.
 
 ### Conversion budget → heures workforce
 
@@ -141,7 +145,15 @@ standard TaskCD
 non classé
 ```
 
-Pour un projet ciblé, l'adaptateur peut récupérer les tâches du projet puis ne conserver dans le catalogue workforce que celles ayant une classe effective. Cela évite de charger le feed global tout en laissant les exceptions projet possibles.
+Pour un projet ciblé, le pipeline workforce applique les filtres dans cet ordre :
+
+1. conserver uniquement les lignes dont `trim(AccountGroup) == "DEPMO"`;
+2. résoudre `TaskCD` via le standard global #454;
+3. appliquer l'override projet éventuel;
+4. ne conserver dans le catalogue workforce que les tâches ayant une classe effective;
+5. agréger/calculer les budgets et projections d'heures uniquement à partir des lignes `DEPMO`.
+
+Le filtre `DEPMO` doit être appliqué côté requête OData lorsque la capacité est validée, **et rester réappliqué côté adaptateur** comme garde-fou métier avant persistance. Cela évite de charger des coûts non-MO et laisse les exceptions projet possibles.
 
 Cette classification workforce reste distincte des `ApprovalScope` de #276/ADR-010. Une même autorité d'approbation peut couvrir plusieurs classes de ressources différentes.
 
@@ -253,9 +265,9 @@ Ne pas faire passer les lignes budgétaires brutes directement dans le service a
 Avant implémentation complète :
 
 1. valider une requête OData ciblée sur **un seul projet** via `ProjectCD`;
-2. valider `$orderby=TaskID asc`, `$top/$skip` et la présence éventuelle de `rel=next`;
-3. déterminer si un champ LastModified fiable peut être ajouté à la vue OData;
-4. confirmer si certains TaskCD workforce peuvent contenir des montants autres que de la main-d'œuvre nécessitant une règle supplémentaire sur `AccountGroup`;
+2. valider le filtre serveur `AccountGroup eq 'DEPMO'`; même s'il est supporté, conserver le garde-fou applicatif `trim(AccountGroup) == "DEPMO"`;
+3. valider `$orderby=TaskID asc`, `$top/$skip` et la présence éventuelle de `rel=next`;
+4. déterminer si un champ LastModified fiable peut être ajouté à la vue OData;
 5. définir les valeurs initiales des coûts moyens par classe et la liste initiale des standards TaskCD dans #454.
 
 ## Références
