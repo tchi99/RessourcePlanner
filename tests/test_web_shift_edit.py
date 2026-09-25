@@ -51,6 +51,7 @@ class WebShiftEditApiTests(unittest.TestCase):
                     active=True,
                 )
             )
+            seed_test_approval_routing(session, map_existing_tasks=True)
         engine.dispose()
         return url
 
