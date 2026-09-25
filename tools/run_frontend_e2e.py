@@ -34,6 +34,11 @@ from app.application.security import (
     ROLE_TECHNICIAN,
 )
 from app.infrastructure.smtp import FernetSecretCipher
+from app.infrastructure.sql.approval_scope_models import (
+    ApprovalScope,
+    ApprovalScopeApprover,
+    TaskApprovalScopeMapping,
+)
 from app.infrastructure.sql import (
     Asset,
     AssetType,
@@ -262,6 +267,7 @@ def _seed(database_url: str) -> None:
 
             users = SqlUserIdentityRepository(session)
             project_manager_contact_id = None
+            approval_user_ids: list[str] = []
             for subject, display_name, role, employee_external_id, email_local in (
                 ("admin", "Administrateur Démo", ROLE_ADMIN, None, "admin"),
                 ("coordinator", "Coordonnateur Démo", ROLE_COORDINATOR, None, "coord"),
@@ -279,12 +285,38 @@ def _seed(database_url: str) -> None:
                     roles=(role,),
                     active=True,
                 )
+                if role in {ROLE_ADMIN, ROLE_COORDINATOR, ROLE_MANAGER}:
+                    approval_user_ids.append(record.user_id)
                 if employee_external_id == "EMP-PM":
                     project_manager_contact_id = record.business_contact_id
                     users.set_business_phone(
                         record.user_id,
                         "-".join(("450", "555", "0199")),
                     )
+
+            session.add(
+                ApprovalScope(
+                    id="SCOPE-P251-AUTOMATION",
+                    code="AUTOMATION",
+                    label="Automatisation",
+                    active=True,
+                    version=1,
+                )
+            )
+            session.flush()
+            for user_id in approval_user_ids:
+                session.add(
+                    ApprovalScopeApprover(
+                        approval_scope_id="SCOPE-P251-AUTOMATION",
+                        app_user_id=user_id,
+                    )
+                )
+            session.add(
+                TaskApprovalScopeMapping(
+                    task_catalog_item_id="TASK-P251-210",
+                    approval_scope_id="SCOPE-P251-AUTOMATION",
+                )
+            )
 
             project = session.get(Project, "P-251-ID")
             assert project is not None
