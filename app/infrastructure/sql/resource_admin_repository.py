@@ -111,6 +111,24 @@ class SqlResourceAdminRepository(ResourceAdminRepositoryPort):
         row = next((item for item in rows if _text(item.name).casefold() == wanted), None)
         return _resource_model(row) if row is not None else None
 
+    def find_resources_by_external_id(
+        self,
+        external_id: str,
+    ) -> tuple[ResourceReadModel, ...]:
+        wanted = _text(external_id)
+        if not wanted:
+            return ()
+        rows = self._session.scalars(
+            select(Resource)
+            .where(Resource.external_id == wanted)
+            .order_by(Resource.id)
+        ).all()
+        competency_ids = self._competency_ids_by_resource(tuple(row.id for row in rows))
+        return tuple(
+            _resource_model(row, competency_ids.get(row.id, ()))
+            for row in rows
+        )
+
     def create_resource(self, values: Mapping[str, Any]) -> str:
         row = Resource(
             id=new_id(),

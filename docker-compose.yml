@@ -46,6 +46,23 @@ services:
       - "${RESOURCEPLANNER_IMPORTS_PATH:-./imports}:/imports:ro"
     restart: "no"
 
+  import-resources:
+    profiles: ["tools"]
+    build:
+      context: .
+      dockerfile: Dockerfile.importer
+    image: ${RESOURCEPLANNER_IMPORTER_IMAGE:-resourceplanner-importer}:${RESOURCEPLANNER_IMAGE_TAG:-local}
+    entrypoint: ["python", "tools/import_resources.py"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      RESOURCEPLANNER_DATABASE_URL: "${RESOURCEPLANNER_DATABASE_URL:-sqlite+pysqlite:////data/resourceplanner.db}"
+    volumes:
+      - resourceplanner-data:/data
+      - "${RESOURCEPLANNER_IMPORTS_PATH:-./imports}:/imports:ro"
+    restart: "no"
+
   seed-dev:
     build:
       context: .

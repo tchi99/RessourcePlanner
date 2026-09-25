@@ -178,6 +178,19 @@ class ResourceAdminRepositoryPort(Protocol):
 
     def find_resource_by_name(self, name: str) -> ResourceReadModel | None: ...
 
+    def find_resources_by_external_id(
+        self,
+        external_id: str,
+    ) -> tuple[ResourceReadModel, ...]: ...
+
+    def list_availability_rules(
+        self,
+        *,
+        resource_id: str | None = None,
+        include_global: bool = True,
+        active_only: bool = False,
+    ) -> tuple[ResourceAvailabilityRuleReadModel, ...]: ...
+
     def create_resource(self, values: Mapping[str, Any]) -> str: ...
 
     def update_resource(self, resource_id: str, values: Mapping[str, Any]) -> str: ...
