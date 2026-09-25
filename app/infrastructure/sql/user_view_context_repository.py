@@ -183,7 +183,7 @@ class SqlUserViewContextRepository(UserViewContextRepositoryPort):
             )
             .where(
                 RequestLine.active.is_(True),
-                WorkforceRequest.status != "Annulée",
+                WorkforceRequest.status == "Soumise",
             )
         )
         if materialized_request_ids:
