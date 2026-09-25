@@ -193,3 +193,40 @@ class SqlDemandApprovalEnvelopePolicyRepository:
             previous_status="En planification",
         )
         self._session.flush()
+
+
+    def record_direct_approval(
+        self,
+        demand_number: str,
+        decision: EnvelopeDecision,
+        *,
+        actor_name: str,
+    ) -> None:
+        """Audit an approver-authored widening after 276C closes the quorum."""
+
+        request = self._request(demand_number)
+        self._append_history(
+            request,
+            action="Autorisation élargie par approbateur",
+            comment=(
+                "La modification candidate a été approuvée via le quorum 276C; "
+                "une nouvelle révision immuable a été activée atomiquement."
+            ),
+            decision=decision,
+            previous_status="Soumise",
+        )
+        # Preserve the actor used by the historical direct-approval audit surface.
+        history_actor = _text(actor_name) or self._actor_name
+        if history_actor and self._actor_name != history_actor:
+            latest = self._session.scalar(
+                select(WorkforceRequestHistory)
+                .where(
+                    WorkforceRequestHistory.workforce_request_id == request.id,
+                    WorkforceRequestHistory.action
+                    == "Autorisation élargie par approbateur",
+                )
+                .order_by(WorkforceRequestHistory.occurred_at.desc())
+            )
+            if latest is not None:
+                latest.actor_name = history_actor
+        self._session.flush()
