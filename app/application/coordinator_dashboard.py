@@ -61,6 +61,7 @@ class CoordinatorDashboardKpiReadModel:
     assignments: int
     cancellations: int
     approvals: int
+    coverage_issues: int
     partial_coverages: int
     conflicts: int
     attention_items: int
@@ -360,6 +361,9 @@ class CoordinatorDashboardService:
                 ),
                 approvals=sum(
                     row.category == ACTION_CATEGORY_APPROVAL for row in actions
+                ),
+                coverage_issues=sum(
+                    row.category == ACTION_CATEGORY_COVERAGE for row in actions
                 ),
                 partial_coverages=sum(
                     row.kind == ACTION_PARTIAL_COVERAGE for row in actions
