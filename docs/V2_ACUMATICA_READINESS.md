@@ -122,6 +122,14 @@ Confirmé sur l'instance réelle le 2026-09-24 :
 - valeur temporelle observée cohérente avec UTC côté OData et heure locale côté UI au moment du smoke;
 - `BaseType` observés : `P` et `R`.
 
+Validation RessourcePlanner réelle également confirmée le 2026-09-24 :
+
+- première synchro : 1286 reçus / 1286 créés;
+- replay immédiat : 1286 reçus / 1286 inchangés, aucune création ni mise à jour;
+- aucun doublon;
+- plusieurs mappings réels vérifiés, y compris accents/padding/nulls;
+- projets locaux préexistants conservés.
+
 Restent à confirmer ou décider :
 
 - support et syntaxe de `$select`;
@@ -129,7 +137,6 @@ Restent à confirmer ou décider :
 - garantie temporelle exacte de `LastModifiedDateTime` avant toute synchro incrémentale;
 - liste exhaustive des statuts;
 - règle métier de `BaseType` (`R` semble correspondre aux templates, sans exclusion automatique);
-- synchronisation réelle vers une base RessourcePlanner de développement et idempotence de ce parcours;
 - feed OData Employee/User;
 - clé stable des employés;
 - relation entre identité OIDC et employé;
@@ -147,8 +154,8 @@ Restent à confirmer ou décider :
 
 ## Ordre recommandé
 
-1. terminer 207B par la synchronisation réelle vers une base RessourcePlanner de développement et son replay idempotent;
-2. confirmer la règle métier de `BaseType=R`;
+1. confirmer la règle métier de `BaseType=R` avant tout filtrage;
+2. remplacer le compte nominatif temporaire par un compte de service avant exploitation durable;
 3. conserver la synchro incrémentale hors scope jusqu'à définition d'un curseur robuste;
 4. compléter #232 pour Employee/User et identité;
 5. implémenter ensuite #256 avec la source OData réellement observée.
