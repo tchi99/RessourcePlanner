@@ -107,7 +107,8 @@ class ServerResourceClassRouteTests(unittest.TestCase):
                 "/api/v1/admin/resource-classes/"
                 "projects/project-1/task-rules"
             )
-            restored = client.delete(
+            restored = client.request(
+                "DELETE",
                 "/api/v1/admin/resource-classes/"
                 "projects/project-1/task-overrides/216",
                 json={
