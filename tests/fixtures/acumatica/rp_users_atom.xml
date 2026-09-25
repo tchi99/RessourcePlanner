@@ -1,0 +1,151 @@
+<?xml version="1.0" encoding="utf-8"?>
+<feed xml:base="https://erp-example.invalid/odata" xmlns="http://www.w3.org/2005/Atom" xmlns:d="http://schemas.microsoft.com/ado/2007/08/dataservices" xmlns:m="http://schemas.microsoft.com/ado/2007/08/dataservices/metadata" xmlns:georss="http://www.georss.org/georss" xmlns:gml="http://www.opengis.net/gml">
+    <id>http://schemas.datacontract.org/2004/07/</id>
+    <title />
+    <updated>2026-01-15T14:30:00Z</updated>
+    <link rel="self" href="https://erp-example.invalid/odata/RP_Users" />
+    <entry>
+        <id>https://erp-example.invalid/odata/RP_Users(UserID='AEXEMPLE',EmployeID='EXEMALI%20%20%20')</id>
+        <category term="PX.Data.RP_Users" scheme="http://schemas.microsoft.com/ado/2007/08/dataservices/scheme" />
+        <link rel="edit" href="https://erp-example.invalid/odata/RP_Users(UserID='AEXEMPLE',EmployeID='EXEMALI%20%20%20')" />
+        <link rel="self" href="https://erp-example.invalid/odata/RP_Users(UserID='AEXEMPLE',EmployeID='EXEMALI%20%20%20')" />
+        <title />
+        <updated>2026-01-15T14:30:00Z</updated>
+        <author>
+            <name />
+        </author>
+        <content type="application/xml">
+            <m:properties>
+                <d:UserID>AEXEMPLE</d:UserID>
+                <d:EmployeID xml:space="preserve">EXEMALI   </d:EmployeID>
+                <d:UserDisplayName>1001 - ALICE EXEMPLE</d:UserDisplayName>
+                <d:UserFirstName>1001 - ALICE</d:UserFirstName>
+                <d:UserLastName>EXEMPLE</d:UserLastName>
+                <d:UserEmail>alice.exemple@example.invalid</d:UserEmail>
+                <d:UserActif m:type="Edm.Boolean">true</d:UserActif>
+                <d:EmployeName>1001 - ALICE EXEMPLE</d:EmployeName>
+                <d:EmployeStatus>Actif</d:EmployeStatus>
+            </m:properties>
+        </content>
+    </entry>
+    <entry>
+        <id>https://erp-example.invalid/odata/RP_Users(UserID='BDUPONT',EmployeID='DUPOBRUN%20%20')</id>
+        <category term="PX.Data.RP_Users" scheme="http://schemas.microsoft.com/ado/2007/08/dataservices/scheme" />
+        <link rel="edit" href="https://erp-example.invalid/odata/RP_Users(UserID='BDUPONT',EmployeID='DUPOBRUN%20%20')" />
+        <link rel="self" href="https://erp-example.invalid/odata/RP_Users(UserID='BDUPONT',EmployeID='DUPOBRUN%20%20')" />
+        <title />
+        <updated>2026-01-15T14:30:00Z</updated>
+        <author>
+            <name />
+        </author>
+        <content type="application/xml">
+            <m:properties>
+                <d:UserID>BDUPONT</d:UserID>
+                <d:EmployeID xml:space="preserve">DUPOBRUN  </d:EmployeID>
+                <d:UserDisplayName>1002 - BRUNO DUPONT</d:UserDisplayName>
+                <d:UserFirstName>1002 - BRUNO</d:UserFirstName>
+                <d:UserLastName>DUPONT</d:UserLastName>
+                <d:UserEmail>bruno.dupont@example.invalid</d:UserEmail>
+                <d:UserActif m:type="Edm.Boolean">true</d:UserActif>
+                <d:EmployeName>1002 - BRUNO DUPONT</d:EmployeName>
+                <d:EmployeStatus>Actif</d:EmployeStatus>
+            </m:properties>
+        </content>
+    </entry>
+    <entry>
+        <id>https://erp-example.invalid/odata/RP_Users(UserID='c.test',EmployeID='TESTCAMIL%20')</id>
+        <category term="PX.Data.RP_Users" scheme="http://schemas.microsoft.com/ado/2007/08/dataservices/scheme" />
+        <link rel="edit" href="https://erp-example.invalid/odata/RP_Users(UserID='c.test',EmployeID='TESTCAMIL%20')" />
+        <link rel="self" href="https://erp-example.invalid/odata/RP_Users(UserID='c.test',EmployeID='TESTCAMIL%20')" />
+        <title />
+        <updated>2026-01-15T14:30:00Z</updated>
+        <author>
+            <name />
+        </author>
+        <content type="application/xml">
+            <m:properties>
+                <d:UserID>c.test</d:UserID>
+                <d:EmployeID xml:space="preserve">TESTCAMIL </d:EmployeID>
+                <d:UserDisplayName>1003 - CAMILLE TEST</d:UserDisplayName>
+                <d:UserFirstName>1003 - CAMILLE</d:UserFirstName>
+                <d:UserLastName>TEST</d:UserLastName>
+                <d:UserEmail>camille.test@example.invalid</d:UserEmail>
+                <d:UserActif m:type="Edm.Boolean">false</d:UserActif>
+                <d:EmployeName>1003 - CAMILLE TEST</d:EmployeName>
+                <d:EmployeStatus>Actif</d:EmployeStatus>
+            </m:properties>
+        </content>
+    </entry>
+    <entry>
+        <id>https://erp-example.invalid/odata/RP_Users(UserID='DMARTIN',EmployeID='MARTDANI%20%20')</id>
+        <category term="PX.Data.RP_Users" scheme="http://schemas.microsoft.com/ado/2007/08/dataservices/scheme" />
+        <link rel="edit" href="https://erp-example.invalid/odata/RP_Users(UserID='DMARTIN',EmployeID='MARTDANI%20%20')" />
+        <link rel="self" href="https://erp-example.invalid/odata/RP_Users(UserID='DMARTIN',EmployeID='MARTDANI%20%20')" />
+        <title />
+        <updated>2026-01-15T14:30:00Z</updated>
+        <author>
+            <name />
+        </author>
+        <content type="application/xml">
+            <m:properties>
+                <d:UserID>DMARTIN</d:UserID>
+                <d:EmployeID xml:space="preserve">MARTDANI  </d:EmployeID>
+                <d:UserDisplayName>1004 - DANI MARTIN-LEBLANC</d:UserDisplayName>
+                <d:UserFirstName>1004 - DANI</d:UserFirstName>
+                <d:UserLastName>MARTIN-LEBLANC</d:UserLastName>
+                <d:UserEmail>dani.martin@example.invalid</d:UserEmail>
+                <d:UserActif m:type="Edm.Boolean">true</d:UserActif>
+                <d:EmployeName>1004 - DANI MARTIN-LEBLANC</d:EmployeName>
+                <d:EmployeStatus>Inactif</d:EmployeStatus>
+            </m:properties>
+        </content>
+    </entry>
+    <entry>
+        <id>https://erp-example.invalid/odata/RP_Users(UserID='EDEMO',EmployeID='DEMOELI%20%20%20')</id>
+        <category term="PX.Data.RP_Users" scheme="http://schemas.microsoft.com/ado/2007/08/dataservices/scheme" />
+        <link rel="edit" href="https://erp-example.invalid/odata/RP_Users(UserID='EDEMO',EmployeID='DEMOELI%20%20%20')" />
+        <link rel="self" href="https://erp-example.invalid/odata/RP_Users(UserID='EDEMO',EmployeID='DEMOELI%20%20%20')" />
+        <title />
+        <updated>2026-01-15T14:30:00Z</updated>
+        <author>
+            <name />
+        </author>
+        <content type="application/xml">
+            <m:properties>
+                <d:UserID>EDEMO</d:UserID>
+                <d:EmployeID xml:space="preserve">DEMOELI   </d:EmployeID>
+                <d:UserDisplayName>1005 - ELI DEMO</d:UserDisplayName>
+                <d:UserFirstName>1005 - ELI</d:UserFirstName>
+                <d:UserLastName>DEMO</d:UserLastName>
+                <d:UserEmail>eli.demo@example.invalid</d:UserEmail>
+                <d:UserActif m:type="Edm.Boolean">false</d:UserActif>
+                <d:EmployeName>1005 - ELI DEMO</d:EmployeName>
+                <d:EmployeStatus>Inactif</d:EmployeStatus>
+            </m:properties>
+        </content>
+    </entry>
+    <entry>
+        <id>https://erp-example.invalid/odata/RP_Users(UserID='FUTILISATEUR',EmployeID='UTILFRED%20%20')</id>
+        <category term="PX.Data.RP_Users" scheme="http://schemas.microsoft.com/ado/2007/08/dataservices/scheme" />
+        <link rel="edit" href="https://erp-example.invalid/odata/RP_Users(UserID='FUTILISATEUR',EmployeID='UTILFRED%20%20')" />
+        <link rel="self" href="https://erp-example.invalid/odata/RP_Users(UserID='FUTILISATEUR',EmployeID='UTILFRED%20%20')" />
+        <title />
+        <updated>2026-01-15T14:30:00Z</updated>
+        <author>
+            <name />
+        </author>
+        <content type="application/xml">
+            <m:properties>
+                <d:UserID>FUTILISATEUR</d:UserID>
+                <d:EmployeID xml:space="preserve">UTILFRED  </d:EmployeID>
+                <d:UserDisplayName>1006 - FRED UTILISATEUR</d:UserDisplayName>
+                <d:UserFirstName>1006 - FRED</d:UserFirstName>
+                <d:UserLastName>UTILISATEUR</d:UserLastName>
+                <d:UserEmail>fred.utilisateur@example.invalid</d:UserEmail>
+                <d:UserActif m:type="Edm.Boolean">true</d:UserActif>
+                <d:EmployeName>1006 - FRED UTILISATEUR</d:EmployeName>
+                <d:EmployeStatus>Actif</d:EmployeStatus>
+            </m:properties>
+        </content>
+    </entry>
+</feed>
