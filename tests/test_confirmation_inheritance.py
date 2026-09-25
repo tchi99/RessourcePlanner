@@ -30,6 +30,7 @@ from app.server import create_api_app
 DAY = date(2026, 8, 24)  # lundi
 
 
+from tests.approval_test_support import routed_demand_payload, seed_test_approval_routing
 from tests.http_test_auth import TEST_ADMIN_AUTH_RESOLVER
 from tests.sqlite_test_template import SqliteDatabaseTemplate
 
@@ -70,6 +71,7 @@ class ConfirmationInheritanceApiTests(unittest.TestCase):
                 active=True,
             )
         )
+        seed_test_approval_routing(session, map_existing_tasks=True)
 
     @classmethod
     def setUpClass(cls) -> None:
@@ -91,14 +93,14 @@ class ConfirmationInheritanceApiTests(unittest.TestCase):
     def _create_and_approve_tentative(client: TestClient) -> str:
         created = client.post(
             "/api/v1/demands",
-            json={
+            json=routed_demand_payload({
                 "project_number": "P-1",
                 "desired_start": DAY.isoformat(),
                 "desired_end": DAY.isoformat(),
                 "estimated_hours": 4,
                 "proposed_technician": "Alice",
                 "confirmation": "Tentative",
-            },
+            }),
         )
         assert created.status_code == 201, created.text
         number = created.json()["demand_number"]
@@ -231,12 +233,12 @@ class ConfirmationInheritanceApiTests(unittest.TestCase):
             with TestClient(app, raise_server_exceptions=False) as client:
                 created = client.post(
                     "/api/v1/demands",
-                    json={
+                    json=routed_demand_payload({
                         "project_number": "P-1",
                         "desired_start": DAY.isoformat(),
                         "desired_end": DAY.isoformat(),
                         "confirmation": "Confirmée",
-                    },
+                    }),
                 )
                 self.assertEqual(created.status_code, 201, created.text)
                 number = created.json()["demand_number"]
