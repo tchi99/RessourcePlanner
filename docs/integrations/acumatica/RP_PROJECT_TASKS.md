@@ -66,67 +66,84 @@ Les chaînes paddées doivent être normalisées avec `strip()` lorsqu'elles ser
 
 Les montants doivent rester des `Decimal`; ne pas les convertir en `float`.
 
-## Granularité du feed
+## Identité tâche et relation projet
 
-L'identifiant Atom observé contient plusieurs dimensions :
-
-- `ProjetCD`;
-- `TaskCD`;
-- `AccountGroup`;
-- `BaseType`;
-- `ProjectID`;
-- `ProjectID_2`;
-- `ProjectTaskID`;
-- `CostCode`;
-- `InventoryID`.
-
-Cela signifie que RessourcePlanner ne doit **pas supposer qu'une entrée OData = une tâche unique**.
-
-Le feed ressemble à une projection tâche + ligne de budget/dimension comptable. Plusieurs entrées peuvent donc potentiellement représenter la même tâche avec des groupes de compte, codes coût ou articles différents.
-
-L'implémentation doit séparer :
+Décisions PO confirmées :
 
 ```text
-Task identity / metadata
-        │
-        └── 0..N budget lines
+RP_ProjectTasks.TaskID = clé unique/stable de la tâche ERP
+trim(RP_ProjectTasks.ProjectCD) = RP_Projects.ProjectCode
 ```
 
-Ne pas créer plusieurs `TaskCatalogEntry` uniquement parce que plusieurs lignes budgétaires existent.
+`ProjectID_2` est le numéro interne ERP du projet, mais RessourcePlanner utilise `ProjectCD → ProjectCode` comme relation métier autoritaire pour ce contrat.
 
-## Identité tâche — point à confirmer
+L'identifiant Atom expose plusieurs colonnes techniques de la vue OData, mais ces colonnes ne remplacent pas `TaskID` comme identité fonctionnelle de la tâche.
 
-Le catalogue actuel RessourcePlanner utilise comme identité durable :
-
-```text
-(project_number, task_code)
-```
-
-Le feed expose aussi `TaskID` et `ProjectTaskID`, qui sont des candidats à une clé technique ERP plus robuste.
-
-Avant de changer l'identité SQL du catalogue, confirmer côté PO :
-
-1. si `ProjectTaskID` est unique et stable à l'échelle de l'instance;
-2. si `TaskID` et `ProjectTaskID` sont toujours équivalents;
-3. si `ProjectID_2` correspond exactement à `RP_Projects.ProjectId`.
-
-Tant que cette confirmation n'est pas faite, ne pas introduire de migration destructive d'identité.
+Le catalogue #271 utilise actuellement `(project_number, task_code)`. La transition OData doit donc ajouter un identifiant ERP `TaskID` nullable/stable sans casser les références historiques issues du fallback fichier.
 
 ## Budgets
 
-Le sample montre que :
+Décision PO confirmée :
 
-- `BudgetAmount` et `BudgetActual` sont des décimaux monétaires/quantitatifs ERP dont l'unité exacte reste à confirmer;
+- `BudgetAmount` est un montant monétaire en **CAD**;
+- `BudgetActual` est un montant monétaire réalisé en **CAD**;
 - un budget peut être négatif;
-- le réalisé peut dépasser le budget;
-- `AccountGroup`, `CostCode` et `InventoryID` font partie de la granularité observée.
+- le réalisé peut dépasser le budget.
 
-Conséquences :
+Les montants restent des `Decimal`.
 
-- ne jamais clamp les valeurs à zéro;
-- ne pas mapper `BudgetAmount` vers `planned_hours` ou un effort Planning;
-- ne pas sommer indistinctement coûts et revenus avant confirmation de la sémantique métier des groupes de compte;
-- conserver au besoin les lignes budgétaires séparées, puis produire des agrégats explicites par catégorie lorsque les règles métier sont connues.
+### Conversion budget → heures workforce
+
+Pour les tâches associées à une classe de ressource, RessourcePlanner calcule une projection d'heures à partir du coût horaire moyen administré pour la classe :
+
+```text
+budget_hours = BudgetAmount_CAD / average_hourly_cost_CAD
+```
+
+Cette projection n'est pas un actual d'heures et ne doit jamais être confondue avec un Shift ou une ligne approuvée.
+
+`BudgetActual` demeure un montant CAD réel. Il ne devient pas automatiquement un nombre d'heures autoritaire.
+
+Si le coût est absent/0 ou si le budget produit une valeur incohérente pour Planning, le système doit afficher un diagnostic plutôt que fabriquer silencieusement un effort valide.
+
+Voir #454.
+
+## Classification workforce et import ciblé
+
+Le produit ne doit pas importer/configurer manuellement toutes les tâches de tous les projets.
+
+Un référentiel ADMIN séparé (#454) fournit :
+
+- les classes de ressources;
+- un coût horaire moyen CAD par classe;
+- les standards globaux `TaskCD → classe`;
+- les exceptions par projet.
+
+Exemples initiaux :
+
+```text
+117 → Installateur électrique
+216 → Programmeur
+217 → Installateur automatisation
+```
+
+Ces correspondances sont administrables et **ne sont pas codées en dur**.
+
+Résolution :
+
+```text
+override projet
+    ↓ si présent
+classe spécifique / EXCLUDE
+    ↓ sinon
+standard TaskCD
+    ↓ sinon
+non classé
+```
+
+Pour un projet ciblé, l'adaptateur peut récupérer les tâches du projet puis ne conserver dans le catalogue workforce que celles ayant une classe effective. Cela évite de charger le feed global tout en laissant les exceptions projet possibles.
+
+Cette classification workforce reste distincte des `ApprovalScope` de #276/ADR-010. Une même autorité d'approbation peut couvrir plusieurs classes de ressources différentes.
 
 ## Performance et stratégie de synchronisation
 
@@ -231,17 +248,15 @@ Cependant, le contrat actuel `TaskCatalogSourcePort.list_tasks()` représente un
 
 Ne pas faire passer les lignes budgétaires brutes directement dans le service actuel comme autant de tâches.
 
-## Questions PO encore ouvertes
+## Questions encore ouvertes
 
 Avant implémentation complète :
 
-1. confirmer que `ProjectTaskID` est une clé unique/stable de tâche;
-2. confirmer le lien exact `ProjectID_2` ↔ `RP_Projects.ProjectId`;
-3. préciser l'unité/devise de `BudgetAmount` et `BudgetActual`;
-4. préciser si les budgets coût et revenu doivent être présentés séparément par `AccountGroup`;
-5. valider une requête OData ciblée sur **un seul projet**;
-6. valider pagination/ordre sur ce feed;
-7. déterminer si un champ LastModified fiable peut être ajouté à la vue OData.
+1. valider une requête OData ciblée sur **un seul projet** via `ProjectCD`;
+2. valider `$orderby=TaskID asc`, `$top/$skip` et la présence éventuelle de `rel=next`;
+3. déterminer si un champ LastModified fiable peut être ajouté à la vue OData;
+4. confirmer si certains TaskCD workforce peuvent contenir des montants autres que de la main-d'œuvre nécessitant une règle supplémentaire sur `AccountGroup`;
+5. définir les valeurs initiales des coûts moyens par classe et la liste initiale des standards TaskCD dans #454.
 
 ## Références
 
