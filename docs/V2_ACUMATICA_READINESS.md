@@ -34,6 +34,22 @@ Le runtime projet utilise maintenant `ODataProjectSource`. Les tests OData repre
 
 Ces garanties sont conservées sans modifier `ProjectSyncService` ni la transaction SQL de synchronisation.
 
+## Développement sans accès ERP direct
+
+L'accès à l'instance Acumatica réelle n'est pas une dépendance de développement.
+
+Le processus retenu est contract-first :
+
+1. le PO/opérateur autorisé valide le feed et la requête dans Acumatica;
+2. il fournit un contrat documenté et une fixture anonymisée structurellement fidèle;
+3. le développeur implémente et valide contre fixtures/mock locaux;
+4. la CI reste totalement indépendante de l'ERP;
+5. le PO/opérateur autorisé exécute ensuite les smokes réels et retourne uniquement les résultats techniques désensibilisés.
+
+Une intégration n'est bloquée que si le **contrat** requis est insuffisant, pas parce que le développeur n'a pas d'accès ERP.
+
+Voir [ACUMATICA_CONTRACT_WORKFLOW.md](ACUMATICA_CONTRACT_WORKFLOW.md).
+
 ## Contrat OData projet connu
 
 Le feed `RP_Projects` est Atom/XML.
