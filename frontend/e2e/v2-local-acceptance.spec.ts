@@ -1410,7 +1410,7 @@ test("mixed asset demand uses authoritative reservations, conflicts, refresh and
         desired_active_days: null,
         estimated_hours: null,
         work_package_ref: null,
-        task_code: null,
+        task_code: "210",
         proposed_resource_id: null,
         asset_type_id: "AT-LIFT",
         proposed_asset_id: null,
