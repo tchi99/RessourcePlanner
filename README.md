@@ -337,32 +337,38 @@ Voir [`docs/AUTH_RBAC.md`](docs/AUTH_RBAC.md) et [`docs/OIDC_ACUMATICA_VALIDATIO
 
 ## Imports ERP
 
-Les projets et tâches ERP peuvent être chargés temporairement à partir d’exports avant la synchronisation Acumatica réelle.
+Le bootstrap de test utilise les chemins canoniques suivants.
 
-### Projets
+### Projets — OData Acumatica
+
+Les projets sont synchronisés par le chemin livré dans #207 :
+`ODataProjectSource → ProjectSourcePort → ProjectSyncService`.
+
+Après avoir configuré les variables `RESOURCEPLANNER_ACUMATICA_*` du backend, un
+administrateur peut ouvrir **Configuration → Projets Acumatica** et lancer
+**Synchroniser les projets**. Le résultat affiche les nombres reçus, créés, mis à jour,
+inchangés et les erreurs.
+
+L'ancien import Excel de projets reste un outil de compatibilité dev/démo; il n'est pas le
+chemin recommandé pour le bootstrap PO.
+
+### Tâches — export temporaire XLSX/CSV
 
 Prévisualisation :
 
 ```bash
-docker compose run --rm import-projects /imports/Projets.xlsx
+docker compose run --rm import-tasks "/imports/Tâches de projet.xlsx"
 ```
 
 Application :
 
 ```bash
-docker compose run --rm import-projects /imports/Projets.xlsx --apply
-```
-
-### Tâches
-
-```bash
-docker compose run --rm import-tasks "/imports/Tâches de projet.xlsx"
 docker compose run --rm import-tasks "/imports/Tâches de projet.xlsx" --apply
 ```
 
-Les fichiers d’import sont montés en lecture seule dans le conteneur.
-
-Voir [`docs/ERP_TASK_CATALOG.md`](docs/ERP_TASK_CATALOG.md) et [`docs/V2_ACUMATICA_READINESS.md`](docs/V2_ACUMATICA_READINESS.md).
+Les fichiers d'import sont montés en lecture seule dans le conteneur. Le format minimal,
+les diagnostics de doublons/lignes invalides et la sémantique de replay sont documentés dans
+[`docs/ERP_TASK_CATALOG.md`](docs/ERP_TASK_CATALOG.md).
 
 ---
 
