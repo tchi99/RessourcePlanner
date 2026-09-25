@@ -3,15 +3,20 @@ from __future__ import annotations
 from sqlalchemy import exists, or_, select
 from sqlalchemy.orm import Session
 
+from ...application.operational_contacts import OperationalContactService
 from ...application.query_models import ResourceReadModel
 from ...application.user_view_context import UserViewContextRepositoryPort
+from .identity_models import AppUser
 from .models import (
     Project,
+    RequestLine,
     Resource,
     ResourceCompetency,
     ResourceRequirement,
     Shift,
+    WorkforceRequest,
 )
+from .operational_contact_repository import SqlOperationalContactRepository
 
 
 def _optional_text(value: object) -> str | None:
@@ -71,6 +76,140 @@ class SqlUserViewContextRepository(UserViewContextRepositoryPort):
                 .order_by(Project.number, Project.id)
             ).all()
         )
+
+
+    def list_coordinated_demand_ids(
+        self,
+        local_user_id: str,
+    ) -> tuple[str, ...]:
+        """Return exact request IDs whose canonical coordinator is the current user.
+
+        Candidate lines are authoritative only before materialization. Once a request
+        has an active materialized requirement, #289C/#289F approved context remains
+        authoritative so an unapproved candidate edit cannot move display scope.
+        """
+
+        user_id = str(local_user_id or "").strip()
+        if not user_id:
+            return ()
+        user = self._session.get(AppUser, user_id)
+        contact_id = (
+            str(user.business_contact_id or "").strip()
+            if user is not None
+            else ""
+        )
+        if not contact_id:
+            return ()
+
+        active_requirement_rows = tuple(
+            self._session.execute(
+                select(
+                    ResourceRequirement.id,
+                    ResourceRequirement.workforce_request_id,
+                ).where(
+                    ResourceRequirement.workforce_request_id.is_not(None),
+                    ResourceRequirement.origin == "REQUEST",
+                    ResourceRequirement.status != "Annulé",
+                )
+            ).all()
+        )
+        requirement_ids = tuple(row.id for row in active_requirement_rows)
+        request_id_by_requirement_id = {
+            row.id: row.workforce_request_id
+            for row in active_requirement_rows
+            if row.workforce_request_id
+        }
+        materialized_request_ids = set(
+            request_id_by_requirement_id.values()
+        )
+
+        shift_rows = (
+            tuple(
+                self._session.execute(
+                    select(
+                        Shift.id,
+                        Shift.resource_requirement_id,
+                    ).where(
+                        Shift.resource_requirement_id.in_(requirement_ids)
+                    )
+                ).all()
+            )
+            if requirement_ids
+            else ()
+        )
+        request_id_by_shift_id = {
+            row.id: request_id_by_requirement_id.get(
+                row.resource_requirement_id
+            )
+            for row in shift_rows
+        }
+
+        contacts = OperationalContactService(
+            SqlOperationalContactRepository(self._session)
+        )
+        coordinated_request_ids: set[str] = set()
+
+        for resolution in contacts.resolve_resource_requirements(
+            requirement_ids
+        ):
+            if (
+                resolution.coordinator.resolved
+                and resolution.coordinator.contact_id == contact_id
+            ):
+                request_id = request_id_by_requirement_id.get(
+                    resolution.requirement_id
+                )
+                if request_id:
+                    coordinated_request_ids.add(request_id)
+
+        for resolution in contacts.resolve_shifts(
+            tuple(row.id for row in shift_rows)
+        ):
+            if (
+                resolution.coordinator.resolved
+                and resolution.coordinator.contact_id == contact_id
+            ):
+                request_id = request_id_by_shift_id.get(
+                    resolution.subject_id
+                )
+                if request_id:
+                    coordinated_request_ids.add(request_id)
+
+        candidate_statement = (
+            select(RequestLine.id, RequestLine.workforce_request_id)
+            .join(
+                WorkforceRequest,
+                RequestLine.workforce_request_id == WorkforceRequest.id,
+            )
+            .where(
+                RequestLine.active.is_(True),
+                WorkforceRequest.status != "Annulée",
+            )
+        )
+        if materialized_request_ids:
+            candidate_statement = candidate_statement.where(
+                RequestLine.workforce_request_id.notin_(
+                    tuple(materialized_request_ids)
+                )
+            )
+        candidate_rows = tuple(
+            self._session.execute(candidate_statement).all()
+        )
+        request_id_by_line_id = {
+            row.id: row.workforce_request_id for row in candidate_rows
+        }
+        for resolution in contacts.resolve_request_lines(
+            tuple(request_id_by_line_id)
+        ):
+            if (
+                resolution.coordinator.resolved
+                and resolution.coordinator.contact_id == contact_id
+            ):
+                request_id = request_id_by_line_id.get(resolution.line_id)
+                if request_id:
+                    coordinated_request_ids.add(request_id)
+
+        return tuple(sorted(coordinated_request_ids))
 
     def list_participating_project_ids(
         self,
