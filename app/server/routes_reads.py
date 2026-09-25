@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, Query, Request
 from ..application import (
     ApplicationConflictError,
     ApplicationNotFoundError,
+    ApplicationOperationError,
     ApplicationValidationError,
     DemandApprovalStateReadModel,
     DemandCancellationMaterializationReadModel,
@@ -35,6 +36,10 @@ from ..application import (
     WorkPackageReadModel,
 )
 from ..application.approval_progress import ApprovalProgressService
+from ..application.coordinator_dashboard import (
+    CoordinatorDashboardReadModel,
+    CoordinatorDashboardService,
+)
 from ..application.demand_cancellation import demand_cancellation_policy
 from ..application.query_models import PlanningHistoryReadModel
 from ..application.security import AuthPrincipal
@@ -258,6 +263,25 @@ def build_read_router(
             )
             for row, materialization in pairs
         ]
+
+    @router.get("/coordinator-dashboard")
+    def coordinator_dashboard(
+        request: Request,
+        queries: PlannerQueryPort = Depends(query_dependency),
+        context_repository: Any = Depends(context_dependency),
+        approvals: ApprovalProgressService | None = Depends(approval_dependency),
+    ) -> CoordinatorDashboardReadModel:
+        if context_repository is None:
+            raise ApplicationOperationError(
+                "Le contexte utilisateur du dashboard coordonnateur est indisponible.",
+                code="coordinator_dashboard_context_unavailable",
+            )
+        principal: AuthPrincipal = request.state.auth_principal
+        return CoordinatorDashboardService(
+            queries,
+            UserViewContextService(context_repository),
+            approvals,
+        ).read(principal)
 
     @router.get("/demands/{number}")
     def get_demand(
