@@ -153,6 +153,20 @@ La même décision s'applique aux futures données organisationnelles Acumatica 
 
 Le feed/vue Employee/User exact, ses champs, sa clé stable et la relation avec l'identité OIDC restent à découvrir dans #232 avant l'implémentation de #256.
 
+### Statut de découverte Employee/User
+
+Au 2026-09-25, **aucun feed Employee/User/ressource n'a encore été observé sur l'instance réelle dans un environnement d'exécution accessible à cette tranche**. Les seules observations ERP réelles conservées dans ce dépôt concernent `RP_Projects`.
+
+En conséquence :
+
+- un nom historique ou proposé comme `RP_Employees` n'est **pas** un contrat tant qu'il n'a pas été vu dans le service document / metadata OData réel;
+- aucun champ standard supposé (`EmployeeID`, `UserID` ou équivalent) ne doit être déclaré clé externe stable sans observation réelle;
+- aucune règle de planifiabilité ne doit être dérivée d'un nom de champ supposé;
+- aucune jointure User ↔ Employee par nom ou courriel n'est autoritaire;
+- les capacités démontrées pour `RP_Projects` (`$filter`, `$orderby`, `$top/$skip`, `LastModifiedDateTime`) ne sont pas automatiquement transposées au futur feed Employee.
+
+La reprise de #232 doit commencer par le **service document / metadata OData réel**, avec credentials injectés hors Git, puis seulement interroger les feeds réellement exposés. Toute sortie conservée dans Git doit être limitée à des noms de feeds/types/champs, capacités et exemples entièrement anonymisés; aucune donnée personnelle réelle ne doit être journalisée ou commitée.
+
 ## Implémentation locale
 
 Le runtime projet compose `ODataProjectSource`, un lecteur Atom/XML dédié derrière le `ProjectSourcePort` existant. `ProjectId`, `ProjectCode`, `ProjectName`, client, chargé de projet et statut sont projetés vers `ExternalProjectRecord` sans modifier `ProjectSyncService`.
@@ -163,20 +177,16 @@ L'ancien `AcumaticaProjectSource` REST/JSON reste présent uniquement comme comp
 
 ## Validation restante
 
-207B a maintenant confirmé sur l'instance réelle :
+#207 est terminé. Le smoke réel du 2026-09-24 et la synchronisation de développement ont confirmé :
 
 1. HTTP Basic avec credentials hors dépôt;
 2. GET réel de `RP_Projects` en Atom/XML;
-3. `ProjectId` comme identité stable attendue et `ProjectCode` comme numéro métier;
-4. `$filter`, `$orderby`, pagination `$top/$skip` sans `rel="next"`, et comportement décrit ci-dessus de `LastModifiedDateTime`;
-5. valeurs `BaseType` observées `P` / `R`, sans décision d'exclusion.
+3. `ProjectId` comme identité stable et `ProjectCode` comme numéro métier;
+4. `$filter`, `$orderby`, pagination `$top/$skip` sans `rel="next"`, et le comportement décrit ci-dessus de `LastModifiedDateTime`;
+5. une première synchronisation de 1286 projets puis un replay idempotent avec 1286 entrées inchangées, sans doublon ni suppression locale implicite.
 
-Restent à valider avant de déclarer #207B terminé :
+La signification métier exacte de `BaseType=R` et le remplacement du compte nominatif par un compte de service restent des sujets séparés du contrat projet livré; ils ne rouvrent pas #207.
 
-1. exécuter `POST /api/v1/integrations/acumatica/projects/sync` sur une base RessourcePlanner de développement;
-2. vérifier plusieurs projets réels et l'absence de duplication;
-3. rejouer la synchronisation pour confirmer l'idempotence réelle;
-4. confirmer fonctionnellement la signification et la règle métier de `BaseType=R`;
-5. remplacer le compte nominatif par un compte de service avant exploitation durable.
+La validation réelle encore structurante pour les ressources est #232 : feed Employee/User, clé externe stable, admissibilité à la planification, relation User ↔ Employee et capacités de synchronisation propres à ce feed.
 
 Refs : #207 #232 #256
