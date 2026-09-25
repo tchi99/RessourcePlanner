@@ -222,7 +222,9 @@ function DemandCard({ demand, selected, onClick }: { demand: DemandReadModel; se
   );
 }
 
-export default function DemandsPage() {
+type DemandsPageProps = { initialDemandNumber?: string | null };
+
+export default function DemandsPage({ initialDemandNumber = null }: DemandsPageProps) {
   const { can, principal } = useAuth();
   const { scope, loading: scopeLoading } = useViewScope();
   const canManageDemands = can("manage_demands");
@@ -264,6 +266,23 @@ export default function DemandsPage() {
   const [includeTerminated, setIncludeTerminated] = useState(false);
   const [sortOrder, setSortOrder] = useState<"newest" | "oldest">("newest");
   const createRetry = useRef<RetryReceipt | null>(null);
+
+  const initialSelectionApplied = useRef(false);
+
+  useEffect(() => {
+    if (
+      initialSelectionApplied.current
+      || !initialDemandNumber
+      || demands.length === 0
+    ) return;
+    initialSelectionApplied.current = true;
+    if (!demands.some((row) => row.number === initialDemandNumber)) return;
+    setCreating(false);
+    setSelectedNumber(initialDemandNumber);
+    setSelectedDetail(null);
+    setDemandContactLink(null);
+    setLineContactResolutions({});
+  }, [initialDemandNumber, demands]);
 
   useEffect(() => {
     if (scopeLoading) return;
