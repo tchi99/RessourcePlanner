@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { useAuth } from "./AuthContext";
 import CommunicationsPage from "./CommunicationsPage";
+import CoordinatorDashboardPage from "./CoordinatorDashboardPage";
 import ConfigurationPage from "./ConfigurationPage";
 import DevUserSwitcher from "./DevUserSwitcher";
 import DemandsWorkspace from "./DemandsWorkspace";
@@ -11,13 +12,15 @@ import ProjectsPage from "./ProjectsPage";
 import ResourcesPage from "./ResourcesPage";
 import TechnicianSchedulePage from "./TechnicianSchedulePage";
 import UserAdminPage from "./UserAdminPage";
+import { useViewScope } from "./ViewScopeContext";
 
-type View = "my-schedule" | "planning" | "medium-term" | "demands" | "projects" | "resources" | "users" | "communications" | "configuration";
+type View = "my-schedule" | "coordinator-dashboard" | "planning" | "medium-term" | "demands" | "projects" | "resources" | "users" | "communications" | "configuration";
 
-type NavItem = { key: View; label: string; eyebrow: string; shortLabel: string; permission?: string };
+type NavItem = { key: View; label: string; eyebrow: string; shortLabel: string; permission?: string; role?: string };
 
 const navItems: NavItem[] = [
   { key: "my-schedule", label: "Mon horaire", eyebrow: "Personnel", shortLabel: "MH" },
+  { key: "coordinator-dashboard", label: "Coordonnateur", eyebrow: "Pilotage", shortLabel: "TC", role: "COORDINATOR" },
   { key: "planning", label: "Planning opérationnel", eyebrow: "Semaine", shortLabel: "PL" },
   { key: "medium-term", label: "Moyen terme", eyebrow: "Capacité", shortLabel: "MT" },
   { key: "demands", label: "Demandes", eyebrow: "Main-d’œuvre", shortLabel: "DE" },
@@ -60,7 +63,9 @@ export default function App() {
     login,
     logout,
   } = useAuth();
+  const { setScope } = useViewScope();
   const [view, setView] = useState<View>("planning");
+  const [demandToOpen, setDemandToOpen] = useState<string | null>(null);
   const [initialViewResolved, setInitialViewResolved] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCompact, setSidebarCompact] = useState(() => {
@@ -88,8 +93,11 @@ export default function App() {
   }, [sidebarCompact]);
 
   const visibleNavItems = useMemo(
-    () => navItems.filter((item) => !item.permission || can(item.permission)),
-    [can],
+    () => navItems.filter((item) => (
+      (!item.permission || can(item.permission))
+      && (!item.role || Boolean(principal?.roles.includes(item.role)))
+    )),
+    [can, principal?.roles],
   );
 
   if (authLoading) {
@@ -132,6 +140,17 @@ export default function App() {
 
   const currentItem = navItems.find((item) => item.key === view);
 
+  function openDemand(number: string) {
+    setScope("global");
+    setDemandToOpen(number);
+    setView("demands");
+  }
+
+  function openDemands() {
+    setDemandToOpen(null);
+    setView("demands");
+  }
+
   return (
     <div className={`app-shell ${sidebarCompact ? "is-sidebar-compact" : ""}`}>
       <aside className={`app-sidebar ${sidebarOpen ? "is-open" : ""} ${sidebarCompact ? "is-compact" : ""}`}>
@@ -159,6 +178,7 @@ export default function App() {
               key={item.key}
               className={view === item.key ? "active" : ""}
               onClick={() => {
+                if (item.key === "demands") setDemandToOpen(null);
                 setView(item.key);
                 setSidebarOpen(false);
               }}
@@ -235,12 +255,18 @@ export default function App() {
         <main className="main-content">
           {view === "my-schedule" ? (
             <TechnicianSchedulePage />
+          ) : view === "coordinator-dashboard" && principal.roles.includes("COORDINATOR") ? (
+            <CoordinatorDashboardPage
+              onOpenDemand={openDemand}
+              onOpenDemands={openDemands}
+              onOpenPlanning={() => setView("planning")}
+            />
           ) : view === "planning" ? (
-            <PlanningPage onOpenDemands={() => setView("demands")} />
+            <PlanningPage onOpenDemands={openDemands} />
           ) : view === "medium-term" ? (
-            <MediumTermPage onOpenDemands={() => setView("demands")} />
+            <MediumTermPage onOpenDemands={openDemands} />
           ) : view === "demands" ? (
-            <DemandsWorkspace />
+            <DemandsWorkspace initialDemandNumber={demandToOpen} />
           ) : view === "projects" ? (
             <ProjectsPage />
           ) : view === "communications" && can("manage_communications") ? (
