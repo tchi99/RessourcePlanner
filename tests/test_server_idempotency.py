@@ -29,6 +29,7 @@ from app.server import create_api_app
 WORK_DAY = date(2026, 8, 24)
 
 
+from tests.approval_test_support import seed_test_approval_routing
 from tests.http_test_auth import TEST_ADMIN_AUTH_RESOLVER
 from tests.sqlite_test_template import SqliteDatabaseTemplate
 
@@ -50,6 +51,11 @@ class ServerIdempotencyTests(unittest.TestCase):
                 end_time=time(16, 0),
                 active=True,
             )
+        )
+        seed_test_approval_routing(
+            session,
+            map_existing_tasks=True,
+            admin_display_name="Jean",
         )
 
     @classmethod
