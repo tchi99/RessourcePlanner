@@ -35,13 +35,13 @@ class CoordinatorDemandScopeTests(unittest.TestCase):
                 BusinessContact(
                     id="C-A",
                     display_name="Coordonnateur Alpha",
-                    email="coord-a@example.invalid",
+                    email="coord-a-test-value",
                     active=True,
                 ),
                 BusinessContact(
                     id="C-B",
                     display_name="Coordonnateur Beta",
-                    email="coord-b@example.invalid",
+                    email="coord-b-test-value",
                     active=True,
                 ),
                 BusinessContact(
@@ -54,7 +54,7 @@ class CoordinatorDemandScopeTests(unittest.TestCase):
                     issuer="urn:resourceplanner:local",
                     subject="coord-a",
                     display_name="Coordonnateur Alpha",
-                    email="coord-a@example.invalid",
+                    email="coord-a-test-value",
                     business_contact_id="C-A",
                     roles_json=json.dumps([ROLE_COORDINATOR]),
                     active=True,
@@ -64,7 +64,7 @@ class CoordinatorDemandScopeTests(unittest.TestCase):
                     issuer="urn:resourceplanner:local",
                     subject="coord-b",
                     display_name="Coordonnateur Beta",
-                    email="coord-b@example.invalid",
+                    email="coord-b-test-value",
                     business_contact_id="C-B",
                     roles_json=json.dumps([ROLE_COORDINATOR]),
                     active=True,
@@ -74,7 +74,7 @@ class CoordinatorDemandScopeTests(unittest.TestCase):
                     issuer="urn:resourceplanner:local",
                     subject="coord-no-contact",
                     display_name="Coordonnateur Alpha",
-                    email="coord-a@example.invalid",
+                    email="coord-a-test-value",
                     business_contact_id=None,
                     roles_json=json.dumps([ROLE_COORDINATOR]),
                     active=True,
@@ -358,11 +358,11 @@ class CoordinatorDemandScopeTests(unittest.TestCase):
 
     def _numbers(self, user_id: str, *, scope: str = "mine") -> set[str]:
         identities = {
-            "U-A": ("Coordonnateur Alpha", "coord-a@example.invalid"),
-            "U-B": ("Coordonnateur Beta", "coord-b@example.invalid"),
+            "U-A": ("Coordonnateur Alpha", "coord-a-test-value"),
+            "U-B": ("Coordonnateur Beta", "coord-b-test-value"),
             "U-NO-CONTACT": (
                 "Coordonnateur Alpha",
-                "coord-a@example.invalid",
+                "coord-a-test-value",
             ),
         }
         display_name, email = identities[user_id]
