@@ -6,13 +6,32 @@ from typing import Any, Callable
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
-from ..application import ProjectSourcePort, ProjectSyncResult, ProjectSyncService
+from ..application import (
+    EmployeeSourcePort,
+    EmployeeSyncResult,
+    EmployeeSyncService,
+    ProjectSourcePort,
+    ProjectSyncResult,
+    ProjectSyncService,
+)
 from ..application.errors import ApplicationUnavailableError
-from ..infrastructure.sql import SqlProjectSyncRepository
+from ..infrastructure.sql import SqlEmployeeSyncRepository, SqlProjectSyncRepository
 from .performance import performance_phase, record_external_call, record_external_items
 
 
 SessionProvider = Callable[[], Iterator[Session]]
+
+
+class _InstrumentedEmployeeSource:
+    def __init__(self, source: EmployeeSourcePort) -> None:
+        self._source = source
+
+    def list_employees(self):
+        record_external_call()
+        with performance_phase("external"):
+            rows = tuple(self._source.list_employees())
+        record_external_items(len(rows))
+        return rows
 
 
 class _InstrumentedProjectSource:
@@ -31,6 +50,7 @@ def build_integration_router(
     session_dependency: SessionProvider,
     *,
     project_source: ProjectSourcePort | None = None,
+    employee_source: EmployeeSourcePort | None = None,
     acumatica_info: dict[str, Any] | None = None,
 ) -> APIRouter:
     router = APIRouter(prefix="/api/v1/integrations/acumatica", tags=["integrations"])
@@ -39,9 +59,24 @@ def build_integration_router(
     @router.get("")
     def acumatica_status() -> dict[str, Any]:
         return {
-            "configured": project_source is not None,
+            "configured": project_source is not None or employee_source is not None,
             **safe_info,
         }
+
+    @router.post("/employees/sync")
+    def sync_employees(
+        session: Session = Depends(session_dependency),
+    ) -> EmployeeSyncResult:
+        if employee_source is None:
+            raise ApplicationUnavailableError(
+                "La synchronisation des employés Acumatica n'est pas configurée sur ce serveur.",
+                code="acumatica_employee_not_configured",
+            )
+        with performance_phase("compute"):
+            return EmployeeSyncService(
+                _InstrumentedEmployeeSource(employee_source),
+                SqlEmployeeSyncRepository(session),
+            ).synchronize()
 
     @router.post("/projects/sync")
     def sync_projects(
