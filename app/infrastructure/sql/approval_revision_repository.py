@@ -281,6 +281,7 @@ class SqlRequestApprovalRevisionRepository:
         request: WorkforceRequest,
         *,
         provenance: str = APPROVAL_PROVENANCE_STANDARD,
+        request_version: int | None = None,
     ) -> RequestApprovalRevision:
         """Create a revision without activating it.
 
@@ -290,6 +291,14 @@ class SqlRequestApprovalRevisionRepository:
 
         envelope = self.candidate_envelope(request)
         approved_at = request.approved_at or utc_now()
+        approved_request_version = max(
+            int(
+                request.aggregate_version
+                if request_version is None
+                else request_version
+            ),
+            1,
+        )
         reference = self._session.get(RequestApprovalReference, request.id)
         previous_revision_id = (
             reference.active_revision_id
@@ -301,7 +310,7 @@ class SqlRequestApprovalRevisionRepository:
             "format_version": envelope.to_snapshot_payload()["format_version"],
             "request": {
                 "request_id": request.id,
-                "request_version": max(int(request.aggregate_version or 1), 1),
+                "request_version": approved_request_version,
                 "project_id": request.project_id,
                 "priority": _optional_text(request.priority),
                 "site_client": _optional_text(request.site_client),
@@ -313,7 +322,7 @@ class SqlRequestApprovalRevisionRepository:
         revision = RequestApprovalRevision(
             workforce_request_id=request.id,
             previous_revision_id=previous_revision_id,
-            request_version=max(int(request.aggregate_version or 1), 1),
+            request_version=approved_request_version,
             approved_by_external_id=_optional_text(
                 request.approved_by_external_id
             ),
