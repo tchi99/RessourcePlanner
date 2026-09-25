@@ -1,9 +1,17 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from datetime import date
+import json
+from pathlib import Path
+from tempfile import TemporaryDirectory
 import unittest
 
+from sqlalchemy import func, select
+from sqlalchemy.orm import sessionmaker
+
 from app.application.approval_cycles import (
+    ApprovalCycleService,
     ApprovalApproverSnapshot,
     ApprovalCycleRecord,
     ApprovalCycleRequestRecord,
@@ -16,9 +24,29 @@ from app.application.approval_voting import (
     ApprovalVoteService,
     project_approval_quorum,
 )
+from app.application.approval_scopes import ApprovalScopeService
 from app.application.errors import (
     ApplicationAuthorizationError,
+    ApplicationConflictError,
     ApplicationValidationError,
+)
+from app.infrastructure.sql import (
+    AppUser,
+    ApprovalDecision,
+    ApprovalScope,
+    ApprovalScopeApprover,
+    Base,
+    Project,
+    RequestApprovalCycle,
+    RequestApprovalRevision,
+    RequestLine,
+    SqlApprovalCycleRepository,
+    SqlApprovalScopeRepository,
+    SqlPlanningMutationVersionRepository,
+    TaskApprovalScopeMapping,
+    TaskCatalogEntry,
+    WorkforceRequest,
+    create_sql_engine,
 )
 
 
@@ -440,6 +468,324 @@ class ApprovalVoteServiceTests(unittest.TestCase):
             )
         self.assertEqual(error.exception.code, "approval_decision_unsupported")
         self.assertEqual(repository.decisions, [])
+
+
+class _UnexpectedApprovedSync:
+    def sync_approved(
+        self,
+        demand_number: str,
+        *,
+        approved_request_version: int | None = None,
+    ) -> None:
+        raise AssertionError("approval sync must not run")
+
+    def sync_operational_choices(self, demand_number: str) -> None:
+        raise AssertionError("operational sync must not run")
+
+
+class _UnexpectedPlanning:
+    def rebuild(self):
+        raise AssertionError("planning rebuild must not run")
+
+
+class _FailingPlanning:
+    def rebuild(self):
+        raise RuntimeError("forced finalization failure")
+
+
+class ApprovalVoteSqlConcurrencyTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self._temp = TemporaryDirectory()
+        path = Path(self._temp.name) / "approval-vote-sql.db"
+        self.engine = create_sql_engine(
+            "sqlite+pysqlite:///" + path.as_posix()
+        )
+        Base.metadata.create_all(self.engine)
+        self.factory = sessionmaker(
+            bind=self.engine,
+            expire_on_commit=False,
+        )
+        with self.factory.begin() as session:
+            self._seed(session)
+
+    def tearDown(self) -> None:
+        self.engine.dispose()
+        self._temp.cleanup()
+
+    @staticmethod
+    def _seed(session) -> None:
+        session.add(Project(id="P1", number="P-1", name="Projet"))
+        for user_id in ("U1", "U2"):
+            session.add(
+                AppUser(
+                    id=user_id,
+                    issuer="urn:test",
+                    subject=f"subject-{user_id}",
+                    display_name=user_id,
+                    roles_json=json.dumps(["MANAGER"]),
+                    active=True,
+                )
+            )
+        session.add_all(
+            [
+                TaskCatalogEntry(
+                    id="T1",
+                    project_number="P-1",
+                    task_code="210",
+                    label="Automatisation",
+                    active=True,
+                ),
+                TaskCatalogEntry(
+                    id="T2",
+                    project_number="P-1",
+                    task_code="110",
+                    label="Installation",
+                    active=True,
+                ),
+                ApprovalScope(
+                    id="S1",
+                    code="AUTOMATION",
+                    label="Automatisation",
+                    active=True,
+                ),
+                ApprovalScope(
+                    id="S2",
+                    code="ELECTRICAL",
+                    label="Installation",
+                    active=True,
+                ),
+            ]
+        )
+        session.flush()
+        session.add_all(
+            [
+                TaskApprovalScopeMapping(
+                    task_catalog_item_id="T1",
+                    approval_scope_id="S1",
+                ),
+                TaskApprovalScopeMapping(
+                    task_catalog_item_id="T2",
+                    approval_scope_id="S2",
+                ),
+                ApprovalScopeApprover(
+                    approval_scope_id="S1",
+                    app_user_id="U1",
+                ),
+                ApprovalScopeApprover(
+                    approval_scope_id="S2",
+                    app_user_id="U2",
+                ),
+            ]
+        )
+        session.add(
+            WorkforceRequest(
+                id="D1",
+                legacy_demand_number="DMO-1",
+                project_id="P1",
+                status="Soumise",
+                aggregate_version=1,
+                line_mode=True,
+            )
+        )
+        session.add_all(
+            [
+                RequestLine(
+                    id="L1",
+                    workforce_request_id="D1",
+                    position=0,
+                    kind="WORKFORCE",
+                    desired_start=date(2026, 10, 1),
+                    desired_end=date(2026, 10, 1),
+                    estimated_hours=8,
+                    task_catalog_item_id="T1",
+                    erp_task_code="210",
+                    active=True,
+                ),
+                RequestLine(
+                    id="L2",
+                    workforce_request_id="D1",
+                    position=1,
+                    kind="WORKFORCE",
+                    desired_start=date(2026, 10, 2),
+                    desired_end=date(2026, 10, 2),
+                    estimated_hours=8,
+                    task_catalog_item_id="T2",
+                    erp_task_code="110",
+                    active=True,
+                ),
+            ]
+        )
+
+    @staticmethod
+    def _cycles(session, actor_id: str) -> ApprovalCycleService:
+        return ApprovalCycleService(
+            SqlApprovalCycleRepository(
+                session,
+                actor_user_id=actor_id,
+                actor_name=actor_id,
+            ),
+            ApprovalScopeService(SqlApprovalScopeRepository(session)),
+        )
+
+    def _initialize(self):
+        with self.factory.begin() as session:
+            cycle = self._cycles(session, "U1").initialize_cycle(
+                "D1",
+                expected_version=1,
+            )
+            cycle_id = cycle.id
+            requirement_by_line = {
+                row.request_line_id: row.id
+                for row in cycle.requirements
+            }
+        return cycle_id, requirement_by_line
+
+    def _vote_service(
+        self,
+        session,
+        *,
+        actor_id: str,
+        planning,
+        approved_sync,
+    ) -> ApprovalVoteService:
+        repository = SqlApprovalCycleRepository(
+            session,
+            actor_user_id=actor_id,
+            actor_name=actor_id,
+        )
+        return ApprovalVoteService(
+            cycles=ApprovalCycleService(
+                repository,
+                ApprovalScopeService(SqlApprovalScopeRepository(session)),
+            ),
+            repository=repository,
+            planning_versions=SqlPlanningMutationVersionRepository(session),
+            approved_sync=approved_sync,
+            planning=planning,
+            current_user_id=actor_id,
+            current_user_name=actor_id,
+            permissions=("approve_demands",),
+        )
+
+    def test_stale_last_vote_rolls_back_planning_guard_and_writes_no_decision(self) -> None:
+        cycle_id, requirements = self._initialize()
+
+        with self.factory.begin() as session:
+            partial = self._vote_service(
+                session,
+                actor_id="U1",
+                planning=_UnexpectedPlanning(),
+                approved_sync=_UnexpectedApprovedSync(),
+            ).vote(
+                ApprovalVoteCommand(
+                    workforce_request_id="D1",
+                    approval_cycle_id=cycle_id,
+                    expected_request_version=2,
+                    requirement_ids=(requirements["L1"],),
+                )
+            )
+            self.assertFalse(partial.quorum.complete)
+            self.assertEqual(partial.request_version, 3)
+
+        stale_session = self.factory()
+        try:
+            with self.assertRaises(ApplicationConflictError) as caught:
+                with stale_session.begin():
+                    self._vote_service(
+                        stale_session,
+                        actor_id="U2",
+                        planning=_UnexpectedPlanning(),
+                        approved_sync=_UnexpectedApprovedSync(),
+                    ).vote(
+                        ApprovalVoteCommand(
+                            workforce_request_id="D1",
+                            approval_cycle_id=cycle_id,
+                            expected_request_version=2,
+                            requirement_ids=(requirements["L2"],),
+                            expected_planning_version=1,
+                        )
+                    )
+            self.assertEqual(caught.exception.code, "demand_version_conflict")
+        finally:
+            stale_session.close()
+
+        with self.factory() as session:
+            request = session.get(WorkforceRequest, "D1")
+            self.assertEqual(request.status, "Soumise")
+            self.assertEqual(request.aggregate_version, 3)
+            decisions = session.scalars(select(ApprovalDecision)).all()
+            self.assertEqual(len(decisions), 1)
+            self.assertEqual(decisions[0].app_user_id, "U1")
+            self.assertEqual(
+                SqlPlanningMutationVersionRepository(session).current_version(),
+                1,
+            )
+
+    def test_finalization_failure_rolls_back_last_vote_status_cycle_and_planning_version(self) -> None:
+        cycle_id, requirements = self._initialize()
+
+        with self.factory.begin() as session:
+            self._vote_service(
+                session,
+                actor_id="U1",
+                planning=_UnexpectedPlanning(),
+                approved_sync=_UnexpectedApprovedSync(),
+            ).vote(
+                ApprovalVoteCommand(
+                    workforce_request_id="D1",
+                    approval_cycle_id=cycle_id,
+                    expected_request_version=2,
+                    requirement_ids=(requirements["L1"],),
+                )
+            )
+
+        session = self.factory()
+        try:
+            with self.assertRaises(RuntimeError):
+                with session.begin():
+                    self._vote_service(
+                        session,
+                        actor_id="U2",
+                        planning=_FailingPlanning(),
+                        approved_sync=type(
+                            "_NoopApprovedSync",
+                            (),
+                            {
+                                "sync_approved": lambda self, demand_number, approved_request_version=None: None,
+                                "sync_operational_choices": lambda self, demand_number: None,
+                            },
+                        )(),
+                    ).vote(
+                        ApprovalVoteCommand(
+                            workforce_request_id="D1",
+                            approval_cycle_id=cycle_id,
+                            expected_request_version=3,
+                            requirement_ids=(requirements["L2"],),
+                            expected_planning_version=1,
+                        )
+                    )
+        finally:
+            session.close()
+
+        with self.factory() as check:
+            request = check.get(WorkforceRequest, "D1")
+            cycle = check.get(RequestApprovalCycle, cycle_id)
+            self.assertEqual(request.status, "Soumise")
+            self.assertEqual(request.aggregate_version, 3)
+            self.assertEqual(cycle.state, "OPEN")
+            self.assertIsNone(cycle.approved_revision_id)
+            self.assertEqual(
+                check.scalar(select(func.count(ApprovalDecision.id))),
+                1,
+            )
+            self.assertEqual(
+                check.scalar(select(func.count(RequestApprovalRevision.id))),
+                0,
+            )
+            self.assertEqual(
+                SqlPlanningMutationVersionRepository(check).current_version(),
+                1,
+            )
 
 
 if __name__ == "__main__":
