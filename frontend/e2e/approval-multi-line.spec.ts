@@ -133,7 +133,7 @@ test("276D multi-métier : votes partiels puis quorum complet dans React", async
   const managerWorkflow = await openWorkflow(manager.page, demandNumber);
   const managerProgress = managerWorkflow.getByTestId("approval-progress");
   await expect(managerProgress).toContainText("1 / 2 satisfaites");
-  await expect(managerProgress).toContainText("Coordonnateur E2E");
+  await expect(managerProgress).toContainText("Coordonnateur Démo");
   await managerWorkflow.getByRole("button", { name: "Approuver mes lignes (1)" }).click();
   await expect(manager.page.locator(".demand-notice")).toContainText("Demande approuvée — quorum complet");
   await expect(managerWorkflow.locator(".workflow-state-card").first()).toContainText("En planification");
