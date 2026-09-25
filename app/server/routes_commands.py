@@ -527,7 +527,7 @@ def build_command_router(
             key=idempotency_key,
             request_payload=request_payload,
             action=lambda: _payload(
-                facade.approve_demand(
+                facade.approve_demand_quorum(
                     DemandApproveCommand(
                         number=number,
                         comment=body.comment,
