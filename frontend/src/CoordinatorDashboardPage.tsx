@@ -117,8 +117,6 @@ export default function CoordinatorDashboardPage({
 
   if (!dashboard) return null;
 
-  const coverageCount = dashboard.kpis.partial_coverages + dashboard.kpis.conflicts;
-
   return (
     <section className="coordinator-dashboard">
       <header className="coordinator-dashboard-heading">
@@ -173,7 +171,7 @@ export default function CoordinatorDashboardPage({
         </article>
         <article>
           <span>Couverture / conflits</span>
-          <strong>{coverageCount}</strong>
+          <strong>{dashboard.kpis.coverage_issues}</strong>
           <small>
             {dashboard.kpis.partial_coverages} partielle(s) · {dashboard.kpis.conflicts} conflit(s)
           </small>
