@@ -168,7 +168,7 @@ export default function DemandWorkflowPage({
   const [planDeltaError, setPlanDeltaError] = useState<string | null>(null);
 
   const currentDetail = canonicalDetail ?? selectedDetail;
-  const currentDemand = currentDetail?.demand ?? selectedDemand;
+  const currentDemand = canonicalDetail?.demand ?? selectedDemand;
   const currentWorkflowState = currentDetail
     ? currentDetail.workflow as DemandWorkflowState
     : workflowState;
