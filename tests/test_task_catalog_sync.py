@@ -270,6 +270,7 @@ class TargetedTaskCatalogSyncTests(unittest.TestCase):
                     active=True,
                 )
             )
+            session.flush()
             session.add(
                 WorkforceRequest(
                     id="DEMAND-1",
@@ -278,6 +279,7 @@ class TargetedTaskCatalogSyncTests(unittest.TestCase):
                     aggregate_version=7,
                 )
             )
+            session.flush()
             session.add(
                 RequestLine(
                     id="LINE-1",
