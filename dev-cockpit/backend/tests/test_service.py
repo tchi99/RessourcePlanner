@@ -169,6 +169,28 @@ ASTRA-399 | ARCHITECTURE_GATE | DONE | #399 | MAIN | analyse architecture #399
 ```
 """
 
+CANONICAL_276D_ROADMAP = """
+# Roadmap maître
+
+#276C est terminé via PR #438. 276D est la tranche active.
+
+<!-- COCKPIT_PIPELINE_V1 -->
+KEY | TYPE | STATUS | PARENT | LANE | TITLE
+276C | WORK | DONE | #276 | MAIN | quorum et finalisation atomique
+276D | WORK | READY | #276 | MAIN | API administration React et parcours navigateur
+410 | WORK | BLOCKED | #410 | MAIN | périmètre coordonnateur assigné
+278 | WORK | BLOCKED | #278 | MAIN | dashboard coordonnateur
+<!-- /COCKPIT_PIPELINE_V1 -->
+"""
+
+ISSUE_276_276D_READY = """
+# #276 — multi-approbation
+
+### #276C — quorum et finalisation atomique — DONE (PR #438)
+### #276D — API administration React et parcours navigateur — READY
+"""
+
+
 INVALID_CANONICAL_ROADMAP = """
 # Roadmap maître
 
@@ -1073,6 +1095,94 @@ class ServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("#412", dashboard["handoff"]["packs"]["developer"]["prompt"])
         self.assertEqual(dashboard["attention"]["status"], "ACTION")
         self.assertEqual(dashboard["attention"]["items"][0]["key"], "399A")
+
+    async def test_canonical_active_slice_ignores_prior_pr_out_of_scope_mention(self):
+        prior_276c = {
+            "number": 438,
+            "title": "276C — quorum et finalisation atomique",
+            "body": (
+                "Implémente #276C.\n\n"
+                "Closes the 276C implementation slice of #276. "
+                "276D is intentionally out of scope."
+            ),
+            "head": {"ref": "276C-quorum-finalization-main", "sha": "pr438"},
+            "base": {"ref": "main"},
+            "merged_at": "2026-09-25T00:53:52Z",
+            "html_url": "https://github.test/pull/438",
+        }
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            path = request.url.path
+            query = dict(request.url.params)
+            if path == "/repos/tchi99/RessourcePlanner/issues/55":
+                return response({
+                    "number": 55,
+                    "title": "Roadmap maître",
+                    "body": CANONICAL_276D_ROADMAP,
+                    "html_url": "https://github.test/issues/55",
+                    "updated_at": "2026-09-25T00:55:28Z",
+                    "state": "open",
+                })
+            if path == "/repos/tchi99/RessourcePlanner/issues/276":
+                return response({
+                    "number": 276,
+                    "title": "Multi-approbation par ligne",
+                    "body": ISSUE_276_276D_READY,
+                    "state": "open",
+                    "html_url": "https://github.test/issues/276",
+                    "updated_at": "2026-09-25T00:54:25Z",
+                })
+            if path == "/repos/tchi99/RessourcePlanner/pulls":
+                return response([prior_276c] if query.get("state") == "closed" else [])
+            if path == "/repos/tchi99/RessourcePlanner/commits":
+                return response([{
+                    "sha": "main-after-438",
+                    "html_url": "https://github.test/commit/main-after-438",
+                    "commit": {
+                        "message": "276C: quorum and atomic approval finalization (#438)",
+                        "author": {"date": "2026-09-25T00:53:50Z"},
+                    },
+                }])
+            if path == "/repos/tchi99/RessourcePlanner/contents/AGENTS.md":
+                return response(encoded_file(AGENTS))
+            if path == "/repos/tchi99/RessourcePlanner/contents/docs/architecture":
+                return response([])
+            if path == "/repos/tchi99/RessourcePlanner/branches":
+                return response([
+                    {"name": "main", "commit": {"sha": "main-after-438"}},
+                ])
+            if path == "/repos/tchi99/RessourcePlanner/pulls/438/files":
+                raise AssertionError(
+                    "Une mention incidente de 276D ne doit même pas qualifier PR #438 comme candidate."
+                )
+            raise AssertionError(f"Unexpected request: {request.method} {request.url} {query}")
+
+        settings = Settings(
+            github_token="test",
+            repository="tchi99/RessourcePlanner",
+            roadmap_issue=55,
+            stalled_after_minutes=20,
+            github_api_url="https://api.github.test",
+        )
+        client = GitHubClient(settings, transport=httpx.MockTransport(handler))
+        try:
+            dashboard = await build_dashboard(client, settings, "tchi99/RessourcePlanner")
+        finally:
+            await client.close()
+
+        self.assertEqual(dashboard["pipeline"]["now"]["key"], "276D")
+        self.assertEqual(dashboard["active_work"]["key"], "276D")
+        self.assertIsNone(dashboard["active_work"]["primary_pr"])
+        self.assertIsNone(dashboard["active_work"]["merged_but_unmarked_pr"])
+        self.assertEqual(dashboard["execution"]["phase"], "READY")
+        self.assertEqual(dashboard["attention"]["status"], "ACTION")
+        self.assertEqual(dashboard["attention"]["items"][0]["role"], "developer")
+        self.assertEqual(
+            dashboard["attention"]["items"][0]["title"],
+            "Tranche prête à démarrer",
+        )
+        self.assertIn("276D", dashboard["execution"]["next_action"])
+        self.assertNotIn("fusionnée", dashboard["execution"]["summary"].lower())
 
     async def test_invalid_canonical_pipeline_fails_closed_without_active_issue(self):
         def handler(request: httpx.Request) -> httpx.Response:
