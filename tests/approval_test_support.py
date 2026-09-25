@@ -1,0 +1,140 @@
+from __future__ import annotations
+
+import json
+from collections.abc import Iterable
+
+from sqlalchemy.orm import Session
+
+from app.application.security import ROLE_ADMIN, ROLE_COORDINATOR
+from app.infrastructure.sql.approval_scope_models import (
+    ApprovalScope,
+    ApprovalScopeApprover,
+    TaskApprovalScopeMapping,
+)
+from app.infrastructure.sql.identity_models import AppUser
+from app.infrastructure.sql.models import Project, TaskCatalogEntry
+
+
+TEST_ADMIN_USER_ID = "TEST-ADMIN-APP-USER"
+TEST_COORDINATOR_USER_ID = "TEST-COORD-APP-USER"
+TEST_APPROVAL_SCOPE_ID = "TEST-APPROVAL-SCOPE"
+TEST_APPROVAL_TASK_CODE = "APPROVAL"
+
+
+def _ensure_user(
+    session: Session,
+    *,
+    user_id: str,
+    subject: str,
+    display_name: str,
+    role: str,
+) -> None:
+    if session.get(AppUser, user_id) is not None:
+        return
+    session.add(
+        AppUser(
+            id=user_id,
+            issuer="urn:resourceplanner:test",
+            subject=subject,
+            display_name=display_name,
+            email=None,
+            employee_external_id=None,
+            roles_json=json.dumps([role]),
+            active=True,
+        )
+    )
+    session.flush()
+
+
+def seed_test_approval_routing(
+    session: Session,
+    *,
+    task_ids: Iterable[str] = (),
+    include_default_task: bool = True,
+) -> None:
+    """Seed explicit 276 routing primitives for HTTP integration fixtures.
+
+    This helper deliberately lives in tests. Production routing remains fail-closed:
+    no task mapping or no admissible AppUser still blocks cycle initialization.
+    """
+
+    _ensure_user(
+        session,
+        user_id=TEST_ADMIN_USER_ID,
+        subject="explicit-test-admin",
+        display_name="Administrateur de test explicite",
+        role=ROLE_ADMIN,
+    )
+    _ensure_user(
+        session,
+        user_id=TEST_COORDINATOR_USER_ID,
+        subject="explicit-test-coordinator",
+        display_name="Coordonnateur de test explicite",
+        role=ROLE_COORDINATOR,
+    )
+
+    if session.get(ApprovalScope, TEST_APPROVAL_SCOPE_ID) is None:
+        session.add(
+            ApprovalScope(
+                id=TEST_APPROVAL_SCOPE_ID,
+                code="TEST_APPROVAL",
+                label="Approbation tests",
+                active=True,
+                version=1,
+            )
+        )
+        session.flush()
+    for user_id in (TEST_ADMIN_USER_ID, TEST_COORDINATOR_USER_ID):
+        if (
+            session.get(
+                ApprovalScopeApprover,
+                (TEST_APPROVAL_SCOPE_ID, user_id),
+            )
+            is None
+        ):
+            session.add(
+                ApprovalScopeApprover(
+                    approval_scope_id=TEST_APPROVAL_SCOPE_ID,
+                    app_user_id=user_id,
+                )
+            )
+
+    mapped_ids = {str(value).strip() for value in task_ids if str(value).strip()}
+    if include_default_task:
+        projects = session.query(Project).all()
+        for index, project in enumerate(projects, start=1):
+            task = (
+                session.query(TaskCatalogEntry)
+                .filter(
+                    TaskCatalogEntry.project_number == project.number,
+                    TaskCatalogEntry.task_code == TEST_APPROVAL_TASK_CODE,
+                )
+                .one_or_none()
+            )
+            if task is None:
+                task = TaskCatalogEntry(
+                    id=f"TEST-APPROVAL-TASK-{index}",
+                    project_number=project.number,
+                    task_code=TEST_APPROVAL_TASK_CODE,
+                    label="Approbation test",
+                    status="Actif",
+                    active=True,
+                    time_entry_enabled=True,
+                    expenses_enabled=False,
+                )
+                session.add(task)
+                session.flush()
+            mapped_ids.add(task.id)
+
+    for task_id in sorted(mapped_ids):
+        if session.get(TaskCatalogEntry, task_id) is None:
+            raise AssertionError(f"Tâche de test introuvable: {task_id}")
+        key = (task_id, TEST_APPROVAL_SCOPE_ID)
+        if session.get(TaskApprovalScopeMapping, key) is None:
+            session.add(
+                TaskApprovalScopeMapping(
+                    task_catalog_item_id=task_id,
+                    approval_scope_id=TEST_APPROVAL_SCOPE_ID,
+                )
+            )
+    session.flush()
