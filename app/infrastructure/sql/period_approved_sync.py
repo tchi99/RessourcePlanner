@@ -75,6 +75,7 @@ class SqlPeriodAwareApprovedDemandSyncAdapter(ApprovedDemandSyncPort):
         self._legacy = SqlEstimatedDaysApprovedDemandSyncAdapter(session)
         self._approval_revisions = SqlRequestApprovalRevisionRepository(session)
         self._plan_preparer = SqlRequestPlanPreparer(session)
+        self._approved_request_version_override: int | None = None
 
     def _request(self, number: str) -> WorkforceRequest:
         wanted = _text(number)
@@ -140,6 +141,16 @@ class SqlPeriodAwareApprovedDemandSyncAdapter(ApprovedDemandSyncPort):
             )
         )
 
+    def _approved_request_version(self, request: WorkforceRequest) -> int:
+        return max(
+            int(
+                request.aggregate_version
+                if self._approved_request_version_override is None
+                else self._approved_request_version_override
+            ),
+            1,
+        )
+
     def _capture_approved_contact_context(
         self,
         request: WorkforceRequest,
@@ -153,16 +164,16 @@ class SqlPeriodAwareApprovedDemandSyncAdapter(ApprovedDemandSyncPort):
         requirement.approved_operational_responsible_override_contact_id = (
             request.operational_responsible_override_contact_id
         )
-        requirement.approved_request_version = int(request.aggregate_version or 1)
+        requirement.approved_request_version = self._approved_request_version(request)
         requirement.approved_contact_context_status = "CAPTURED"
 
-    @staticmethod
     def _approved_context_details(
+        self,
         request: WorkforceRequest,
         requirements: list[ResourceRequirement],
     ) -> str:
         payload = {
-            "approved_request_version": int(request.aggregate_version or 1),
+            "approved_request_version": self._approved_request_version(request),
             "context_status": "CAPTURED",
             "requirements": [
                 {
@@ -1026,7 +1037,17 @@ class SqlPeriodAwareApprovedDemandSyncAdapter(ApprovedDemandSyncPort):
                 requirement.status = "Annulé"
         self._session.flush()
 
-    def sync_approved(self, demand_number: str) -> None:
+    def sync_approved(
+        self,
+        demand_number: str,
+        *,
+        approved_request_version: int | None = None,
+    ) -> None:
+        self._approved_request_version_override = (
+            int(approved_request_version)
+            if approved_request_version is not None
+            else None
+        )
         request = self._guarded_materialization_request(demand_number)
         periods = self._active_periods(request.id)
         current_before = self._active_requirements(request.id)
@@ -1045,7 +1066,10 @@ class SqlPeriodAwareApprovedDemandSyncAdapter(ApprovedDemandSyncPort):
         revision = (
             None
             if emergency
-            else self._approval_revisions.create_revision(request)
+            else self._approval_revisions.create_revision(
+                request,
+                request_version=self._approved_request_version(request),
+            )
         )
 
         if bool(request.line_mode):
