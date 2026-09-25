@@ -590,6 +590,24 @@ Durable invariants:
 
 A writeback conflict must be resolved by refreshing GitHub state and reviewing a new preview. Do not bypass the conflict check.
 
+### Dev Cockpit Flow Analytics
+
+Flow Analytics is an observational projection of GitHub delivery history. It must not become a second historical state store.
+
+Durable invariants:
+
+- derive delivery identity from canonical WORK keys and the same strict PR identity rule used by the Roadmap Reconciler;
+- exclude docs-only PRs from DEV delivery metrics;
+- use only timestamps explicitly returned by GitHub for commits, PRs, workflows/jobs and merges;
+- never invent branch creation timestamps, historical stall intervals or historical #55 reconciliation timestamps;
+- when a metric cannot be reconstructed reliably, return it as unavailable/partial rather than estimating it;
+- keep historical analytics off the 60-second dashboard polling path; load it separately and on demand;
+- bound historical GitHub API work so analytics cannot dominate normal cockpit traffic;
+- do not persist derived delivery phases, analytics snapshots or scores locally merely to make historical charts easier;
+- do not introduce opaque productivity scores or use analytics to change roadmap order automatically.
+
+Analytics may describe bottlenecks and trends from observable durations, but it does not alter product state or authorize writeback.
+
 ---
 
 ## 20. Chained execution
