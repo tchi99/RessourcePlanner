@@ -263,9 +263,16 @@ async def _first_matching_dev_pr(
     repo: str,
     prs: list[dict[str, Any]],
     key: str,
+    *,
+    strict_identity: bool = False,
 ) -> dict[str, Any] | None:
     for pr in prs:
-        if not matches_work_key(pr, key):
+        matches = (
+            _matches_delivery_key(pr, key)
+            if strict_identity
+            else matches_work_key(pr, key)
+        )
+        if not matches:
             continue
         if await _pull_is_dev_work(client, repo, pr):
             return pr
@@ -846,6 +853,7 @@ async def build_dashboard(client: GitHubClient, settings: Settings, repo: str) -
         repo,
         open_prs,
         active_key,
+        strict_identity=canonical_mode,
     )
     if not canonical_mode and not primary_pr and active_subitem is None:
         primary_pr = await _first_matching_dev_pr(
@@ -864,13 +872,14 @@ async def build_dashboard(client: GitHubClient, settings: Settings, repo: str) -
         merged_candidates = [
             pr
             for pr in closed_raw
-            if pr.get("merged_at") and matches_work_key(pr, active_key)
+            if pr.get("merged_at")
         ]
         merged_but_unmarked_raw = await _first_matching_dev_pr(
             client,
             repo,
             merged_candidates,
             active_key,
+            strict_identity=canonical_mode,
         )
     merged_but_unmarked = _merged_pr_summary(merged_but_unmarked_raw)
 
