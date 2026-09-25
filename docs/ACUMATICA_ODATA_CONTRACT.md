@@ -151,21 +151,39 @@ Le smoke réel du 2026-09-24 a confirmé **HTTP Basic** sur cette instance. Le r
 
 La même décision s'applique aux futures données organisationnelles Acumatica : les adaptateurs réels devront consommer des sources OData, et non le Contract-Based REST API.
 
-Le feed/vue Employee/User exact, ses champs, sa clé stable et la relation avec l'identité OIDC restent à découvrir dans #232 avant l'implémentation de #256.
+Le développement Employees/Users suit désormais un modèle **contract-first sans accès ERP développeur**. Le PO/opérateur autorisé valide la vue OData réelle, puis fournit au dépôt uniquement le contrat nécessaire et un échantillon entièrement anonymisé mais structurellement fidèle. Le développeur implémente ensuite l'adaptateur et ses tests contre ce contrat local; le smoke réel est exécuté séparément par le PO/opérateur autorisé.
 
-### Statut de découverte Employee/User
+Le feed/vue Employee/User exact, ses champs, sa clé stable et la relation avec l'identité OIDC restent à fournir dans #232 avant l'implémentation de #256. L'accès direct à Acumatica par le développeur n'est pas un prérequis.
 
-Au 2026-09-25, **aucun feed Employee/User/ressource n'a encore été observé sur l'instance réelle dans un environnement d'exécution accessible à cette tranche**. Les seules observations ERP réelles conservées dans ce dépôt concernent `RP_Projects`.
+Voir [ACUMATICA_CONTRACT_WORKFLOW.md](ACUMATICA_CONTRACT_WORKFLOW.md).
+
+### Statut contractuel Employee/User
+
+Au 2026-09-25, aucun contrat OData Employee/User/ressource n'a encore été fourni au dépôt sous la forme validée attendue par #232. Les seules observations ERP réelles déjà stabilisées dans le dépôt concernent `RP_Projects`.
 
 En conséquence :
 
-- un nom historique ou proposé comme `RP_Employees` n'est **pas** un contrat tant qu'il n'a pas été vu dans le service document / metadata OData réel;
-- aucun champ standard supposé (`EmployeeID`, `UserID` ou équivalent) ne doit être déclaré clé externe stable sans observation réelle;
+- un nom historique ou proposé comme `RP_Employees` n'est **pas** un contrat tant que le PO/opérateur autorisé ne l'a pas validé dans Acumatica et transmis sous forme désensibilisée;
+- aucun champ supposé (`EmployeeID`, `UserID` ou équivalent) ne doit être déclaré clé externe stable sans contrat validé;
 - aucune règle de planifiabilité ne doit être dérivée d'un nom de champ supposé;
 - aucune jointure User ↔ Employee par nom ou courriel n'est autoritaire;
 - les capacités démontrées pour `RP_Projects` (`$filter`, `$orderby`, `$top/$skip`, `LastModifiedDateTime`) ne sont pas automatiquement transposées au futur feed Employee.
 
-La reprise de #232 doit commencer par le **service document / metadata OData réel**, avec credentials injectés hors Git, puis seulement interroger les feeds réellement exposés. Toute sortie conservée dans Git doit être limitée à des noms de feeds/types/champs, capacités et exemples entièrement anonymisés; aucune donnée personnelle réelle ne doit être journalisée ou commitée.
+La reprise de #232 doit donc commencer par une validation du feed côté PO/opérateur autorisé, puis par la transmission au développeur du **contrat + fixture anonymisée structurellement fidèle**. Le développeur n'a pas besoin d'accéder à l'ERP réel; il implémente ensuite #256 contre ce contrat local et la CI reste indépendante d'Acumatica.
+
+## Outillage contractuel local
+
+Les enveloppes Atom/OData communes sont centralisées dans `app/infrastructure/acumatica/odata_atom.py`. Cette primitive couvre uniquement la structure commune réellement réutilisable : namespaces Atom/`d`/`m`, `m:properties`, `m:null`, type `m:type`, `xml:space`, métadonnées d'entité/liens et classification HTTP stable.
+
+Elle ne porte ni mapping métier, ni clé d'entité, ni pagination générique. `ODataProjectSource` conserve donc ses règles propres à `RP_Projects`.
+
+Les contrats anonymisés peuvent être inspectés sans réseau avec :
+
+```bash
+python tools/inspect_odata_contract.py <sample.xml>
+```
+
+Le workflow complet et le template de nouveau contrat sont documentés dans `ACUMATICA_CONTRACT_WORKFLOW.md` et `docs/integrations/acumatica/CONTRACT_TEMPLATE.md`.
 
 ## Implémentation locale
 
@@ -187,6 +205,6 @@ L'ancien `AcumaticaProjectSource` REST/JSON reste présent uniquement comme comp
 
 La signification métier exacte de `BaseType=R` et le remplacement du compte nominatif par un compte de service restent des sujets séparés du contrat projet livré; ils ne rouvrent pas #207.
 
-La validation réelle encore structurante pour les ressources est #232 : feed Employee/User, clé externe stable, admissibilité à la planification, relation User ↔ Employee et capacités de synchronisation propres à ce feed.
+La validation encore structurante pour les ressources est le **contract gate #232** : feed Employee/User validé par le PO, clé externe stable, admissibilité à la planification, relation User ↔ Employee, capacités de synchronisation propres à ce feed et fixture anonymisée fidèle. Une fois ce paquet fourni, #256 peut être développé sans accès ERP direct.
 
 Refs : #207 #232 #256
