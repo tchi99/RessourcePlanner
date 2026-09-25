@@ -776,6 +776,7 @@ test("REQUEST window proposal never replays the original drag after direct appro
       desired_start: sourceDay,
       desired_end: sourceDay,
       estimated_hours: 2,
+      task_code: "210",
       proposed_technician: "Alice",
       description: "Proposition fenêtre DnD #333C",
       submit: true,
@@ -1083,6 +1084,10 @@ test("multi-line demand editor generates independent RequestLines and materializ
   await expect(editor.getByRole("heading", { name: "Nouvelle demande" })).toBeVisible();
 
   await labelled(editor, "Projet", "select").selectOption("P-251");
+  await labelled(editor, "Recherche catalogue ERP", "input").fill("automatisation");
+  const multiTaskSelect = labelled(editor, "Tâche ERP", "select");
+  await expect(multiTaskSelect.locator("option", { hasText: "210 — AUTOMATISATION E2E" })).toBeAttached();
+  await multiTaskSelect.selectOption("210");
   await labelled(editor, "Début souhaité", "input").fill(d1);
   await labelled(editor, "Fin souhaitée", "input").fill(d2);
   await labelled(editor, "Nombre de ressources simultanées", "input").fill("2");
@@ -1253,6 +1258,10 @@ test("mixed asset demand uses authoritative reservations, conflicts, refresh and
   await projectManager.page.getByRole("button", { name: /Nouvelle demande/ }).click();
   let editor = projectManager.page.locator(".demand-editor-form");
   await labelled(editor, "Projet", "select").selectOption("P-251");
+  await labelled(editor, "Recherche catalogue ERP", "input").fill("automatisation");
+  const mixedTaskSelect = labelled(editor, "Tâche ERP", "select");
+  await expect(mixedTaskSelect.locator("option", { hasText: "210 — AUTOMATISATION E2E" })).toBeAttached();
+  await mixedTaskSelect.selectOption("210");
   await labelled(editor, "Description / contexte de la demande", "textarea").fill(
     "Demande mixte main-d’œuvre + nacelle #291F",
   );
