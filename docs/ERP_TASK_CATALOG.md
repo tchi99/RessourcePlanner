@@ -85,3 +85,30 @@ GET /api/v1/task-catalog?project_number=5176&q=automatisation&active_only=true
 React utilise cette API. La demande enregistre le code et le libellé sélectionnés comme snapshot
 historique, tandis que la validation d'une nouvelle sélection se fait toujours contre la clé
 `(projet, code)` active du catalogue.
+
+
+## Validation bootstrap #447
+
+Le format minimal utilisable pour un bootstrap est volontairement réduit aux quatre colonnes
+requises. Exemple CSV synthétique :
+
+```csv
+ID projet;ID tâche;Description;Statut
+P-TEST-001;210;Automatisation - test utilisateur;Actif
+```
+
+Le même en-tête est accepté dans la feuille `Données` d'un fichier XLSX/XLSM.
+
+Le parcours d'import est transactionnel :
+
+- le premier import rapporte les lignes lues ainsi que les tâches à créer, mettre à jour,
+  désactiver explicitement ou laisser inchangées;
+- un replay strictement identique rapporte les mêmes lignes comme `Sans changement`;
+- un doublon de `(ID projet, ID tâche)` est rejeté avec le diagnostic
+  `erp_task_catalog_duplicate_key`;
+- une ligne sans projet, code ou description est rejetée avec le diagnostic
+  `erp_task_catalog_row_invalid`;
+- en cas d'erreur, la transaction d'import n'est pas appliquée partiellement.
+
+La prévisualisation reste le mode par défaut du CLI; `--apply` est nécessaire pour écrire.
+Aucune source OData de tâches n'est introduite par #447.
