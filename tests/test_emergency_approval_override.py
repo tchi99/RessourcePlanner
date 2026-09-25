@@ -27,6 +27,7 @@ from app.server import create_api_app
 from app.server.security import required_permission
 
 
+from tests.approval_test_support import routed_demand_payload, seed_test_approval_routing
 from tests.http_test_auth import TEST_ADMIN_AUTH_RESOLVER, test_admin_auth_resolver
 
 create_api_app = partial(create_api_app, auth_resolver=TEST_ADMIN_AUTH_RESOLVER)
@@ -211,6 +212,7 @@ class EmergencyOverrideHttpTests(unittest.TestCase):
                     active=True,
                 )
             )
+            seed_test_approval_routing(session, map_existing_tasks=True)
         engine.dispose()
         return url
 
@@ -227,7 +229,7 @@ class EmergencyOverrideHttpTests(unittest.TestCase):
             with TestClient(app, raise_server_exceptions=False) as client:
                 created = client.post(
                     "/api/v1/demands",
-                    json={
+                    json=routed_demand_payload({
                         "project_number": "P-1",
                         "desired_start": today.isoformat(),
                         "desired_end": today.isoformat(),
@@ -235,7 +237,7 @@ class EmergencyOverrideHttpTests(unittest.TestCase):
                         "priority": "Urgent",
                         "proposed_technician": "Alice",
                         "submit": True,
-                    },
+                    }),
                 )
                 self.assertEqual(created.status_code, 201, created.text)
                 number = created.json()["demand_number"]
@@ -346,14 +348,14 @@ class EmergencyOverrideHttpTests(unittest.TestCase):
 
                 normal = client.post(
                     "/api/v1/demands",
-                    json={
+                    json=routed_demand_payload({
                         "project_number": "P-1",
                         "desired_start": today.isoformat(),
                         "priority": "Normale",
                         "proposed_technician": "Alice",
                         "estimated_hours": 8,
                         "submit": True,
-                    },
+                    }),
                 ).json()["demand_number"]
                 nonurgent = client.post(
                     f"/api/v1/demands/{normal}/emergency-plan",
@@ -368,14 +370,14 @@ class EmergencyOverrideHttpTests(unittest.TestCase):
                 later = today + timedelta(days=14)
                 outside = client.post(
                     "/api/v1/demands",
-                    json={
+                    json=routed_demand_payload({
                         "project_number": "P-1",
                         "desired_start": later.isoformat(),
                         "priority": "Urgent",
                         "proposed_technician": "Alice",
                         "estimated_hours": 8,
                         "submit": True,
-                    },
+                    }),
                 ).json()["demand_number"]
                 rejected = client.post(
                     f"/api/v1/demands/{outside}/emergency-plan",
