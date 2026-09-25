@@ -167,6 +167,15 @@ def _resource_read_model(resource: Resource, competency_ids: tuple[str, ...] = (
         active=bool(resource.active),
         sort_order=int(resource.sort_order or 0),
         external_id=_optional_text(resource.external_id),
+        erp_status=_optional_text(resource.erp_status),
+        erp_active=bool(resource.erp_active),
+        erp_department_description=_optional_text(resource.erp_department_description),
+        erp_department_code=_optional_text(resource.erp_department_code),
+        erp_employee_class=_optional_text(resource.erp_employee_class),
+        erp_supervisor_external_id=_optional_text(resource.erp_supervisor_external_id),
+        erp_phone=_optional_text(resource.erp_phone),
+        erp_branch_code=_optional_text(resource.erp_branch_code),
+        erp_contact_id=resource.erp_contact_id,
     )
 
 
@@ -241,7 +250,10 @@ class SqlPlannerQueryRepository(PlannerQueryPort):
     def list_resources(self, *, active_only: bool = True) -> tuple[ResourceReadModel, ...]:
         statement = select(Resource)
         if active_only:
-            statement = statement.where(Resource.active.is_(True))
+            statement = statement.where(
+                Resource.active.is_(True),
+                Resource.erp_active.is_(True),
+            )
         rows = self._session.scalars(
             statement.order_by(Resource.sort_order, Resource.name)
         ).all()
@@ -280,6 +292,7 @@ class SqlPlannerQueryRepository(PlannerQueryPort):
             select(Resource)
             .where(
                 Resource.active.is_(True),
+                Resource.erp_active.is_(True),
                 Resource.id.in_(scheduled_ids),
             )
             .order_by(Resource.sort_order, Resource.name)
