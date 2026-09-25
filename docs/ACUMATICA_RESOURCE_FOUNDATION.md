@@ -25,14 +25,17 @@ Implémenté localement :
 - auto-provisionnement **désactivé par défaut**;
 - si activé, seul le rôle `TECHNICIAN` (lecture) peut être attribué automatiquement.
 
-Non implémenté avant la validation #232 :
+Non implémenté avant que le **contrat #232** soit suffisamment défini :
 
-- feed/vue OData Employee/User réel;
-- noms réels des champs Employee/User;
-- identifiant externe employé réellement observé;
+- feed/vue OData Employee/User validé par le PO/opérateur autorisé;
+- noms réels des champs Employee/User transmis sous forme de contrat;
+- identifiant externe employé stable confirmé;
+- fixture anonymisée fidèle permettant les tests locaux;
 - claim OIDC contenant éventuellement un identifiant employé;
 - résolution automatique `(issuer, sub) → employee_external_id`;
 - règles organisationnelles propres à l'instance réelle.
+
+Le développeur n'a pas besoin d'un accès direct à Acumatica. La règle est : **PO valide le feed réel → fournit contrat + sample anonymisé → DEV implémente localement → PO exécute le smoke réel**. Voir [ACUMATICA_CONTRACT_WORKFLOW.md](ACUMATICA_CONTRACT_WORKFLOW.md).
 
 ## Propriété des données
 
@@ -142,11 +145,12 @@ Les index sont définis explicitement pour SQLite et SQL Server afin de permettr
 
 En parallèle du développement local :
 
-- #232 : contrat OData Employee/User réel + relation identité ↔ employé;
-- #207 : synchronisation projets réelle via `RP_Projects`;
+- #232 : contrat OData Employee/User + relation identité ↔ employé, produit à partir d'observations réelles mais transmis sous forme désensibilisée;
 - #223 : OIDC réel;
 - #162 : SQL Server réel.
 
-Une fois #232 suffisamment avancée, il restera principalement à implémenter l'adaptateur OData Employee/User et le mécanisme de résolution automatique entre l'identité OIDC et l'identifiant employé externe.
+#207 projets est terminé. Pour Employees/Users, le **contract gate** de #232 remplace l'ancien besoin implicite d'accès ERP développeur. Dès que le PO fournit le feed retenu, la clé stable, le mapping utile et une fixture anonymisée fidèle, #256 peut être implémentée entièrement contre des données synthétiques.
+
+Le smoke réel final reste une validation environnementale exécutée par une personne autorisée.
 
 Voir aussi [ACUMATICA_ODATA_CONTRACT.md](ACUMATICA_ODATA_CONTRACT.md).
