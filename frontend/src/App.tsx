@@ -262,9 +262,9 @@ export default function App() {
               onOpenPlanning={() => setView("planning")}
             />
           ) : view === "planning" ? (
-            <PlanningPage onOpenDemands={openDemands} />
+            <PlanningPage onOpenDemands={() => setView("demands")} />
           ) : view === "medium-term" ? (
-            <MediumTermPage onOpenDemands={openDemands} />
+            <MediumTermPage onOpenDemands={() => setView("demands")} />
           ) : view === "demands" ? (
             <DemandsWorkspace initialDemandNumber={demandToOpen} />
           ) : view === "projects" ? (
