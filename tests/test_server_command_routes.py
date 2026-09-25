@@ -56,7 +56,11 @@ class ServerCommandRouteTests(unittest.TestCase):
                 active=True,
             )
         )
-        seed_test_approval_routing(session, map_existing_tasks=True)
+        seed_test_approval_routing(
+            session,
+            map_existing_tasks=True,
+            admin_display_name="Jean",
+        )
 
     @classmethod
     def setUpClass(cls) -> None:
