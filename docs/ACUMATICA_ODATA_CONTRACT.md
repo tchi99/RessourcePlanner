@@ -220,9 +220,37 @@ La relation exacte `OIDC (issuer, subject) → RP_Users.UserID` reste à confirm
 
 Le développement reste contract-first : le développeur n'a pas besoin d'accès direct à Acumatica.
 
-### Tâches / budgets
+### Tâches / budgets — RP_ProjectTasks
 
-Le PO a confirmé qu'un feed OData Acumatica existe aussi pour les tâches et inclut les budgets. Son chemin exact, sa clé, ses champs et la sémantique des budgets restent à documenter à partir d'un sample anonymisé avant remplacement du fallback Excel/CSV de #271.
+Le feed est maintenant connu :
+
+```text
+/oDATA/RP_ProjectTasks
+```
+
+Requête utilisée pour l'échantillon contractuel :
+
+```text
+/oDATA/RP_ProjectTasks?$top=1000&$filter=Status eq 'Actif'
+```
+
+Le PO a observé environ **41 073 entrées** sans filtre. Le runtime ne doit donc pas synchroniser le feed global à haute fréquence ni interroger Acumatica lors de chaque affichage de liste.
+
+Le sample expose notamment `ProjetCD`, `TaskCD`, `AccountGroup`, `ProjetID`, `TaskID`, `TaskDescription`, `Status`, dates, `BudgetAmount`, `BudgetActual`, `ProjectID_2`, `ProjectTaskID`, `CostCode` et `InventoryID`.
+
+L'identifiant Atom inclut plusieurs dimensions budgétaires; une entrée OData ne doit donc pas être supposée équivalente à une tâche unique. Le contrat cible sépare la tâche de ses lignes budgétaires et privilégie une synchronisation **ciblée par projet + cache local**.
+
+Aucun `LastModifiedDateTime` métier n'est présent dans le sample; ne pas inventer de curseur incrémental à partir du champ Atom `updated`.
+
+Fixture :
+
+```text
+tests/fixtures/acumatica/rp_project_tasks_atom.xml
+```
+
+Documentation détaillée : [integrations/acumatica/RP_PROJECT_TASKS.md](integrations/acumatica/RP_PROJECT_TASKS.md).
+
+Restent à confirmer avant migration d'identité/budget : unicité/stabilité de `ProjectTaskID`, lien `ProjectID_2 → RP_Projects.ProjectId`, unité/sémantique des budgets et capacités de pagination/filtrage ciblé par projet.
 
 ## Outillage contractuel local
 
