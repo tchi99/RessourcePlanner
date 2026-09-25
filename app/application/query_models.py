@@ -44,6 +44,19 @@ class ResourceReadModel:
     active: bool = True
     sort_order: int = 0
     external_id: str | None = None
+    erp_status: str | None = None
+    erp_active: bool = True
+    erp_department_description: str | None = None
+    erp_department_code: str | None = None
+    erp_employee_class: str | None = None
+    erp_supervisor_external_id: str | None = None
+    erp_phone: str | None = None
+    erp_branch_code: str | None = None
+    erp_contact_id: int | None = None
+
+    @property
+    def effective_active(self) -> bool:
+        return self.active and self.erp_active
 
 
 @dataclass(frozen=True, slots=True)
