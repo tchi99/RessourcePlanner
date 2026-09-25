@@ -143,3 +143,24 @@ def seed_test_approval_routing(
                 )
             )
     session.flush()
+
+
+def routed_demand_payload(payload: dict) -> dict:
+    """Return a demand payload with an explicit mapped approval task per line."""
+
+    result = dict(payload)
+    raw_lines = result.get("lines")
+    if raw_lines is not None:
+        result["lines"] = [
+            {
+                **dict(line),
+                "task_code": (
+                    str(dict(line).get("task_code") or "").strip()
+                    or TEST_APPROVAL_TASK_CODE
+                ),
+            }
+            for line in raw_lines
+        ]
+    else:
+        result.setdefault("task_code", TEST_APPROVAL_TASK_CODE)
+    return result
