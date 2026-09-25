@@ -187,10 +187,15 @@ class _PlanningVersions:
 
 class _ApprovedSync:
     def __init__(self) -> None:
-        self.calls: list[str] = []
+        self.calls: list[tuple[str, int | None]] = []
 
-    def sync_approved(self, demand_number: str) -> None:
-        self.calls.append(demand_number)
+    def sync_approved(
+        self,
+        demand_number: str,
+        *,
+        approved_request_version: int | None = None,
+    ) -> None:
+        self.calls.append((demand_number, approved_request_version))
 
     def sync_operational_choices(self, demand_number: str) -> None:
         raise AssertionError("not used")
@@ -347,7 +352,7 @@ class ApprovalVoteServiceTests(unittest.TestCase):
         self.assertEqual(result.planning_version, 11)
         self.assertEqual(result.approval_revision_id, "REV-1")
         self.assertEqual(versions.calls, [10])
-        self.assertEqual(sync.calls, ["DMO-1"])
+        self.assertEqual(sync.calls, [("DMO-1", 3)])
         self.assertEqual(planning.calls, 1)
         self.assertTrue(repository.approved)
         self.assertTrue(repository.completed)
