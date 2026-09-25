@@ -199,7 +199,8 @@ class ReservableAssetApiTests(unittest.TestCase):
             "expected_version": demand["version"],
             "lines": [{"id": demand["lines"][0]["line_id"], "kind": "ASSET",
                        "asset_type_id": self.type_id, "desired_start": "2026-09-24",
-                       "desired_end": "2026-09-26", "estimated_hours": 4}],
+                       "desired_end": "2026-09-26", "estimated_hours": 4,
+                       "task_code": "APPROVAL"}],
         })
         self.assertEqual(changed.status_code, 200, changed.text)
         # An administrator may directly approve the changed authorization in this transaction.
