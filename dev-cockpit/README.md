@@ -249,6 +249,7 @@ Lorsque `COCKPIT_PIPELINE_V1` est valide, le dashboard compare désormais le con
 Le reconciler :
 
 - inspecte les PR DEV correspondant aux étapes `WORK` non terminées;
+- en mode canonique, la résolution de la PR active et des PR fusionnées réutilise la même **identité stricte de livraison** que le Reconciler : clé présente dans le titre ou la branche, ou référence structurée explicite (`Refs`, `Closes`, `Fixes`, `Slice`, `Tranche`) dans le body; une mention incidente telle que « 276D is intentionally out of scope » ne correspond jamais à 276D;
 - exclut les PR documentation-only de la preuve de livraison;
 - considère une étape `READY` comme **roadmap stale** seulement si une PR DEV correspondante est fusionnée et que les workflows observés sur son HEAD sont terminés et verts;
 - signale une PR ouverte sur une étape future `BLOCKED` comme travail hors ordre, sans promouvoir cette étape;
