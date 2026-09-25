@@ -33,6 +33,8 @@ EXPECTED_TABLES = {
     "request_lines",
     "request_line_competencies",
     "resource_requirement_competencies",
+    "resource_class_configs",
+    "project_task_class_overrides",
     "resources",
     "work_packages",
     "workforce_requests",
@@ -46,6 +48,7 @@ EXPECTED_TABLES = {
     "smtp_configuration",
     "smtp_configuration_audit",
     "communication_deliveries",
+    "task_class_standards",
 }
 
 
@@ -181,6 +184,9 @@ class SqlMigrationTests(unittest.TestCase):
             self.assertIn("CREATE TABLE APPROVAL_REQUIREMENTS", ddl, url)
             self.assertIn("CREATE TABLE APPROVAL_REQUIREMENT_APPROVERS", ddl, url)
             self.assertIn("CREATE TABLE APPROVAL_DECISIONS", ddl, url)
+            self.assertIn("CREATE TABLE RESOURCE_CLASS_CONFIGS", ddl, url)
+            self.assertIn("CREATE TABLE TASK_CLASS_STANDARDS", ddl, url)
+            self.assertIn("CREATE TABLE PROJECT_TASK_CLASS_OVERRIDES", ddl, url)
             self.assertIn("SUBJECT_FINGERPRINT", ddl, url)
             self.assertIn("SUBMITTED_REQUEST_VERSION", ddl, url)
             self.assertIn("ACTION_ID", ddl, url)
