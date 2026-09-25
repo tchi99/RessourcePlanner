@@ -236,9 +236,28 @@ Requête utilisée pour l'échantillon contractuel :
 
 Le PO a observé environ **41 073 entrées** sans filtre. Le runtime ne doit donc pas synchroniser le feed global à haute fréquence ni interroger Acumatica lors de chaque affichage de liste.
 
-Le sample expose notamment `ProjetCD`, `TaskCD`, `AccountGroup`, `ProjetID`, `TaskID`, `TaskDescription`, `Status`, dates, `BudgetAmount`, `BudgetActual`, `ProjectID_2`, `ProjectTaskID`, `CostCode` et `InventoryID`.
+Décisions PO confirmées :
 
-L'identifiant Atom inclut plusieurs dimensions budgétaires; une entrée OData ne doit donc pas être supposée équivalente à une tâche unique. Le contrat cible sépare la tâche de ses lignes budgétaires et privilégie une synchronisation **ciblée par projet + cache local**.
+```text
+RP_ProjectTasks.TaskID = clé unique/stable de la tâche ERP
+trim(RP_ProjectTasks.ProjectCD) = RP_Projects.ProjectCode
+BudgetAmount = montant CAD
+BudgetActual = montant réalisé CAD
+```
+
+`ProjectID_2` reste un numéro interne ERP du projet; la relation métier autoritaire retenue ici est `ProjectCD → ProjectCode`.
+
+`TaskCD` est le code métier utilisé par les standards workforce administrables (#454). Exemples initiaux : 117 → installateur électrique, 216 → programmeur, 217 → installateur automatisation. Les standards peuvent être surchargés ou exclus par projet et restent distincts des `ApprovalScope` #276.
+
+La synchronisation cible est **par projet + cache SQL local**. Après récupération d'un projet, seules les tâches ayant une classe workforce effective sont retenues pour le bootstrap opérationnel. Aucun pull global fréquent des ~41k lignes.
+
+Pour une tâche classée :
+
+```text
+budget_hours = BudgetAmount_CAD / average_hourly_cost_CAD
+```
+
+Le coût moyen est configuré par ADMIN au niveau de la classe. Les heures calculées sont une projection budgétaire et ne réécrivent jamais silencieusement une demande ou un plan approuvé. `BudgetActual` reste un montant CAD distinct.
 
 Aucun `LastModifiedDateTime` métier n'est présent dans le sample; ne pas inventer de curseur incrémental à partir du champ Atom `updated`.
 
@@ -250,7 +269,7 @@ tests/fixtures/acumatica/rp_project_tasks_atom.xml
 
 Documentation détaillée : [integrations/acumatica/RP_PROJECT_TASKS.md](integrations/acumatica/RP_PROJECT_TASKS.md).
 
-Restent à confirmer avant migration d'identité/budget : unicité/stabilité de `ProjectTaskID`, lien `ProjectID_2 → RP_Projects.ProjectId`, unité/sémantique des budgets et capacités de pagination/filtrage ciblé par projet.
+Restent à valider : filtre OData par `ProjectCD`, pagination/ordre stable sur `TaskID`, présence éventuelle d'un LastModified réel et cas où un TaskCD workforce contiendrait des montants non main-d'œuvre exigeant une règle `AccountGroup` supplémentaire.
 
 ## Outillage contractuel local
 
