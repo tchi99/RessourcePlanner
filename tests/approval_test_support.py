@@ -51,6 +51,7 @@ def seed_test_approval_routing(
     *,
     task_ids: Iterable[str] = (),
     include_default_task: bool = True,
+    map_existing_tasks: bool = False,
 ) -> None:
     """Seed explicit 276 routing primitives for HTTP integration fixtures.
 
@@ -100,6 +101,10 @@ def seed_test_approval_routing(
             )
 
     mapped_ids = {str(value).strip() for value in task_ids if str(value).strip()}
+    if map_existing_tasks:
+        mapped_ids.update(
+            row.id for row in session.query(TaskCatalogEntry).all()
+        )
     if include_default_task:
         projects = session.query(Project).all()
         for index, project in enumerate(projects, start=1):
