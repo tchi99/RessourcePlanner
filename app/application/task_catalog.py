@@ -4,6 +4,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
+from time import perf_counter
 from typing import Protocol
 
 from .errors import ApplicationValidationError
@@ -108,6 +109,8 @@ class TaskCatalogProjectSyncMetadata:
     source_rows: int
     task_count: int
     rejected_rows: int
+    duration_ms: int | None = None
+    last_error_code: str | None = None
 
 
 class TaskCatalogProjectSyncMetadataRepositoryPort(Protocol):
@@ -118,6 +121,7 @@ class TaskCatalogProjectSyncMetadataRepositoryPort(Protocol):
         source_rows: int,
         task_count: int,
         rejected_rows: int,
+        duration_ms: int | None,
     ) -> None: ...
 
     def get_project_sync_metadata(
@@ -154,8 +158,9 @@ class TaskCatalogProjectSyncResult:
     updated: int
     unchanged: int
     deactivated: int
+    duration_ms: int | None = None
 
-    def to_dict(self) -> dict[str, str | int]:
+    def to_dict(self) -> dict[str, str | int | None]:
         return {
             "project_number": self.project_number,
             "source_rows": self.source_rows,
@@ -165,6 +170,7 @@ class TaskCatalogProjectSyncResult:
             "updated": self.updated,
             "unchanged": self.unchanged,
             "deactivated": self.deactivated,
+            "duration_ms": self.duration_ms,
         }
 
 
@@ -276,6 +282,7 @@ class TaskCatalogSyncService:
                 context={"project_number": project},
             )
 
+        started_at = perf_counter()
         snapshot = fetch_snapshot(project)
         snapshot_project = str(snapshot.project_number or "").strip()
         if snapshot_project != project:
@@ -301,6 +308,7 @@ class TaskCatalogSyncService:
             updated=base.updated,
             unchanged=base.unchanged,
             deactivated=base.deactivated,
+            duration_ms=max(0, int((perf_counter() - started_at) * 1000)),
         )
         if self._sync_metadata_repository is not None:
             self._sync_metadata_repository.record_project_sync_success(
@@ -308,5 +316,6 @@ class TaskCatalogSyncService:
                 source_rows=result.source_rows,
                 task_count=result.task_count,
                 rejected_rows=result.rejected_rows,
+                duration_ms=result.duration_ms,
             )
         return result
