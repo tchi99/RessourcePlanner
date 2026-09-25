@@ -660,6 +660,7 @@ export type CoordinatorDashboardKpiReadModel = {
   assignments: number;
   cancellations: number;
   approvals: number;
+  coverage_issues: number;
   partial_coverages: number;
   conflicts: number;
   attention_items: number;
