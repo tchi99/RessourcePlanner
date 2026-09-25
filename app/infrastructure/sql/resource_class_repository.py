@@ -97,6 +97,7 @@ class SqlResourceClassRepository(ResourceClassRepositoryPort):
         )
         self._session.add(row)
         self._session.flush()
+        self._session.refresh(row)
         return _class_record(row)
 
     def update_resource_class(
