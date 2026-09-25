@@ -35,7 +35,7 @@ class ODataContractInspectorTests(unittest.TestCase):
     def test_sensitive_property_values_never_appear_in_report(self) -> None:
         markers = (
             "Highly Sensitive Person Name",
-            "private-person@example.invalid",
+            "PRIVATE-CONTACT-VALUE-88",
             "CONFIDENTIAL-EMPLOYEE-0007",
         )
         payload = f"""<?xml version="1.0" encoding="utf-8"?>
