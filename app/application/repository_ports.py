@@ -197,6 +197,14 @@ class DemandApprovalEnvelopePolicyPort(Protocol):
         actor_name: str,
     ) -> None: ...
 
+    def record_direct_approval(
+        self,
+        demand_number: str,
+        decision: EnvelopeDecision,
+        *,
+        actor_name: str,
+    ) -> None: ...
+
 
 class PlanningAuthorizationPort(Protocol):
     """Authorization guard for direct operational planning mutations."""
