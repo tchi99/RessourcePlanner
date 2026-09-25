@@ -398,6 +398,52 @@ Le contrôleur reconstruit une timeline courte uniquement depuis les horodatages
 
 La timeline n'invente aucune date de création de branche : l'API de branches utilisée par le cockpit n'en fournit pas. Elle reste donc une projection éphémère des événements observables, sans journal local ni second stockage d'état.
 
+### Flow Analytics / Delivery History
+
+La vue **Santé du flux** reconstruit un historique de livraison à partir des seules preuves GitHub observables. Elle ne crée aucun journal local et n'est volontairement pas chargée dans le polling principal du dashboard.
+
+L'analyse est disponible via :
+
+```text
+GET /api/flow-analytics?repo=owner/repo&limit=12
+```
+
+Elle est chargée à la demande depuis l'interface avec **Charger l'analyse du flux** / **Rafraîchir l'analyse**. Le refresh du dashboard toutes les 60 secondes n'appelle pas cet endpoint.
+
+Périmètre :
+
+- seules les étapes `WORK DONE` du `COCKPIT_PIPELINE_V1` sont candidates;
+- la PR de livraison doit correspondre à l'identité stricte déjà utilisée par le Roadmap Reconciler;
+- les PR docs-only sont exclues des livraisons DEV;
+- le premier commit observable vient de l'historique de commits de la PR;
+- les cycles CI viennent des workflows GitHub Actions attachés aux SHA de la PR;
+- le merge vient du timestamp `merged_at` GitHub.
+
+Pour chaque livraison, le cockpit peut calculer lorsque les timestamps existent :
+
+- premier commit → ouverture PR;
+- ouverture PR → première tentative entièrement verte;
+- CI verte → merge;
+- durée totale observable premier commit → merge;
+- nombre de SHA ayant déclenché au moins un workflow;
+- nombre de tentatives rouges;
+- délai observable entre la fin d'une tentative rouge et le début de la tentative suivante;
+- segment observable le plus long comme principal ralentissement descriptif.
+
+Une tentative de validation correspond à **un SHA de la PR avec au moins un workflow**. Elle est `green` seulement si tous les workflows sont terminés sans échec et qu'au moins un workflow conclut `success`; elle est `red` si au moins un workflow conclut en échec; sinon elle reste `pending/unknown`.
+
+Le résumé expose des médianes et moyennes sur les livraisons analysables. Une tendance PR → CI verte n'est produite qu'avec au moins six livraisons comparables, en comparant descriptivement la moitié ancienne et la moitié récente. Aucun score de performance opaque n'est introduit.
+
+Limites assumées :
+
+- aucune date de création de branche n'est inventée;
+- les stalls historiques ne sont pas reconstruits, car le cockpit ne les persiste pas;
+- le timestamp exact de réconciliation historique de #55 n'est pas déduit de l'`updated_at` courant de l'issue;
+- si l'historique de workflow d'un commit n'est pas lisible, la livraison devient partielle plutôt que de fabriquer une mesure;
+- pour limiter les appels GitHub, l'analyse CI d'une très grosse PR est bornée aux 20 derniers commits, tout en conservant le premier commit de la PR pour la durée totale.
+
+Ainsi, Flow Analytics reste une projection analytique éphémère de GitHub, cohérente avec la règle générale du cockpit : **mesurer ce qui est observable et afficher indisponible plutôt que d'estimer silencieusement**.
+
 ### PR d'architecture vs travail Developer
 
 Une PR liée à l'issue active n'est pas automatiquement considérée comme une PR d'implémentation. Le Cockpit inspecte les fichiers changés des PR qui correspondent à la tranche active :

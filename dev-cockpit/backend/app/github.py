@@ -99,6 +99,25 @@ class GitHubClient:
     async def get_pull(self, repo: str, number: int) -> dict[str, Any]:
         return await self._get(f"/repos/{repo}/pulls/{number}")
 
+    async def list_pull_commits(
+        self,
+        repo: str,
+        number: int,
+        *,
+        per_page: int = 100,
+        max_pages: int = 3,
+    ) -> list[dict[str, Any]]:
+        commits: list[dict[str, Any]] = []
+        for page in range(1, max_pages + 1):
+            batch = await self._get(
+                f"/repos/{repo}/pulls/{number}/commits",
+                {"per_page": per_page, "page": page},
+            )
+            commits.extend(batch)
+            if len(batch) < per_page:
+                break
+        return commits
+
     async def list_pull_files(
         self,
         repo: str,

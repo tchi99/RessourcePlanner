@@ -15,6 +15,7 @@ from .details import (
     build_issue_detail,
     build_roadmap_detail,
 )
+from .flow_analytics import build_flow_analytics
 from .github import GitHubClient, GitHubError
 from .roles import RoleStore, RolesConfig
 from .service import build_dashboard
@@ -196,6 +197,34 @@ def create_app(app_settings: Settings | None = None) -> FastAPI:
             expected_proposal_sha256=payload.expected_proposal_sha256,
             confirm=payload.confirm,
         )
+
+    @app.get("/api/flow-analytics")
+    async def flow_analytics(
+        repo: str | None = Query(default=None),
+        limit: int = Query(default=12, ge=3, le=20),
+    ) -> dict:
+        if not settings.github_token:
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    "DEV_COCKPIT_GITHUB_TOKEN n'est pas configuré. "
+                    "Flow Analytics exige un token GitHub en lecture seule."
+                ),
+            )
+        target_repo = repo or settings.repository
+        try:
+            async with GitHubClient(settings) as client:
+                return await build_flow_analytics(
+                    client,
+                    target_repo,
+                    settings.roadmap_issue,
+                    limit,
+                )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        except GitHubError as exc:
+            status = 502 if exc.status_code >= 500 else exc.status_code
+            raise HTTPException(status_code=status, detail=f"GitHub: {exc.message}") from exc
 
     @app.get("/api/dashboard")
     async def dashboard(repo: str | None = Query(default=None)) -> dict:

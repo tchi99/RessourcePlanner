@@ -282,6 +282,100 @@ export type RoadmapWritebackResult = {
   pipeline_block: string
 }
 
+export type FlowAnalyticsAttempt = {
+  sha: string
+  short_sha: string
+  state: 'green' | 'red' | 'pending' | 'unknown'
+  started_at: string | null
+  completed_at: string | null
+  workflow_count: number
+  workflows: Array<{
+    name: string | null
+    status: string | null
+    conclusion: string | null
+    url: string | null
+    created_at: string | null
+    updated_at: string | null
+  }>
+  failed_jobs: string[]
+  url: string | null
+}
+
+export type FlowAnalyticsDelivery = {
+  key: string
+  title: string
+  parent_issue: number | null
+  lane: 'MAIN' | 'PARALLEL'
+  status: 'complete' | 'partial' | 'unavailable'
+  reason: string | null
+  pr: {
+    number: number
+    title: string
+    url: string
+    head?: string | null
+    created_at: string | null
+    merged_at: string | null
+  } | null
+  first_commit_at?: string | null
+  first_green_at?: string | null
+  metrics: {
+    commit_to_pr_minutes?: number | null
+    pr_to_green_minutes?: number | null
+    green_to_merge_minutes?: number | null
+    total_observed_minutes?: number | null
+    pr_to_merge_minutes?: number | null
+    validation_attempts?: number | null
+    red_attempts?: number | null
+    red_recovery_minutes?: number | null
+    recovered_red_attempts?: number | null
+  }
+  bottleneck?: {
+    segment: string
+    label: string
+    minutes: number
+  } | null
+  attempts: FlowAnalyticsAttempt[]
+  timeline: Array<{
+    kind: 'commit' | 'pull_request' | 'ci'
+    label: string
+    at: string | null
+    status: string
+    url: string | null
+  }>
+  diagnostics: string[]
+}
+
+export type FlowAnalyticsReport = {
+  status: 'complete' | 'partial' | 'unavailable'
+  repo: string
+  generated_at: string
+  reason: string | null
+  summary: {
+    requested_limit: number
+    delivery_count: number
+    analyzable_count: number
+    unavailable_count: number
+    complete_count: number
+    partial_count: number
+    median_total_observed_minutes: number | null
+    median_commit_to_pr_minutes: number | null
+    median_pr_to_green_minutes: number | null
+    median_green_to_merge_minutes: number | null
+    average_validation_attempts: number | null
+    average_red_attempts: number | null
+    trend: {
+      metric: 'pr_to_green_minutes'
+      older_median: number
+      recent_median: number
+      delta_minutes: number
+      sample_size: number
+      description: string
+    } | null
+  } | null
+  deliveries: FlowAnalyticsDelivery[]
+  notes: string[]
+}
+
 export type Dashboard = {
   repo: string
   generated_at: string

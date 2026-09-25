@@ -8,6 +8,7 @@ import type {
   Dashboard,
   HandoffProjection,
   ExecutionControl,
+  FlowAnalyticsReport,
   Job,
   PipelineReconciliation,
   RoadmapWritebackPreview,
@@ -565,6 +566,289 @@ function ExecutionControllerPanel({
   )
 }
 
+function FlowAnalyticsPanel({ repo }: { repo: string }) {
+  const [report, setReport] = useState<FlowAnalyticsReport | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    setReport(null)
+    setError(null)
+  }, [repo])
+
+  async function loadAnalytics() {
+    if (!repo) return
+    setLoading(true)
+    setError(null)
+    try {
+      const response = await fetch(
+        `/api/flow-analytics?repo=${encodeURIComponent(repo)}&limit=12`,
+      )
+      const payload = await response.json()
+      if (!response.ok) {
+        throw new Error(payload.detail || `Erreur HTTP ${response.status}`)
+      }
+      setReport(payload as FlowAnalyticsReport)
+    } catch (caught) {
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : "Erreur inconnue pendant l'analyse du flux",
+      )
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <section className="flow-panel">
+      <div className="flow-header">
+        <div>
+          <span className="panel-kicker">SANTÉ DU FLUX</span>
+          <h2>Flow Analytics · Delivery History</h2>
+          <p>
+            Mesures reconstruites uniquement depuis les timestamps GitHub
+            observables. Cette analyse est chargée séparément du polling du
+            dashboard.
+          </p>
+        </div>
+        <div className="flow-header-actions">
+          {report && (
+            <span className={`flow-status ${report.status}`}>
+              {report.status.toUpperCase()}
+            </span>
+          )}
+          <button type="button" onClick={() => void loadAnalytics()} disabled={loading}>
+            {loading
+              ? 'Analyse GitHub…'
+              : report
+                ? "Rafraîchir l'analyse"
+                : "Charger l'analyse du flux"}
+          </button>
+        </div>
+      </div>
+
+      {error && (
+        <div className="flow-error">
+          <strong>Flow Analytics indisponible</strong>
+          <span>{error}</span>
+        </div>
+      )}
+
+      {!report && !error && !loading && (
+        <div className="flow-placeholder">
+          <strong>Chargement à la demande</strong>
+          <span>
+            Les workflows et commits historiques ne sont pas relus toutes les
+            60 secondes. Lance l'analyse lorsque tu veux examiner le flux.
+          </span>
+        </div>
+      )}
+
+      {report?.status === 'unavailable' && (
+        <div className="flow-placeholder">
+          <strong>Historique non reconstructible</strong>
+          <span>{report.reason || 'Aucune donnée exploitable.'}</span>
+        </div>
+      )}
+
+      {report?.summary && (
+        <>
+          <div className="flow-kpis">
+            <div>
+              <span>Livraisons analysables</span>
+              <strong>
+                {report.summary.analyzable_count}/{report.summary.delivery_count}
+              </strong>
+            </div>
+            <div>
+              <span>Médiane totale observable</span>
+              <strong>{formatMinutes(report.summary.median_total_observed_minutes)}</strong>
+            </div>
+            <div>
+              <span>Commit → PR</span>
+              <strong>{formatMinutes(report.summary.median_commit_to_pr_minutes)}</strong>
+            </div>
+            <div>
+              <span>PR → CI verte</span>
+              <strong>{formatMinutes(report.summary.median_pr_to_green_minutes)}</strong>
+            </div>
+            <div>
+              <span>CI verte → merge</span>
+              <strong>{formatMinutes(report.summary.median_green_to_merge_minutes)}</strong>
+            </div>
+            <div>
+              <span>Tentatives validation</span>
+              <strong>
+                {report.summary.average_validation_attempts == null
+                  ? '—'
+                  : report.summary.average_validation_attempts}
+              </strong>
+              <small>
+                rouges moy.{' '}
+                {report.summary.average_red_attempts == null
+                  ? '—'
+                  : report.summary.average_red_attempts}
+              </small>
+            </div>
+          </div>
+
+          {report.summary.trend && (
+            <div className="flow-trend">
+              <strong>Tendance PR → CI verte</strong>
+              <span>{report.summary.trend.description}</span>
+            </div>
+          )}
+
+          <div className="flow-deliveries">
+            {report.deliveries.map((delivery) => (
+              <details className="flow-delivery" key={delivery.key}>
+                <summary>
+                  <div className="flow-delivery-title">
+                    <span className={`flow-delivery-status ${delivery.status}`}>
+                      {delivery.status}
+                    </span>
+                    <strong>{delivery.key}</strong>
+                    <span>{delivery.title}</span>
+                  </div>
+                  <div className="flow-delivery-summary">
+                    <strong>
+                      {formatMinutes(delivery.metrics.total_observed_minutes)}
+                    </strong>
+                    <span>
+                      {delivery.bottleneck
+                        ? `ralentissement: ${delivery.bottleneck.label}`
+                        : delivery.reason || 'données partielles'}
+                    </span>
+                  </div>
+                </summary>
+
+                <div className="flow-delivery-body">
+                  <div className="flow-metric-grid">
+                    <div>
+                      <span>Commit → PR</span>
+                      <strong>
+                        {formatMinutes(delivery.metrics.commit_to_pr_minutes)}
+                      </strong>
+                    </div>
+                    <div>
+                      <span>PR → CI verte</span>
+                      <strong>
+                        {formatMinutes(delivery.metrics.pr_to_green_minutes)}
+                      </strong>
+                    </div>
+                    <div>
+                      <span>CI verte → merge</span>
+                      <strong>
+                        {formatMinutes(delivery.metrics.green_to_merge_minutes)}
+                      </strong>
+                    </div>
+                    <div>
+                      <span>Validation</span>
+                      <strong>
+                        {delivery.metrics.validation_attempts ?? '—'} tentative(s)
+                      </strong>
+                      <small>
+                        {delivery.metrics.red_attempts ?? '—'} rouge(s)
+                      </small>
+                    </div>
+                    <div>
+                      <span>Récupération après rouge</span>
+                      <strong>
+                        {formatMinutes(delivery.metrics.red_recovery_minutes)}
+                      </strong>
+                    </div>
+                    <div>
+                      <span>PR → merge</span>
+                      <strong>
+                        {formatMinutes(delivery.metrics.pr_to_merge_minutes)}
+                      </strong>
+                    </div>
+                  </div>
+
+                  {delivery.pr && (
+                    <div className="flow-pr-line">
+                      <a href={delivery.pr.url} target="_blank" rel="noreferrer">
+                        PR #{delivery.pr.number} · {delivery.pr.title} ↗
+                      </a>
+                      <span>
+                        ouverte {formatDate(delivery.pr.created_at)} · fusionnée{' '}
+                        {formatDate(delivery.pr.merged_at)}
+                      </span>
+                    </div>
+                  )}
+
+                  {delivery.attempts.length > 0 && (
+                    <div className="flow-attempts">
+                      <div className="section-label">CYCLES CI OBSERVABLES</div>
+                      {delivery.attempts.map((attempt, index) => (
+                        <article key={`${delivery.key}:${attempt.sha}`}>
+                          <span className={`flow-attempt-state ${attempt.state}`}>
+                            #{index + 1} {attempt.state}
+                          </span>
+                          <div>
+                            <strong>{attempt.short_sha}</strong>
+                            <small>
+                              {formatDate(attempt.started_at)} →{' '}
+                              {formatDate(attempt.completed_at)}
+                            </small>
+                            {attempt.failed_jobs.length > 0 && (
+                              <small>
+                                jobs rouges: {attempt.failed_jobs.join(', ')}
+                              </small>
+                            )}
+                          </div>
+                          {attempt.url && (
+                            <a href={attempt.url} target="_blank" rel="noreferrer">
+                              Run ↗
+                            </a>
+                          )}
+                        </article>
+                      ))}
+                    </div>
+                  )}
+
+                  {delivery.timeline.length > 0 && (
+                    <div className="flow-history">
+                      <div className="section-label">TIMELINE DE LIVRAISON</div>
+                      {delivery.timeline.map((event, index) => (
+                        <div key={`${delivery.key}:${event.at}:${index}`}>
+                          <span>{formatDate(event.at)}</span>
+                          {event.url ? (
+                            <a href={event.url} target="_blank" rel="noreferrer">
+                              {event.label} ↗
+                            </a>
+                          ) : (
+                            <strong>{event.label}</strong>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {delivery.diagnostics.length > 0 && (
+                    <div className="flow-diagnostics">
+                      {delivery.diagnostics.map((diagnostic) => (
+                        <span key={diagnostic}>• {diagnostic}</span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </details>
+            ))}
+          </div>
+
+          <div className="flow-notes">
+            {report.notes.map((note) => (
+              <span key={note}>• {note}</span>
+            ))}
+          </div>
+        </>
+      )}
+    </section>
+  )
+}
+
 function JobLine({ job }: { job: Job }) {
   const running = job.status && job.status !== 'completed'
   const success = job.conclusion === 'success'
@@ -748,6 +1032,8 @@ export default function App() {
           onCopy={() => void copyPrompt()}
         />
       )}
+
+      {data && <FlowAnalyticsPanel repo={repo} />}
 
       {data && !data.pipeline.valid && (
         <section className="error-panel pipeline-invalid">
