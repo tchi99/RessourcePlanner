@@ -986,6 +986,8 @@ export default function DemandWorkflowPage({
                   <button
                     type="button"
                     className="primary-button"
+                    aria-label="Approuver"
+                    data-testid="approval-action"
                     disabled={busy || hasUnsavedChanges}
                     onClick={() => runAction("approve")}
                   >
