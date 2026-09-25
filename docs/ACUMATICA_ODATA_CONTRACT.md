@@ -157,6 +157,20 @@ Le feed/vue Employee/User exact, ses champs, sa clé stable et la relation avec 
 
 Voir [ACUMATICA_CONTRACT_WORKFLOW.md](ACUMATICA_CONTRACT_WORKFLOW.md).
 
+## Outillage contractuel local
+
+Les enveloppes Atom/OData communes sont centralisées dans `app/infrastructure/acumatica/odata_atom.py`. Cette primitive couvre uniquement la structure commune réellement réutilisable : namespaces Atom/`d`/`m`, `m:properties`, `m:null`, type `m:type`, `xml:space`, métadonnées d'entité/liens et classification HTTP stable.
+
+Elle ne porte ni mapping métier, ni clé d'entité, ni pagination générique. `ODataProjectSource` conserve donc ses règles propres à `RP_Projects`.
+
+Les contrats anonymisés peuvent être inspectés sans réseau avec :
+
+```bash
+python tools/inspect_odata_contract.py <sample.xml>
+```
+
+Le workflow complet et le template de nouveau contrat sont documentés dans `ACUMATICA_CONTRACT_WORKFLOW.md` et `docs/integrations/acumatica/CONTRACT_TEMPLATE.md`.
+
 ## Implémentation locale
 
 Le runtime projet compose `ODataProjectSource`, un lecteur Atom/XML dédié derrière le `ProjectSourcePort` existant. `ProjectId`, `ProjectCode`, `ProjectName`, client, chargé de projet et statut sont projetés vers `ExternalProjectRecord` sans modifier `ProjectSyncService`.
