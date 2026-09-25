@@ -380,33 +380,28 @@ class ResourceClassConfigurationTests(unittest.TestCase):
         )
 
     def test_project_task_override_composite_key_is_unique(self) -> None:
-        session = self.factory()
-        try:
-            session.add_all(
-                [
-                    ProjectTaskClassOverride(
-                        project_id="project-1",
-                        task_code="216",
-                        resource_class_code="PROGRAMMEUR",
-                        excluded=False,
-                        version=1,
+        self.session.add_all(
+            [
+                ProjectTaskClassOverride(
+                    project_id="project-1",
+                    task_code="216",
+                    resource_class_code="PROGRAMMEUR",
+                    excluded=False,
+                    version=1,
+                ),
+                ProjectTaskClassOverride(
+                    project_id="project-1",
+                    task_code="216",
+                    resource_class_code=(
+                        "INSTALLATEUR_AUTOMATISATION"
                     ),
-                    ProjectTaskClassOverride(
-                        project_id="project-1",
-                        task_code="216",
-                        resource_class_code=(
-                            "INSTALLATEUR_AUTOMATISATION"
-                        ),
-                        excluded=False,
-                        version=1,
-                    ),
-                ]
-            )
-            with self.assertRaises(IntegrityError):
-                session.flush()
-        finally:
-            session.rollback()
-            session.close()
+                    excluded=False,
+                    version=1,
+                ),
+            ]
+        )
+        with self.assertRaises(IntegrityError):
+            self.session.flush()
 
 
 if __name__ == "__main__":
