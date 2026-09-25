@@ -151,7 +151,11 @@ Le smoke réel du 2026-09-24 a confirmé **HTTP Basic** sur cette instance. Le r
 
 La même décision s'applique aux futures données organisationnelles Acumatica : les adaptateurs réels devront consommer des sources OData, et non le Contract-Based REST API.
 
-Le feed/vue Employee/User exact, ses champs, sa clé stable et la relation avec l'identité OIDC restent à découvrir dans #232 avant l'implémentation de #256.
+Le développement Employees/Users suit désormais un modèle **contract-first sans accès ERP développeur**. Le PO/opérateur autorisé valide la vue OData réelle, puis fournit au dépôt uniquement le contrat nécessaire et un échantillon entièrement anonymisé mais structurellement fidèle. Le développeur implémente ensuite l'adaptateur et ses tests contre ce contrat local; le smoke réel est exécuté séparément par le PO/opérateur autorisé.
+
+Le feed/vue Employee/User exact, ses champs, sa clé stable et la relation avec l'identité OIDC restent à fournir dans #232 avant l'implémentation de #256. L'accès direct à Acumatica par le développeur n'est pas un prérequis.
+
+Voir [ACUMATICA_CONTRACT_WORKFLOW.md](ACUMATICA_CONTRACT_WORKFLOW.md).
 
 ## Implémentation locale
 
