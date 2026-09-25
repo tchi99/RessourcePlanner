@@ -52,6 +52,8 @@ def seed_test_approval_routing(
     task_ids: Iterable[str] = (),
     include_default_task: bool = True,
     map_existing_tasks: bool = False,
+    admin_display_name: str = "Administrateur de test explicite",
+    coordinator_display_name: str = "Coordonnateur de test explicite",
 ) -> None:
     """Seed explicit 276 routing primitives for HTTP integration fixtures.
 
@@ -63,14 +65,14 @@ def seed_test_approval_routing(
         session,
         user_id=TEST_ADMIN_USER_ID,
         subject="explicit-test-admin",
-        display_name="Administrateur de test explicite",
+        display_name=admin_display_name,
         role=ROLE_ADMIN,
     )
     _ensure_user(
         session,
         user_id=TEST_COORDINATOR_USER_ID,
         subject="explicit-test-coordinator",
-        display_name="Coordonnateur de test explicite",
+        display_name=coordinator_display_name,
         role=ROLE_COORDINATOR,
     )
 
