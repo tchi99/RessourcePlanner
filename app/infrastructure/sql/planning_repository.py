@@ -182,7 +182,10 @@ class SqlPlanningReadRepository(PlanningReadRepositoryPort):
     def _technicians(self) -> list[dict[str, Any]]:
         resources = self._session.scalars(
             select(Resource)
-            .where(Resource.active.is_(True))
+            .where(
+                Resource.active.is_(True),
+                Resource.erp_active.is_(True),
+            )
             .order_by(Resource.sort_order, Resource.name)
         ).all()
         return [
