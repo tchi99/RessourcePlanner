@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from decimal import Decimal
 import unittest
-from urllib.parse import parse_qs
+from xml.sax.saxutils import escape
 
 import httpx
 
@@ -31,7 +31,7 @@ def _entry(
         type_attr = f' m:type="{edm_type}"' if edm_type else ""
         if value is None:
             return f'<d:{name} m:null="true"{type_attr} />'
-        return f"<d:{name}{type_attr}>{value}</d:{name}>"
+        return f"<d:{name}{type_attr}>{escape(value)}</d:{name}>"
 
     return f"""<entry>
   <category term="PX.Data.RP_ProjectTasks" />
