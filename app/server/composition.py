@@ -20,6 +20,7 @@ from ..application import (
     WorkPackageService,
 )
 from ..application.approval_cycles import ApprovalCycleService
+from ..application.approval_progress import ApprovalProgressService
 from ..application.approval_scopes import ApprovalScopeService
 from ..application.approval_voting import ApprovalVoteService
 from ..application.communications import CommunicationService, CommunicationTransportPort
@@ -225,6 +226,17 @@ def build_approval_scope_service(session: Session) -> ApprovalScopeService:
     """Compose #276 approval-scope administration and pure resolution."""
 
     return ApprovalScopeService(SqlApprovalScopeRepository(session))
+
+
+def build_approval_progress_service(session: Session) -> ApprovalProgressService:
+    """Compose the common #276D approval-cycle read projection."""
+
+    repository = SqlApprovalCycleRepository(session)
+    cycles = ApprovalCycleService(
+        repository,
+        ApprovalScopeService(SqlApprovalScopeRepository(session)),
+    )
+    return ApprovalProgressService(cycles, repository)
 
 
 def build_demand_requester_service(session: Session) -> DemandRequesterService:

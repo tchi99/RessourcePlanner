@@ -6,6 +6,15 @@ historical implementation modules.
 """
 
 from .allocation_service import AllocationService
+from .approval_progress import (
+    ApprovalApproverProgressReadModel,
+    ApprovalCycleProgressReadModel,
+    ApprovalDecisionProgressReadModel,
+    ApprovalProgressRepositoryPort,
+    ApprovalProgressService,
+    ApprovalRequirementProgressReadModel,
+    ApprovalUserSummaryRecord,
+)
 from .approval_voting import (
     APPROVAL_DECISION_APPROVE,
     ApprovalDecisionRecord,
