@@ -266,7 +266,11 @@ export default function App() {
           ) : view === "medium-term" ? (
             <MediumTermPage onOpenDemands={() => setView("demands")} />
           ) : view === "demands" ? (
-            <DemandsWorkspace initialDemandNumber={demandToOpen} />
+            demandToOpen ? (
+              <DemandsWorkspace initialDemandNumber={demandToOpen} />
+            ) : (
+              <DemandsWorkspace />
+            )
           ) : view === "projects" ? (
             <ProjectsPage />
           ) : view === "communications" && can("manage_communications") ? (
