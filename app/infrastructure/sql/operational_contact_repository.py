@@ -349,6 +349,211 @@ class SqlOperationalContactRepository(OperationalContactRepositoryPort):
             diagnostics=_unique(diagnostics),
         )
 
+    def _prime_materialized_context_rows(
+        self,
+        requirements: Sequence[ResourceRequirement],
+        *,
+        shifts: Sequence[Shift] = (),
+    ) -> tuple[
+        tuple[Project, ...],
+        tuple[WorkforceRequest, ...],
+        tuple[TaskCatalogEntry, ...],
+        tuple[Resource, ...],
+    ]:
+        """Prime the SQLAlchemy identity map for fixed-cost materialized resolution."""
+
+        project_ids = {
+            row.project_id for row in requirements if row.project_id
+        }
+        request_ids = {
+            row.workforce_request_id
+            for row in requirements
+            if row.workforce_request_id
+        }
+        task_ids = {
+            row.approved_task_catalog_item_id
+            for row in requirements
+            if row.approved_task_catalog_item_id
+        }
+        resource_ids = {
+            row.assigned_resource_id
+            for row in requirements
+            if row.assigned_resource_id
+        }
+        resource_ids.update(
+            row.resource_id for row in shifts if row.resource_id
+        )
+
+        projects = (
+            tuple(
+                self._session.scalars(
+                    select(Project).where(Project.id.in_(tuple(project_ids)))
+                ).all()
+            )
+            if project_ids
+            else ()
+        )
+        requests = (
+            tuple(
+                self._session.scalars(
+                    select(WorkforceRequest).where(
+                        WorkforceRequest.id.in_(tuple(request_ids))
+                    )
+                ).all()
+            )
+            if request_ids
+            else ()
+        )
+        tasks = (
+            tuple(
+                self._session.scalars(
+                    select(TaskCatalogEntry).where(
+                        TaskCatalogEntry.id.in_(tuple(task_ids))
+                    )
+                ).all()
+            )
+            if task_ids
+            else ()
+        )
+        resources = (
+            tuple(
+                self._session.scalars(
+                    select(Resource).where(Resource.id.in_(tuple(resource_ids)))
+                ).all()
+            )
+            if resource_ids
+            else ()
+        )
+
+        project_by_id = {row.id: row for row in projects}
+        task_by_id = {row.id: row for row in tasks}
+        resource_by_id = {row.id: row for row in resources}
+        contact_ids: list[str | None] = []
+        for requirement in requirements:
+            project = project_by_id.get(requirement.project_id)
+            task = (
+                task_by_id.get(requirement.approved_task_catalog_item_id)
+                if requirement.approved_task_catalog_item_id
+                else None
+            )
+            contact_ids.extend(
+                (
+                    requirement.approved_operational_responsible_override_contact_id,
+                    (
+                        task.operational_responsible_contact_id
+                        if task is not None
+                        else None
+                    ),
+                    (
+                        project.project_manager_contact_id
+                        if project is not None
+                        else None
+                    ),
+                    (
+                        task.coordinator_contact_id
+                        if task is not None
+                        else None
+                    ),
+                )
+            )
+        for resource in resources:
+            contact_ids.append(resource.coordinator_contact_id)
+        self._contacts(tuple(contact_ids))
+        return projects, requests, tasks, resources
+
+    def get_resource_requirement_contact_contexts(
+        self,
+        requirement_ids: Sequence[str],
+    ) -> tuple[MaterializedContactContext, ...]:
+        wanted = tuple(
+            dict.fromkeys(
+                str(requirement_id or "").strip()
+                for requirement_id in requirement_ids
+                if str(requirement_id or "").strip()
+            )
+        )
+        if not wanted:
+            return ()
+        requirements = tuple(
+            self._session.scalars(
+                select(ResourceRequirement).where(
+                    ResourceRequirement.id.in_(wanted)
+                )
+            ).all()
+        )
+        by_id = {row.id: row for row in requirements}
+        primed = self._prime_materialized_context_rows(requirements)
+        result = tuple(
+            context
+            for requirement_id in wanted
+            if (requirement := by_id.get(requirement_id)) is not None
+            and (
+                context := self._materialized_context(
+                    requirement=requirement
+                )
+            )
+            is not None
+        )
+        _ = primed
+        return result
+
+    def get_shift_contact_contexts(
+        self,
+        shift_ids: Sequence[str],
+    ) -> tuple[MaterializedContactContext, ...]:
+        wanted = tuple(
+            dict.fromkeys(
+                str(shift_id or "").strip()
+                for shift_id in shift_ids
+                if str(shift_id or "").strip()
+            )
+        )
+        if not wanted:
+            return ()
+        shifts = tuple(
+            self._session.scalars(
+                select(Shift).where(Shift.id.in_(wanted))
+            ).all()
+        )
+        shift_by_id = {row.id: row for row in shifts}
+        requirement_ids = {
+            row.resource_requirement_id
+            for row in shifts
+            if row.resource_requirement_id
+        }
+        requirements = (
+            tuple(
+                self._session.scalars(
+                    select(ResourceRequirement).where(
+                        ResourceRequirement.id.in_(tuple(requirement_ids))
+                    )
+                ).all()
+            )
+            if requirement_ids
+            else ()
+        )
+        requirement_by_id = {row.id: row for row in requirements}
+        primed = self._prime_materialized_context_rows(
+            requirements,
+            shifts=shifts,
+        )
+        result: list[MaterializedContactContext] = []
+        for shift_id in wanted:
+            shift = shift_by_id.get(shift_id)
+            if shift is None:
+                continue
+            requirement = requirement_by_id.get(shift.resource_requirement_id)
+            if requirement is None:
+                continue
+            context = self._materialized_context(
+                requirement=requirement,
+                shift=shift,
+            )
+            if context is not None:
+                result.append(context)
+        _ = primed
+        return tuple(result)
+
     def get_resource_requirement_contact_context(
         self,
         requirement_id: str,

@@ -296,20 +296,28 @@ class SqlPlannerQueryRepository(PlannerQueryPort):
         self,
         *,
         project_ids: Sequence[str] | None = None,
+        demand_ids: Sequence[str] | None = None,
     ) -> tuple[DemandReadModel, ...]:
-        return tuple(self._demands.list(project_ids=project_ids))
+        return tuple(
+            self._demands.list(
+                project_ids=project_ids,
+                demand_ids=demand_ids,
+            )
+        )
 
     def list_demands_with_cancellation_materialization(
         self,
         *,
         project_ids: Sequence[str] | None = None,
+        demand_ids: Sequence[str] | None = None,
     ) -> tuple[
         tuple[DemandReadModel, DemandCancellationMaterializationReadModel],
         ...,
     ]:
         return tuple(
             self._demands.list_with_cancellation_materialization(
-                project_ids=project_ids
+                project_ids=project_ids,
+                demand_ids=demand_ids,
             )
         )
 

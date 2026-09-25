@@ -7,7 +7,7 @@ import json
 import re
 from typing import Any
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, or_, select
 from sqlalchemy.orm import Session, aliased
 
 from ...application.demand_completion import (
@@ -571,15 +571,32 @@ class SqlDemandRepository(DemandRepositoryPort):
         self,
         *,
         project_ids: Sequence[str] | None = None,
+        demand_ids: Sequence[str] | None = None,
     ) -> Sequence[
         tuple[DemandReadModel, DemandCancellationMaterializationReadModel]
     ]:
         statement = self._row_query()
+        scope_filters = []
         if project_ids is not None:
-            identifiers = tuple(str(value) for value in project_ids if str(value))
-            if not identifiers:
+            project_identifiers = tuple(
+                str(value) for value in project_ids if str(value)
+            )
+            if project_identifiers:
+                scope_filters.append(
+                    WorkforceRequest.project_id.in_(project_identifiers)
+                )
+        if demand_ids is not None:
+            demand_identifiers = tuple(
+                str(value) for value in demand_ids if str(value)
+            )
+            if demand_identifiers:
+                scope_filters.append(
+                    WorkforceRequest.id.in_(demand_identifiers)
+                )
+        if project_ids is not None or demand_ids is not None:
+            if not scope_filters:
                 return ()
-            statement = statement.where(WorkforceRequest.project_id.in_(identifiers))
+            statement = statement.where(or_(*scope_filters))
         rows = self._session.execute(
             statement.order_by(
                 WorkforceRequest.desired_start,
@@ -619,11 +636,13 @@ class SqlDemandRepository(DemandRepositoryPort):
         self,
         *,
         project_ids: Sequence[str] | None = None,
+        demand_ids: Sequence[str] | None = None,
     ) -> Sequence[DemandReadModel]:
         return tuple(
             demand
             for demand, _materialization in self.list_with_cancellation_materialization(
-                project_ids=project_ids
+                project_ids=project_ids,
+                demand_ids=demand_ids,
             )
         )
 

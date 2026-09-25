@@ -64,6 +64,21 @@ def _project_ids_for_scope(
     ).project_ids
 
 
+def _demand_scope_context(
+    request: Request,
+    scope: ViewScope,
+    repository: UserViewContextRepositoryPort | None,
+) -> tuple[tuple[str, ...] | None, tuple[str, ...] | None]:
+    if repository is None:
+        return None, None
+    principal: AuthPrincipal = request.state.auth_principal
+    resolution = UserViewContextService(repository).resolve_demand_scope(
+        principal,
+        scope,
+    )
+    return resolution.project_ids, resolution.demand_ids
+
+
 def _planning_scope_context(
     request: Request,
     scope: ViewScope,
@@ -203,7 +218,11 @@ def build_read_router(
         queries: PlannerQueryPort = Depends(query_dependency),
         context_repository: Any = Depends(context_dependency),
     ) -> list[DemandReadModel]:
-        project_ids = _project_ids_for_scope(request, scope, context_repository)
+        project_ids, demand_ids = _demand_scope_context(
+            request,
+            scope,
+            context_repository,
+        )
         combined_reader = getattr(
             queries,
             "list_demands_with_cancellation_materialization",
@@ -212,14 +231,22 @@ def build_read_router(
         if callable(combined_reader):
             pairs = tuple(
                 combined_reader()
-                if project_ids is None
-                else combined_reader(project_ids=project_ids)
+                if project_ids is None and demand_ids is None
+                else combined_reader(
+                    project_ids=project_ids,
+                    demand_ids=demand_ids,
+                )
             )
         else:
             rows = (
                 tuple(queries.list_demands())
-                if project_ids is None
-                else tuple(queries.list_demands(project_ids=project_ids))
+                if project_ids is None and demand_ids is None
+                else tuple(
+                    queries.list_demands(
+                        project_ids=project_ids,
+                        demand_ids=demand_ids,
+                    )
+                )
             )
             pairs = tuple((row, None) for row in rows)
         principal: AuthPrincipal = request.state.auth_principal

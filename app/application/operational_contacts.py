@@ -116,10 +116,20 @@ class OperationalContactRepositoryPort(Protocol):
         requirement_id: str,
     ) -> MaterializedContactContext | None: ...
 
+    def get_resource_requirement_contact_contexts(
+        self,
+        requirement_ids: Sequence[str],
+    ) -> Sequence[MaterializedContactContext]: ...
+
     def get_shift_contact_context(
         self,
         shift_id: str,
     ) -> MaterializedContactContext | None: ...
+
+    def get_shift_contact_contexts(
+        self,
+        shift_ids: Sequence[str],
+    ) -> Sequence[MaterializedContactContext]: ...
 
 
 class OperationalContactService:
@@ -213,6 +223,59 @@ class OperationalContactService:
             )
         return resolved[0]
 
+    def resolve_resource_requirements(
+        self,
+        requirement_ids: Sequence[str],
+    ) -> tuple[MaterializedContactResolution, ...]:
+        wanted = tuple(
+            dict.fromkeys(
+                str(requirement_id or "").strip()
+                for requirement_id in requirement_ids
+                if str(requirement_id or "").strip()
+            )
+        )
+        if not wanted:
+            return ()
+
+        bulk_loader = getattr(
+            self._repository,
+            "get_resource_requirement_contact_contexts",
+            None,
+        )
+        if callable(bulk_loader):
+            contexts = call_application_port(
+                lambda: tuple(bulk_loader(wanted)),
+                code_prefix="operational_contact_read",
+                context={"requirement_ids": list(wanted)},
+            )
+        else:
+            contexts = tuple(
+                call_application_port(
+                    lambda requirement_id=requirement_id: (
+                        self._repository.get_resource_requirement_contact_context(
+                            requirement_id
+                        )
+                    ),
+                    code_prefix="operational_contact_read",
+                    context={"requirement_id": requirement_id},
+                )
+                for requirement_id in wanted
+            )
+        by_requirement = {
+            context.requirement_id: context
+            for context in contexts
+            if context is not None
+        }
+        return tuple(
+            self._resolve_materialized(
+                by_requirement[requirement_id],
+                subject_type="RESOURCE_REQUIREMENT",
+                subject_id=requirement_id,
+            )
+            for requirement_id in wanted
+            if requirement_id in by_requirement
+        )
+
     def resolve_resource_requirement(
         self,
         requirement_id: str,
@@ -234,6 +297,57 @@ class OperationalContactService:
             context,
             subject_type="RESOURCE_REQUIREMENT",
             subject_id=context.requirement_id,
+        )
+
+    def resolve_shifts(
+        self,
+        shift_ids: Sequence[str],
+    ) -> tuple[MaterializedContactResolution, ...]:
+        wanted = tuple(
+            dict.fromkeys(
+                str(shift_id or "").strip()
+                for shift_id in shift_ids
+                if str(shift_id or "").strip()
+            )
+        )
+        if not wanted:
+            return ()
+
+        bulk_loader = getattr(
+            self._repository,
+            "get_shift_contact_contexts",
+            None,
+        )
+        if callable(bulk_loader):
+            contexts = call_application_port(
+                lambda: tuple(bulk_loader(wanted)),
+                code_prefix="operational_contact_read",
+                context={"shift_ids": list(wanted)},
+            )
+        else:
+            contexts = tuple(
+                call_application_port(
+                    lambda shift_id=shift_id: self._repository.get_shift_contact_context(
+                        shift_id
+                    ),
+                    code_prefix="operational_contact_read",
+                    context={"shift_id": shift_id},
+                )
+                for shift_id in wanted
+            )
+        by_shift = {
+            context.shift_id: context
+            for context in contexts
+            if context is not None and context.shift_id is not None
+        }
+        return tuple(
+            self._resolve_materialized(
+                by_shift[shift_id],
+                subject_type="SHIFT",
+                subject_id=shift_id,
+            )
+            for shift_id in wanted
+            if shift_id in by_shift
         )
 
     def resolve_shift(self, shift_id: str) -> MaterializedContactResolution:
