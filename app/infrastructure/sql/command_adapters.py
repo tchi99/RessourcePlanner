@@ -519,7 +519,12 @@ class SqlApprovedDemandSyncAdapter(ApprovedDemandSyncPort):
             f"{_text(request.legacy_demand_number) or request.id}."
         )
 
-    def sync_approved(self, demand_number: str) -> None:
+    def sync_approved(
+        self,
+        demand_number: str,
+        *,
+        approved_request_version: int | None = None,
+    ) -> None:
         request = self._request(demand_number)
         project = self._session.get(Project, request.project_id)
         if project is None:
