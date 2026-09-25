@@ -15,7 +15,8 @@ RUN python -m pip install --no-cache-dir -r requirements-importer.txt -c constra
 
 COPY --chown=resourceplanner:resourceplanner app ./app
 COPY --chown=resourceplanner:resourceplanner tools/import_erp_projects.py ./tools/import_erp_projects.py
-COPY --chown=resourceplanner:resourceplanner tools/import_erp_tasks.py ./tools/import_erp_tasks.py\nCOPY --chown=resourceplanner:resourceplanner tools/import_resources.py ./tools/import_resources.py
+COPY --chown=resourceplanner:resourceplanner tools/import_erp_tasks.py ./tools/import_erp_tasks.py
+COPY --chown=resourceplanner:resourceplanner tools/import_resources.py ./tools/import_resources.py
 
 RUN mkdir -p /data /imports \
     && chown -R resourceplanner:resourceplanner /data /imports /home/resourceplanner
