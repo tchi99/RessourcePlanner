@@ -34,6 +34,10 @@ Non implémenté avant la validation #232 :
 - résolution automatique `(issuer, sub) → employee_external_id`;
 - règles organisationnelles propres à l'instance réelle.
 
+Au 2026-09-25, cette frontière reste volontairement fermée : aucun feed Employee/User réel n'a encore été observé dans un environnement d'exécution accessible à la tranche #232. Les noms d'entités proposés antérieurement ne doivent donc pas être codés dans #256 comme s'ils constituaient le contrat ERP.
+
+Avant tout adaptateur concret, #232 doit confirmer à partir du service document / metadata OData réel : le feed retenu, sa clé externe stable, les champs ERP possédés, la règle déterministe de planifiabilité, la relation stable User ↔ Employee et les capacités de pagination/incrémentalité. Les capacités de `RP_Projects` ne sont pas héritées implicitement par le feed Employee.
+
 ## Propriété des données
 
 Acumatica possédera uniquement les attributs organisationnels retenus dans le contrat réel. La fondation locale limite volontairement la synchronisation à :
@@ -143,10 +147,11 @@ Les index sont définis explicitement pour SQLite et SQL Server afin de permettr
 En parallèle du développement local :
 
 - #232 : contrat OData Employee/User réel + relation identité ↔ employé;
-- #207 : synchronisation projets réelle via `RP_Projects`;
 - #223 : OIDC réel;
 - #162 : SQL Server réel.
 
-Une fois #232 suffisamment avancée, il restera principalement à implémenter l'adaptateur OData Employee/User et le mécanisme de résolution automatique entre l'identité OIDC et l'identifiant employé externe.
+#207 / `RP_Projects` est terminé et ne doit pas être réouvert pour cette tranche.
+
+Une fois #232 suffisamment avancée, #256 devra principalement implémenter l'adaptateur OData Employee/User observé, appliquer la règle de planifiabilité confirmée, projeter uniquement les attributs ERP autoritaires vers `ExternalEmployeeRecord` / la ressource locale, et résoudre automatiquement `(issuer, sub) → employee_external_id` selon la relation réelle. Tant que #232 n'a pas fixé ces éléments, #256 reste bloqué.
 
 Voir aussi [ACUMATICA_ODATA_CONTRACT.md](ACUMATICA_ODATA_CONTRACT.md).
