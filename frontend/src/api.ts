@@ -654,6 +654,68 @@ export type PlanningActionReadModel = {
   emergency_override_active: boolean;
 };
 
+export type CoordinatorDashboardKpiReadModel = {
+  personal_demands: number;
+  total_actions: number;
+  assignments: number;
+  cancellations: number;
+  approvals: number;
+  partial_coverages: number;
+  conflicts: number;
+  attention_items: number;
+};
+
+export type CoordinatorDashboardDemandReadModel = {
+  demand_number: string;
+  project_number: string | null;
+  project_name: string | null;
+  effective_status: string;
+  priority: string | null;
+  desired_start: string | null;
+  desired_end: string | null;
+  cancellation_pending: boolean;
+  attention: "URGENT" | "OVERDUE" | "SOON" | "NORMAL";
+  days_until_start: number | null;
+};
+
+export type CoordinatorDashboardActionReadModel = {
+  action_id: string;
+  category: "ASSIGNMENT" | "CANCELLATION" | "APPROVAL" | "COVERAGE";
+  kind:
+    | "WORKFORCE_ASSIGNMENT"
+    | "ASSET_ASSIGNMENT"
+    | "CANCELLATION"
+    | "APPROVAL"
+    | "PARTIAL_COVERAGE"
+    | "CONFLICT";
+  label: string;
+  detail: string | null;
+  demand_number: string;
+  source_id: string;
+  project_number: string | null;
+  project_name: string | null;
+  status: string | null;
+  priority: string | null;
+  start_date: string | null;
+  end_date: string | null;
+  planned_hours: number | null;
+  covered_hours: number | null;
+  remaining_hours: number | null;
+  attention: "URGENT" | "OVERDUE" | "SOON" | "NORMAL";
+  days_until_start: number | null;
+  target: "DEMANDS" | "PLANNING";
+  resource_kind: "WORKFORCE" | "ASSET" | null;
+  related_ids: string[];
+};
+
+export type CoordinatorDashboardReadModel = {
+  as_of: string;
+  attention_horizon_days: number;
+  kpis: CoordinatorDashboardKpiReadModel;
+  personal_demands: CoordinatorDashboardDemandReadModel[];
+  actions: CoordinatorDashboardActionReadModel[];
+};
+
 export type ResourceRecommendationReadModel = {
   resource_id: string;
   resource_name: string;
@@ -1061,6 +1123,13 @@ export function getPlanningActions(
 ) {
   const params = new URLSearchParams({ start, end, scope });
   return getJson<PlanningActionReadModel[]>(`/api/v1/planning/actions?${params.toString()}`, signal);
+}
+
+export function getCoordinatorDashboard(signal?: AbortSignal) {
+  return getJson<CoordinatorDashboardReadModel>(
+    "/api/v1/coordinator-dashboard",
+    signal,
+  );
 }
 
 export function getResourceRecommendations(segmentId: string, signal?: AbortSignal) {
