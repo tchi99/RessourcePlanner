@@ -22,6 +22,7 @@ from app.infrastructure.sql import (
 from app.server import create_api_app as _create_api_app
 
 
+from tests.approval_test_support import routed_demand_payload, seed_test_approval_routing
 from tests.http_test_auth import (
     TEST_ADMIN_AUTH_RESOLVER,
     TEST_PROJECT_MANAGER_AUTH_RESOLVER,
@@ -158,6 +159,7 @@ class MediumTermUnlinkedSegmentsApiTests(unittest.TestCase):
                     ),
                 ]
             )
+            seed_test_approval_routing(session, map_existing_tasks=True)
 
         engine.dispose()
         return url
