@@ -90,13 +90,19 @@ Le smoke manuel du 2026-09-24 a confirmé avant branchement RessourcePlanner :
 - décalage observé compatible avec UTC côté OData versus heure locale EDT côté UI;
 - `BaseType` observés : `P` et `R`; `R` semble représenter des templates mais aucune règle de filtrage n'est encore décidée.
 
-Restent à effectuer sur une base RessourcePlanner de développement :
+Le smoke RessourcePlanner réel a ensuite été exécuté avec succès sur une base de développement :
 
-1. lancer une synchronisation réelle;
-2. vérifier plusieurs projets connus et leur mapping;
-3. relancer la synchronisation et confirmer l'idempotence;
-4. confirmer qu'aucune absence dans le feed ne provoque de suppression;
-5. trancher la règle métier de `BaseType=R` avant tout filtrage.
+- endpoint d'intégration configuré : OK, sans fuite de credential;
+- première synchronisation : `received=1286, created=1286, updated=0, unchanged=0`;
+- plusieurs projets connus et leur mapping : vérifiés;
+- accents, padding et valeurs nulles : vérifiés;
+- seconde synchronisation inchangée : `received=1286, created=0, updated=0, unchanged=1286`;
+- doublons : aucun;
+- projets locaux préexistants : conservés.
+
+Le parcours réel confirme donc le snapshot complet, l'idempotence et l'absence de suppression implicite.
+
+Reste une décision métier séparée : `BaseType=R` semble représenter des templates sur l'instance observée, mais #207B ne l'exclut pas sans règle PO explicite. Le compte nominatif utilisé pour le smoke doit aussi être remplacé par un compte de service dédié avant exploitation durable.
 
 ## Readiness locale
 
