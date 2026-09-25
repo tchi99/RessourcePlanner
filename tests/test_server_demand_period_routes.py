@@ -28,6 +28,7 @@ D1 = date(2026, 9, 7)
 D2 = date(2026, 9, 8)
 
 
+from tests.approval_test_support import routed_demand_payload, seed_test_approval_routing
 from tests.http_test_auth import (
     TEST_ADMIN_AUTH_RESOLVER,
     TEST_PROJECT_MANAGER_AUTH_RESOLVER,
@@ -59,6 +60,7 @@ class ServerDemandPeriodRouteTests(unittest.TestCase):
                     active=True,
                 )
             )
+        seed_test_approval_routing(session, map_existing_tasks=True)
 
     @classmethod
     def setUpClass(cls) -> None:
@@ -121,12 +123,12 @@ class ServerDemandPeriodRouteTests(unittest.TestCase):
             with TestClient(app, raise_server_exceptions=False) as client:
                 created = client.post(
                     "/api/v1/demands",
-                    json={
+                    json=routed_demand_payload({
                         "project_number": "P-1",
                         "desired_start": D1.isoformat(),
                         "desired_end": D2.isoformat(),
                         "estimated_hours": 8,
-                    },
+                    }),
                 )
                 self.assertEqual(created.status_code, 201, created.text)
                 number = created.json()["demand_number"]
@@ -206,12 +208,12 @@ class ServerDemandPeriodRouteTests(unittest.TestCase):
             with TestClient(app, raise_server_exceptions=False) as client:
                 created = client.post(
                     "/api/v1/demands",
-                    json={
+                    json=routed_demand_payload({
                         "project_number": "P-1",
                         "desired_start": D1.isoformat(),
                         "desired_end": D2.isoformat(),
                         "estimated_hours": 8,
-                    },
+                    }),
                 )
                 number = created.json()["demand_number"]
                 self.assertEqual(
@@ -298,12 +300,12 @@ class ServerDemandPeriodRouteTests(unittest.TestCase):
             with TestClient(app, raise_server_exceptions=False) as client:
                 created = client.post(
                     "/api/v1/demands",
-                    json={
+                    json=routed_demand_payload({
                         "project_number": "P-1",
                         "desired_start": D1.isoformat(),
                         "desired_end": D2.isoformat(),
                         "estimated_hours": 8,
-                    },
+                    }),
                 )
                 self.assertEqual(created.status_code, 201, created.text)
                 number = created.json()["demand_number"]
