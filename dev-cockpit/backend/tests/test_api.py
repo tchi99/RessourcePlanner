@@ -26,6 +26,12 @@ class ApiTests(unittest.TestCase):
         self.assertIn("DEV_COCKPIT_GITHUB_TOKEN", response.json()["detail"])
         self.assertEqual(client.get("/api/health").json()["status"], "configuration_error")
 
+    def test_flow_analytics_without_token_returns_configuration_error(self):
+        client = TestClient(create_app(Settings(github_token=None)))
+        response = client.get("/api/flow-analytics")
+        self.assertEqual(response.status_code, 503)
+        self.assertIn("Flow Analytics", response.json()["detail"])
+
     def test_writeback_without_token_returns_configuration_error(self):
         client = TestClient(create_app(Settings(github_token=None)))
 
