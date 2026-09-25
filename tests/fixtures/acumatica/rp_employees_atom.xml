@@ -1,0 +1,215 @@
+<?xml version="1.0" encoding="utf-8"?>
+<feed xml:base="https://erp-example.invalid/odata" xmlns="http://www.w3.org/2005/Atom" xmlns:d="http://schemas.microsoft.com/ado/2007/08/dataservices" xmlns:m="http://schemas.microsoft.com/ado/2007/08/dataservices/metadata" xmlns:georss="http://www.georss.org/georss" xmlns:gml="http://www.opengis.net/gml">
+    <id>http://schemas.datacontract.org/2004/07/</id>
+    <title />
+    <updated>2026-01-15T14:30:00Z</updated>
+    <link rel="self" href="https://erp-example.invalid/odata/RP_Employees" />
+    <entry>
+        <id>https://erp-example.invalid/odata/RP_Employees(EmployeID='EXEMALIC%20%20',ContactID=900001)</id>
+        <category term="PX.Data.RP_Employees" scheme="http://schemas.microsoft.com/ado/2007/08/dataservices/scheme" />
+        <link rel="edit" href="https://erp-example.invalid/odata/RP_Employees(EmployeID='EXEMALIC%20%20',ContactID=900001)" />
+        <link rel="self" href="https://erp-example.invalid/odata/RP_Employees(EmployeID='EXEMALIC%20%20',ContactID=900001)" />
+        <title />
+        <updated>2026-01-15T14:30:00Z</updated>
+        <author>
+            <name />
+        </author>
+        <content type="application/xml">
+            <m:properties>
+                <d:EmployeID xml:space="preserve">EXEMALIC  </d:EmployeID>
+                <d:DisplayName>1001 - ALICE EXEMPLE</d:DisplayName>
+                <d:Email>alice.exemple@example.invalid</d:Email>
+                <d:Status>Actif</d:Status>
+                <d:DepartmentCodeDescription>Technicien automatisation</d:DepartmentCodeDescription>
+                <d:DepartementCode>TECHAUTO</d:DepartementCode>
+                <d:EmployeeClass>GENERAL</d:EmployeeClass>
+                <d:SupervisordID xml:space="preserve">DEMOALEX  </d:SupervisordID>
+                <d:Telephone>555-010-1001</d:Telephone>
+                <d:BranchCode xml:space="preserve">210       </d:BranchCode>
+                <d:ContactID m:type="Edm.Int32">900001</d:ContactID>
+            </m:properties>
+        </content>
+    </entry>
+    <entry>
+        <id>https://erp-example.invalid/odata/RP_Employees(EmployeID='DEMOBRUN%20%20',ContactID=900002)</id>
+        <category term="PX.Data.RP_Employees" scheme="http://schemas.microsoft.com/ado/2007/08/dataservices/scheme" />
+        <link rel="edit" href="https://erp-example.invalid/odata/RP_Employees(EmployeID='DEMOBRUN%20%20',ContactID=900002)" />
+        <link rel="self" href="https://erp-example.invalid/odata/RP_Employees(EmployeID='DEMOBRUN%20%20',ContactID=900002)" />
+        <title />
+        <updated>2026-01-15T14:30:00Z</updated>
+        <author>
+            <name />
+        </author>
+        <content type="application/xml">
+            <m:properties>
+                <d:EmployeID xml:space="preserve">DEMOBRUN  </d:EmployeID>
+                <d:DisplayName>1002 - BRUNO DEMO</d:DisplayName>
+                <d:Email>bruno.demo@example.invalid</d:Email>
+                <d:Status>Actif</d:Status>
+                <d:DepartmentCodeDescription>Électromécanicien</d:DepartmentCodeDescription>
+                <d:DepartementCode>ELECTRO</d:DepartementCode>
+                <d:EmployeeClass>GENERAL</d:EmployeeClass>
+                <d:SupervisordID xml:space="preserve">EXEMALIC  </d:SupervisordID>
+                <d:Telephone>555-010-1002</d:Telephone>
+                <d:BranchCode xml:space="preserve">210       </d:BranchCode>
+                <d:ContactID m:type="Edm.Int32">900002</d:ContactID>
+            </m:properties>
+        </content>
+    </entry>
+    <entry>
+        <id>https://erp-example.invalid/odata/RP_Employees(EmployeID='TESTCAMIL%20',ContactID=900003)</id>
+        <category term="PX.Data.RP_Employees" scheme="http://schemas.microsoft.com/ado/2007/08/dataservices/scheme" />
+        <link rel="edit" href="https://erp-example.invalid/odata/RP_Employees(EmployeID='TESTCAMIL%20',ContactID=900003)" />
+        <link rel="self" href="https://erp-example.invalid/odata/RP_Employees(EmployeID='TESTCAMIL%20',ContactID=900003)" />
+        <title />
+        <updated>2026-01-15T14:30:00Z</updated>
+        <author>
+            <name />
+        </author>
+        <content type="application/xml">
+            <m:properties>
+                <d:EmployeID xml:space="preserve">TESTCAMIL </d:EmployeID>
+                <d:DisplayName>1003 - CAMILLE TEST</d:DisplayName>
+                <d:Email>camille.test@example.invalid</d:Email>
+                <d:Status>Actif</d:Status>
+                <d:DepartmentCodeDescription>Chargé de projets</d:DepartmentCodeDescription>
+                <d:DepartementCode>PROJETS</d:DepartementCode>
+                <d:EmployeeClass>GENERAL</d:EmployeeClass>
+                <d:SupervisordID xml:space="preserve">DEMOALEX  </d:SupervisordID>
+                <d:Telephone>555-010-1003</d:Telephone>
+                <d:BranchCode xml:space="preserve">310       </d:BranchCode>
+                <d:ContactID m:type="Edm.Int32">900003</d:ContactID>
+            </m:properties>
+        </content>
+    </entry>
+    <entry>
+        <id>https://erp-example.invalid/odata/RP_Employees(EmployeID='FICTDANI%20%20',ContactID=900004)</id>
+        <category term="PX.Data.RP_Employees" scheme="http://schemas.microsoft.com/ado/2007/08/dataservices/scheme" />
+        <link rel="edit" href="https://erp-example.invalid/odata/RP_Employees(EmployeID='FICTDANI%20%20',ContactID=900004)" />
+        <link rel="self" href="https://erp-example.invalid/odata/RP_Employees(EmployeID='FICTDANI%20%20',ContactID=900004)" />
+        <title />
+        <updated>2026-01-15T14:30:00Z</updated>
+        <author>
+            <name />
+        </author>
+        <content type="application/xml">
+            <m:properties>
+                <d:EmployeID xml:space="preserve">FICTDANI  </d:EmployeID>
+                <d:DisplayName>1004 - DANI FICTIF</d:DisplayName>
+                <d:Email>dani.fictif@example.invalid</d:Email>
+                <d:Status>Inactif</d:Status>
+                <d:DepartmentCodeDescription>Finance</d:DepartmentCodeDescription>
+                <d:DepartementCode>FINANCE</d:DepartementCode>
+                <d:EmployeeClass>GENERAL</d:EmployeeClass>
+                <d:SupervisordID m:null="true" />
+                <d:Telephone>555-010-1004</d:Telephone>
+                <d:BranchCode xml:space="preserve">910       </d:BranchCode>
+                <d:ContactID m:type="Edm.Int32">900004</d:ContactID>
+            </m:properties>
+        </content>
+    </entry>
+    <entry>
+        <id>https://erp-example.invalid/odata/RP_Employees(EmployeID='SAMPLEELI%20',ContactID=900005)</id>
+        <category term="PX.Data.RP_Employees" scheme="http://schemas.microsoft.com/ado/2007/08/dataservices/scheme" />
+        <link rel="edit" href="https://erp-example.invalid/odata/RP_Employees(EmployeID='SAMPLEELI%20',ContactID=900005)" />
+        <link rel="self" href="https://erp-example.invalid/odata/RP_Employees(EmployeID='SAMPLEELI%20',ContactID=900005)" />
+        <title />
+        <updated>2026-01-15T14:30:00Z</updated>
+        <author>
+            <name />
+        </author>
+        <content type="application/xml">
+            <m:properties>
+                <d:EmployeID xml:space="preserve">SAMPLEELI </d:EmployeID>
+                <d:DisplayName>1005 - ELI ÉCHANTILLON</d:DisplayName>
+                <d:Email>eli.echantillon@example.invalid</d:Email>
+                <d:Status>Actif</d:Status>
+                <d:DepartmentCodeDescription>CCQ</d:DepartmentCodeDescription>
+                <d:DepartementCode>CCQ</d:DepartementCode>
+                <d:EmployeeClass>GENERAL</d:EmployeeClass>
+                <d:SupervisordID xml:space="preserve">CHEFTEST  </d:SupervisordID>
+                <d:Telephone>555-010-1005</d:Telephone>
+                <d:BranchCode xml:space="preserve">110       </d:BranchCode>
+                <d:ContactID m:type="Edm.Int32">900005</d:ContactID>
+            </m:properties>
+        </content>
+    </entry>
+    <entry>
+        <id>https://erp-example.invalid/odata/RP_Employees(EmployeID='UTILFRED%20%20',ContactID=900006)</id>
+        <category term="PX.Data.RP_Employees" scheme="http://schemas.microsoft.com/ado/2007/08/dataservices/scheme" />
+        <link rel="edit" href="https://erp-example.invalid/odata/RP_Employees(EmployeID='UTILFRED%20%20',ContactID=900006)" />
+        <link rel="self" href="https://erp-example.invalid/odata/RP_Employees(EmployeID='UTILFRED%20%20',ContactID=900006)" />
+        <title />
+        <updated>2026-01-15T14:30:00Z</updated>
+        <author>
+            <name />
+        </author>
+        <content type="application/xml">
+            <m:properties>
+                <d:EmployeID xml:space="preserve">UTILFRED  </d:EmployeID>
+                <d:DisplayName>1006 - FRED UTILISATEUR</d:DisplayName>
+                <d:Email>fred.utilisateur@example.invalid</d:Email>
+                <d:Status>Inactif</d:Status>
+                <d:DepartmentCodeDescription>Administration</d:DepartmentCodeDescription>
+                <d:DepartementCode>ADMINIST</d:DepartementCode>
+                <d:EmployeeClass>GENERAL</d:EmployeeClass>
+                <d:SupervisordID m:null="true" />
+                <d:Telephone m:null="true" />
+                <d:BranchCode xml:space="preserve">920       </d:BranchCode>
+                <d:ContactID m:type="Edm.Int32">900006</d:ContactID>
+            </m:properties>
+        </content>
+    </entry>
+    <entry>
+        <id>https://erp-example.invalid/odata/RP_Employees(EmployeID='CHEFTEST%20%20',ContactID=900007)</id>
+        <category term="PX.Data.RP_Employees" scheme="http://schemas.microsoft.com/ado/2007/08/dataservices/scheme" />
+        <link rel="edit" href="https://erp-example.invalid/odata/RP_Employees(EmployeID='CHEFTEST%20%20',ContactID=900007)" />
+        <link rel="self" href="https://erp-example.invalid/odata/RP_Employees(EmployeID='CHEFTEST%20%20',ContactID=900007)" />
+        <title />
+        <updated>2026-01-15T14:30:00Z</updated>
+        <author>
+            <name />
+        </author>
+        <content type="application/xml">
+            <m:properties>
+                <d:EmployeID xml:space="preserve">CHEFTEST  </d:EmployeID>
+                <d:DisplayName>1007 - MORGAN RESPONSABLE</d:DisplayName>
+                <d:Email>morgan.responsable@example.invalid</d:Email>
+                <d:Status>Actif</d:Status>
+                <d:DepartmentCodeDescription>Superviseur</d:DepartmentCodeDescription>
+                <d:DepartementCode>SUPERV</d:DepartementCode>
+                <d:EmployeeClass>GENERAL</d:EmployeeClass>
+                <d:SupervisordID m:null="true" />
+                <d:Telephone>555-010-1007</d:Telephone>
+                <d:BranchCode xml:space="preserve">110       </d:BranchCode>
+                <d:ContactID m:type="Edm.Int32">900007</d:ContactID>
+            </m:properties>
+        </content>
+    </entry>
+    <entry>
+        <id>https://erp-example.invalid/odata/RP_Employees(EmployeID='DEMOALEX%20%20',ContactID=900008)</id>
+        <category term="PX.Data.RP_Employees" scheme="http://schemas.microsoft.com/ado/2007/08/dataservices/scheme" />
+        <link rel="edit" href="https://erp-example.invalid/odata/RP_Employees(EmployeID='DEMOALEX%20%20',ContactID=900008)" />
+        <link rel="self" href="https://erp-example.invalid/odata/RP_Employees(EmployeID='DEMOALEX%20%20',ContactID=900008)" />
+        <title />
+        <updated>2026-01-15T14:30:00Z</updated>
+        <author>
+            <name />
+        </author>
+        <content type="application/xml">
+            <m:properties>
+                <d:EmployeID xml:space="preserve">DEMOALEX  </d:EmployeID>
+                <d:DisplayName>1008 - ALEX DÉMONSTRATION</d:DisplayName>
+                <d:Email>alex.demonstration@example.invalid</d:Email>
+                <d:Status>Actif</d:Status>
+                <d:DepartmentCodeDescription>Direction</d:DepartmentCodeDescription>
+                <d:DepartementCode>DIRECTION</d:DepartementCode>
+                <d:EmployeeClass>GENERAL</d:EmployeeClass>
+                <d:SupervisordID m:null="true" />
+                <d:Telephone>555-010-1008</d:Telephone>
+                <d:BranchCode xml:space="preserve">210       </d:BranchCode>
+                <d:ContactID m:type="Edm.Int32">900008</d:ContactID>
+            </m:properties>
+        </content>
+    </entry>
+</feed>
