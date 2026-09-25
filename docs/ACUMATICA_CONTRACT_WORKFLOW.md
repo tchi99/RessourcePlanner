@@ -137,6 +137,33 @@ Le mock doit reproduire uniquement les comportements dont RessourcePlanner dépe
 
 Le mock n'a pas à devenir une réimplémentation générale d'OData.
 
+## Outillage local réutilisable
+
+Le dépôt fournit maintenant un chemin contract-first entièrement local :
+
+- fixtures contractuelles : `tests/fixtures/acumatica/`;
+- fixture projet de référence : `tests/fixtures/acumatica/rp_projects_atom.xml`;
+- primitives Atom/OData communes : `app/infrastructure/acumatica/odata_atom.py`;
+- faux transport HTTP de test : `tests/acumatica_odata_test_support.py`;
+- inspecteur de contrat : `tools/inspect_odata_contract.py`;
+- template pour un nouveau feed : `docs/integrations/acumatica/CONTRACT_TEMPLATE.md`.
+
+Inspection d'une fixture anonymisée :
+
+```bash
+python tools/inspect_odata_contract.py tests/fixtures/acumatica/rp_projects_atom.xml
+```
+
+L'inspecteur :
+
+- lit uniquement le fichier local fourni;
+- n'effectue aucun appel réseau;
+- ne conserve aucune copie;
+- affiche les namespaces, noms de champs, types, nullabilité observée et structure Atom utile;
+- n'affiche jamais les valeurs des propriétés.
+
+Le faux transport est volontairement limité aux scénarios nécessaires aux adaptateurs RessourcePlanner : réponses Atom/XML synthétiques, routage par paramètres de requête, plusieurs pages, statuts HTTP et erreurs de transport. Il ne simule pas Acumatica en général.
+
 ## Validation environnementale réelle
 
 La validation réelle est une étape distincte du développement.

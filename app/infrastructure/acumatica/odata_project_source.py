@@ -6,41 +6,25 @@ from datetime import datetime
 import logging
 from typing import Final
 from urllib.parse import urljoin
-import xml.etree.ElementTree as ET
 
 import httpx
 
 from ...application import ApplicationOperationError, ExternalProjectRecord, ProjectSourcePort
+from .odata_atom import (
+    ATOM_NAMESPACE,
+    DATA_NAMESPACE,
+    METADATA_NAMESPACE,
+    ODataAtomFeedError,
+    classify_http_failure as _http_failure_kind,
+    optional_text as _optional_text,
+    parse_atom_feed,
+)
 
 
 logger = logging.getLogger(__name__)
 
-ATOM_NAMESPACE: Final = "http://www.w3.org/2005/Atom"
-DATA_NAMESPACE: Final = "http://schemas.microsoft.com/ado/2007/08/dataservices"
-METADATA_NAMESPACE: Final = "http://schemas.microsoft.com/ado/2007/08/dataservices/metadata"
 _INT32_MIN: Final = -(2**31)
 _INT32_MAX: Final = 2**31 - 1
-
-
-def _text(value: object) -> str:
-    return str(value or "").strip()
-
-
-def _optional_text(value: object) -> str | None:
-    text = _text(value)
-    return text or None
-
-
-def _http_failure_kind(status_code: int) -> tuple[str, bool]:
-    if status_code == 401:
-        return "authentication", False
-    if status_code == 403:
-        return "authorization", False
-    if status_code == 429:
-        return "throttled", True
-    if status_code >= 500:
-        return "upstream_5xx", True
-    return "http_error", False
 
 
 class ODataProjectFeedError(ValueError):
@@ -86,23 +70,6 @@ class ODataProjectRecord:
             project_manager_name=self.project_manager_name,
             status=self.status or "active",
         )
-
-
-def _local_name(tag: str) -> str:
-    if tag.startswith("{") and "}" in tag:
-        return tag.split("}", 1)[1]
-    return tag
-
-
-def _property_values(properties: ET.Element) -> dict[str, str | None]:
-    values: dict[str, str | None] = {}
-    for element in list(properties):
-        if not element.tag.startswith(f"{{{DATA_NAMESPACE}}}"):
-            continue
-        name = _local_name(element.tag)
-        is_null = _text(element.attrib.get(f"{{{METADATA_NAMESPACE}}}null")).casefold() == "true"
-        values[name] = None if is_null else _optional_text(element.text)
-    return values
 
 
 def _required_text(values: Mapping[str, str | None], field: str, *, entry_index: int) -> str:
@@ -155,24 +122,19 @@ def _parse_datetime(
 
 
 def parse_rp_projects_feed(xml_payload: bytes | str) -> tuple[ODataProjectRecord, ...]:
-    """Parse one complete RP_Projects Atom feed without relying on XML prefixes."""
+    """Parse one complete RP_Projects Atom feed using the shared OData envelope parser."""
 
     try:
-        root = ET.fromstring(xml_payload)
-    except (ET.ParseError, TypeError, ValueError) as exc:
-        raise ODataProjectFeedError("invalid_xml") from exc
-    if root.tag != f"{{{ATOM_NAMESPACE}}}feed":
-        raise ODataProjectFeedError("invalid_feed_root")
+        feed = parse_atom_feed(xml_payload)
+    except ODataAtomFeedError as exc:
+        raise ODataProjectFeedError(
+            exc.reason,
+            entry_index=exc.entry_index,
+        ) from exc
 
     records: list[ODataProjectRecord] = []
-    for entry_index, entry in enumerate(root.findall(f".//{{{ATOM_NAMESPACE}}}entry")):
-        properties = entry.find(f".//{{{METADATA_NAMESPACE}}}properties")
-        if properties is None:
-            raise ODataProjectFeedError(
-                "properties_missing",
-                entry_index=entry_index,
-            )
-        values = _property_values(properties)
+    for entry_index, entry in enumerate(feed.entries):
+        values = entry.values()
         project_id_text = _required_text(values, "ProjectId", entry_index=entry_index)
         project_code = _required_text(values, "ProjectCode", entry_index=entry_index)
         project_name = _required_text(values, "ProjectName", entry_index=entry_index)
