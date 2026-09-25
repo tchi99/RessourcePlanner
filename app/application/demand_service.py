@@ -184,6 +184,49 @@ class DemandService:
             reason=reason,
         )
 
+    def _refresh_submitted_approval_cycle_if_subject_changed(
+        self,
+        number: str,
+        *,
+        reason: str,
+    ) -> None:
+        """Replace an OPEN snapshot when a still-submitted subject is edited.
+
+        New submissions own an explicit 276B cycle. Candidate edits made before the
+        first approval vote must therefore refresh that snapshot instead of leaving a
+        stale cycle that can only fail later at approval time. Legacy submitted
+        requests without a cycle remain explicit-initialization only.
+        """
+        if self._approval_cycles is None:
+            return
+        request = self._approval_cycles.get_request(number)
+        if request is None or request.status != "Soumise":
+            return
+        cycle = self._approval_cycles.get_active_cycle(request.id)
+        if cycle is None:
+            return
+        if (
+            self._approval_cycles.current_subject_fingerprint(request.id)
+            == cycle.subject_fingerprint
+        ):
+            return
+        self._approval_cycles.invalidate_cycle(
+            request.id,
+            expected_version=request.aggregate_version,
+            reason=reason,
+        )
+        refreshed = self._approval_cycles.get_request(request.id)
+        if refreshed is None:
+            raise ApplicationOperationError(
+                "La demande est introuvable après invalidation du cycle.",
+                code="approval_cycle_request_missing_after_invalidation",
+                context={"demand_number": number},
+            )
+        self._approval_cycles.initialize_cycle(
+            request.id,
+            expected_version=refreshed.aggregate_version,
+        )
+
     @staticmethod
     def _required_identifier(value: object, *, entity: str) -> str:
         identifier = str(value or "").strip()
@@ -781,6 +824,11 @@ class DemandService:
                     decision,
                     legacy_unknown_requires_reapproval=legacy_unknown_requires_reapproval,
                 )
+            if existing.status == "Soumise" and envelope_relevant_change:
+                self._refresh_submitted_approval_cycle_if_subject_changed(
+                    number,
+                    reason="SUBMITTED_SUBJECT_MODIFIED",
+                )
         return fallback_reapproval_required
 
     def replace_periods_command(
@@ -922,6 +970,11 @@ class DemandService:
                     number,
                     decision,
                     legacy_unknown_requires_reapproval=True,
+                )
+            elif existing.status == "Soumise":
+                self._refresh_submitted_approval_cycle_if_subject_changed(
+                    number,
+                    reason="SUBMITTED_PERIODS_MODIFIED",
                 )
         return tuple(updated), reapproval_required
 
@@ -1156,6 +1209,11 @@ class DemandService:
                     "period_id": period_id,
                 },
             )
+            if existing.status == "Soumise":
+                self._refresh_submitted_approval_cycle_if_subject_changed(
+                    number,
+                    reason="SUBMITTED_ALTERNATIVE_SELECTION_CHANGED",
+                )
         return None
 
     def set_operational_confirmation_command(
@@ -1302,16 +1360,16 @@ class DemandService:
 
     def approve_command(self, command: DemandApproveCommand) -> ApprovalVoteOutcome | dict[str, Any]:
         number = self._required_identifier(command.number, entity="demand")
+        existing = self._demand_or_not_found(number)
+        self._assert_workflow_action(
+            existing,
+            ACTION_APPROVE,
+            expected_version=command.expected_version,
+        )
         if self._approval_cycles is None or self._approval_votes is None:
             # Compatibility for transport-neutral/unit compositions that do not
             # include the SQL approval aggregate. The production SQL facade always
             # composes 276C and therefore never enters this branch.
-            existing = self._demand_or_not_found(number)
-            self._assert_workflow_action(
-                existing,
-                ACTION_APPROVE,
-                expected_version=command.expected_version,
-            )
             comment = str(command.comment or "")
             with self._context("approve demand"):
                 call_application_port(
