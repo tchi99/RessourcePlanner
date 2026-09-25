@@ -30,6 +30,7 @@ def project_manager_resolver(_request):
     )
 
 
+from tests.approval_test_support import routed_demand_payload, seed_test_approval_routing
 from tests.http_test_auth import TEST_ADMIN_AUTH_RESOLVER
 
 create_api_app = partial(create_api_app, auth_resolver=TEST_ADMIN_AUTH_RESOLVER)
@@ -50,6 +51,7 @@ class CompetencyCatalogApiTests(unittest.TestCase):
                     status="Actif",
                 )
             )
+            seed_test_approval_routing(session, map_existing_tasks=True)
         engine.dispose()
         return database_url
 
@@ -121,14 +123,14 @@ class CompetencyCatalogApiTests(unittest.TestCase):
                 created_demand = client.post(
                     "/api/v1/demands",
                     headers={"Idempotency-Key": "competency-demand-1"},
-                    json={
+                    json=routed_demand_payload({
                         "project_number": "P-272",
                         "desired_start": "2026-09-21",
                         "desired_end": "2026-09-22",
                         "description": "Besoin SCADA",
                         "estimated_hours": 8,
                         "required_competency_ids": [scada_id],
-                    },
+                    }),
                 )
                 self.assertEqual(created_demand.status_code, 201)
                 demand_number = created_demand.json()["demand_number"]
