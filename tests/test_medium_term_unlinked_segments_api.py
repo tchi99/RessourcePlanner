@@ -14,6 +14,7 @@ from app.infrastructure.sql import (
     Base,
     Project,
     ResourceRequirement,
+    TaskCatalogEntry,
     WorkforceRequest,
     WorkPackage,
     create_session_factory,
@@ -47,6 +48,16 @@ class MediumTermUnlinkedSegmentsApiTests(unittest.TestCase):
                 status="active",
             )
             session.add(project)
+            session.add(
+                TaskCatalogEntry(
+                    id="TASK-P274-310",
+                    project_number="P-274",
+                    task_code="310",
+                    label="Programmation",
+                    status="Actif",
+                    active=True,
+                )
+            )
             package = WorkPackage(
                 id="WP-274",
                 project_id=project.id,
