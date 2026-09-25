@@ -231,9 +231,41 @@ class ApplicationFacade:
         self._demands.submit_command(command)
         return DemandMutationResult(_identifier(command.number), status="Soumise")
 
-    def approve_demand(self, command: DemandApproveCommand) -> ApprovalVoteOutcome:
-        # 276C owns the planning CAS decision: partial votes must not consume it.
-        return self._demands.approve_command(command)
+    def approve_demand(self, command: DemandApproveCommand) -> DemandMutationResult:
+        """Compatibility facade result for non-HTTP callers.
+
+        The SQL HTTP path uses approve_demand_quorum so 276C can expose partial
+        quorum state without changing the long-standing facade contract.
+        """
+        outcome = self._demands.approve_command(command)
+        if isinstance(outcome, ApprovalVoteOutcome):
+            return DemandMutationResult(
+                _identifier(command.number),
+                status=outcome.status,
+                planning=(
+                    PlanningResult.from_mapping(outcome.planning)
+                    if outcome.planning is not None
+                    else None
+                ),
+            )
+        return DemandMutationResult(
+            _identifier(command.number),
+            status="En planification",
+            planning=PlanningResult.from_mapping(outcome),
+        )
+
+    def approve_demand_quorum(
+        self,
+        command: DemandApproveCommand,
+    ) -> ApprovalVoteOutcome:
+        outcome = self._demands.approve_command(command)
+        if not isinstance(outcome, ApprovalVoteOutcome):
+            raise ApplicationOperationError(
+                "Le workflow de quorum est indisponible dans cette composition.",
+                code="approval_quorum_unavailable",
+                context={"demand_number": command.number},
+            )
+        return outcome
 
     def vote_demand_approval(
         self,
