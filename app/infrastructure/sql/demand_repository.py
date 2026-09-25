@@ -101,6 +101,9 @@ class SqlDemandRepository(DemandRepositoryPort):
             # this compatibility name later without changing the application port.
             number=_text(request.legacy_demand_number) or request.id,
             status=_text(request.status),
+            approved_by_name=_optional_text(request.approved_by_name),
+            approved_at=request.approved_at,
+            approval_comment=_optional_text(request.approval_comment),
             created_at=request.created_at,
             cancellation_request_id=_optional_text(request.cancellation_request_id),
             cancellation_state=_optional_text(request.cancellation_state),

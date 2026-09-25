@@ -108,6 +108,7 @@ class ApprovalCycleRepositoryPort(Protocol):
         request_id: str,
     ) -> tuple[ApprovalCycleRoutingInput, ...]: ...
     def get_active_cycle(self, request_id: str) -> ApprovalCycleRecord | None: ...
+    def get_latest_cycle(self, request_id: str) -> ApprovalCycleRecord | None: ...
     def has_any_cycle(self, request_id: str) -> bool: ...
     def create_cycle(
         self,
@@ -184,6 +185,14 @@ class ApprovalCycleService:
         identifier = _required(request_id, "workforce_request_id")
         return call_application_port(
             lambda: self._repository.get_active_cycle(identifier),
+            code_prefix="approval_cycle_read",
+            context={"workforce_request_id": identifier},
+        )
+
+    def get_latest_cycle(self, request_id: str) -> ApprovalCycleRecord | None:
+        identifier = _required(request_id, "workforce_request_id")
+        return call_application_port(
+            lambda: self._repository.get_latest_cycle(identifier),
             code_prefix="approval_cycle_read",
             context={"workforce_request_id": identifier},
         )
