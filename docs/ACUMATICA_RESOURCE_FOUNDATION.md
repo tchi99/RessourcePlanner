@@ -25,18 +25,23 @@ Implémenté localement :
 - auto-provisionnement **désactivé par défaut**;
 - si activé, seul le rôle `TECHNICIAN` (lecture) peut être attribué automatiquement.
 
-Non implémenté avant la validation #232 :
+Non implémenté avant que le **contrat #232** soit suffisamment défini :
 
-- feed/vue OData Employee/User réel;
-- noms réels des champs Employee/User;
-- identifiant externe employé réellement observé;
+- feed/vue OData Employee/User validé par le PO/opérateur autorisé;
+- noms réels des champs Employee/User transmis sous forme de contrat;
+- identifiant externe employé stable confirmé;
+- fixture anonymisée fidèle permettant les tests locaux;
 - claim OIDC contenant éventuellement un identifiant employé;
 - résolution automatique `(issuer, sub) → employee_external_id`;
 - règles organisationnelles propres à l'instance réelle.
 
-Au 2026-09-25, cette frontière reste volontairement fermée : aucun feed Employee/User réel n'a encore été observé dans un environnement d'exécution accessible à la tranche #232. Les noms d'entités proposés antérieurement ne doivent donc pas être codés dans #256 comme s'ils constituaient le contrat ERP.
+Le développeur n'a pas besoin d'un accès direct à Acumatica. La règle est : **PO valide le feed réel → fournit contrat + sample anonymisé → DEV implémente localement → PO exécute le smoke réel**. Voir [ACUMATICA_CONTRACT_WORKFLOW.md](ACUMATICA_CONTRACT_WORKFLOW.md).
 
-Avant tout adaptateur concret, #232 doit confirmer à partir du service document / metadata OData réel : le feed retenu, sa clé externe stable, les champs ERP possédés, la règle déterministe de planifiabilité, la relation stable User ↔ Employee et les capacités de pagination/incrémentalité. Les capacités de `RP_Projects` ne sont pas héritées implicitement par le feed Employee.
+### Statut du contract gate Employee/User
+
+Au 2026-09-25, le dépôt ne contient pas encore de contrat Employee/User validé par le PO/opérateur autorisé. Aucun nom de feed, champ Employee/User, identifiant stable, règle de planifiabilité ou relation User ↔ Employee ne doit donc être codé comme une vérité ERP avant que #232 fournisse ce contrat et sa fixture anonymisée.
+
+Les capacités observées sur `RP_Projects` ne sont pas héritées implicitement par le futur feed Employee. #256 demeure bloqué par ce **manque de contrat**, et non par l'absence d'accès direct du développeur à Acumatica.
 
 ## Propriété des données
 
@@ -146,12 +151,12 @@ Les index sont définis explicitement pour SQLite et SQL Server afin de permettr
 
 En parallèle du développement local :
 
-- #232 : contrat OData Employee/User réel + relation identité ↔ employé;
+- #232 : contrat OData Employee/User + relation identité ↔ employé, produit à partir d'observations réelles mais transmis sous forme désensibilisée;
 - #223 : OIDC réel;
 - #162 : SQL Server réel.
 
-#207 / `RP_Projects` est terminé et ne doit pas être réouvert pour cette tranche.
+#207 projets est terminé. Pour Employees/Users, le **contract gate** de #232 remplace l'ancien besoin implicite d'accès ERP développeur. Dès que le PO fournit le feed retenu, la clé stable, le mapping utile et une fixture anonymisée fidèle, #256 peut être implémentée entièrement contre des données synthétiques.
 
-Une fois #232 suffisamment avancée, #256 devra principalement implémenter l'adaptateur OData Employee/User observé, appliquer la règle de planifiabilité confirmée, projeter uniquement les attributs ERP autoritaires vers `ExternalEmployeeRecord` / la ressource locale, et résoudre automatiquement `(issuer, sub) → employee_external_id` selon la relation réelle. Tant que #232 n'a pas fixé ces éléments, #256 reste bloqué.
+Le smoke réel final reste une validation environnementale exécutée par une personne autorisée.
 
 Voir aussi [ACUMATICA_ODATA_CONTRACT.md](ACUMATICA_ODATA_CONTRACT.md).
