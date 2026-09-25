@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 
 from app.infrastructure.sql import Base, Project, create_session_factory, create_sql_engine
 from app.server import create_api_app
+from tests.approval_test_support import routed_demand_payload, seed_test_approval_routing
 from tests.http_test_auth import TEST_ADMIN_AUTH_RESOLVER
 
 
@@ -21,6 +22,7 @@ class ReservableAssetApiTests(unittest.TestCase):
         Base.metadata.create_all(engine)
         with create_session_factory(engine).begin() as session:
             session.add(Project(id="PROJECT", number="P-1", name="Projet avec nacelle"))
+            seed_test_approval_routing(session, map_existing_tasks=True)
         engine.dispose()
         self.client = TestClient(create_api_app(self.url, auth_resolver=TEST_ADMIN_AUTH_RESOLVER), raise_server_exceptions=False)
         self.client.__enter__()
@@ -42,7 +44,7 @@ class ReservableAssetApiTests(unittest.TestCase):
                   "desired_start": "2026-09-24", "desired_end": "2026-09-26"}]
         if mixed:
             lines.append({"kind": "WORKFORCE", "desired_start": "2026-09-24", "estimated_hours": 8})
-        result = self.client.post("/api/v1/demands", json={"project_number": "P-1", "submit": True, "lines": lines})
+        result = self.client.post("/api/v1/demands", json=routed_demand_payload({"project_number": "P-1", "submit": True, "lines": lines}))
         self.assertEqual(result.status_code, 201, result.text)
         number = result.json()["demand_number"]
         version = self.client.get(f"/api/v1/demands/{number}").json()["version"]
@@ -77,7 +79,7 @@ class ReservableAssetApiTests(unittest.TestCase):
         self.assertEqual(state["planning_version"], version + 2)
 
     def test_draft_asset_request_can_be_submitted_through_workflow(self) -> None:
-        created = self.client.post("/api/v1/demands", json={
+        created = self.client.post("/api/v1/demands", json=routed_demand_payload({
             "project_number": "P-1",
             "lines": [
                 {
@@ -94,7 +96,7 @@ class ReservableAssetApiTests(unittest.TestCase):
                     "estimated_hours": 8,
                 },
             ],
-        })
+        }))
         self.assertEqual(created.status_code, 201, created.text)
         number = created.json()["demand_number"]
         draft = self.client.get(f"/api/v1/demands/{number}").json()
@@ -143,11 +145,11 @@ class ReservableAssetApiTests(unittest.TestCase):
         self.assertEqual(cleared.status_code, 200, cleared.text)
 
     def test_unbudgeted_alternatives_materialize_only_selected_period(self) -> None:
-        created = self.client.post("/api/v1/demands", json={
+        created = self.client.post("/api/v1/demands", json=routed_demand_payload({
             "project_number": "P-1", "submit": True,
             "lines": [{"kind": "ASSET", "asset_type_id": self.type_id,
                        "desired_start": "2026-09-24", "desired_end": "2026-09-26"}],
-        })
+        }))
         self.assertEqual(created.status_code, 201, created.text)
         number = created.json()["demand_number"]
         demand = self.client.get(f"/api/v1/demands/{number}").json()
