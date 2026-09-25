@@ -108,19 +108,35 @@ Le timeout doit rester configurable.
 
 La variable actuelle `RESOURCEPLANNER_ACUMATICA_TIMEOUT_SECONDS` peut être réutilisée si elle reste cohérente avec le nouvel adaptateur.
 
-## Hypothèses encore à confirmer dans #232 / #207
+## Résultats réels #207B et hypothèses restantes
 
-Même avec le contrat `RP_Projects` connu, il reste à confirmer sur l'instance réelle :
+Confirmé sur l'instance réelle le 2026-09-24 :
 
-- mécanisme HTTP exact d'authentification OData;
+- authentification HTTP Basic;
+- `$filter` sur `ProjectId`, `ProjectCode` et `LastModifiedDateTime`;
+- `$orderby`;
+- pagination `$top/$skip` avec `ProjectId asc`;
+- aucun lien Atom `rel="next"` observé;
+- trois pages de cinq projets distinctes lors du smoke;
+- `LastModifiedDateTime` en `Edm.DateTime`, avec `eq/ge/gt` et littéral `datetime'...'`;
+- valeur temporelle observée cohérente avec UTC côté OData et heure locale côté UI au moment du smoke;
+- `BaseType` observés : `P` et `R`.
+
+Validation RessourcePlanner réelle également confirmée le 2026-09-24 :
+
+- première synchro : 1286 reçus / 1286 créés;
+- replay immédiat : 1286 reçus / 1286 inchangés, aucune création ni mise à jour;
+- aucun doublon;
+- plusieurs mappings réels vérifiés, y compris accents/padding/nulls;
+- projets locaux préexistants conservés.
+
+Restent à confirmer ou décider :
+
 - support et syntaxe de `$select`;
-- support de `$filter`;
-- support de `$orderby`;
-- pagination réelle et éventuels liens `next`;
-- stabilité et ordre de `LastModifiedDateTime`;
+- volume total, limite maximale et taille de page optimale du feed;
+- garantie temporelle exacte de `LastModifiedDateTime` avant toute synchro incrémentale;
 - liste exhaustive des statuts;
-- règle métier de `BaseType`;
-- volume total et limites pratiques du feed;
+- règle métier de `BaseType` (`R` semble correspondre aux templates, sans exclusion automatique);
 - feed OData Employee/User;
 - clé stable des employés;
 - relation entre identité OIDC et employé;
@@ -128,7 +144,7 @@ Même avec le contrat `RP_Projects` connu, il reste à confirmer sur l'instance 
 
 ## Ce qui n'est volontairement pas considéré comme livré
 
-- authentification de service OData;
+- compte de service OData de production (HTTP Basic est validé temporairement avec un compte nominatif);
 - `AcumaticaEmployeeSource` OData;
 - synchro incrémentale fondée sur `LastModifiedDateTime`;
 - retry automatique;
@@ -138,9 +154,9 @@ Même avec le contrat `RP_Projects` connu, il reste à confirmer sur l'instance 
 
 ## Ordre recommandé
 
-1. exécuter 207B contre le vrai feed avec des credentials hors Git;
-2. confirmer authentification, filtrage, ordre, pagination et incrémental;
-3. confirmer la règle de `BaseType`;
+1. confirmer la règle métier de `BaseType=R` avant tout filtrage;
+2. remplacer le compte nominatif temporaire par un compte de service avant exploitation durable;
+3. conserver la synchro incrémentale hors scope jusqu'à définition d'un curseur robuste;
 4. compléter #232 pour Employee/User et identité;
 5. implémenter ensuite #256 avec la source OData réellement observée.
 

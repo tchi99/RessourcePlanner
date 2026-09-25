@@ -32,7 +32,7 @@ Le mapping complet des champs et divisions est centralisé dans [ACUMATICA_ODATA
 
 ## État du code actuel
 
-`ODataProjectSource` est maintenant l'adaptateur projet utilisé par le runtime. Il lit le feed Atom/XML `/oDATA/RP_Projects`, construit un snapshot complet puis remet uniquement le contrat transport-neutre `ExternalProjectRecord` au `ProjectSyncService`.
+`ODataProjectSource` est maintenant l'adaptateur projet utilisé par le runtime. Il lit le feed Atom/XML `/oDATA/RP_Projects` avec HTTP Basic, parcourt toutes les pages via `$orderby=ProjectId asc` + `$top/$skip`, construit un snapshot complet puis remet uniquement le contrat transport-neutre `ExternalProjectRecord` au `ProjectSyncService`. Une erreur sur une page intermédiaire empêche toute remise d'un snapshot partiel.
 
 Le parser conserve aussi `CustomerID`, `StartDate`, `EndDate`, la division, `LastModifiedDateTime` et `BaseType` dans son record d'infrastructure. Le modèle `Project` actuel ne persiste pas encore ces champs supplémentaires; 207A ne l'élargit pas uniquement pour le transport.
 
@@ -74,22 +74,35 @@ Aucun credential ne doit être :
 
 La cible d'exploitation demeure un **compte de service ERP dédié à RessourcePlanner** avec permissions minimales.
 
-Le mécanisme HTTP exact d'authentification du feed OData doit être confirmé avec l'instance réelle avant implémentation définitive.
+Le smoke réel du 2026-09-24 a confirmé HTTP Basic pour le feed OData de l'instance testée. Le runtime configure désormais le username et le mot de passe uniquement via l'environnement/secrets; le diagnostic public expose seulement le mode `basic`, jamais les valeurs.
 
-## Validation réelle restant à faire
+## Validation réelle #207B
 
-Les étapes locales 207A (adaptateur OData + parser + fixture contractuelle) sont couvertes hors connexion ERP. 207B doit maintenant :
+Le smoke manuel du 2026-09-24 a confirmé avant branchement RessourcePlanner :
 
-1. configurer la base URL et le credential hors dépôt;
-2. confirmer le mécanisme HTTP exact d'authentification;
-3. effectuer un GET réel de la vue `RP_Projects`;
-4. confirmer `ProjectId` comme identité stable sur plusieurs lectures;
-5. confirmer le support réel du filtrage/pagination OData;
-6. vérifier la fiabilité de `LastModifiedDateTime` pour l'incrémental;
-7. lancer une synchronisation sur une base de développement;
-8. relancer la synchronisation et confirmer l'idempotence;
-9. valider quelques projets connus;
-10. confirmer la règle métier de `BaseType`.
+- HTTP Basic;
+- feed Atom/XML réel;
+- `$filter` sur `ProjectId` et `ProjectCode`;
+- `$orderby`;
+- pagination `$top/$skip` avec ordre stable sur `ProjectId asc`, sans lien `rel="next"` observé;
+- trois fenêtres successives de cinq projets distinctes;
+- `LastModifiedDateTime` exposé comme `Edm.DateTime`, filtrable avec `datetime'...'` pour `eq/ge/gt` et ordonnable;
+- décalage observé compatible avec UTC côté OData versus heure locale EDT côté UI;
+- `BaseType` observés : `P` et `R`; `R` semble représenter des templates mais aucune règle de filtrage n'est encore décidée.
+
+Le smoke RessourcePlanner réel a ensuite été exécuté avec succès sur une base de développement :
+
+- endpoint d'intégration configuré : OK, sans fuite de credential;
+- première synchronisation : `received=1286, created=1286, updated=0, unchanged=0`;
+- plusieurs projets connus et leur mapping : vérifiés;
+- accents, padding et valeurs nulles : vérifiés;
+- seconde synchronisation inchangée : `received=1286, created=0, updated=0, unchanged=1286`;
+- doublons : aucun;
+- projets locaux préexistants : conservés.
+
+Le parcours réel confirme donc le snapshot complet, l'idempotence et l'absence de suppression implicite.
+
+Reste une décision métier séparée : `BaseType=R` semble représenter des templates sur l'instance observée, mais #207B ne l'exclut pas sans règle PO explicite. Le compte nominatif utilisé pour le smoke doit aussi être remplacé par un compte de service dédié avant exploitation durable.
 
 ## Readiness locale
 

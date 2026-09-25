@@ -127,7 +127,9 @@ La sémantique applicative existante reste souhaitée :
 - transaction SQL atomique pour l'application d'un snapshot;
 - aucune donnée métier sensible dans les logs.
 
-`LastModifiedDateTime` est le candidat naturel pour une synchronisation incrémentale, mais le support réel de `$filter`, `$orderby`, pagination et les garanties de ce champ doivent être validés sur l'instance avant de figer l'algorithme.
+`LastModifiedDateTime` reste un candidat pour une future synchronisation incrémentale. Le smoke réel du 2026-09-24 a confirmé qu'il est exposé comme `Edm.DateTime`, filtrable avec des littéraux `datetime'YYYY-MM-DDTHH:MM:SS[.fff]'` (`eq`, `ge`, `gt`) et utilisable avec `$orderby`. L'heure OData observée était quatre heures en avance sur l'interface Acumatica au Québec (13:56 OData contre 09:56 UI), cohérente avec UTC versus EDT ce jour-là. Cette observation ne suffit pas à figer un algorithme incrémental ni une garantie générale de timezone.
+
+Le même smoke a confirmé `$filter` sur `ProjectId` et `ProjectCode`, ainsi qu'une pagination déterministe par `$orderby=ProjectId asc`, `$top` et `$skip`. Trois fenêtres successives de cinq projets ont produit trois groupes distincts et aucun lien Atom `rel="next"` n'a été observé. La limite maximale acceptée par le serveur n'a pas été mesurée; le client utilise donc une taille de page configurable et accumule toutes les pages avant de remettre le snapshot au service applicatif.
 
 ## Authentification OData
 
@@ -143,7 +145,7 @@ Garde-fous obligatoires :
 
 La cible d'exploitation est un **compte de service ERP dédié à RessourcePlanner** avec les permissions minimales de lecture nécessaires.
 
-Le mécanisme HTTP exact utilisé par l'instance pour authentifier OData doit être confirmé par le smoke réel avant d'être figé dans le code.
+Le smoke réel du 2026-09-24 a confirmé **HTTP Basic** sur cette instance. Le runtime utilise un username et un mot de passe injectés uniquement par l'environnement/secrets; aucun credential ni hostname réel n'est exposé par les diagnostics sûrs. Le compte nominatif utilisé pour le smoke reste temporaire et doit être remplacé par un compte de service dédié avant exploitation durable.
 
 ## Ressources / employés
 
@@ -155,20 +157,26 @@ Le feed/vue Employee/User exact, ses champs, sa clé stable et la relation avec 
 
 Le runtime projet compose `ODataProjectSource`, un lecteur Atom/XML dédié derrière le `ProjectSourcePort` existant. `ProjectId`, `ProjectCode`, `ProjectName`, client, chargé de projet et statut sont projetés vers `ExternalProjectRecord` sans modifier `ProjectSyncService`.
 
-`StartDate`, `EndDate`, `DefaultBranchCode`, `DefaultBranchCode_Desc`, `LastModifiedDateTime`, `CustomerID` et `BaseType` sont parsés dans le record d'infrastructure mais ne sont pas ajoutés au modèle SQL `Project` par 207A. Aucune règle de filtrage `BaseType` n'est appliquée.
+`StartDate`, `EndDate`, `DefaultBranchCode`, `DefaultBranchCode_Desc`, `LastModifiedDateTime`, `CustomerID` et `BaseType` sont parsés dans le record d'infrastructure mais ne sont pas ajoutés au modèle SQL `Project`. Les valeurs `BaseType` observées sur l'instance sont `P` et `R`; les entrées `R` semblent correspondre à des templates. Cette interprétation reste à confirmer fonctionnellement et aucune règle de filtrage `BaseType` n'est appliquée dans #207B.
 
 L'ancien `AcumaticaProjectSource` REST/JSON reste présent uniquement comme compatibilité historique; il n'est plus le chemin composé par le runtime projet.
 
 ## Validation restante
 
-207B doit valider l'environnement réel sans changer les décisions de parsing de 207A :
+207B a maintenant confirmé sur l'instance réelle :
 
-1. confirmer le mécanisme HTTP d'authentification et injecter les credentials hors dépôt;
-2. effectuer un GET réel de `RP_Projects`;
-3. confirmer la sémantique de `ProjectId`;
-4. confirmer filtrage, ordre, pagination et comportement de `LastModifiedDateTime`;
-5. synchroniser vers une base de développement et rejouer la synchronisation;
-6. confirmer la règle métier de `BaseType`;
-7. remplacer le compte nominatif par un compte de service avant exploitation durable.
+1. HTTP Basic avec credentials hors dépôt;
+2. GET réel de `RP_Projects` en Atom/XML;
+3. `ProjectId` comme identité stable attendue et `ProjectCode` comme numéro métier;
+4. `$filter`, `$orderby`, pagination `$top/$skip` sans `rel="next"`, et comportement décrit ci-dessus de `LastModifiedDateTime`;
+5. valeurs `BaseType` observées `P` / `R`, sans décision d'exclusion.
+
+Restent à valider avant de déclarer #207B terminé :
+
+1. exécuter `POST /api/v1/integrations/acumatica/projects/sync` sur une base RessourcePlanner de développement;
+2. vérifier plusieurs projets réels et l'absence de duplication;
+3. rejouer la synchronisation pour confirmer l'idempotence réelle;
+4. confirmer fonctionnellement la signification et la règle métier de `BaseType=R`;
+5. remplacer le compte nominatif par un compte de service avant exploitation durable.
 
 Refs : #207 #232 #256

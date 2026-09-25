@@ -47,6 +47,8 @@ OIDC_SECURE_COOKIE_ENV = "RESOURCEPLANNER_OIDC_SECURE_COOKIE"
 OIDC_AUTO_PROVISION_ENV = "RESOURCEPLANNER_OIDC_AUTO_PROVISION"
 API_DOCS_ENABLED_ENV = "RESOURCEPLANNER_API_DOCS_ENABLED"
 ACUMATICA_BASE_URL_ENV = "RESOURCEPLANNER_ACUMATICA_BASE_URL"
+ACUMATICA_USERNAME_ENV = "RESOURCEPLANNER_ACUMATICA_USERNAME"
+ACUMATICA_PASSWORD_ENV = "RESOURCEPLANNER_ACUMATICA_PASSWORD"
 ACUMATICA_ACCESS_TOKEN_ENV = "RESOURCEPLANNER_ACUMATICA_ACCESS_TOKEN"
 ACUMATICA_ENDPOINT_ENV = "RESOURCEPLANNER_ACUMATICA_ENDPOINT"
 ACUMATICA_VERSION_ENV = "RESOURCEPLANNER_ACUMATICA_VERSION"
@@ -133,8 +135,32 @@ def _acumatica_settings(values: Mapping[str, str]) -> ODataProjectSourceSettings
     if not base_url:
         return None
 
+    username = _text(values.get(ACUMATICA_USERNAME_ENV))
+    credential = _text(values.get(ACUMATICA_PASSWORD_ENV))
+    missing = [
+        name
+        for name, value in (
+            (ACUMATICA_USERNAME_ENV, username),
+            (ACUMATICA_PASSWORD_ENV, credential),
+        )
+        if not value
+    ]
+    if missing:
+        raise ServerConfigurationError(
+            "Configuration OData Acumatica incomplète; variables requises: "
+            + ", ".join(missing)
+        )
+
     return ODataProjectSourceSettings(
         base_url=base_url,
+        username=username,
+        credential=credential,
+        page_size=_positive_int(
+            values.get(ACUMATICA_PAGE_SIZE_ENV),
+            default=100,
+            label=ACUMATICA_PAGE_SIZE_ENV,
+            maximum=10000,
+        ),
         timeout_seconds=_positive_float(
             values.get(ACUMATICA_TIMEOUT_SECONDS_ENV),
             default=30.0,
