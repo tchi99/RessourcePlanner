@@ -26,6 +26,7 @@ from app.infrastructure.sql import (
 from app.server import create_api_app
 from app.server.composition import build_sql_facade
 from app.server.security import static_auth_resolver
+from tests.approval_test_support import routed_demand_payload, seed_test_approval_routing
 from tests.http_test_auth import (
     TEST_ADMIN_AUTH_RESOLVER,
     TEST_PROJECT_MANAGER_AUTH_RESOLVER,
@@ -122,6 +123,7 @@ class AtomicAllocationCommandHttpTests(unittest.TestCase):
                         note=note,
                     )
                 )
+            seed_test_approval_routing(session, map_existing_tasks=True)
         engine.dispose()
         return url
 
@@ -335,14 +337,14 @@ class AtomicAllocationCommandHttpTests(unittest.TestCase):
             with TestClient(admin_app, raise_server_exceptions=False) as client:
                 created = client.post(
                     "/api/v1/demands",
-                    json={
+                    json=routed_demand_payload({
                         "project_number": "P-1",
                         "desired_start": WORK_DAY.isoformat(),
                         "desired_end": WORK_DAY.isoformat(),
                         "estimated_hours": 10,
                         "proposed_technician": "Alice",
                         "submit": True,
-                    },
+                    }),
                 )
                 self.assertEqual(created.status_code, 201, created.text)
                 number = created.json()["demand_number"]
