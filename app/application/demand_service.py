@@ -678,6 +678,39 @@ class DemandService:
             context={"demand_number": number},
         )
         self._initialize_approval_cycle_after_submission(number)
+
+        # ADR-003/004 direct approval remains valid, but 276C routes it through the
+        # frozen per-line quorum instead of stamping/materializing around it. The
+        # current approver satisfies every eligible requirement in one atomic action;
+        # if other scopes remain, the request stays Soumise with a partial vote.
+        if (
+            PERMISSION_APPROVE_DEMANDS in self._permissions
+            and self._approval_cycles is not None
+            and self._approval_votes is not None
+        ):
+            request = self._approval_cycles.get_request(number)
+            cycle = (
+                self._approval_cycles.get_active_cycle(request.id)
+                if request is not None
+                else None
+            )
+            if request is not None and cycle is not None:
+                try:
+                    outcome = self._approval_votes.approve_all_eligible(
+                        workforce_request_id=request.id,
+                        approval_cycle_id=cycle.id,
+                        expected_request_version=request.aggregate_version,
+                        comment="Autorisation élargie par approbateur",
+                    )
+                except ApplicationAuthorizationError as exc:
+                    if exc.code not in {
+                        "approval_actor_identity_required",
+                        "approval_actor_not_eligible",
+                        "approval_actor_inactive",
+                    }:
+                        raise
+                else:
+                    return outcome.status != "En planification"
         return True
 
     def create_command(self, command: DemandCreateCommand) -> str:
