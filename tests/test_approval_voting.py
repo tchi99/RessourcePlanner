@@ -352,7 +352,7 @@ class ApprovalVoteServiceTests(unittest.TestCase):
         self.assertEqual(result.planning_version, 11)
         self.assertEqual(result.approval_revision_id, "REV-1")
         self.assertEqual(versions.calls, [10])
-        self.assertEqual(sync.calls, [("DMO-1", 3)])
+        self.assertEqual(sync.calls, [("DMO-1", 4)])
         self.assertEqual(planning.calls, 1)
         self.assertTrue(repository.approved)
         self.assertTrue(repository.completed)
