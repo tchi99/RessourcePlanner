@@ -587,6 +587,7 @@ class ApprovalVoteSqlConcurrencyTests(unittest.TestCase):
                 line_mode=True,
             )
         )
+        session.flush()
         session.add_all(
             [
                 RequestLine(
