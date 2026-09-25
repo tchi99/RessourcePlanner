@@ -90,11 +90,19 @@ class EmergencyAwareApprovedDemandSyncAdapter(ApprovedDemandSyncPort):
                 after=current[1] if current is not None else None,
             )
 
-    def sync_approved(self, demand_number: str) -> None:
+    def sync_approved(
+        self,
+        demand_number: str,
+        *,
+        approved_request_version: int | None = None,
+    ) -> None:
         self._versioning.acquire()
         emergency = self._is_emergency_materialization(demand_number)
         before = self._journal.request_requirements(demand_number)
-        self._delegate.sync_approved(demand_number)
+        self._delegate.sync_approved(
+            demand_number,
+            approved_request_version=approved_request_version,
+        )
         after = self._journal.request_requirements(demand_number)
 
         for entity_id in sorted(set(before) | set(after)):

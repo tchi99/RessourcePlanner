@@ -7,6 +7,11 @@ from collections.abc import Sequence
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from ...application.approval_voting import (
+    APPROVAL_DECISION_APPROVE,
+    ApprovalDecisionRecord,
+    ApprovalQuorumProjection,
+)
 from ...application.approval_cycles import (
     ApprovalApproverSnapshot,
     ApprovalCycleRecord,
@@ -18,17 +23,21 @@ from ...application.approval_cycles import (
 )
 from ...application.errors import ApplicationConflictError
 from ...domain.approval_cycles import (
+    APPROVAL_CYCLE_STATE_COMPLETED,
     APPROVAL_CYCLE_STATE_INVALIDATED,
     APPROVAL_CYCLE_STATE_OPEN,
 )
 from .approval_cycle_models import (
+    ApprovalDecision,
     ApprovalRequirement,
     ApprovalRequirementApprover,
     RequestApprovalCycle,
 )
+from .approval_revision_models import RequestApprovalReference
 from .approval_revision_repository import SqlRequestApprovalRevisionRepository
 from .approval_scope_models import TaskApprovalScopeMapping
 from .base import new_id, utc_now
+from .identity_models import AppUser
 from .models import (
     RequestLine,
     WorkforceRequest,
@@ -72,7 +81,13 @@ class SqlApprovalCycleRepository:
         self,
         request_id: str,
     ) -> ApprovalCycleRequestRecord | None:
-        row = self._session.get(WorkforceRequest, _text(request_id))
+        wanted = _text(request_id)
+        row = self._session.scalar(
+            select(WorkforceRequest).where(
+                (WorkforceRequest.id == wanted)
+                | (WorkforceRequest.legacy_demand_number == wanted)
+            )
+        )
         if row is None:
             return None
         return ApprovalCycleRequestRecord(
@@ -425,6 +440,226 @@ class SqlApprovalCycleRepository:
         self._session.flush()
         self._session.refresh(cycle)
         return self._record(cycle)
+
+    def actor_is_active(self, app_user_id: str) -> bool:
+        actor = self._session.get(AppUser, _text(app_user_id))
+        return bool(actor is not None and actor.active)
+
+    def list_decisions(
+        self,
+        cycle_id: str,
+    ) -> tuple[ApprovalDecisionRecord, ...]:
+        rows = self._session.scalars(
+            select(ApprovalDecision)
+            .join(
+                ApprovalRequirement,
+                ApprovalRequirement.id == ApprovalDecision.requirement_id,
+            )
+            .where(ApprovalRequirement.approval_cycle_id == _text(cycle_id))
+            .order_by(
+                ApprovalDecision.decided_at,
+                ApprovalDecision.id,
+            )
+        ).all()
+        return tuple(
+            ApprovalDecisionRecord(
+                requirement_id=row.requirement_id,
+                app_user_id=row.app_user_id,
+                decision=_text(row.decision).upper(),
+                action_id=row.action_id,
+            )
+            for row in rows
+        )
+
+    def acquire_request_version(
+        self,
+        request_id: str,
+        expected_version: int,
+    ) -> int:
+        request = self._session.get(WorkforceRequest, _text(request_id))
+        if request is None:
+            raise KeyError(f"Demande {request_id} introuvable")
+        acquire_request_aggregate_version(
+            self._session,
+            request,
+            int(expected_version),
+        )
+        self._session.refresh(request)
+        return max(int(request.aggregate_version or 1), 1)
+
+    def append_decisions(
+        self,
+        *,
+        cycle_id: str,
+        requirement_ids: Sequence[str],
+        app_user_id: str,
+        decision: str,
+        comment: str,
+        action_id: str,
+    ) -> None:
+        cycle = self._session.get(RequestApprovalCycle, _text(cycle_id))
+        if cycle is None:
+            raise KeyError(f"Cycle d'approbation {cycle_id} introuvable")
+        if cycle.state != APPROVAL_CYCLE_STATE_OPEN:
+            raise ApplicationConflictError(
+                "Le cycle d'approbation n'est plus actif.",
+                code="approval_cycle_not_open",
+                context={"approval_cycle_id": cycle.id, "state": cycle.state},
+            )
+        requirement_set = {
+            row.id
+            for row in self._session.scalars(
+                select(ApprovalRequirement).where(
+                    ApprovalRequirement.approval_cycle_id == cycle.id,
+                    ApprovalRequirement.id.in_(tuple(requirement_ids)),
+                )
+            ).all()
+        }
+        if requirement_set != set(requirement_ids):
+            raise ApplicationConflictError(
+                "Une exigence ciblée n'appartient plus au cycle actif.",
+                code="approval_vote_target_invalid",
+                context={"approval_cycle_id": cycle.id},
+            )
+        for requirement_id in sorted(requirement_set):
+            self._session.add(
+                ApprovalDecision(
+                    id=new_id(),
+                    requirement_id=requirement_id,
+                    app_user_id=_text(app_user_id),
+                    decision=_text(decision).upper() or APPROVAL_DECISION_APPROVE,
+                    decided_at=utc_now(),
+                    comment=_optional_text(comment),
+                    action_id=_text(action_id),
+                )
+            )
+        self._session.flush()
+
+    def mark_request_approved(
+        self,
+        request_id: str,
+        *,
+        actor_name: str,
+        comment: str,
+    ) -> None:
+        request = self._session.get(WorkforceRequest, _text(request_id))
+        if request is None:
+            raise KeyError(f"Demande {request_id} introuvable")
+        if request.status != "Soumise":
+            raise ApplicationConflictError(
+                "La demande n'est plus soumise au moment de la finalisation.",
+                code="approval_request_not_submitted",
+                context={"status": request.status},
+            )
+        request.status = "En planification"
+        request.approved_by_name = _optional_text(actor_name)
+        request.approved_at = utc_now()
+        request.approval_comment = _optional_text(comment)
+        self._session.flush()
+
+    def active_revision_id(self, request_id: str) -> str | None:
+        reference = self._session.get(
+            RequestApprovalReference,
+            _text(request_id),
+        )
+        if reference is None:
+            return None
+        return _optional_text(reference.active_revision_id)
+
+    def complete_cycle(
+        self,
+        *,
+        cycle_id: str,
+        approval_revision_id: str,
+        action_id: str,
+        planning_version: int | None,
+    ) -> None:
+        cycle = self._session.get(RequestApprovalCycle, _text(cycle_id))
+        if cycle is None:
+            raise KeyError(f"Cycle d'approbation {cycle_id} introuvable")
+        if cycle.state != APPROVAL_CYCLE_STATE_OPEN:
+            raise ApplicationConflictError(
+                "Le cycle d'approbation a déjà été finalisé ou invalidé.",
+                code="approval_cycle_not_open",
+                context={
+                    "approval_cycle_id": cycle.id,
+                    "state": cycle.state,
+                    "approved_revision_id": cycle.approved_revision_id,
+                },
+            )
+        if cycle.approved_revision_id is not None:
+            raise ApplicationConflictError(
+                "Le cycle possède déjà une révision approuvée.",
+                code="approval_cycle_revision_already_bound",
+                context={
+                    "approval_cycle_id": cycle.id,
+                    "approved_revision_id": cycle.approved_revision_id,
+                },
+            )
+        cycle.state = APPROVAL_CYCLE_STATE_COMPLETED
+        cycle.completed_at = utc_now()
+        cycle.approved_revision_id = _text(approval_revision_id)
+        request = self._session.get(WorkforceRequest, cycle.workforce_request_id)
+        if request is None:
+            raise KeyError(f"Demande {cycle.workforce_request_id} introuvable")
+        self._append_history(
+            request,
+            action="Finalisation cycle approbation",
+            comment="Quorum complet; cycle finalisé.",
+            cycle_id=cycle.id,
+            extra_details={
+                "action_id": _text(action_id),
+                "approved_revision_id": cycle.approved_revision_id,
+                "planning_version": planning_version,
+            },
+        )
+        self._session.flush()
+
+    def append_vote_audit(
+        self,
+        *,
+        request_id: str,
+        cycle_id: str,
+        action_id: str,
+        requirement_ids: Sequence[str],
+        old_request_version: int,
+        new_request_version: int,
+        quorum: ApprovalQuorumProjection,
+        planning_version: int | None = None,
+        approval_revision_id: str | None = None,
+    ) -> None:
+        request = self._session.get(WorkforceRequest, _text(request_id))
+        if request is None:
+            raise KeyError(f"Demande {request_id} introuvable")
+        action = (
+            "Quorum approbation complété"
+            if quorum.complete
+            else (
+                "Vote approbation multi-lignes"
+                if len(tuple(requirement_ids)) > 1
+                else "Vote approbation partiel"
+            )
+        )
+        self._append_history(
+            request,
+            action=action,
+            comment=None,
+            cycle_id=_text(cycle_id),
+            extra_details={
+                "action_id": _text(action_id),
+                "app_user_id": self._actor_user_id,
+                "requirement_ids": sorted(set(requirement_ids)),
+                "old_aggregate_version": int(old_request_version),
+                "new_aggregate_version": int(new_request_version),
+                "total_requirements": int(quorum.total_requirements),
+                "satisfied_requirements": int(quorum.satisfied_requirements),
+                "remaining_requirement_ids": list(quorum.remaining_requirement_ids),
+                "quorum_complete": bool(quorum.complete),
+                "approved_revision_id": _optional_text(approval_revision_id),
+                "planning_version": planning_version,
+            },
+        )
+        self._session.flush()
 
     def invalidate_cycle(
         self,

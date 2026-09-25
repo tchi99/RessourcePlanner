@@ -34,6 +34,7 @@ from .commands import (
     WorkPackageCreateCommand,
     WorkPackageUpdateCommand,
 )
+from .approval_voting import ApprovalVoteCommand, ApprovalVoteOutcome
 from .demand_service import DemandService
 from .demand_workflow_policy import DemandWorkflowReadModel
 from .errors import ApplicationConflictError, ApplicationOperationError
@@ -231,13 +232,46 @@ class ApplicationFacade:
         return DemandMutationResult(_identifier(command.number), status="Soumise")
 
     def approve_demand(self, command: DemandApproveCommand) -> DemandMutationResult:
-        self._acquire_planning_version(command.expected_planning_version)
-        summary = self._demands.approve_command(command)
+        """Compatibility facade result for non-HTTP callers.
+
+        The SQL HTTP path uses approve_demand_quorum so 276C can expose partial
+        quorum state without changing the long-standing facade contract.
+        """
+        outcome = self._demands.approve_command(command)
+        if isinstance(outcome, ApprovalVoteOutcome):
+            return DemandMutationResult(
+                _identifier(command.number),
+                status=outcome.status,
+                planning=(
+                    PlanningResult.from_mapping(outcome.planning)
+                    if outcome.planning is not None
+                    else None
+                ),
+            )
         return DemandMutationResult(
             _identifier(command.number),
             status="En planification",
-            planning=PlanningResult.from_mapping(summary),
+            planning=PlanningResult.from_mapping(outcome),
         )
+
+    def approve_demand_quorum(
+        self,
+        command: DemandApproveCommand,
+    ) -> ApprovalVoteOutcome:
+        outcome = self._demands.approve_command(command)
+        if not isinstance(outcome, ApprovalVoteOutcome):
+            raise ApplicationOperationError(
+                "Le workflow de quorum est indisponible dans cette composition.",
+                code="approval_quorum_unavailable",
+                context={"demand_number": command.number},
+            )
+        return outcome
+
+    def vote_demand_approval(
+        self,
+        command: ApprovalVoteCommand,
+    ) -> ApprovalVoteOutcome:
+        return self._demands.vote_approval_command(command)
 
     def request_demand_correction(
         self,

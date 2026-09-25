@@ -12,6 +12,7 @@ from app.application.security import AuthPrincipal, ROLE_TECHNICIAN
 from app.infrastructure.sql import Project, Resource
 from app.server import create_api_app
 from app.server.security import static_auth_resolver
+from tests.approval_test_support import routed_demand_payload, seed_test_approval_routing
 from tests.http_test_auth import TEST_ADMIN_AUTH_RESOLVER
 from tests.sqlite_test_template import SqliteDatabaseTemplate
 
@@ -32,6 +33,7 @@ class RequestLinePeriodApiTests(unittest.TestCase):
                 Resource(id="R2", name="Bob", active=True),
             ]
         )
+        seed_test_approval_routing(session, map_existing_tasks=True)
 
     @classmethod
     def setUpClass(cls) -> None:
@@ -53,7 +55,7 @@ class RequestLinePeriodApiTests(unittest.TestCase):
     def _create_multiline(client: TestClient) -> tuple[str, list[str]]:
         created = client.post(
             "/api/v1/demands",
-            json={
+            json=routed_demand_payload({
                 "project_number": "P-1",
                 "lines": [
                     {
@@ -67,7 +69,7 @@ class RequestLinePeriodApiTests(unittest.TestCase):
                         "desired_active_days": 1,
                     },
                 ],
-            },
+            }),
         )
         assert created.status_code == 201, created.text
         number = created.json()["demand_number"]
@@ -337,7 +339,7 @@ class RequestLinePeriodApiTests(unittest.TestCase):
 
                 other_created = client.post(
                     "/api/v1/demands",
-                    json={
+                    json=routed_demand_payload({
                         "project_number": "P-1",
                         "lines": [
                             {
@@ -345,7 +347,7 @@ class RequestLinePeriodApiTests(unittest.TestCase):
                                 "desired_active_days": 1,
                             }
                         ],
-                    },
+                    }),
                 )
                 other_number = other_created.json()["demand_number"]
                 foreign_line = client.get(

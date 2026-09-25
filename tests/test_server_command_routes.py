@@ -32,6 +32,7 @@ from app.server.security import static_auth_resolver
 WORK_DAY = date(2026, 8, 24)  # lundi
 
 
+from tests.approval_test_support import routed_demand_payload, seed_test_approval_routing
 from tests.http_test_auth import TEST_ADMIN_AUTH_RESOLVER, test_admin_auth_resolver
 from tests.sqlite_test_template import SqliteDatabaseTemplate
 
@@ -54,6 +55,11 @@ class ServerCommandRouteTests(unittest.TestCase):
                 end_time=time(16, 0),
                 active=True,
             )
+        )
+        seed_test_approval_routing(
+            session,
+            map_existing_tasks=True,
+            admin_display_name="Jean",
         )
 
     @classmethod
@@ -84,13 +90,13 @@ class ServerCommandRouteTests(unittest.TestCase):
             with TestClient(app, raise_server_exceptions=False) as client:
                 created = client.post(
                     "/api/v1/demands",
-                    json={
+                    json=routed_demand_payload({
                         "project_number": "P-1",
                         "desired_start": "2026-08-24",
                         "desired_end": "2026-08-25",
                         "description": "À effacer",
                         "resource_count": 1,
-                    },
+                    }),
                 )
                 self.assertEqual(created.status_code, 201, created.text)
                 number = created.json()["demand_number"]
@@ -130,7 +136,7 @@ class ServerCommandRouteTests(unittest.TestCase):
             with TestClient(app, raise_server_exceptions=False) as client:
                 created = client.post(
                     "/api/v1/demands",
-                    json={
+                    json=routed_demand_payload({
                         "project_number": "P-1",
                         "description": "Demande à deux besoins",
                         "lines": [
@@ -150,7 +156,7 @@ class ServerCommandRouteTests(unittest.TestCase):
                                 "estimated_hours": 12
                             }
                         ]
-                    },
+                    }),
                 )
                 self.assertEqual(created.status_code, 201, created.text)
                 number = created.json()["demand_number"]
@@ -237,11 +243,11 @@ class ServerCommandRouteTests(unittest.TestCase):
             with TestClient(app, raise_server_exceptions=False) as client:
                 created = client.post(
                     "/api/v1/demands",
-                    json={
+                    json=routed_demand_payload({
                         "project_number": "P-1",
                         "desired_start": "2026-08-24",
                         "estimated_hours": 8
-                    },
+                    }),
                 )
                 self.assertEqual(created.status_code, 201, created.text)
                 number = created.json()["demand_number"]
@@ -291,7 +297,7 @@ class ServerCommandRouteTests(unittest.TestCase):
             with TestClient(app, raise_server_exceptions=False) as client:
                 response = client.post(
                     "/api/v1/demands",
-                    json={
+                    json=routed_demand_payload({
                         "project_number": "P-1",
                         "desired_start": "2026-08-24",
                         "lines": [
@@ -300,7 +306,7 @@ class ServerCommandRouteTests(unittest.TestCase):
                                 "estimated_hours": 8
                             }
                         ]
-                    },
+                    }),
                 )
             self.assertEqual(response.status_code, 422, response.text)
             self.assertEqual(
@@ -315,7 +321,7 @@ class ServerCommandRouteTests(unittest.TestCase):
             with TestClient(app, raise_server_exceptions=False) as client:
                 created = client.post(
                     "/api/v1/demands",
-                    json={
+                    json=routed_demand_payload({
                         "project_number": "P-1",
                         "submit": True,
                         "lines": [
@@ -324,7 +330,7 @@ class ServerCommandRouteTests(unittest.TestCase):
                                 "desired_active_days": 1
                             }
                         ]
-                    },
+                    }),
                 )
                 self.assertEqual(created.status_code, 201, created.text)
                 number = created.json()["demand_number"]
@@ -343,10 +349,10 @@ class ServerCommandRouteTests(unittest.TestCase):
             with TestClient(app, raise_server_exceptions=False) as client:
                 response = client.post(
                     "/api/v1/demands",
-                    json={
+                    json=routed_demand_payload({
                         "project_number": "P-UNKNOWN",
                         "desired_start": "2026-08-24",
-                    },
+                    }),
                 )
 
             self.assertEqual(response.status_code, 404)
@@ -361,11 +367,11 @@ class ServerCommandRouteTests(unittest.TestCase):
             with TestClient(app, raise_server_exceptions=False) as client:
                 response = client.post(
                     "/api/v1/demands",
-                    json={
+                    json=routed_demand_payload({
                         "project_number": "P-1",
                         "desired_start": "2026-08-24",
                         "NumeroProjet": "legacy-field-must-not-work",
-                    },
+                    }),
                 )
 
             self.assertEqual(response.status_code, 422)
@@ -467,12 +473,12 @@ class ServerCommandRouteTests(unittest.TestCase):
             with TestClient(app, raise_server_exceptions=False) as client:
                 created = client.post(
                     "/api/v1/demands",
-                    json={
+                    json=routed_demand_payload({
                         "project_number": "P-1",
                         "desired_start": WORK_DAY.isoformat(),
                         "estimated_hours": 8,
                         "priority": "Normale",
-                    },
+                    }),
                 )
                 self.assertEqual(created.status_code, 201, created.text)
                 number = created.json()["demand_number"]
@@ -588,12 +594,12 @@ class ServerCommandRouteTests(unittest.TestCase):
             ):
                 created = first_client.post(
                     "/api/v1/demands",
-                    json={
+                    json=routed_demand_payload({
                         "project_number": "P-1",
                         "desired_start": WORK_DAY.isoformat(),
                         "estimated_hours": 8,
                         "priority": "Normale",
-                    },
+                    }),
                 )
                 self.assertEqual(created.status_code, 201, created.text)
                 number = created.json()["demand_number"]
@@ -637,12 +643,12 @@ class ServerCommandRouteTests(unittest.TestCase):
 
                 created_concurrent = first_client.post(
                     "/api/v1/demands",
-                    json={
+                    json=routed_demand_payload({
                         "project_number": "P-1",
                         "desired_start": WORK_DAY.isoformat(),
                         "estimated_hours": 4,
                         "priority": "Normale",
-                    },
+                    }),
                 )
                 self.assertEqual(
                     created_concurrent.status_code,

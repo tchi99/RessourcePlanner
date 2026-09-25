@@ -12,6 +12,7 @@ from sqlalchemy import select
 from app.infrastructure.sql import (
     Base,
     Project,
+    RequestApprovalCycle,
     RequestApprovalReference,
     RequestApprovalRevision,
     ResourceRequirement,
@@ -25,6 +26,7 @@ from app.infrastructure.sql.approval_revision_repository import (
     SqlRequestApprovalRevisionRepository,
 )
 from app.server import create_api_app
+from tests.approval_test_support import routed_demand_payload, seed_test_approval_routing
 from tests.http_test_auth import TEST_ADMIN_AUTH_RESOLVER
 from tests.sqlite_test_template import SqliteDatabaseTemplate
 
@@ -37,6 +39,7 @@ class ApprovalRevisionCaptureTests(unittest.TestCase):
     @staticmethod
     def _seed_database(session) -> None:
         session.add(Project(id="P1", number="P-1", name="Projet approbation"))
+        seed_test_approval_routing(session, map_existing_tasks=True)
 
     @classmethod
     def setUpClass(cls) -> None:
@@ -58,7 +61,7 @@ class ApprovalRevisionCaptureTests(unittest.TestCase):
     def _create_submitted_request(client: TestClient) -> tuple[str, str]:
         response = client.post(
             "/api/v1/demands",
-            json={
+            json=routed_demand_payload({
                 "project_number": "P-1",
                 "site_client": "Usine A",
                 "location": "Zone 1",
@@ -72,7 +75,7 @@ class ApprovalRevisionCaptureTests(unittest.TestCase):
                         "confirmation": "Tentative",
                     }
                 ],
-            },
+            }),
         )
         assert response.status_code == 201, response.text
         number = response.json()["demand_number"]
@@ -157,9 +160,16 @@ class ApprovalRevisionCaptureTests(unittest.TestCase):
                     )
                     self.assertIsNotNone(revision)
                     assert revision is not None
+                    completed_cycle = session.scalar(
+                        select(RequestApprovalCycle).where(
+                            RequestApprovalCycle.approved_revision_id == revision.id
+                        )
+                    )
+                    self.assertIsNotNone(completed_cycle)
+                    assert completed_cycle is not None
                     self.assertEqual(
                         revision.request_version,
-                        request.aggregate_version,
+                        completed_cycle.submitted_request_version,
                     )
                     self.assertEqual(revision.approved_by_name, "Administrateur de test explicite")
                     payload = json.loads(revision.payload_text)

@@ -18,6 +18,7 @@ from app.infrastructure.sql import (
 from app.server import create_api_app
 
 
+from tests.approval_test_support import seed_test_approval_routing
 from tests.http_test_auth import TEST_ADMIN_AUTH_RESOLVER
 
 create_api_app = partial(create_api_app, auth_resolver=TEST_ADMIN_AUTH_RESOLVER)
@@ -63,6 +64,10 @@ class TaskCatalogApiTests(unittest.TestCase):
                             active=True,
                         ),
                     ]
+                )
+                seed_test_approval_routing(
+                    session,
+                    map_existing_tasks=True,
                 )
             engine.dispose()
 

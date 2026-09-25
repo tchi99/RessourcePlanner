@@ -299,6 +299,36 @@ class DemandApprovalRequest(DemandWorkflowOptionalCommentRequest):
     expected_planning_version: int | None = Field(default=None, ge=1)
 
 
+class DemandApprovalVoteRequest(StrictRequest):
+    approval_cycle_id: str = Field(min_length=1)
+    expected_request_version: int = Field(ge=1)
+    requirement_ids: list[str] = Field(default_factory=list)
+    request_line_ids: list[str] = Field(default_factory=list)
+    decision: Literal["APPROVE"] = "APPROVE"
+    comment: str = ""
+    expected_planning_version: int | None = Field(default=None, ge=1)
+
+    @model_validator(mode="after")
+    def require_vote_targets(self) -> "DemandApprovalVoteRequest":
+        self.requirement_ids = list(
+            dict.fromkeys(
+                str(value).strip()
+                for value in self.requirement_ids
+                if str(value).strip()
+            )
+        )
+        self.request_line_ids = list(
+            dict.fromkeys(
+                str(value).strip()
+                for value in self.request_line_ids
+                if str(value).strip()
+            )
+        )
+        if not self.requirement_ids and not self.request_line_ids:
+            raise ValueError("Au moins une exigence ou une ligne doit être ciblée.")
+        return self
+
+
 class OptionalCommentRequest(StrictRequest):
     comment: str = ""
 

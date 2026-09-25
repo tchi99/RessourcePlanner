@@ -20,6 +20,7 @@ from app.infrastructure.sql import (
     create_sql_engine,
 )
 from app.server import create_api_app
+from tests.approval_test_support import routed_demand_payload, seed_test_approval_routing
 from tests.http_test_auth import TEST_ADMIN_AUTH_RESOLVER
 
 
@@ -40,6 +41,7 @@ class AssetQualificationTests(unittest.TestCase):
                     name="Projet qualification actifs",
                 )
             )
+            seed_test_approval_routing(session, map_existing_tasks=True)
         engine.dispose()
 
         self.client = TestClient(
@@ -135,11 +137,11 @@ class AssetQualificationTests(unittest.TestCase):
             )
         created = self.client.post(
             "/api/v1/demands",
-            json={
+            json=routed_demand_payload({
                 "project_number": "P-292",
                 "submit": True,
                 "lines": lines,
-            },
+            }),
         )
         self.assertEqual(created.status_code, 201, created.text)
         number = created.json()["demand_number"]

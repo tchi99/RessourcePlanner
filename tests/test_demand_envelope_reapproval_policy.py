@@ -21,6 +21,7 @@ from app.infrastructure.sql import (
 )
 from app.server import create_api_app
 from app.server.security import static_auth_resolver
+from tests.approval_test_support import routed_demand_payload, seed_test_approval_routing
 from tests.http_test_auth import TEST_ADMIN_AUTH_RESOLVER
 from tests.sqlite_test_template import SqliteDatabaseTemplate
 
@@ -47,6 +48,7 @@ class DemandEnvelopeReapprovalPolicyTests(unittest.TestCase):
     @staticmethod
     def _seed_database(session) -> None:
         session.add(Project(id="P1", number="P-1", name="Projet 13E"))
+        seed_test_approval_routing(session, map_existing_tasks=True)
 
     @classmethod
     def setUpClass(cls) -> None:
@@ -78,13 +80,13 @@ class DemandEnvelopeReapprovalPolicyTests(unittest.TestCase):
         with TestClient(app, raise_server_exceptions=False) as client:
             created = client.post(
                 "/api/v1/demands",
-                json={
+                json=routed_demand_payload({
                     "project_number": "P-1",
                     "desired_start": D1.isoformat(),
                     "desired_end": D2.isoformat(),
                     "estimated_hours": hours,
                     "submit": True,
-                },
+                }),
             )
             assert created.status_code == 201, created.text
             number = created.json()["demand_number"]

@@ -14,6 +14,7 @@ from app.infrastructure.sql import (
     Base,
     Project,
     ResourceRequirement,
+    TaskCatalogEntry,
     WorkforceRequest,
     WorkPackage,
     create_session_factory,
@@ -22,6 +23,7 @@ from app.infrastructure.sql import (
 from app.server import create_api_app as _create_api_app
 
 
+from tests.approval_test_support import routed_demand_payload, seed_test_approval_routing
 from tests.http_test_auth import (
     TEST_ADMIN_AUTH_RESOLVER,
     TEST_PROJECT_MANAGER_AUTH_RESOLVER,
@@ -46,6 +48,16 @@ class MediumTermUnlinkedSegmentsApiTests(unittest.TestCase):
                 status="active",
             )
             session.add(project)
+            session.add(
+                TaskCatalogEntry(
+                    id="TASK-P274-310",
+                    project_number="P-274",
+                    task_code="310",
+                    label="Programmation",
+                    status="Actif",
+                    active=True,
+                )
+            )
             package = WorkPackage(
                 id="WP-274",
                 project_id=project.id,
@@ -158,6 +170,7 @@ class MediumTermUnlinkedSegmentsApiTests(unittest.TestCase):
                     ),
                 ]
             )
+            seed_test_approval_routing(session, map_existing_tasks=True)
 
         engine.dispose()
         return url

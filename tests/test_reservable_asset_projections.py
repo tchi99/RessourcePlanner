@@ -17,7 +17,11 @@ from app.infrastructure.sql import (
     create_sql_engine,
 )
 from app.server import create_api_app
-from tests.http_test_auth import TEST_ADMIN_AUTH_RESOLVER
+from tests.approval_test_support import routed_demand_payload, seed_test_approval_routing
+from tests.http_test_auth import (
+    TEST_ADMIN_AUTH_RESOLVER,
+    TEST_PROJECT_MANAGER_AUTH_RESOLVER,
+)
 
 
 class ReservableAssetProjectionTests(unittest.TestCase):
@@ -37,6 +41,7 @@ class ReservableAssetProjectionTests(unittest.TestCase):
                     name="Projet projections actifs",
                 )
             )
+            seed_test_approval_routing(session, map_existing_tasks=True)
         engine.dispose()
 
         self.client = TestClient(
@@ -78,7 +83,7 @@ class ReservableAssetProjectionTests(unittest.TestCase):
     def _approve_asset_only(self) -> str:
         created = self.client.post(
             "/api/v1/demands",
-            json={
+            json=routed_demand_payload({
                 "project_number": "P-1",
                 "submit": True,
                 "lines": [
@@ -89,7 +94,7 @@ class ReservableAssetProjectionTests(unittest.TestCase):
                         "desired_end": "2026-09-26",
                     }
                 ],
-            },
+            }),
         )
         self.assertEqual(created.status_code, 201, created.text)
         number = created.json()["demand_number"]
@@ -152,27 +157,35 @@ class ReservableAssetProjectionTests(unittest.TestCase):
         )
         self.assertEqual(reserved.status_code, 200, reserved.text)
 
-        engine = create_sql_engine(self.url)
-        factory = create_session_factory(engine)
-        with factory.begin() as session:
-            request = session.scalar(
-                select(WorkforceRequest).where(
-                    WorkforceRequest.legacy_demand_number == number
-                )
+        candidate = self.client.get(f"/api/v1/demands/{number}").json()
+        line = candidate["lines"][0]
+        pm_client = TestClient(
+            create_api_app(
+                self.url,
+                auth_resolver=TEST_PROJECT_MANAGER_AUTH_RESOLVER,
+            ),
+            raise_server_exceptions=False,
+        )
+        with pm_client:
+            changed = pm_client.patch(
+                f"/api/v1/demands/{number}",
+                json={
+                    "expected_version": candidate["version"],
+                    "lines": [
+                        {
+                            "id": line["line_id"],
+                            "kind": "ASSET",
+                            "asset_type_id": self.type_id,
+                            "desired_start": line["desired_start"],
+                            "desired_end": "2026-09-27",
+                            "task_code": "APPROVAL",
+                        }
+                    ],
+                },
             )
-            self.assertIsNotNone(request)
-            assert request is not None
-            line = session.scalar(
-                select(RequestLine).where(
-                    RequestLine.workforce_request_id == request.id,
-                    RequestLine.active.is_(True),
-                )
-            )
-            self.assertIsNotNone(line)
-            assert line is not None
-            line.desired_end = date(2026, 9, 27)
-            request.status = "Soumise"
-        engine.dispose()
+        self.assertEqual(changed.status_code, 200, changed.text)
+        self.assertTrue(changed.json()["reapproval_required"])
+        self.assertEqual(changed.json()["status"], "Soumise")
 
         delta = self.client.get(f"/api/v1/demands/{number}/plan-delta")
         self.assertEqual(delta.status_code, 200, delta.text)

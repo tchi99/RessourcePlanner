@@ -8,6 +8,8 @@ from uuid import uuid4
 
 from ..domain.demand_periods import DemandPeriodDefinition, validate_period_definitions
 from ..domain.request_lines import default_legacy_hours
+from .approval_cycles import ApprovalCycleService
+from .approval_voting import ApprovalVoteCommand, ApprovalVoteOutcome, ApprovalVoteService
 from .command_ports import ApprovedDemandSyncPort, PlanningCommandPort
 from .commands import (
     DemandAlternativeSelectCommand,
@@ -127,6 +129,8 @@ class DemandService:
         roles: Sequence[str] | None = None,
         planning_versions: PlanningMutationVersionPort | None = None,
         queries: PlannerQueryPort | None = None,
+        approval_cycles: ApprovalCycleService | None = None,
+        approval_votes: ApprovalVoteService | None = None,
         batch: Callable[[str], ContextManager[Any]] | None = None,
     ) -> None:
         self._demands = demands
@@ -145,10 +149,83 @@ class DemandService:
         self._roles = tuple(str(role).strip().upper() for role in (roles or ()) if str(role).strip())
         self._planning_versions = planning_versions
         self._queries = queries
+        self._approval_cycles = approval_cycles
+        self._approval_votes = approval_votes
         self._batch = batch
 
     def _context(self, label: str) -> ContextManager[Any]:
         return self._batch(label) if self._batch is not None else nullcontext()
+
+    def _initialize_approval_cycle_after_submission(self, number: str) -> None:
+        if self._approval_cycles is None:
+            return
+        request = self._approval_cycles.get_request(number)
+        if request is None or request.status != "Soumise":
+            return
+        if self._approval_cycles.get_active_cycle(request.id) is not None:
+            return
+        self._approval_cycles.initialize_cycle(
+            request.id,
+            expected_version=request.aggregate_version,
+        )
+
+    def _invalidate_active_approval_cycle(self, number: str, *, reason: str) -> None:
+        if self._approval_cycles is None:
+            return
+        request = self._approval_cycles.get_request(number)
+        if request is None:
+            return
+        cycle = self._approval_cycles.get_active_cycle(request.id)
+        if cycle is None:
+            return
+        self._approval_cycles.invalidate_cycle(
+            request.id,
+            expected_version=request.aggregate_version,
+            reason=reason,
+        )
+
+    def _refresh_submitted_approval_cycle_if_subject_changed(
+        self,
+        number: str,
+        *,
+        reason: str,
+    ) -> None:
+        """Replace an OPEN snapshot when a still-submitted subject is edited.
+
+        New submissions own an explicit 276B cycle. Candidate edits made before the
+        first approval vote must therefore refresh that snapshot instead of leaving a
+        stale cycle that can only fail later at approval time. Legacy submitted
+        requests without a cycle remain explicit-initialization only.
+        """
+        if self._approval_cycles is None:
+            return
+        request = self._approval_cycles.get_request(number)
+        if request is None or request.status != "Soumise":
+            return
+        cycle = self._approval_cycles.get_active_cycle(request.id)
+        if cycle is None:
+            return
+        if (
+            self._approval_cycles.current_subject_fingerprint(request.id)
+            == cycle.subject_fingerprint
+        ):
+            return
+        self._approval_cycles.invalidate_cycle(
+            request.id,
+            expected_version=request.aggregate_version,
+            reason=reason,
+        )
+        refreshed = self._approval_cycles.get_request(request.id)
+        if refreshed is None:
+            raise ApplicationOperationError(
+                "La demande est introuvable après invalidation du cycle.",
+                code="approval_cycle_request_missing_after_invalidation",
+                context={"demand_number": number},
+            )
+        self._approval_cycles.initialize_cycle(
+            request.id,
+            expected_version=refreshed.aggregate_version,
+        )
 
     @staticmethod
     def _required_identifier(value: object, *, entity: str) -> str:
@@ -573,33 +650,83 @@ class DemandService:
             self._apply_delegated_budget_changes(number, decision)
             return False
 
-        if PERMISSION_APPROVE_DEMANDS in self._permissions:
-            call_application_port(
-                lambda: policy.stamp_direct_approval(
-                    number,
-                    decision,
-                    actor_name=self._current_user,
-                ),
-                code_prefix="approval_envelope_direct_approval",
-                context={"demand_number": number},
-            )
-            call_application_port(
-                lambda: self._approved_sync.sync_approved(number),
-                code_prefix="approval_envelope_direct_sync",
-                context={"demand_number": number},
-            )
-            call_application_port(
-                self._planning.rebuild,
-                code_prefix="approval_envelope_direct_rebuild",
-                context={"demand_number": number},
-            )
-            return False
-
+        if self._approval_cycles is None or self._approval_votes is None:
+            if PERMISSION_APPROVE_DEMANDS in self._permissions:
+                call_application_port(
+                    lambda: policy.stamp_direct_approval(
+                        number,
+                        decision,
+                        actor_name=self._current_user,
+                    ),
+                    code_prefix="approval_envelope_direct_approval",
+                    context={"demand_number": number},
+                )
+                call_application_port(
+                    lambda: self._approved_sync.sync_approved(number),
+                    code_prefix="approval_envelope_direct_sync",
+                    context={"demand_number": number},
+                )
+                call_application_port(
+                    self._planning.rebuild,
+                    code_prefix="approval_envelope_direct_rebuild",
+                    context={"demand_number": number},
+                )
+                return False
         call_application_port(
             lambda: policy.mark_reapproval_required(number, decision),
             code_prefix="approval_envelope_reapproval",
             context={"demand_number": number},
         )
+        self._initialize_approval_cycle_after_submission(number)
+
+        # ADR-003/004 direct approval remains valid, but 276C routes it through the
+        # frozen per-line quorum instead of stamping/materializing around it. The
+        # current approver satisfies every eligible requirement in one atomic action;
+        # if other scopes remain, the request stays Soumise with a partial vote.
+        if (
+            PERMISSION_APPROVE_DEMANDS in self._permissions
+            and self._approval_cycles is not None
+            and self._approval_votes is not None
+        ):
+            request = self._approval_cycles.get_request(number)
+            cycle = (
+                self._approval_cycles.get_active_cycle(request.id)
+                if request is not None
+                else None
+            )
+            if request is not None and cycle is not None:
+                try:
+                    outcome = self._approval_votes.approve_all_eligible(
+                        workforce_request_id=request.id,
+                        approval_cycle_id=cycle.id,
+                        expected_request_version=request.aggregate_version,
+                        comment="Autorisation élargie par approbateur",
+                    )
+                except ApplicationAuthorizationError as exc:
+                    if exc.code not in {
+                        "approval_actor_identity_required",
+                        "approval_actor_not_eligible",
+                        "approval_actor_inactive",
+                    }:
+                        raise
+                else:
+                    if outcome.status == "En planification":
+                        record_direct = getattr(
+                            policy,
+                            "record_direct_approval",
+                            None,
+                        )
+                        if callable(record_direct):
+                            call_application_port(
+                                lambda: record_direct(
+                                    number,
+                                    decision,
+                                    actor_name=self._current_user,
+                                ),
+                                code_prefix="approval_envelope_direct_audit",
+                                context={"demand_number": number},
+                            )
+                    return outcome.status != "En planification"
         return True
 
     def create_command(self, command: DemandCreateCommand) -> str:
@@ -624,6 +751,8 @@ class DemandService:
                 code="demand_create_id_missing",
                 context={"project_number": command.project_number},
             )
+        if command.submit:
+            self._initialize_approval_cycle_after_submission(normalized)
         return normalized
 
     def modify_command(self, command: DemandUpdateCommand) -> bool:
@@ -743,6 +872,11 @@ class DemandService:
                     number,
                     decision,
                     legacy_unknown_requires_reapproval=legacy_unknown_requires_reapproval,
+                )
+            if existing.status == "Soumise" and envelope_relevant_change:
+                self._refresh_submitted_approval_cycle_if_subject_changed(
+                    number,
+                    reason="SUBMITTED_SUBJECT_MODIFIED",
                 )
         return fallback_reapproval_required
 
@@ -885,6 +1019,11 @@ class DemandService:
                     number,
                     decision,
                     legacy_unknown_requires_reapproval=True,
+                )
+            elif existing.status == "Soumise":
+                self._refresh_submitted_approval_cycle_if_subject_changed(
+                    number,
+                    reason="SUBMITTED_PERIODS_MODIFIED",
                 )
         return tuple(updated), reapproval_required
 
@@ -1119,6 +1258,11 @@ class DemandService:
                     "period_id": period_id,
                 },
             )
+            if existing.status == "Soumise":
+                self._refresh_submitted_approval_cycle_if_subject_changed(
+                    number,
+                    reason="SUBMITTED_ALTERNATIVE_SELECTION_CHANGED",
+                )
         return None
 
     def set_operational_confirmation_command(
@@ -1261,8 +1405,9 @@ class DemandService:
                 code_prefix="demand_submit",
                 context={"demand_number": number},
             )
+            self._initialize_approval_cycle_after_submission(number)
 
-    def approve_command(self, command: DemandApproveCommand) -> dict[str, Any]:
+    def approve_command(self, command: DemandApproveCommand) -> ApprovalVoteOutcome | dict[str, Any]:
         number = self._required_identifier(command.number, entity="demand")
         existing = self._demand_or_not_found(number)
         self._assert_workflow_action(
@@ -1270,34 +1415,85 @@ class DemandService:
             ACTION_APPROVE,
             expected_version=command.expected_version,
         )
-        comment = str(command.comment or "")
-        with self._context("approve demand"):
-            call_application_port(
-                lambda: self._demands.update(
-                    number,
-                    {
-                        "Statut": "En planification",
-                        "ApprouvePar": self._current_user,
-                        "DateApprobation": datetime.now(),
-                        "CommentaireApprobation": comment,
-                    },
-                    action="Approbation",
-                    comment=comment or "Demande approuvée",
+        if self._approval_cycles is None or self._approval_votes is None:
+            # Compatibility for transport-neutral/unit compositions that do not
+            # include the SQL approval aggregate. The production SQL facade always
+            # composes 276C and therefore never enters this branch.
+            comment = str(command.comment or "")
+            with self._context("approve demand"):
+                call_application_port(
+                    lambda: self._demands.update(
+                        number,
+                        {
+                            "Statut": "En planification",
+                            "ApprouvePar": self._current_user,
+                            "DateApprobation": datetime.now(),
+                            "CommentaireApprobation": comment,
+                        },
+                        action="Approbation",
+                        comment=comment or "Demande approuvée",
+                    ),
+                    code_prefix="demand_approve",
+                    context={"demand_number": number},
+                )
+                call_application_port(
+                    lambda: self._approved_sync.sync_approved(number),
+                    code_prefix="demand_approval_sync",
+                    context={"demand_number": number},
+                )
+                summary = call_application_port(
+                    self._planning.rebuild,
+                    code_prefix="demand_approval_rebuild",
+                    context={"demand_number": number},
+                )
+            return dict(summary)
+        request = self._approval_cycles.get_request(number)
+        if request is None:
+            raise ApplicationNotFoundError(
+                f"Demande {number} introuvable",
+                code="demand_not_found",
+                context={"demand_number": number},
+            )
+        cycle = self._approval_cycles.get_active_cycle(request.id)
+        if cycle is None:
+            # Deliberately do not auto-initialize here: a legacy submitted request
+            # requires the explicit 276B initialization contract.
+            self._approval_votes.approve_all_eligible(
+                workforce_request_id=request.id,
+                approval_cycle_id="",
+                expected_request_version=(
+                    int(command.expected_version)
+                    if command.expected_version is not None
+                    else request.aggregate_version
                 ),
-                code_prefix="demand_approve",
-                context={"demand_number": number},
+                comment=str(command.comment or ""),
+                expected_planning_version=command.expected_planning_version,
             )
-            call_application_port(
-                lambda: self._approved_sync.sync_approved(number),
-                code_prefix="demand_approval_sync",
-                context={"demand_number": number},
+            raise AssertionError("unreachable")
+        outcome = self._approval_votes.approve_all_eligible(
+            workforce_request_id=request.id,
+            approval_cycle_id=cycle.id,
+            expected_request_version=(
+                int(command.expected_version)
+                if command.expected_version is not None
+                else request.aggregate_version
+            ),
+            comment=str(command.comment or ""),
+            expected_planning_version=command.expected_planning_version,
+        )
+        return outcome
+
+    def vote_approval_command(
+        self,
+        command: ApprovalVoteCommand,
+    ) -> ApprovalVoteOutcome:
+        if self._approval_votes is None:
+            raise ApplicationOperationError(
+                "Le workflow de quorum d'approbation n'est pas configuré.",
+                code="approval_quorum_unavailable",
+                context={"demand_number": command.workforce_request_id},
             )
-            summary = call_application_port(
-                self._planning.rebuild,
-                code_prefix="demand_approval_rebuild",
-                context={"demand_number": number},
-            )
-        return dict(summary)
+        return self._approval_votes.vote(command)
 
     def request_correction_command(self, command: DemandCorrectionCommand) -> None:
         number = self._required_identifier(command.number, entity="demand")
@@ -1327,6 +1523,10 @@ class DemandService:
                 ),
                 code_prefix="demand_correction",
                 context={"demand_number": number},
+            )
+            self._invalidate_active_approval_cycle(
+                number,
+                reason="RETURNED_FOR_CORRECTION",
             )
 
     def request_cancellation_command(
@@ -1367,6 +1567,10 @@ class DemandService:
                     "demand_number": number,
                     "cancellation_request_id": cancellation_request_id,
                 },
+            )
+            self._invalidate_active_approval_cycle(
+                number,
+                reason="CANCELLATION_REQUESTED",
             )
         return existing.status, cancellation_request_id
 
@@ -1528,6 +1732,10 @@ class DemandService:
                 code_prefix="demand_cancel",
                 context={"demand_number": number},
             )
+            self._invalidate_active_approval_cycle(
+                number,
+                reason="DEMAND_CANCELLED",
+            )
             if callable(cancel_materialized):
                 call_application_port(
                     self._planning.rebuild,
@@ -1553,7 +1761,7 @@ class DemandService:
     def submit(self, number: str) -> None:
         self.submit_command(DemandSubmitCommand(number))
 
-    def approve(self, number: str, comment: str = "") -> dict[str, Any]:
+    def approve(self, number: str, comment: str = "") -> ApprovalVoteOutcome | dict[str, Any]:
         return self.approve_command(DemandApproveCommand(number, comment))
 
     def request_correction(self, number: str, comment: str) -> None:

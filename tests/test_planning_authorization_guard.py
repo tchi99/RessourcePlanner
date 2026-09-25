@@ -22,6 +22,7 @@ from app.infrastructure.sql import (
     create_sql_engine,
 )
 from app.server import create_api_app
+from tests.approval_test_support import routed_demand_payload, seed_test_approval_routing
 from tests.http_test_auth import (
     TEST_ADMIN_AUTH_RESOLVER,
     TEST_PROJECT_MANAGER_AUTH_RESOLVER,
@@ -49,6 +50,7 @@ class PlanningAuthorizationGuardTests(unittest.TestCase):
                 active=True,
             )
         )
+        seed_test_approval_routing(session, map_existing_tasks=True)
 
     @classmethod
     def setUpClass(cls) -> None:
@@ -74,14 +76,14 @@ class PlanningAuthorizationGuardTests(unittest.TestCase):
     ) -> str:
         created = client.post(
             "/api/v1/demands",
-            json={
+            json=routed_demand_payload({
                 "project_number": "P-1",
                 "desired_start": DAY.isoformat(),
                 "desired_end": DAY.isoformat(),
                 "estimated_hours": hours,
                 "proposed_technician": "Alice",
                 "submit": True,
-            },
+            }),
         )
         assert created.status_code == 201, created.text
         number = created.json()["demand_number"]

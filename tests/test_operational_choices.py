@@ -18,6 +18,7 @@ from app.infrastructure.sql import (
     create_sql_engine,
 )
 from app.server import create_api_app
+from tests.approval_test_support import routed_demand_payload, seed_test_approval_routing
 from tests.http_test_auth import (
     TEST_ADMIN_AUTH_RESOLVER,
     TEST_PROJECT_MANAGER_AUTH_RESOLVER,
@@ -35,6 +36,7 @@ class VersionedOperationalChoicesApiTests(unittest.TestCase):
     @staticmethod
     def _seed_database(session) -> None:
         session.add(Project(id="P1", number="P-1", name="Projet 13D"))
+        seed_test_approval_routing(session, map_existing_tasks=True)
 
     @classmethod
     def setUpClass(cls) -> None:
@@ -56,7 +58,7 @@ class VersionedOperationalChoicesApiTests(unittest.TestCase):
     def _create_line(client: TestClient, *, confirmation: str = "Tentative") -> tuple[str, str]:
         created = client.post(
             "/api/v1/demands",
-            json={
+            json=routed_demand_payload({
                 "project_number": "P-1",
                 "priority": "Normale",
                 "lines": [
@@ -68,7 +70,7 @@ class VersionedOperationalChoicesApiTests(unittest.TestCase):
                         "confirmation": confirmation,
                     }
                 ],
-            },
+            }),
         )
         assert created.status_code == 201, created.text
         number = created.json()["demand_number"]

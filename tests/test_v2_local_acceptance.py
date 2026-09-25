@@ -33,8 +33,14 @@ from app.infrastructure.sql import (
     Base,
     Project,
     SqlUserIdentityRepository,
+    TaskCatalogEntry,
     create_session_factory,
     create_sql_engine,
+)
+from app.infrastructure.sql.approval_scope_models import (
+    ApprovalScope,
+    ApprovalScopeApprover,
+    TaskApprovalScopeMapping,
 )
 from app.server import create_api_app
 from app.server.security import static_auth_resolver
@@ -114,6 +120,39 @@ class V2LocalAcceptanceTests(unittest.TestCase):
                     active=True,
                 )
                 self.user_ids[role] = record.user_id
+
+            session.add(
+                TaskCatalogEntry(
+                    id="TASK-P250-APPROVAL",
+                    project_number="P-250",
+                    task_code="APPROVAL",
+                    label="Approbation E2E",
+                    active=True,
+                )
+            )
+            session.add(
+                ApprovalScope(
+                    id="SCOPE-P250",
+                    code="P250_APPROVAL",
+                    label="Approbation E2E",
+                    active=True,
+                    version=1,
+                )
+            )
+            session.flush()
+            for role in (ROLE_ADMIN, ROLE_COORDINATOR):
+                session.add(
+                    ApprovalScopeApprover(
+                        approval_scope_id="SCOPE-P250",
+                        app_user_id=self.user_ids[role],
+                    )
+                )
+            session.add(
+                TaskApprovalScopeMapping(
+                    task_catalog_item_id="TASK-P250-APPROVAL",
+                    approval_scope_id="SCOPE-P250",
+                )
+            )
         engine.dispose()
 
         next_week = date.today() - timedelta(days=date.today().weekday()) + timedelta(days=7)
@@ -284,6 +323,7 @@ class V2LocalAcceptanceTests(unittest.TestCase):
                 headers={"Idempotency-Key": "demand-250"},
                 json={
                     "project_number": "P-250",
+                    "task_code": "APPROVAL",
                     "work_package_ref": work_package_ref,
                     "desired_start": d1.isoformat(),
                     "desired_end": d5.isoformat(),
@@ -665,7 +705,7 @@ class V2LocalAcceptanceTests(unittest.TestCase):
             denied_contacts = technician.get("/api/v1/communications/contacts")
             self.assertEqual(denied_contacts.status_code, 403, denied_contacts.text)
 
-        # Emergency override: urgent current-week request can be planned before regular approval.
+        # Emergency marker: urgency cannot materialize before the 276C quorum.
         today = date.today()
         with TestClient(
             self._app(ROLE_PROJECT_MANAGER, display_name="Chargé E2E"),
@@ -676,6 +716,7 @@ class V2LocalAcceptanceTests(unittest.TestCase):
                 headers={"Idempotency-Key": "urgent-250"},
                 json={
                     "project_number": "P-250",
+                    "task_code": "APPROVAL",
                     "desired_start": today.isoformat(),
                     "desired_end": today.isoformat(),
                     "estimated_hours": 4,
@@ -698,7 +739,12 @@ class V2LocalAcceptanceTests(unittest.TestCase):
             )
             self.assertEqual(emergency.status_code, 200, emergency.text)
             self.assertEqual(emergency.json()["status"], "Soumise")
-            self.assertIsNotNone(emergency.json()["planning"])
+            emergency_planning = emergency.json().get("planning") or {}
+            self.assertEqual(emergency_planning.get("segments", 0), 0)
+            self.assertEqual(
+                self._segments_for(coordinator, urgent_number),
+                [],
+            )
 
             urgent_state = coordinator.get(f"/api/v1/demands/{urgent_number}").json()
             self.assertTrue(urgent_state["emergency_override_active"])

@@ -28,6 +28,7 @@ from app.infrastructure.sql import (
     create_sql_engine,
 )
 from app.server import create_api_app
+from tests.approval_test_support import routed_demand_payload, seed_test_approval_routing
 from tests.http_test_auth import (
     TEST_ADMIN_AUTH_RESOLVER,
     TEST_PROJECT_MANAGER_AUTH_RESOLVER,
@@ -125,6 +126,7 @@ class RequestLineMaterializationHttpTests(unittest.TestCase):
                 ),
             ]
         )
+        seed_test_approval_routing(session, map_existing_tasks=True)
 
     @classmethod
     def setUpClass(cls) -> None:
@@ -151,12 +153,12 @@ class RequestLineMaterializationHttpTests(unittest.TestCase):
     ) -> str:
         response = client.post(
             "/api/v1/demands",
-            json={
+            json=routed_demand_payload({
                 "project_number": "P-1",
                 "description": "Demande multi-lignes",
                 "submit": submit,
                 "lines": lines,
-            },
+            }),
         )
         assert response.status_code == 201, response.text
         return response.json()["demand_number"]
@@ -284,7 +286,7 @@ class RequestLineMaterializationHttpTests(unittest.TestCase):
             with TestClient(app, raise_server_exceptions=False) as client:
                 response = client.post(
                     "/api/v1/demands",
-                    json={
+                    json=routed_demand_payload({
                         "project_number": "P-1",
                         "description": "Description générale",
                         "submit": True,
@@ -298,7 +300,7 @@ class RequestLineMaterializationHttpTests(unittest.TestCase):
                                 "proposed_resource_id": "R1",
                             }
                         ],
-                    },
+                    }),
                 )
                 self.assertEqual(response.status_code, 201, response.text)
                 number = response.json()["demand_number"]
@@ -531,7 +533,7 @@ class RequestLineMaterializationHttpTests(unittest.TestCase):
                         requirement.approved_operational_responsible_override_contact_id,
                         "BC-OVR-1",
                     )
-                    self.assertEqual(requirement.approved_request_version, 2)
+                    self.assertEqual(requirement.approved_request_version, 1)
                     self.assertEqual(
                         requirement.approved_contact_context_status,
                         "CAPTURED",
@@ -592,7 +594,7 @@ class RequestLineMaterializationHttpTests(unittest.TestCase):
                     assert shift is not None
                     self.assertEqual(requirement.start_date, D1)
                     self.assertEqual(requirement.approved_task_catalog_item_id, "T210")
-                    self.assertEqual(requirement.approved_request_version, 2)
+                    self.assertEqual(requirement.approved_request_version, 1)
                     self.assertEqual(
                         requirement.approved_operational_responsible_override_contact_id,
                         "BC-OVR-1",

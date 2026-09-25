@@ -24,6 +24,7 @@ from app.server import create_api_app
 DAY = date(2026, 8, 24)
 
 
+from tests.approval_test_support import routed_demand_payload, seed_test_approval_routing
 from tests.http_test_auth import TEST_ADMIN_AUTH_RESOLVER
 
 create_api_app = partial(create_api_app, auth_resolver=TEST_ADMIN_AUTH_RESOLVER)
@@ -50,6 +51,7 @@ class WebShiftEditApiTests(unittest.TestCase):
                     active=True,
                 )
             )
+            seed_test_approval_routing(session, map_existing_tasks=True)
         engine.dispose()
         return url
 
@@ -57,14 +59,14 @@ class WebShiftEditApiTests(unittest.TestCase):
     def _approved_tentative_segment(client: TestClient) -> str:
         created = client.post(
             "/api/v1/demands",
-            json={
+            json=routed_demand_payload({
                 "project_number": "P-1",
                 "desired_start": DAY.isoformat(),
                 "desired_end": DAY.isoformat(),
                 "estimated_hours": 4,
                 "proposed_technician": "Alice",
                 "confirmation": "Tentative",
-            },
+            }),
         )
         assert created.status_code == 201, created.text
         number = created.json()["demand_number"]

@@ -73,6 +73,11 @@ class CompositeAllocationCommandPort(Protocol):
 class ApprovedDemandSyncPort(Protocol):
     """Synchronize approved authorization and its active operational choices."""
 
-    def sync_approved(self, demand_number: str) -> None: ...
+    def sync_approved(
+        self,
+        demand_number: str,
+        *,
+        approved_request_version: int | None = None,
+    ) -> None: ...
 
     def sync_operational_choices(self, demand_number: str) -> None: ...
