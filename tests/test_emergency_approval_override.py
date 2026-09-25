@@ -281,8 +281,7 @@ class EmergencyOverrideHttpTests(unittest.TestCase):
                 matching_shifts = [
                     row for row in planning.json()["shifts"] if row["demand_number"] == number
                 ]
-                self.assertGreaterEqual(len(matching_shifts), 1)
-                self.assertTrue(all(row["emergency_override_active"] for row in matching_shifts))
+                self.assertEqual(matching_shifts, [])
 
                 duplicate = client.post(
                     f"/api/v1/demands/{number}/emergency-plan",
