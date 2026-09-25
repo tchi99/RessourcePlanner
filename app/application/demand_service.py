@@ -710,6 +710,22 @@ class DemandService:
                     }:
                         raise
                 else:
+                    if outcome.status == "En planification":
+                        record_direct = getattr(
+                            policy,
+                            "record_direct_approval",
+                            None,
+                        )
+                        if callable(record_direct):
+                            call_application_port(
+                                lambda: record_direct(
+                                    number,
+                                    decision,
+                                    actor_name=self._current_user,
+                                ),
+                                code_prefix="approval_envelope_direct_audit",
+                                context={"demand_number": number},
+                            )
                     return outcome.status != "En planification"
         return True
 
