@@ -2,6 +2,7 @@ import { FormEvent, useEffect, useState } from "react";
 
 import AcumaticaProjectSyncPanel from "./AcumaticaProjectSyncPanel";
 import ApprovalScopesPanel from "./ApprovalScopesPanel";
+import ResourceClassesPanel from "./ResourceClassesPanel";
 import {
   SmtpConfiguration,
   SmtpConfigurationUpdate,
@@ -205,6 +206,8 @@ export default function ConfigurationPage() {
       {notice && <div className="configuration-notice">{notice}</div>}
 
       <AcumaticaProjectSyncPanel />
+
+      <ResourceClassesPanel />
 
       <ApprovalScopesPanel />
 
