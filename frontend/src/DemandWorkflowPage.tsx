@@ -11,11 +11,13 @@ import {
 import {
   acceptDemandCancellation,
   approveDemand,
+  approveDemandLines,
   cancelDemand,
   rejectDemandCancellation,
   requestDemandCancellation,
   requestDemandCorrection,
   submitDemand,
+  type DemandApprovalVoteResult,
   type DemandWorkflowResult,
   type DemandWorkflowState,
   type WorkflowAction,
@@ -28,6 +30,7 @@ import {
   type DemandPlanDeltaItem,
 } from "./planDeltaApi";
 import "./planDelta.css";
+import "./approval-progress.css";
 
 type WorkflowButtonAction = Extract<
   WorkflowAction,
@@ -143,6 +146,7 @@ export default function DemandWorkflowPage({
   const [demands, setDemands] = useState<DemandReadModel[]>([]);
   const [selectedNumber, setSelectedNumber] = useState("");
   const [selectedDemand, setSelectedDemand] = useState<DemandReadModel | null>(null);
+  const [selectedDetail, setSelectedDetail] = useState<DemandDetailReadModel | null>(null);
   const [workflowState, setWorkflowState] = useState<DemandWorkflowState | null>(null);
   const [approvalComment, setApprovalComment] = useState("");
   const [correctionComment, setCorrectionComment] = useState("");
@@ -163,10 +167,13 @@ export default function DemandWorkflowPage({
   const [planDeltaLoading, setPlanDeltaLoading] = useState(false);
   const [planDeltaError, setPlanDeltaError] = useState<string | null>(null);
 
-  const currentDemand = canonicalDetail?.demand ?? selectedDemand;
-  const currentWorkflowState = canonicalDetail
-    ? canonicalDetail.workflow as DemandWorkflowState
+  const currentDetail = canonicalDetail ?? selectedDetail;
+  const currentDemand = currentDetail?.demand ?? selectedDemand;
+  const currentWorkflowState = currentDetail
+    ? currentDetail.workflow as DemandWorkflowState
     : workflowState;
+  const currentApprovalCycle = currentDetail?.approval_cycle ?? null;
+  const actorApprovalLines = currentApprovalCycle?.actor_approvable_request_line_ids ?? [];
 
   async function refresh(number?: string) {
     const rows = demandNumber
@@ -178,11 +185,13 @@ export default function DemandWorkflowPage({
     setSelectedNumber(nextNumber);
     if (!nextNumber) {
       setSelectedDemand(null);
+      setSelectedDetail(null);
       setWorkflowState(null);
       return;
     }
     const detail = await getDemandDetail(nextNumber);
     setSelectedDemand(detail.demand);
+    setSelectedDetail(detail);
     setWorkflowState(detail.workflow as DemandWorkflowState);
   }
 
@@ -212,6 +221,7 @@ export default function DemandWorkflowPage({
           const detail = await getDemandDetail(first);
           if (active) {
             setSelectedDemand(detail.demand);
+            setSelectedDetail(detail);
             setWorkflowState(detail.workflow as DemandWorkflowState);
           }
         } else if (active) {
@@ -235,6 +245,7 @@ export default function DemandWorkflowPage({
       .then((detail) => {
         if (active) {
           setSelectedDemand(detail.demand);
+          setSelectedDetail(detail);
           setWorkflowState(detail.workflow as DemandWorkflowState);
         }
       })
@@ -466,9 +477,21 @@ export default function DemandWorkflowPage({
     setNotice(null);
     try {
       const expectedVersion = currentWorkflowState?.version ?? currentDemand.version;
-      let result: DemandWorkflowResult;
+      let result: DemandWorkflowResult | DemandApprovalVoteResult;
       if (action === "submit") {
         result = await submitDemand(currentDemand.number, expectedVersion);
+      } else if (action === "approve" && currentApprovalCycle) {
+        if (actorApprovalLines.length === 0) {
+          throw new Error("Aucune ligne restante n’est admissible pour votre approbation.");
+        }
+        result = await approveDemandLines(
+          currentDemand.number,
+          currentApprovalCycle.approval_cycle_id,
+          actorApprovalLines,
+          approvalComment.trim(),
+          expectedVersion,
+          idempotencyKey(),
+        );
       } else if (action === "approve") {
         result = await approveDemand(
           currentDemand.number,
@@ -488,11 +511,21 @@ export default function DemandWorkflowPage({
       await refreshAfterMutation(result.demand_number);
       if (action === "approve") {
         const planning = result.planning;
-        setNotice(
-          planning
-            ? `Demande approuvée. Planification recalculée : ${planning.segments} segment(s), ${planning.allocations} allocation(s), ${planning.unallocated_hours} h non allouée(s).`
-            : "Demande approuvée.",
-        );
+        if ("quorum_complete" in result) {
+          setNotice(
+            result.quorum_complete
+              ? planning
+                ? `Demande approuvée — quorum complet. Planification recalculée : ${planning.segments} segment(s), ${planning.allocations} allocation(s), ${planning.unallocated_hours} h non allouée(s).`
+                : "Demande approuvée — quorum complet."
+              : `Approbation enregistrée — ${result.satisfied_requirements} lignes sur ${result.total_requirements} satisfaites.`,
+          );
+        } else {
+          setNotice(
+            planning
+              ? `Demande approuvée. Planification recalculée : ${planning.segments} segment(s), ${planning.allocations} allocation(s), ${planning.unallocated_hours} h non allouée(s).`
+              : "Demande approuvée.",
+          );
+        }
         setApprovalComment("");
       } else if (action === "correction") {
         setNotice("Demande retournée pour correction.");
@@ -593,6 +626,59 @@ export default function DemandWorkflowPage({
                   </div>
                 )}
               </div>
+
+              {currentApprovalCycle && (
+                <section className="approval-progress-panel" data-testid="approval-progress">
+                  <div className="approval-progress-heading">
+                    <div>
+                      <span className="eyebrow">Multi-approbation</span>
+                      <h3>Progression par ligne</h3>
+                    </div>
+                    <strong>
+                      {currentApprovalCycle.satisfied_requirements} / {currentApprovalCycle.total_requirements} satisfaites
+                    </strong>
+                  </div>
+                  <div className="approval-progress-list">
+                    {currentApprovalCycle.requirements.map((requirement) => {
+                      const line = currentDetail?.lines.find(
+                        (row) => row.line.line_id === requirement.request_line_id,
+                      )?.line;
+                      const lineLabel = line?.task_code
+                        ? `${line.task_code} — ${line.task_label || line.description || requirement.request_line_id}`
+                        : line?.description || requirement.request_line_id;
+                      return (
+                        <article
+                          className={`approval-progress-line ${requirement.satisfied ? "is-satisfied" : ""}`}
+                          data-line-id={requirement.request_line_id}
+                          key={requirement.requirement_id}
+                        >
+                          <div>
+                            <strong>{lineLabel}</strong>
+                            <span>{requirement.satisfied ? "Satisfaite" : "En attente"}</span>
+                          </div>
+                          <small>
+                            Approbateur(s) admissible(s) : {requirement.approvers.map((item) => item.display_name).join(", ") || "aucun"}
+                          </small>
+                          {requirement.actor_can_approve && (
+                            <small className="approval-progress-mine">À approuver par vous</small>
+                          )}
+                          {requirement.decisions.map((decision) => (
+                            <small key={`${decision.action_id}-${decision.app_user_id}`}>
+                              ✓ {decision.display_name}
+                              {decision.comment ? ` — ${decision.comment}` : ""}
+                            </small>
+                          ))}
+                        </article>
+                      );
+                    })}
+                  </div>
+                  <small className="approval-progress-compatibility">
+                    {currentDemand.approved_by_name
+                      ? `Compatibilité globale : finalisation par ${currentDemand.approved_by_name}. La preuve du quorum reste le cycle par ligne.`
+                      : "Les champs globaux d’approbation restent vides tant que le quorum complet n’est pas atteint."}
+                  </small>
+                </section>
+              )}
 
               {currentDemand.cancellation_state === "PENDING" && (
                 <div className="workflow-cancellation-state" data-testid="cancellation-pending-state">
@@ -706,7 +792,7 @@ export default function DemandWorkflowPage({
                 </div>
               )}
 
-              {actions.includes("approve") && (
+              {actions.includes("approve") && (!currentApprovalCycle || actorApprovalLines.length > 0) && (
                 <label className="workflow-comment-field">
                   <span>Commentaire d’approbation (optionnel)</span>
                   <textarea
@@ -883,6 +969,12 @@ export default function DemandWorkflowPage({
                 </div>
               )}
 
+              {actions.includes("approve") && currentApprovalCycle && actorApprovalLines.length === 0 && !currentApprovalCycle.quorum_complete && (
+                <span className="workflow-terminal-state">
+                  Aucune ligne en attente n’est admissible pour votre approbation.
+                </span>
+              )}
+
               <div className="workflow-actions">
                 {actions.length === 0 && <span className="workflow-terminal-state">Aucune transition usuelle disponible pour ce statut.</span>}
                 {actions.includes("submit") && (
@@ -890,9 +982,18 @@ export default function DemandWorkflowPage({
                     {pendingAction === "submit" ? "Soumission…" : actionLabel("submit")}
                   </button>
                 )}
-                {actions.includes("approve") && (
-                  <button type="button" className="primary-button" disabled={busy || hasUnsavedChanges} onClick={() => runAction("approve")}>
-                    {pendingAction === "approve" ? "Approbation…" : actionLabel("approve")}
+                {actions.includes("approve") && (!currentApprovalCycle || actorApprovalLines.length > 0) && (
+                  <button
+                    type="button"
+                    className="primary-button"
+                    disabled={busy || hasUnsavedChanges}
+                    onClick={() => runAction("approve")}
+                  >
+                    {pendingAction === "approve"
+                      ? "Approbation…"
+                      : currentApprovalCycle
+                        ? `Approuver mes lignes (${actorApprovalLines.length})`
+                        : actionLabel("approve")}
                   </button>
                 )}
                 {actions.includes("correction") && (

@@ -1,5 +1,6 @@
 import { FormEvent, useEffect, useState } from "react";
 
+import ApprovalScopesPanel from "./ApprovalScopesPanel";
 import {
   SmtpConfiguration,
   SmtpConfigurationUpdate,
@@ -201,6 +202,8 @@ export default function ConfigurationPage() {
 
       {error && <div className="error-panel"><strong>Erreur</strong><span>{error}</span></div>}
       {notice && <div className="configuration-notice">{notice}</div>}
+
+      <ApprovalScopesPanel />
 
       <div className="configuration-status-grid">
         <div className="configuration-card">

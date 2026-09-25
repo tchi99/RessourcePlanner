@@ -1,0 +1,53 @@
+.approval-progress-panel {
+  display: grid;
+  gap: 0.75rem;
+  padding: 0.9rem;
+  border: 1px solid #d0d5dd;
+  border-radius: 12px;
+  background: #f8fafc;
+}
+
+.approval-progress-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: start;
+}
+
+.approval-progress-heading h3 {
+  margin: 0.15rem 0 0;
+}
+
+.approval-progress-list {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.approval-progress-line {
+  display: grid;
+  gap: 0.3rem;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid #eaecf0;
+  border-radius: 9px;
+  background: #fff;
+}
+
+.approval-progress-line > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.approval-progress-line.is-satisfied {
+  border-color: #abefc6;
+  background: #f6fef9;
+}
+
+.approval-progress-mine {
+  font-weight: 800;
+  color: #175cd3;
+}
+
+.approval-progress-compatibility {
+  color: #667085;
+}
