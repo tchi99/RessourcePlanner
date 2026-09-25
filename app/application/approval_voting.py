@@ -478,7 +478,7 @@ class ApprovalVoteService:
         )
         self._approved_sync.sync_approved(
             request.number,
-            approved_request_version=cycle.submitted_request_version,
+            approved_request_version=cycle.submitted_request_version + 1,
         )
         planning = dict(self._planning.rebuild())
         revision_id = self._repository.active_revision_id(request.id)
