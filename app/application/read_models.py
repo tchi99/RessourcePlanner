@@ -81,6 +81,9 @@ class DemandReadModel:
 
     number: str
     status: str
+    approved_by_name: str | None = None
+    approved_at: datetime | None = None
+    approval_comment: str | None = None
     effective_status: str | None = None
     terminal: bool = False
     created_at: datetime | None = None
@@ -130,6 +133,13 @@ class DemandReadModel:
         return cls(
             number=_text(row.get("NoDemande")),
             status=_text(row.get("Statut")),
+            approved_by_name=_optional_text(row.get("ApprouvePar")),
+            approved_at=(
+                row.get("DateApprobation")
+                if isinstance(row.get("DateApprobation"), datetime)
+                else None
+            ),
+            approval_comment=_optional_text(row.get("CommentaireApprobation")),
             effective_status=(
                 _optional_text(row.get("StatutEffectif"))
                 or _text(row.get("Statut"))

@@ -25,6 +25,8 @@ class ApprovalDecisionRecord:
     app_user_id: str
     decision: str
     action_id: str
+    decided_at: object | None = None
+    comment: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

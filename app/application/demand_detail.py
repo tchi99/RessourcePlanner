@@ -4,6 +4,7 @@ from collections import defaultdict
 from dataclasses import dataclass, replace
 from typing import Sequence
 
+from .approval_progress import ApprovalCycleProgressReadModel, ApprovalProgressService
 from .demand_cancellation import DemandCancellationPolicyReadModel
 from .demand_workflow_policy import (
     ACTION_MODIFY,
@@ -106,6 +107,7 @@ class DemandDetailReadModel:
     materialized_plan: DemandMaterializedPlanSummaryReadModel
     workflow: DemandDetailWorkflowReadModel
     approval_state: DemandApprovalStateReadModel | None
+    approval_cycle: ApprovalCycleProgressReadModel | None
     policy: DemandDetailPolicyReadModel
     diagnostics: tuple[str, ...] = ()
     technical_context: DemandDetailTechnicalContextReadModel | None = None
@@ -118,9 +120,11 @@ class DemandDetailService:
         self,
         queries: PlannerQueryPort,
         contacts: OperationalContactService,
+        approvals: ApprovalProgressService | None = None,
     ) -> None:
         self._queries = queries
         self._contacts = contacts
+        self._approvals = approvals
 
     @staticmethod
     def _alternative_groups(
@@ -160,6 +164,7 @@ class DemandDetailService:
         number: str,
         *,
         permissions: Sequence[str],
+        current_user_id: str | None = None,
     ) -> DemandDetailReadModel:
         combined_reader = getattr(
             self._queries,
@@ -236,6 +241,16 @@ class DemandDetailService:
                     contacts=contact,
                 )
             )
+
+        approval_cycle = (
+            self._approvals.get(
+                demand.number,
+                current_user_id=current_user_id,
+                permissions=permissions,
+            )
+            if self._approvals is not None
+            else None
+        )
 
         approval_state = self._queries.demand_approval_state(demand.number)
         if approval_state is None:
@@ -354,6 +369,7 @@ class DemandDetailService:
             materialized_plan=materialized_plan,
             workflow=workflow,
             approval_state=approval_state,
+            approval_cycle=approval_cycle,
             policy=policy,
             diagnostics=(unique_diagnostics if technical_context is not None else ()),
             technical_context=technical_context,

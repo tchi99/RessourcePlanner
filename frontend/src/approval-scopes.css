@@ -1,0 +1,80 @@
+.approval-scopes-panel {
+  gap: 0.9rem;
+}
+
+.approval-scope-create {
+  display: grid;
+  grid-template-columns: minmax(160px, 0.7fr) minmax(220px, 1.3fr) auto;
+  gap: 0.65rem;
+  align-items: end;
+}
+
+.approval-scope-create label,
+.approval-scope-approvers {
+  display: grid;
+  gap: 0.35rem;
+  color: #344054;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.approval-scope-create input {
+  min-width: 0;
+  padding: 0.55rem 0.65rem;
+  border: 1px solid #d0d5dd;
+  border-radius: 8px;
+  font: inherit;
+}
+
+.approval-scope-list {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.approval-scope-card {
+  display: grid;
+  gap: 0.65rem;
+  padding: 0.8rem;
+  border: 1px solid #e4e7ec;
+  border-radius: 10px;
+  background: #f8fafc;
+}
+
+.approval-scope-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.approval-scope-heading > div {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.approval-scope-approvers > label {
+  display: grid;
+  grid-template-columns: auto minmax(160px, 1fr) minmax(120px, auto);
+  gap: 0.45rem;
+  align-items: center;
+  padding: 0.35rem 0;
+  font-weight: 600;
+}
+
+@media (max-width: 760px) {
+  .approval-scope-create {
+    grid-template-columns: 1fr;
+  }
+
+  .approval-scope-heading {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .approval-scope-approvers > label {
+    grid-template-columns: auto 1fr;
+  }
+
+  .approval-scope-approvers > label small {
+    grid-column: 2;
+  }
+}

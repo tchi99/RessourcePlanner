@@ -65,6 +65,7 @@ ROLE_IDENTITIES = {
     ROLE_ADMIN: ("Administrateur E2E", None),
     ROLE_PROJECT_MANAGER: ("Chargé E2E", "EMP-PM"),
     ROLE_COORDINATOR: ("Coordonnateur E2E", None),
+    ROLE_MANAGER: ("Gestionnaire E2E", None),
     ROLE_TECHNICIAN: ("Technicien Alice", "EMP-ALICE"),
 }
 
@@ -72,6 +73,7 @@ ROLE_APP_USER_SUBJECTS = {
     ROLE_ADMIN: "admin",
     ROLE_PROJECT_MANAGER: "project-manager",
     ROLE_COORDINATOR: "coordinator",
+    ROLE_MANAGER: "manager",
     ROLE_TECHNICIAN: "technician-a",
 }
 
@@ -175,17 +177,29 @@ def _seed(database_url: str) -> None:
                     status="Actif",
                 )
             )
-            session.add(
-                TaskCatalogEntry(
-                    id="TASK-P251-210",
-                    project_number="P-251",
-                    task_code="210",
-                    label="AUTOMATISATION E2E",
-                    status="Actif",
-                    active=True,
-                    time_entry_enabled=True,
-                    expenses_enabled=False,
-                )
+            session.add_all(
+                [
+                    TaskCatalogEntry(
+                        id="TASK-P251-110",
+                        project_number="P-251",
+                        task_code="110",
+                        label="INSTALLATION ÉLECTRIQUE E2E",
+                        status="Actif",
+                        active=True,
+                        time_entry_enabled=True,
+                        expenses_enabled=False,
+                    ),
+                    TaskCatalogEntry(
+                        id="TASK-P251-210",
+                        project_number="P-251",
+                        task_code="210",
+                        label="AUTOMATISATION E2E",
+                        status="Actif",
+                        active=True,
+                        time_entry_enabled=True,
+                        expenses_enabled=False,
+                    ),
+                ]
             )
             session.add(
                 AssetType(
@@ -268,6 +282,7 @@ def _seed(database_url: str) -> None:
             users = SqlUserIdentityRepository(session)
             project_manager_contact_id = None
             approval_user_ids: list[str] = []
+            manager_user_id = None
             for subject, display_name, role, employee_external_id, email_local in (
                 ("admin", "Administrateur Démo", ROLE_ADMIN, None, "admin"),
                 ("coordinator", "Coordonnateur Démo", ROLE_COORDINATOR, None, "coord"),
@@ -287,6 +302,8 @@ def _seed(database_url: str) -> None:
                 )
                 if role in {ROLE_ADMIN, ROLE_COORDINATOR, ROLE_MANAGER}:
                     approval_user_ids.append(record.user_id)
+                if role == ROLE_MANAGER:
+                    manager_user_id = record.user_id
                 if employee_external_id == "EMP-PM":
                     project_manager_contact_id = record.business_contact_id
                     users.set_business_phone(
@@ -315,6 +332,30 @@ def _seed(database_url: str) -> None:
                 TaskApprovalScopeMapping(
                     task_catalog_item_id="TASK-P251-210",
                     approval_scope_id="SCOPE-P251-AUTOMATION",
+                )
+            )
+
+            assert manager_user_id is not None
+            session.add(
+                ApprovalScope(
+                    id="SCOPE-P251-ELECTRICAL",
+                    code="ELECTRICAL",
+                    label="Installation électrique",
+                    active=True,
+                    version=1,
+                )
+            )
+            session.flush()
+            session.add(
+                ApprovalScopeApprover(
+                    approval_scope_id="SCOPE-P251-ELECTRICAL",
+                    app_user_id=manager_user_id,
+                )
+            )
+            session.add(
+                TaskApprovalScopeMapping(
+                    task_catalog_item_id="TASK-P251-110",
+                    approval_scope_id="SCOPE-P251-ELECTRICAL",
                 )
             )
 

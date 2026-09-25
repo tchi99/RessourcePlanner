@@ -7,6 +7,7 @@ from collections.abc import Sequence
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from ...application.approval_progress import ApprovalUserSummaryRecord
 from ...application.approval_voting import (
     APPROVAL_DECISION_APPROVE,
     ApprovalDecisionRecord,
@@ -297,6 +298,24 @@ class SqlApprovalCycleRepository:
             )
         return self._record(rows[0]) if rows else None
 
+    def get_latest_cycle(
+        self,
+        request_id: str,
+    ) -> ApprovalCycleRecord | None:
+        row = self._session.scalar(
+            select(RequestApprovalCycle)
+            .where(
+                RequestApprovalCycle.workforce_request_id
+                == _text(request_id)
+            )
+            .order_by(
+                RequestApprovalCycle.submitted_at.desc(),
+                RequestApprovalCycle.id.desc(),
+            )
+            .limit(1)
+        )
+        return self._record(row) if row is not None else None
+
     def has_any_cycle(self, request_id: str) -> bool:
         count = self._session.scalar(
             select(func.count(RequestApprovalCycle.id)).where(
@@ -467,6 +486,31 @@ class SqlApprovalCycleRepository:
                 app_user_id=row.app_user_id,
                 decision=_text(row.decision).upper(),
                 action_id=row.action_id,
+                decided_at=row.decided_at,
+                comment=_optional_text(row.comment),
+            )
+            for row in rows
+        )
+
+    def list_approval_users(
+        self,
+        user_ids: Sequence[str],
+    ) -> tuple[ApprovalUserSummaryRecord, ...]:
+        identifiers = tuple(
+            dict.fromkeys(_text(value) for value in user_ids if _text(value))
+        )
+        if not identifiers:
+            return ()
+        rows = self._session.scalars(
+            select(AppUser)
+            .where(AppUser.id.in_(identifiers))
+            .order_by(AppUser.display_name, AppUser.id)
+        ).all()
+        return tuple(
+            ApprovalUserSummaryRecord(
+                app_user_id=row.id,
+                display_name=_text(row.display_name) or row.id,
+                active=bool(row.active),
             )
             for row in rows
         )

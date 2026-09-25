@@ -97,6 +97,10 @@ class SecurityPolicyTests(unittest.TestCase):
             PERMISSION_APPROVE_DEMANDS,
         )
         self.assertEqual(
+            required_permission("POST", "/api/v1/demands/DMO-1/approval-votes"),
+            PERMISSION_APPROVE_DEMANDS,
+        )
+        self.assertEqual(
             required_permission(
                 "POST",
                 "/api/v1/demands/DMO-1/request-cancellation",

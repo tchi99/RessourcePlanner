@@ -79,6 +79,85 @@ class ServerCommandRouteTests(unittest.TestCase):
         path = Path(directory) / "api.db"
         return self._database_template.copy_to(directory), path
 
+    def test_detail_projects_partial_line_approval_without_global_approval(self) -> None:
+        with TemporaryDirectory() as directory:
+            database_url, _ = self._database(directory)
+            app = create_api_app(
+                database_url,
+                actor_name="Jean",
+                auth_resolver=test_admin_auth_resolver("Jean"),
+            )
+            with TestClient(app, raise_server_exceptions=False) as client:
+                created = client.post(
+                    "/api/v1/demands",
+                    json=routed_demand_payload({
+                        "project_number": "P-1",
+                        "priority": "Normale",
+                        "description": "Multi-approbation #276D",
+                        "lines": [
+                            {
+                                "position": 0,
+                                "desired_start": "2026-08-24",
+                                "desired_end": "2026-08-24",
+                                "estimated_hours": 8,
+                                "required_resource_class": "AUTOMATION",
+                                "required_competency_ids": [],
+                                "confirmation": "Confirmée",
+                            },
+                            {
+                                "position": 1,
+                                "desired_start": "2026-08-25",
+                                "desired_end": "2026-08-25",
+                                "estimated_hours": 8,
+                                "required_resource_class": "ELECTRICAL",
+                                "required_competency_ids": [],
+                                "confirmation": "Confirmée",
+                            },
+                        ],
+                        "submit": True,
+                    }),
+                )
+                self.assertEqual(created.status_code, 201, created.text)
+                number = created.json()["demand_number"]
+
+                detail = client.get(f"/api/v1/demands/{number}/detail")
+                self.assertEqual(detail.status_code, 200, detail.text)
+                before = detail.json()
+                cycle = before["approval_cycle"]
+                self.assertIsNotNone(cycle)
+                self.assertEqual(cycle["total_requirements"], 2)
+                self.assertEqual(cycle["satisfied_requirements"], 0)
+                self.assertEqual(len(cycle["actor_approvable_request_line_ids"]), 2)
+                self.assertIsNone(before["demand"]["approved_by_name"])
+                self.assertIsNone(before["demand"]["approved_at"])
+                self.assertIsNone(before["demand"]["approval_comment"])
+
+                first_line_id = cycle["actor_approvable_request_line_ids"][0]
+                voted = client.post(
+                    f"/api/v1/demands/{number}/approval-votes",
+                    headers={"Idempotency-Key": "276d-partial-api"},
+                    json={
+                        "approval_cycle_id": cycle["approval_cycle_id"],
+                        "expected_request_version": before["version"],
+                        "request_line_ids": [first_line_id],
+                        "decision": "APPROVE",
+                        "comment": "Première ligne seulement",
+                    },
+                )
+                self.assertEqual(voted.status_code, 200, voted.text)
+                self.assertFalse(voted.json()["quorum_complete"])
+                self.assertEqual(voted.json()["satisfied_requirements"], 1)
+
+                refreshed = client.get(f"/api/v1/demands/{number}/detail")
+                self.assertEqual(refreshed.status_code, 200, refreshed.text)
+                after = refreshed.json()
+                self.assertEqual(after["demand"]["status"], "Soumise")
+                self.assertEqual(after["approval_cycle"]["satisfied_requirements"], 1)
+                self.assertEqual(len(after["approval_cycle"]["actor_approvable_request_line_ids"]), 1)
+                self.assertIsNone(after["demand"]["approved_by_name"])
+                self.assertIsNone(after["demand"]["approved_at"])
+                self.assertIsNone(after["demand"]["approval_comment"])
+
     def test_create_and_patch_demand_use_canonical_http_fields(self) -> None:
         with TemporaryDirectory() as directory:
             database_url, _ = self._database(directory)

@@ -34,6 +34,7 @@ from ..application import (
     ShiftReadModel,
     WorkPackageReadModel,
 )
+from ..application.approval_progress import ApprovalProgressService
 from ..application.demand_cancellation import demand_cancellation_policy
 from ..application.query_models import PlanningHistoryReadModel
 from ..application.security import AuthPrincipal
@@ -112,6 +113,7 @@ def build_read_router(
     user_view_context_dependency: QueryProvider | None = None,
     demand_requester_dependency: QueryProvider | None = None,
     operational_contact_dependency: QueryProvider | None = None,
+    approval_progress_dependency: QueryProvider | None = None,
 ) -> APIRouter:
     router = APIRouter(prefix="/api/v1", tags=["reads"])
 
@@ -119,6 +121,7 @@ def build_read_router(
         return None
 
     context_dependency = user_view_context_dependency or no_context_repository
+    approval_dependency = approval_progress_dependency or no_context_repository
 
     @router.get("/projects")
     def list_projects(
@@ -269,11 +272,15 @@ def build_read_router(
             contacts: OperationalContactService = Depends(
                 operational_contact_dependency
             ),
+            approvals: ApprovalProgressService | None = Depends(
+                approval_dependency
+            ),
         ) -> DemandDetailReadModel:
             principal: AuthPrincipal = request.state.auth_principal
-            return DemandDetailService(queries, contacts).get(
+            return DemandDetailService(queries, contacts, approvals).get(
                 number,
                 permissions=principal.permissions,
+                current_user_id=principal.local_user_id,
             )
 
     @router.get("/demands/{number}/history")

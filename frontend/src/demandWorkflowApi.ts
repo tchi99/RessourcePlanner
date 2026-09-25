@@ -1,4 +1,5 @@
 import { ApiError } from "./api";
+import { csrfHeaders } from "./csrf";
 
 export type PlanningResult = {
   segments: number;
@@ -15,6 +16,23 @@ export type DemandWorkflowResult = {
   demand_number: string;
   status: string | null;
   reapproval_required: boolean;
+  planning: PlanningResult | null;
+};
+
+export type DemandApprovalVoteResult = {
+  workforce_request_id: string;
+  demand_number: string;
+  approval_cycle_id: string;
+  action_id: string | null;
+  request_version: number;
+  status: string;
+  total_requirements: number;
+  satisfied_requirements: number;
+  satisfied_requirement_ids: string[];
+  remaining_requirement_ids: string[];
+  quorum_complete: boolean;
+  approval_revision_id: string | null;
+  planning_version: number | null;
   planning: PlanningResult | null;
 };
 
@@ -135,6 +153,43 @@ function versionBody(expectedVersion?: number) {
 
 export function submitDemand(number: string, expectedVersion?: number) {
   return workflowPost(number, "submit", versionBody(expectedVersion));
+}
+
+export async function approveDemandLines(
+  number: string,
+  approvalCycleId: string,
+  requestLineIds: string[],
+  comment: string,
+  expectedRequestVersion: number,
+  idempotencyKey: string,
+  expectedPlanningVersion?: number,
+): Promise<DemandApprovalVoteResult> {
+  const response = await fetch(
+    `${API_BASE}/api/v1/demands/${encodeURIComponent(number)}/approval-votes`,
+    {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+        "Idempotency-Key": idempotencyKey,
+        ...csrfHeaders(),
+      },
+      credentials: "include",
+      body: JSON.stringify({
+        approval_cycle_id: approvalCycleId,
+        expected_request_version: expectedRequestVersion,
+        requirement_ids: [],
+        request_line_ids: requestLineIds,
+        decision: "APPROVE",
+        comment,
+        ...(expectedPlanningVersion === undefined
+          ? {}
+          : { expected_planning_version: expectedPlanningVersion }),
+      }),
+    },
+  );
+  if (!response.ok) throw await apiError(response);
+  return response.json() as Promise<DemandApprovalVoteResult>;
 }
 
 export function approveDemand(

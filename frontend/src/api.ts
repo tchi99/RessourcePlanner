@@ -266,6 +266,9 @@ export type DemandCancellationPolicyReadModel = {
 export type DemandReadModel = {
   number: string;
   status: string;
+  approved_by_name?: string | null;
+  approved_at?: string | null;
+  approval_comment?: string | null;
   effective_status?: string | null;
   terminal?: boolean;
   created_at?: string | null;
@@ -388,6 +391,52 @@ export type DemandDetailAssetRequirementReadModel = {
   required_competency_names: string[];
 };
 
+export type ApprovalCycleApproverReadModel = {
+  app_user_id: string;
+  display_name: string;
+  active: boolean;
+  sources: string[];
+};
+
+export type ApprovalCycleDecisionReadModel = {
+  app_user_id: string;
+  display_name: string;
+  decision: string;
+  action_id: string;
+  decided_at: string | null;
+  comment: string | null;
+};
+
+export type ApprovalCycleRequirementReadModel = {
+  requirement_id: string;
+  request_line_id: string;
+  task_catalog_item_id: string | null;
+  approval_scope_id: string | null;
+  proposed_resource_id: string | null;
+  routing_sources: string[];
+  satisfied: boolean;
+  actor_can_approve: boolean;
+  approvers: ApprovalCycleApproverReadModel[];
+  decisions: ApprovalCycleDecisionReadModel[];
+};
+
+export type ApprovalCycleProgressReadModel = {
+  approval_cycle_id: string;
+  state: "OPEN" | "INVALIDATED" | "COMPLETED";
+  submitted_request_version: number;
+  submitted_at: string;
+  invalidated_at: string | null;
+  invalidation_reason: string | null;
+  completed_at: string | null;
+  approval_revision_id: string | null;
+  total_requirements: number;
+  satisfied_requirements: number;
+  quorum_complete: boolean;
+  actor_approvable_requirement_ids: string[];
+  actor_approvable_request_line_ids: string[];
+  requirements: ApprovalCycleRequirementReadModel[];
+};
+
 export type DemandDetailTechnicalContextReadModel = {
   request_version: number;
   workflow_version: number;
@@ -426,6 +475,7 @@ export type DemandDetailReadModel = {
     actions: DemandDetailWorkflowActionReadModel[];
     cancellation?: DemandCancellationPolicyReadModel | null;
   };
+  approval_cycle: ApprovalCycleProgressReadModel | null;
   approval_state: {
     active_revision_id: string | null;
     approved_request_version: number | null;
