@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 from decimal import Decimal
 from time import perf_counter
@@ -41,6 +41,11 @@ class TaskCatalogItem:
     budget_amount_cad: Decimal | None = None
     budget_actual_cad: Decimal | None = None
     budget_diagnostic: str | None = None
+    workforce_eligible: bool | None = None
+    resource_class_code: str | None = None
+    average_hourly_cost_cad: Decimal | None = None
+    budget_hours: Decimal | None = None
+    workforce_diagnostics: tuple[str, ...] = ()
     id: str | None = None
     operational_responsible_contact_id: str | None = None
     coordinator_contact_id: str | None = None
@@ -85,6 +90,27 @@ class ProjectTaskCatalogSourcePort(Protocol):
     """Source contract for targeted RP_ProjectTasks synchronization."""
 
     def fetch_project_snapshot(self, project_number: str) -> TaskCatalogProjectSnapshot: ...
+
+
+@dataclass(frozen=True, slots=True)
+class TaskCatalogWorkforceProjection:
+    eligible: bool
+    resource_class_code: str | None
+    average_hourly_cost_cad: Decimal | None
+    budget_hours: Decimal | None
+    diagnostics: tuple[str, ...]
+
+
+class TaskCatalogWorkforcePolicyPort(Protocol):
+    """Resolve #454 workforce class/cost rules for one ERP task."""
+
+    def project_task_projection(
+        self,
+        *,
+        project_number: str,
+        task_code: str,
+        budget_amount_cad: Decimal | None,
+    ) -> TaskCatalogWorkforceProjection: ...
 
 
 class TaskCatalogRepositoryPort(Protocol):
@@ -137,6 +163,7 @@ class TaskCatalogSyncResult:
     updated: int
     unchanged: int
     deactivated: int
+    ignored: int = 0
 
     def to_dict(self) -> dict[str, int]:
         return {
@@ -158,6 +185,7 @@ class TaskCatalogProjectSyncResult:
     updated: int
     unchanged: int
     deactivated: int
+    ignored: int = 0
     duration_ms: int | None = None
 
     def to_dict(self) -> dict[str, str | int | None]:
@@ -170,6 +198,7 @@ class TaskCatalogProjectSyncResult:
             "updated": self.updated,
             "unchanged": self.unchanged,
             "deactivated": self.deactivated,
+            "ignored": self.ignored,
             "duration_ms": self.duration_ms,
         }
 
@@ -189,16 +218,44 @@ class TaskCatalogSyncService:
         repository: TaskCatalogRepositoryPort,
         *,
         sync_metadata_repository: TaskCatalogProjectSyncMetadataRepositoryPort | None = None,
+        workforce_policy: TaskCatalogWorkforcePolicyPort | None = None,
     ) -> None:
         self._source = source
         self._repository = repository
         self._sync_metadata_repository = sync_metadata_repository
+        self._workforce_policy = workforce_policy
+
+    def _apply_workforce_policy(self, item: TaskCatalogItem) -> TaskCatalogItem:
+        if self._workforce_policy is None or not str(item.erp_task_id or "").strip():
+            return item
+        projection = self._workforce_policy.project_task_projection(
+            project_number=str(item.project_number or "").strip(),
+            task_code=str(item.code or "").strip(),
+            budget_amount_cad=item.budget_amount_cad,
+        )
+        diagnostics = tuple(
+            dict.fromkeys(
+                [
+                    *item.workforce_diagnostics,
+                    *projection.diagnostics,
+                ]
+            )
+        )
+        return replace(
+            item,
+            workforce_eligible=projection.eligible,
+            resource_class_code=projection.resource_class_code,
+            average_hourly_cost_cad=projection.average_hourly_cost_cad,
+            budget_hours=projection.budget_hours,
+            workforce_diagnostics=diagnostics,
+        )
 
     def _synchronize_rows(
         self,
         rows: Sequence[TaskCatalogItem],
         *,
         expected_project_number: str | None = None,
+        apply_workforce_policy: bool = False,
     ) -> TaskCatalogSyncResult:
         expected_project = str(expected_project_number or "").strip()
         seen: set[tuple[str, ...]] = set()
@@ -207,9 +264,12 @@ class TaskCatalogSyncService:
             "updated": 0,
             "unchanged": 0,
             "deactivated": 0,
+            "ignored": 0,
         }
 
         for item in rows:
+            if apply_workforce_policy:
+                item = self._apply_workforce_policy(item)
             project_number = str(item.project_number or "").strip()
             code = str(item.code or "").strip()
             label = str(item.label or "").strip()
@@ -255,6 +315,7 @@ class TaskCatalogSyncService:
             updated=counts["updated"],
             unchanged=counts["unchanged"],
             deactivated=counts["deactivated"],
+            ignored=counts["ignored"],
         )
 
     def synchronize(self) -> TaskCatalogSyncResult:
@@ -298,6 +359,7 @@ class TaskCatalogSyncService:
         base = self._synchronize_rows(
             snapshot.items,
             expected_project_number=project,
+            apply_workforce_policy=True,
         )
         result = TaskCatalogProjectSyncResult(
             project_number=project,
@@ -308,6 +370,7 @@ class TaskCatalogSyncService:
             updated=base.updated,
             unchanged=base.unchanged,
             deactivated=base.deactivated,
+            ignored=base.ignored,
             duration_ms=max(0, int((perf_counter() - started_at) * 1000)),
         )
         if self._sync_metadata_repository is not None:
