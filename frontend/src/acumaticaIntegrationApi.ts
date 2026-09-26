@@ -15,6 +15,14 @@ export type ProjectSyncResult = {
   unchanged: number;
 };
 
+export type EmployeeSyncResult = {
+  received: number;
+  created: number;
+  updated: number;
+  unchanged: number;
+  errors: number;
+};
+
 type ErrorPayload = { error?: { code?: string; message?: string } };
 const API_BASE = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/$/, "");
 
@@ -49,6 +57,12 @@ export function getAcumaticaIntegrationStatus(signal?: AbortSignal) {
 
 export function syncAcumaticaProjects() {
   return request<ProjectSyncResult>("/api/v1/integrations/acumatica/projects/sync", {
+    method: "POST",
+  });
+}
+
+export function syncAcumaticaEmployees() {
+  return request<EmployeeSyncResult>("/api/v1/integrations/acumatica/employees/sync", {
     method: "POST",
   });
 }

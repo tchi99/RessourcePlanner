@@ -33,6 +33,10 @@ class ReactResourceAdminContractTests(unittest.TestCase):
         self.assertIn("createAvailabilityRule", api)
         self.assertIn("updateAvailabilityRule", api)
         self.assertIn("deactivateAvailabilityRule", api)
+        self.assertIn("erp_status: string | null", api)
+        self.assertIn("erp_active: boolean", api)
+        self.assertIn("erp_department_description: string | null", api)
+        self.assertIn("erp_branch_code: string | null", api)
 
     def test_page_reads_and_refreshes_authoritative_fastapi_state(self) -> None:
         page = (ROOT / "frontend" / "src" / "ResourcesPage.tsx").read_text(
@@ -49,6 +53,17 @@ class ReactResourceAdminContractTests(unittest.TestCase):
         self.assertIn("await updateAvailabilityRule(", page)
         self.assertIn("await deactivateAvailabilityRule(", page)
         self.assertIn("setRefreshKey((value) => value + 1)", page)
+        self.assertIn("syncAcumaticaEmployees", page)
+        self.assertIn("Synchroniser RP_Employees", page)
+        self.assertIn("EmployeID", page)
+        self.assertIn("Statut ERP", page)
+        self.assertIn("Département", page)
+        self.assertIn("Division / succursale", page)
+
+        integration_api = (ROOT / "frontend" / "src" / "acumaticaIntegrationApi.ts").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn('"/api/v1/integrations/acumatica/employees/sync"', integration_api)
 
     def test_page_covers_cutover_availability_types_without_capacity_math(self) -> None:
         page = (ROOT / "frontend" / "src" / "ResourcesPage.tsx").read_text(
