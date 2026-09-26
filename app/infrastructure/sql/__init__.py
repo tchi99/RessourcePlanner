@@ -14,6 +14,12 @@ from .approval_cycle_models import (
 from .approval_cycle_repository import SqlApprovalCycleRepository
 from .approval_scope_models import ApprovalScope, ApprovalScopeApprover, TaskApprovalScopeMapping
 from .approval_scope_repository import SqlApprovalScopeRepository
+from .resource_class_models import (
+    ProjectTaskClassOverride,
+    ResourceClassConfig,
+    TaskClassStandard,
+)
+from .resource_class_repository import SqlResourceClassRepository
 from .asset_models import (
     Asset,
     AssetAllocation,
@@ -179,17 +185,21 @@ __all__ = [
     "RESOURCE_EXTERNAL_ID_INDEX",
     "RESOURCE_REQUIREMENT_NUMBER_INDEX",
     "Resource",
+    "ResourceClassConfig",
     "ResourceAvailabilityRule",
     "ResourceCompetency",
     "ResourceRequirement",
     "ResourceRequirementCompetency",
     "Shift",
+    "ProjectTaskClassOverride",
+    "TaskClassStandard",
     "TaskApprovalScopeMapping",
     "TaskCatalogEntry",
     "TaskCatalogProjectSyncState",
     "SqlAllocationCommandAdapter",
     "SqlApprovalCycleRepository",
     "SqlApprovalScopeRepository",
+    "SqlResourceClassRepository",
     "SqlApprovedDemandSyncAdapter",
     "SqlAuthSessionRepository",
     "SqlBusinessContactAdminRepository",
