@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from decimal import Decimal
+import json
 
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
@@ -23,6 +24,23 @@ def _text(value: object) -> str:
 def _optional_text(value: object) -> str | None:
     normalized = _text(value)
     return normalized or None
+
+
+def _diagnostics_text(values: tuple[str, ...]) -> str | None:
+    normalized = tuple(str(value).strip() for value in values if str(value).strip())
+    return json.dumps(list(dict.fromkeys(normalized)), ensure_ascii=False) if normalized else None
+
+
+def _diagnostics(value: str | None) -> tuple[str, ...]:
+    if not value:
+        return ()
+    try:
+        parsed = json.loads(value)
+    except (TypeError, ValueError):
+        return ()
+    if not isinstance(parsed, list):
+        return ()
+    return tuple(str(item).strip() for item in parsed if str(item).strip())
 
 
 class SqlTaskCatalogRepository(
@@ -67,6 +85,11 @@ class SqlTaskCatalogRepository(
             budget_amount_cad=row.budget_amount_cad,
             budget_actual_cad=row.budget_actual_cad,
             budget_diagnostic=row.budget_diagnostic,
+            workforce_eligible=row.workforce_eligible,
+            resource_class_code=row.resource_class_code,
+            average_hourly_cost_cad=row.average_hourly_cost_cad,
+            budget_hours=row.budget_hours,
+            workforce_diagnostics=_diagnostics(row.workforce_diagnostics),
             id=row.id,
             operational_responsible_contact_id=row.operational_responsible_contact_id,
             coordinator_contact_id=row.coordinator_contact_id,
@@ -105,6 +128,9 @@ class SqlTaskCatalogRepository(
                 )
 
         row = erp_row or business_row
+        if erp_task_id is not None and item.workforce_eligible is False and row is None:
+            return "ignored"
+
         values: dict[str, object] = {
             "project_number": project_number,
             "task_code": task_code,
@@ -138,6 +164,11 @@ class SqlTaskCatalogRepository(
                     "budget_amount_cad": item.budget_amount_cad,
                     "budget_actual_cad": item.budget_actual_cad,
                     "budget_diagnostic": _optional_text(item.budget_diagnostic),
+                    "workforce_eligible": item.workforce_eligible,
+                    "resource_class_code": _optional_text(item.resource_class_code),
+                    "average_hourly_cost_cad": item.average_hourly_cost_cad,
+                    "budget_hours": item.budget_hours,
+                    "workforce_diagnostics": _diagnostics_text(item.workforce_diagnostics),
                 }
             )
 
@@ -171,7 +202,13 @@ class SqlTaskCatalogRepository(
         if project:
             statement = statement.where(TaskCatalogEntry.project_number == project)
         if active_only:
-            statement = statement.where(TaskCatalogEntry.active.is_(True))
+            statement = statement.where(
+                TaskCatalogEntry.active.is_(True),
+                or_(
+                    TaskCatalogEntry.workforce_eligible.is_(True),
+                    TaskCatalogEntry.workforce_eligible.is_(None),
+                ),
+            )
         wanted = _text(query)
         if wanted:
             pattern = f"%{wanted}%"
