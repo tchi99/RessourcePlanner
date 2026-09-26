@@ -70,6 +70,7 @@ EXPECTED_TABLES = {
     "smtp_configuration_audit",
     "shifts",
     "task_catalog_items",
+    "task_catalog_project_sync_state",
     "task_class_standards",
 }
 
@@ -103,6 +104,7 @@ class SqlSchemaTests(unittest.TestCase):
         planning_history = Base.metadata.tables["planning_change_history"].c
         planning_state = Base.metadata.tables["planning_mutation_state"].c
         task_catalog = Base.metadata.tables["task_catalog_items"].c
+        task_sync_state = Base.metadata.tables["task_catalog_project_sync_state"].c
         competencies = Base.metadata.tables["competencies"].c
         resource_competencies = Base.metadata.tables["resource_competencies"].c
         request_competencies = Base.metadata.tables["workforce_request_competencies"].c
@@ -271,6 +273,24 @@ class SqlSchemaTests(unittest.TestCase):
         self.assertFalse(task_catalog.active.nullable)
         self.assertTrue(task_catalog.operational_responsible_contact_id.nullable)
         self.assertTrue(task_catalog.coordinator_contact_id.nullable)
+        self.assertTrue(task_catalog.erp_task_id.nullable)
+        self.assertTrue(task_catalog.account_group.nullable)
+        self.assertTrue(task_catalog.budget_amount_cad.nullable)
+        self.assertTrue(task_catalog.budget_actual_cad.nullable)
+        self.assertTrue(task_catalog.budget_diagnostic.nullable)
+        self.assertTrue(task_catalog.workforce_eligible.nullable)
+        self.assertTrue(task_catalog.resource_class_code.nullable)
+        self.assertTrue(task_catalog.average_hourly_cost_cad.nullable)
+        self.assertTrue(task_catalog.budget_hours.nullable)
+        self.assertTrue(task_catalog.workforce_diagnostics.nullable)
+        self.assertFalse(task_sync_state.project_number.nullable)
+        self.assertFalse(task_sync_state.last_attempt_at.nullable)
+        self.assertFalse(task_sync_state.last_success_at.nullable)
+        self.assertFalse(task_sync_state.source_rows.nullable)
+        self.assertFalse(task_sync_state.task_count.nullable)
+        self.assertFalse(task_sync_state.rejected_rows.nullable)
+        self.assertTrue(task_sync_state.duration_ms.nullable)
+        self.assertTrue(task_sync_state.last_error_code.nullable)
         self.assertTrue(requests.operational_responsible_override_contact_id.nullable)
         self.assertFalse(competencies.name.nullable)
         self.assertFalse(competencies.active.nullable)

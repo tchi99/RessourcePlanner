@@ -56,6 +56,19 @@ class TaskCatalogEntry(TimestampMixin, Base):
             name="uq_task_catalog_items_project_code",
         ),
         Index("ix_task_catalog_items_project_active", "project_number", "active"),
+        Index(
+            "ix_task_catalog_items_project_workforce",
+            "project_number",
+            "active",
+            "workforce_eligible",
+        ),
+        Index(
+            "ux_task_catalog_items_erp_task_id_not_null",
+            "erp_task_id",
+            unique=True,
+            sqlite_where=text("erp_task_id IS NOT NULL"),
+            mssql_where=text("erp_task_id IS NOT NULL"),
+        ),
     )
 
     id: Mapped[str] = mapped_column(String(ID_LENGTH), primary_key=True, default=new_id)
@@ -83,6 +96,43 @@ class TaskCatalogEntry(TimestampMixin, Base):
     cv_enabled: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     time_entry_enabled: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     expenses_enabled: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    erp_task_id: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
+    account_group: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    cost_code: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    inventory_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    budget_amount_cad: Mapped[Decimal | None] = mapped_column(
+        Numeric(38, 10), nullable=True
+    )
+    budget_actual_cad: Mapped[Decimal | None] = mapped_column(
+        Numeric(38, 10), nullable=True
+    )
+    budget_diagnostic: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    workforce_eligible: Mapped[bool | None] = mapped_column(Boolean, nullable=True, index=True)
+    resource_class_code: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    average_hourly_cost_cad: Mapped[Decimal | None] = mapped_column(
+        Numeric(18, 4), nullable=True
+    )
+    budget_hours: Mapped[Decimal | None] = mapped_column(
+        Numeric(38, 18), nullable=True
+    )
+    workforce_diagnostics: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class TaskCatalogProjectSyncState(TimestampMixin, Base):
+    __tablename__ = "task_catalog_project_sync_state"
+
+    project_number: Mapped[str] = mapped_column(String(64), primary_key=True)
+    last_attempt_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    last_success_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    source_rows: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    task_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    rejected_rows: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    last_error_code: Mapped[str | None] = mapped_column(String(128), nullable=True)
 
 
 class Competency(TimestampMixin, Base):

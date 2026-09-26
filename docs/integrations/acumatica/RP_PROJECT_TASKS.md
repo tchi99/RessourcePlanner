@@ -193,7 +193,7 @@ nouveau last_synced_at projet
 
 Pour un refresh projet, préférer un snapshot de **toutes les tâches du projet**, et non uniquement `Status eq 'Actif'`, afin que les passages Actif → Inactif puissent être observés explicitement sans interpréter une absence d'un résultat partiel.
 
-La syntaxe de filtre projet doit être validée contre l'instance avant implémentation. Le candidat naturel est l'identifiant numérique lié à `RP_Projects.ProjectId`.
+La relation métier autoritaire est `trim(ProjectCD) → RP_Projects.ProjectCode`. Le filtre serveur candidat est donc `ProjectCD eq '<code projet>'`; sa syntaxe exacte doit être validée contre l'instance avant de brancher ce chemin dans le runtime HTTP.
 
 ### Cache
 
@@ -260,6 +260,39 @@ Cependant, le contrat actuel `TaskCatalogSourcePort.list_tasks()` représente un
 
 Ne pas faire passer les lignes budgétaires brutes directement dans le service actuel comme autant de tâches.
 
+
+## État d'implémentation #452
+
+La tranche réutilise maintenant directement le référentiel #454 fusionné; aucun second modèle `TaskCD → classe` n'est introduit.
+
+- parser Atom/XML `RP_ProjectTasks` avec `TaskID`, `TaskCD`, `ProjectCD`/`ProjetCD`, `AccountGroup`, `BudgetAmount` et `BudgetActual`;
+- source OData ciblée par projet avec pagination `$top/$skip` et ordre candidat `TaskID asc`;
+- filtre serveur candidat `ProjectCD + DEPMO`, puis garde-fou applicatif qui rejette toute ligne hors projet ou hors `DEPMO`;
+- agrégation des lignes budgétaires `DEPMO` par `TaskID`;
+- adoption additive du `TaskID` sur une ligne historique #271 ayant le même `(project_number, TaskCD)`, sans changer son identifiant SQL local;
+- résolution de classe via les standards et overrides de #454;
+- seules les nouvelles tâches ayant une classe effective entrent dans le catalogue workforce; une tâche historique devenue exclue/non classée reste persistée pour préserver les références mais disparaît des recherches workforce actives;
+- persistance en `Decimal` de `BudgetAmount`, `BudgetActual`, du coût moyen utilisé et de la projection `budget_hours`;
+- coût absent/0, budget nul/négatif, exclusion et absence de standard produisent des diagnostics explicites sans fabriquer d'effort Planning;
+- métadonnées locales de dernier snapshot réussi par projet (lignes source, tâches agrégées, lignes rejetées, durée);
+- aucune désactivation implicite en cas d'absence d'une tâche dans un snapshot;
+- aucune projection n'est matérialisée en `Shift` et aucune demande/ligne approuvée n'est réécrite.
+
+Le branchement HTTP réel dans `ServerSettings` / les routes FastAPI reste volontairement différé tant que le smoke réel ci-dessous n'a pas confirmé les capacités de `RP_ProjectTasks`.
+
+### Smoke PO Acumatica restant avant branchement runtime
+
+Sur un projet test connu contenant plusieurs lignes `DEPMO`, valider successivement :
+
+1. `/oDATA/RP_ProjectTasks?$filter=ProjectCD eq '<PROJECT_CODE>'` ne retourne que le projet ciblé;
+2. ajouter `and AccountGroup eq 'DEPMO'` et confirmer que les lignes retournées sont strictement `DEPMO`;
+3. ajouter `$orderby=TaskID asc&$top=2&$skip=0`, puis `$skip=2`, et vérifier qu'aucune ligne n'est perdue ou dupliquée entre pages;
+4. répéter avec une taille de page qui coupe plusieurs lignes partageant le même `TaskID`, afin de confirmer que `TaskID asc` suffit comme ordre stable ou d'identifier les champs secondaires nécessaires;
+5. vérifier si le feed expose un lien Atom `rel="next"`; s'il existe, confirmer sa sémantique et sa compatibilité avec `$top/$skip`;
+6. confirmer la limite maximale de `$top` réellement acceptée par cette vue.
+
+Ces smokes doivent conserver le même mécanisme d'authentification Basic déjà validé par #207B et ne doivent jamais être remplacés par une supposition fondée uniquement sur `RP_Projects`.
+
 ## Questions encore ouvertes
 
 Avant implémentation complète :
@@ -268,7 +301,7 @@ Avant implémentation complète :
 2. valider le filtre serveur `AccountGroup eq 'DEPMO'`; même s'il est supporté, conserver le garde-fou applicatif `trim(AccountGroup) == "DEPMO"`;
 3. valider `$orderby=TaskID asc`, `$top/$skip` et la présence éventuelle de `rel=next`;
 4. déterminer si un champ LastModified fiable peut être ajouté à la vue OData;
-5. définir les valeurs initiales des coûts moyens par classe et la liste initiale des standards TaskCD dans #454.
+5. configurer les classes/coûts/standards #454 nécessaires dans l'environnement cible; leur modèle et leur résolution sont déjà livrés.
 
 ## Références
 

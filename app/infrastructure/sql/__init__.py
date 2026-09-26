@@ -92,6 +92,7 @@ from .models import (
     ResourceCompetency,
     ResourceRequirementCompetency,
     TaskCatalogEntry,
+    TaskCatalogProjectSyncState,
     ResourceAvailabilityRule,
     ResourceRequirement,
     Shift,
@@ -120,6 +121,7 @@ from .planning_version import (
 from .capacity_query_repository import SqlPlannerQueryRepository
 from .project_sync_repository import SqlProjectSyncRepository
 from .task_catalog_repository import SqlTaskCatalogRepository
+from .task_catalog_workforce_policy import SqlTaskCatalogWorkforcePolicy
 from .resource_admin_repository import SqlResourceAdminRepository
 from .segment_repository import SqlSegmentRepository
 from .overallocation import (
@@ -196,6 +198,7 @@ __all__ = [
     "TaskClassStandard",
     "TaskApprovalScopeMapping",
     "TaskCatalogEntry",
+    "TaskCatalogProjectSyncState",
     "SqlAllocationCommandAdapter",
     "SqlApprovalCycleRepository",
     "SqlApprovalScopeRepository",
@@ -232,6 +235,7 @@ __all__ = [
     "SqlPlanningMutationVersionRepository",
     "SqlProjectSyncRepository",
     "SqlTaskCatalogRepository",
+    "SqlTaskCatalogWorkforcePolicy",
     "SqlRequestApprovalRevisionRepository",
     "SqlResourceAdminRepository",
     "SqlSegmentRepository",
