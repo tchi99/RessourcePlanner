@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 
 import { ApiError } from "./api";
+import ErpUserDirectoryPanel from "./ErpUserDirectoryPanel";
 import { useAuth } from "./AuthContext";
 import {
   UserAdminCreate,
@@ -223,6 +224,8 @@ export default function UserAdminPage() {
 
       {error && <div className="inline-error">{error}</div>}
       {notice && <div className="user-admin-notice">{notice}</div>}
+
+      <ErpUserDirectoryPanel roleCatalog={roleCatalog} />
 
       <div className="user-admin-layout">
         <aside className="user-admin-list-panel">

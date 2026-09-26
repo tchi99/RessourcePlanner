@@ -10,6 +10,13 @@ from .odata_employee_source import (
     ODataEmployeeSourceSettings,
     parse_rp_employees_feed,
 )
+from .odata_user_source import (
+    ODataUserFeedError,
+    ODataUserRecord,
+    ODataUserSource,
+    ODataUserSourceSettings,
+    parse_rp_users_feed,
+)
 from .odata_project_source import (
     ODataProjectFeedError,
     ODataProjectRecord,
@@ -27,9 +34,14 @@ __all__ = [
     "ODataEmployeeSource",
     "ODataEmployeeSourceSettings",
     "ODataProjectFeedError",
+    "ODataUserFeedError",
+    "ODataUserRecord",
+    "ODataUserSource",
+    "ODataUserSourceSettings",
     "ODataProjectRecord",
     "ODataProjectSource",
     "ODataProjectSourceSettings",
     "parse_rp_employees_feed",
     "parse_rp_projects_feed",
+    "parse_rp_users_feed",
 ]

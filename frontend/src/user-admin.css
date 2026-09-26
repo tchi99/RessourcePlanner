@@ -184,3 +184,106 @@
     flex-direction: column;
   }
 }
+
+
+.erp-user-directory {
+  margin: 1.25rem 0 1.75rem;
+  padding: 1rem;
+  border: 1px solid var(--border-color, #d7dce3);
+  border-radius: 0.75rem;
+}
+
+.erp-user-directory-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: flex-start;
+  margin-bottom: 1rem;
+}
+
+.erp-user-directory-heading h3 {
+  margin: 0.15rem 0 0.35rem;
+}
+
+.erp-user-directory-heading p {
+  margin: 0;
+  max-width: 70ch;
+}
+
+.erp-user-directory-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(18rem, 1fr);
+  gap: 1rem;
+}
+
+.erp-user-directory-table-wrap {
+  overflow-x: auto;
+}
+
+.erp-user-directory-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.erp-user-directory-table th,
+.erp-user-directory-table td {
+  padding: 0.65rem;
+  text-align: left;
+  border-bottom: 1px solid var(--border-color, #e1e5ea);
+  vertical-align: top;
+}
+
+.erp-user-directory-table tbody tr {
+  cursor: pointer;
+}
+
+.erp-user-directory-table tbody tr.selected {
+  background: rgba(127, 127, 127, 0.12);
+}
+
+.erp-user-directory-table td small {
+  display: block;
+  margin-top: 0.2rem;
+}
+
+.erp-user-directory-editor {
+  padding: 0.9rem;
+  border: 1px solid var(--border-color, #d7dce3);
+  border-radius: 0.65rem;
+}
+
+.erp-user-directory-editor h4 {
+  margin-top: 0;
+}
+
+.erp-user-directory-editor dl > div {
+  display: grid;
+  grid-template-columns: 6rem 1fr;
+  gap: 0.5rem;
+  margin-bottom: 0.35rem;
+}
+
+.erp-user-directory-editor dt {
+  font-weight: 600;
+}
+
+.erp-user-directory-editor dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.user-admin-warning {
+  margin: 0.75rem 0;
+  font-size: 0.9rem;
+}
+
+@media (max-width: 1000px) {
+  .erp-user-directory-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .erp-user-directory-heading {
+    flex-direction: column;
+  }
+}
