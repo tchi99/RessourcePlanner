@@ -15,14 +15,21 @@ from app.infrastructure.sql import (
     Base,
     BusinessContact,
     Project,
+    ProjectTaskClassOverride,
     RequestLine,
+    ResourceClassConfig,
+
     Shift,
     TaskCatalogEntry,
+    TaskClassStandard,
     WorkforceRequest,
     create_session_factory,
     create_sql_engine,
 )
 from app.infrastructure.sql.task_catalog_repository import SqlTaskCatalogRepository
+from app.infrastructure.sql.task_catalog_workforce_policy import (
+    SqlTaskCatalogWorkforcePolicy,
+)
 
 
 class StubTaskSource:
@@ -448,6 +455,254 @@ class TargetedTaskCatalogSyncTests(unittest.TestCase):
             self.assertEqual(row.budget_amount_cad, Decimal("-50.0000000000"))
             self.assertEqual(row.budget_actual_cad, Decimal("0E-10"))
             self.assertEqual(row.budget_diagnostic, "budget_amount_negative")
+
+
+class TaskCatalogResourceClassIntegrationTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.engine = create_sql_engine("sqlite+pysqlite:///:memory:")
+        Base.metadata.create_all(self.engine)
+        self.factory = create_session_factory(self.engine)
+
+    def tearDown(self) -> None:
+        self.engine.dispose()
+
+    def _seed_project(self) -> None:
+        with self.factory.begin() as session:
+            session.add(
+                Project(
+                    id="PROJECT-1",
+                    number="P-1",
+                    name="Projet 1",
+                    status="Actif",
+                )
+            )
+
+    def _seed_programmer_standard(
+        self,
+        *,
+        cost: Decimal | None = Decimal("125.0000"),
+    ) -> None:
+        with self.factory.begin() as session:
+            session.add_all(
+                [
+                    ResourceClassConfig(
+                        code="PROGRAMMEUR",
+                        label="Programmeur",
+                        average_hourly_cost_cad=cost,
+                        active=True,
+                        version=1,
+                    ),
+                    TaskClassStandard(
+                        task_code="216",
+                        resource_class_code="PROGRAMMEUR",
+                        active=True,
+                        version=1,
+                    ),
+                ]
+            )
+
+    def _sync(self, item: TaskCatalogItem):
+        snapshot = TaskCatalogProjectSnapshot(
+            project_number="P-1",
+            source_rows=1,
+            rejected_rows=0,
+            items=(item,),
+        )
+        with self.factory.begin() as session:
+            repository = SqlTaskCatalogRepository(session)
+            return TaskCatalogSyncService(
+                StubProjectTaskSource(snapshot),
+                repository,
+                sync_metadata_repository=repository,
+                workforce_policy=SqlTaskCatalogWorkforcePolicy(session),
+            ).synchronize_project("P-1")
+
+    def test_classified_task_persists_class_cost_and_budget_hours(self) -> None:
+        self._seed_project()
+        self._seed_programmer_standard()
+
+        result = self._sync(
+            TaskCatalogItem(
+                project_number="P-1",
+                code="216",
+                label="Programmation",
+                erp_task_id="9001",
+                account_group="DEPMO",
+                budget_amount_cad=Decimal("1000.0000000000"),
+                budget_actual_cad=Decimal("250.0000000000"),
+            )
+        )
+
+        self.assertEqual((result.created, result.ignored), (1, 0))
+        with self.factory() as session:
+            row = session.scalar(
+                select(TaskCatalogEntry).where(
+                    TaskCatalogEntry.erp_task_id == "9001"
+                )
+            )
+            assert row is not None
+            self.assertTrue(row.workforce_eligible)
+            self.assertEqual(row.resource_class_code, "PROGRAMMEUR")
+            self.assertEqual(
+                row.average_hourly_cost_cad,
+                Decimal("125.0000"),
+            )
+            self.assertEqual(
+                row.budget_hours,
+                Decimal("8.000000000000000000"),
+            )
+            projected = SqlTaskCatalogRepository(session).search(
+                project_number="P-1"
+            )[0]
+            self.assertEqual(projected.resource_class_code, "PROGRAMMEUR")
+            self.assertEqual(
+                projected.budget_hours,
+                Decimal("8.000000000000000000"),
+            )
+            self.assertEqual(projected.workforce_diagnostics, ())
+
+    def test_unclassified_new_task_is_not_imported_into_workforce_catalog(self) -> None:
+        self._seed_project()
+
+        result = self._sync(
+            TaskCatalogItem(
+                project_number="P-1",
+                code="999",
+                label="Sans standard",
+                erp_task_id="99901",
+                account_group="DEPMO",
+                budget_amount_cad=Decimal("500.00"),
+            )
+        )
+
+        self.assertEqual((result.created, result.ignored), (0, 1))
+        with self.factory() as session:
+            self.assertIsNone(
+                session.scalar(
+                    select(TaskCatalogEntry).where(
+                        TaskCatalogEntry.erp_task_id == "99901"
+                    )
+                )
+            )
+
+    def test_class_without_cost_keeps_task_but_never_invents_budget_hours(self) -> None:
+        self._seed_project()
+        self._seed_programmer_standard(cost=None)
+
+        result = self._sync(
+            TaskCatalogItem(
+                project_number="P-1",
+                code="216",
+                label="Programmation",
+                erp_task_id="9002",
+                account_group="DEPMO",
+                budget_amount_cad=Decimal("1000.00"),
+            )
+        )
+
+        self.assertEqual((result.created, result.ignored), (1, 0))
+        with self.factory() as session:
+            row = session.scalar(
+                select(TaskCatalogEntry).where(
+                    TaskCatalogEntry.erp_task_id == "9002"
+                )
+            )
+            assert row is not None
+            self.assertTrue(row.workforce_eligible)
+            self.assertEqual(row.resource_class_code, "PROGRAMMEUR")
+            self.assertIsNone(row.average_hourly_cost_cad)
+            self.assertIsNone(row.budget_hours)
+            projected = SqlTaskCatalogRepository(session).search(
+                project_number="P-1"
+            )[0]
+            self.assertIn(
+                "resource_class_cost_missing",
+                projected.workforce_diagnostics,
+            )
+
+    def test_project_exclude_hides_historical_task_without_breaking_reference(self) -> None:
+        self._seed_project()
+        self._seed_programmer_standard()
+        with self.factory.begin() as session:
+            session.add(
+                ProjectTaskClassOverride(
+                    project_id="PROJECT-1",
+                    task_code="216",
+                    resource_class_code=None,
+                    excluded=True,
+                    version=1,
+                )
+            )
+            session.add(
+                TaskCatalogEntry(
+                    id="LEGACY-TASK",
+                    project_number="P-1",
+                    task_code="216",
+                    label="Programmation historique",
+                    active=True,
+                    status="Actif",
+                )
+            )
+            session.flush()
+            session.add(
+                WorkforceRequest(
+                    id="DEMAND-1",
+                    project_id="PROJECT-1",
+                    status="Approuvée",
+                    aggregate_version=4,
+                )
+            )
+            session.flush()
+            session.add(
+                RequestLine(
+                    id="LINE-1",
+                    workforce_request_id="DEMAND-1",
+                    position=0,
+                    task_catalog_item_id="LEGACY-TASK",
+                    erp_task_code="216",
+                    erp_task_label="Programmation historique",
+                    estimated_hours=Decimal("12.00"),
+                    estimated_hours_source="MANUAL",
+                )
+            )
+
+        result = self._sync(
+            TaskCatalogItem(
+                project_number="P-1",
+                code="216",
+                label="Programmation ERP",
+                erp_task_id="9003",
+                account_group="DEPMO",
+                budget_amount_cad=Decimal("1500.00"),
+            )
+        )
+
+        self.assertEqual((result.created, result.updated, result.ignored), (0, 1, 0))
+        with self.factory() as session:
+            row = session.get(TaskCatalogEntry, "LEGACY-TASK")
+            assert row is not None
+            self.assertEqual(row.erp_task_id, "9003")
+            self.assertFalse(row.workforce_eligible)
+            self.assertIsNone(row.resource_class_code)
+            self.assertIn(
+                "task_excluded",
+                SqlTaskCatalogRepository(session)
+                .search(project_number="P-1", active_only=False)[0]
+                .workforce_diagnostics,
+            )
+            self.assertEqual(
+                SqlTaskCatalogRepository(session).search(project_number="P-1"),
+                (),
+            )
+            line = session.get(RequestLine, "LINE-1")
+            demand = session.get(WorkforceRequest, "DEMAND-1")
+            assert line is not None
+            assert demand is not None
+            self.assertEqual(line.task_catalog_item_id, "LEGACY-TASK")
+            self.assertEqual(line.estimated_hours, Decimal("12.00"))
+            self.assertEqual(demand.status, "Approuvée")
+            self.assertEqual(demand.aggregate_version, 4)
+            self.assertEqual(session.query(Shift).count(), 0)
 
 
 if __name__ == "__main__":
