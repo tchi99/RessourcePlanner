@@ -9,7 +9,7 @@ from sqlalchemy import select
 
 from app.application.erp_user_directory import ExternalErpUserRecord
 from app.application.security import ROLE_ADMIN, ROLE_PROJECT_MANAGER, ROLE_TECHNICIAN, AuthPrincipal
-from app.infrastructure.sql import AppUser, ErpUserDirectoryEntry
+from app.infrastructure.sql import AppUser, Base, ErpUserDirectoryEntry
 from app.server import create_api_app
 from app.server.security import static_auth_resolver
 
@@ -57,6 +57,7 @@ class ServerErpUserAdminTests(unittest.TestCase):
             auth_resolver=static_auth_resolver(principal(ROLE_ADMIN)),
             user_source=StubUserSource(),
         )
+        Base.metadata.create_all(app.state.session_factory.kw["bind"])
         with TestClient(app) as client:
             synced = client.post("/api/v1/integrations/acumatica/users/sync")
             listing = client.get("/api/v1/admin/erp-users")
@@ -109,6 +110,7 @@ class ServerErpUserAdminTests(unittest.TestCase):
             auth_resolver=static_auth_resolver(principal(ROLE_PROJECT_MANAGER)),
             user_source=StubUserSource(),
         )
+        Base.metadata.create_all(app.state.session_factory.kw["bind"])
         with TestClient(app) as client:
             listing = client.get("/api/v1/admin/erp-users")
             update = client.patch(
