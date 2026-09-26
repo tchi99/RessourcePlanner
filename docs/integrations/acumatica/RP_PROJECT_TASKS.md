@@ -263,19 +263,22 @@ Ne pas faire passer les lignes budgétaires brutes directement dans le service a
 
 ## État d'implémentation #452
 
-Cette tranche introduit un chemin découplé de la résolution classe/coût décrite dans #454 :
+La tranche réutilise maintenant directement le référentiel #454 fusionné; aucun second modèle `TaskCD → classe` n'est introduit.
 
 - parser Atom/XML `RP_ProjectTasks` avec `TaskID`, `TaskCD`, `ProjectCD`/`ProjetCD`, `AccountGroup`, `BudgetAmount` et `BudgetActual`;
 - source OData ciblée par projet avec pagination `$top/$skip` et ordre candidat `TaskID asc`;
 - filtre serveur candidat `ProjectCD + DEPMO`, puis garde-fou applicatif qui rejette toute ligne hors projet ou hors `DEPMO`;
 - agrégation des lignes budgétaires `DEPMO` par `TaskID`;
 - adoption additive du `TaskID` sur une ligne historique #271 ayant le même `(project_number, TaskCD)`, sans changer son identifiant SQL local;
-- persistance exacte en `Decimal` des montants CAD, y compris zéro et valeurs négatives, avec diagnostic de budget;
+- résolution de classe via les standards et overrides de #454;
+- seules les nouvelles tâches ayant une classe effective entrent dans le catalogue workforce; une tâche historique devenue exclue/non classée reste persistée pour préserver les références mais disparaît des recherches workforce actives;
+- persistance en `Decimal` de `BudgetAmount`, `BudgetActual`, du coût moyen utilisé et de la projection `budget_hours`;
+- coût absent/0, budget nul/négatif, exclusion et absence de standard produisent des diagnostics explicites sans fabriquer d'effort Planning;
 - métadonnées locales de dernier snapshot réussi par projet (lignes source, tâches agrégées, lignes rejetées, durée);
 - aucune désactivation implicite en cas d'absence d'une tâche dans un snapshot;
-- aucune projection d'heures, aucun `Shift` et aucune réécriture de demande approuvée dans cette tranche.
+- aucune projection n'est matérialisée en `Shift` et aucune demande/ligne approuvée n'est réécrite.
 
-Le branchement dans `ServerSettings` / les routes FastAPI est volontairement différé tant que le smoke réel ci-dessous n'a pas confirmé les capacités de `RP_ProjectTasks` et tant que #454 ne fournit pas le contrat de classe/coût nécessaire à la projection d'heures.
+Le branchement HTTP réel dans `ServerSettings` / les routes FastAPI reste volontairement différé tant que le smoke réel ci-dessous n'a pas confirmé les capacités de `RP_ProjectTasks`.
 
 ### Smoke PO Acumatica restant avant branchement runtime
 
@@ -298,7 +301,7 @@ Avant implémentation complète :
 2. valider le filtre serveur `AccountGroup eq 'DEPMO'`; même s'il est supporté, conserver le garde-fou applicatif `trim(AccountGroup) == "DEPMO"`;
 3. valider `$orderby=TaskID asc`, `$top/$skip` et la présence éventuelle de `rel=next`;
 4. déterminer si un champ LastModified fiable peut être ajouté à la vue OData;
-5. définir les valeurs initiales des coûts moyens par classe et la liste initiale des standards TaskCD dans #454.
+5. configurer les classes/coûts/standards #454 nécessaires dans l'environnement cible; leur modèle et leur résolution sont déjà livrés.
 
 ## Références
 
