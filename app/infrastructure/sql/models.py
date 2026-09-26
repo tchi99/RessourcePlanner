@@ -57,6 +57,12 @@ class TaskCatalogEntry(TimestampMixin, Base):
         ),
         Index("ix_task_catalog_items_project_active", "project_number", "active"),
         Index(
+            "ix_task_catalog_items_project_workforce",
+            "project_number",
+            "active",
+            "workforce_eligible",
+        ),
+        Index(
             "ux_task_catalog_items_erp_task_id_not_null",
             "erp_task_id",
             unique=True,
@@ -101,6 +107,15 @@ class TaskCatalogEntry(TimestampMixin, Base):
         Numeric(38, 10), nullable=True
     )
     budget_diagnostic: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    workforce_eligible: Mapped[bool | None] = mapped_column(Boolean, nullable=True, index=True)
+    resource_class_code: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    average_hourly_cost_cad: Mapped[Decimal | None] = mapped_column(
+        Numeric(18, 4), nullable=True
+    )
+    budget_hours: Mapped[Decimal | None] = mapped_column(
+        Numeric(38, 18), nullable=True
+    )
+    workforce_diagnostics: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 class TaskCatalogProjectSyncState(TimestampMixin, Base):
