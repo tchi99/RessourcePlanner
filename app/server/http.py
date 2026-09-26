@@ -21,6 +21,7 @@ from ..application import (
     ApplicationNotFoundError,
     ApplicationOperationError,
     ApplicationValidationError,
+    EmployeeSourcePort,
     IdempotentCommandExecutor,
     OperationalContactService,
     PlannerQueryPort,
@@ -451,6 +452,7 @@ def create_api_app(
     *,
     actor_name: str = "api",
     project_source: ProjectSourcePort | None = None,
+    employee_source: EmployeeSourcePort | None = None,
     acumatica_info: dict[str, Any] | None = None,
     auth_resolver: AuthResolver | None = None,
     api_docs_enabled: bool = True,
@@ -699,6 +701,7 @@ def create_api_app(
         build_integration_router(
             session_dependency,
             project_source=project_source,
+            employee_source=employee_source,
             acumatica_info=acumatica_info,
         )
     )

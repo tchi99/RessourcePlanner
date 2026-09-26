@@ -3,15 +3,25 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Protocol, Sequence
 
+from .errors import ApplicationError
+
 
 @dataclass(frozen=True, slots=True)
 class ExternalEmployeeRecord:
-    """Minimal ERP-owned employee data safe to synchronize before Acumatica mapping is known."""
+    """ERP-owned employee data mapped to a stable RessourcePlanner resource identity."""
 
     external_id: str
     display_name: str
     email: str | None = None
-    active: bool = True
+    erp_status: str | None = None
+    erp_active: bool = False
+    department_description: str | None = None
+    department_code: str | None = None
+    employee_class: str | None = None
+    supervisor_external_id: str | None = None
+    telephone: str | None = None
+    branch_code: str | None = None
+    contact_id: int | None = None
 
 
 class EmployeeSourcePort(Protocol):
@@ -28,6 +38,7 @@ class EmployeeSyncResult:
     created: int
     updated: int
     unchanged: int
+    errors: int
 
 
 class EmployeeSyncService:
@@ -46,8 +57,15 @@ class EmployeeSyncService:
         created = 0
         updated = 0
         unchanged = 0
+        errors = 0
         for employee in employees:
-            action = self._repository.upsert_external_employee(employee)
+            try:
+                action = self._repository.upsert_external_employee(employee)
+            except ApplicationError:
+                # One invalid/colliding ERP row must be visible in the reconciliation
+                # report without preventing other independent rows from being applied.
+                errors += 1
+                continue
             if action == "created":
                 created += 1
             elif action == "updated":
@@ -61,4 +79,5 @@ class EmployeeSyncService:
             created=created,
             updated=updated,
             unchanged=unchanged,
+            errors=errors,
         )

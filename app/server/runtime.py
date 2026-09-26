@@ -9,7 +9,12 @@ import uvicorn
 
 from ..application.identity_provisioning import AutoProvisioningPolicy
 from ..application.security import AuthPrincipal, ROLE_ADMIN, normalize_roles
-from ..infrastructure.acumatica import ODataProjectSource, ODataProjectSourceSettings
+from ..infrastructure.acumatica import (
+    ODataEmployeeSource,
+    ODataEmployeeSourceSettings,
+    ODataProjectSource,
+    ODataProjectSourceSettings,
+)
 from ..infrastructure.acumatica.oidc import OidcClient, OidcClientSettings
 from ..infrastructure.smtp import FernetSecretCipher, SmtpClient
 from ..infrastructure.m365 import (
@@ -405,6 +410,17 @@ def create_configured_app(settings: ServerSettings | None = None) -> FastAPI:
         if resolved.acumatica is not None
         else None
     )
+    employee_source = None
+    if resolved.acumatica is not None:
+        employee_source = ODataEmployeeSource(
+            ODataEmployeeSourceSettings(
+                base_url=resolved.acumatica.base_url,
+                username=resolved.acumatica.username,
+                credential=resolved.acumatica.credential,
+                page_size=resolved.acumatica.page_size,
+                timeout_seconds=resolved.acumatica.timeout_seconds,
+            )
+        )
     communication_transport = (
         MicrosoftGraphCommunicationTransport(resolved.m365)
         if resolved.m365 is not None
@@ -453,6 +469,7 @@ def create_configured_app(settings: ServerSettings | None = None) -> FastAPI:
         resolved.database_url,
         actor_name=resolved.actor_name,
         project_source=project_source,
+        employee_source=employee_source,
         acumatica_info=(
             resolved.acumatica.safe_summary() if resolved.acumatica is not None else None
         ),
