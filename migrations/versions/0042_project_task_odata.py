@@ -47,6 +47,26 @@ def upgrade() -> None:
         "task_catalog_items",
         sa.Column("budget_diagnostic", sa.String(length=64), nullable=True),
     )
+    op.add_column(
+        "task_catalog_items",
+        sa.Column("workforce_eligible", sa.Boolean(), nullable=True),
+    )
+    op.add_column(
+        "task_catalog_items",
+        sa.Column("resource_class_code", sa.String(length=64), nullable=True),
+    )
+    op.add_column(
+        "task_catalog_items",
+        sa.Column("average_hourly_cost_cad", sa.Numeric(precision=18, scale=4), nullable=True),
+    )
+    op.add_column(
+        "task_catalog_items",
+        sa.Column("budget_hours", sa.Numeric(precision=38, scale=18), nullable=True),
+    )
+    op.add_column(
+        "task_catalog_items",
+        sa.Column("workforce_diagnostics", sa.Text(), nullable=True),
+    )
     op.create_index(
         "ix_task_catalog_items_erp_task_id",
         "task_catalog_items",
@@ -57,6 +77,24 @@ def upgrade() -> None:
         "ix_task_catalog_items_account_group",
         "task_catalog_items",
         ["account_group"],
+        unique=False,
+    )
+    op.create_index(
+        "ix_task_catalog_items_workforce_eligible",
+        "task_catalog_items",
+        ["workforce_eligible"],
+        unique=False,
+    )
+    op.create_index(
+        "ix_task_catalog_items_resource_class_code",
+        "task_catalog_items",
+        ["resource_class_code"],
+        unique=False,
+    )
+    op.create_index(
+        "ix_task_catalog_items_project_workforce",
+        "task_catalog_items",
+        ["project_number", "active", "workforce_eligible"],
         unique=False,
     )
     op.create_index(
@@ -105,6 +143,18 @@ def downgrade() -> None:
         table_name="task_catalog_items",
     )
     op.drop_index(
+        "ix_task_catalog_items_project_workforce",
+        table_name="task_catalog_items",
+    )
+    op.drop_index(
+        "ix_task_catalog_items_resource_class_code",
+        table_name="task_catalog_items",
+    )
+    op.drop_index(
+        "ix_task_catalog_items_workforce_eligible",
+        table_name="task_catalog_items",
+    )
+    op.drop_index(
         "ix_task_catalog_items_account_group",
         table_name="task_catalog_items",
     )
@@ -112,6 +162,11 @@ def downgrade() -> None:
         "ix_task_catalog_items_erp_task_id",
         table_name="task_catalog_items",
     )
+    op.drop_column("task_catalog_items", "workforce_diagnostics")
+    op.drop_column("task_catalog_items", "budget_hours")
+    op.drop_column("task_catalog_items", "average_hourly_cost_cad")
+    op.drop_column("task_catalog_items", "resource_class_code")
+    op.drop_column("task_catalog_items", "workforce_eligible")
     op.drop_column("task_catalog_items", "budget_diagnostic")
     op.drop_column("task_catalog_items", "budget_actual_cad")
     op.drop_column("task_catalog_items", "budget_amount_cad")
