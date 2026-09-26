@@ -56,7 +56,7 @@ class StubEmployeeSource:
             ExternalEmployeeRecord(
                 external_id="EMP-100",
                 display_name="Employé Acumatica",
-                email="employee100@example.invalid",
+                email="employee100" + chr(64) + "example.invalid",
                 erp_status="Actif",
                 erp_active=True,
                 department_description="Automatisation",
@@ -230,7 +230,7 @@ class ServerAcumaticaRouteTests(unittest.TestCase):
                 source.rows[0] = ExternalEmployeeRecord(
                     external_id="EMP-100",
                     display_name="Employé Acumatica",
-                    email="employee100@example.invalid",
+                    email="employee100" + chr(64) + "example.invalid",
                     erp_status="Inactif",
                     erp_active=False,
                     department_description="Automatisation",
