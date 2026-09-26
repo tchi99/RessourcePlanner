@@ -87,7 +87,7 @@ class ErpUserSyncService:
         for user in users:
             try:
                 action = self._repository.upsert_external_user(user)
-            except Exception:
+            except ValueError:
                 errors += 1
                 continue
             if action == "created":
