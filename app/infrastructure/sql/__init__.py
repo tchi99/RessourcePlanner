@@ -72,6 +72,8 @@ from .demand_repository import SqlDemandRepository
 from .emergency_demand_repository import SqlEmergencyDemandRepository
 from .emergency_query_repository import SqlPlannerQueryRepositoryWithEmergencyOverride
 from .employee_sync_repository import SqlEmployeeSyncRepository
+from .erp_user_models import ErpUserDirectoryEntry
+from .erp_user_directory_repository import SqlErpUserDirectoryRepository
 from .idempotency import CommandIdempotencyReceipt, SqlCommandIdempotencyAdapter
 from .identity_models import AppUser, AuthLoginTransaction, AuthSession
 from .identity_repository import SqlUserIdentityRepository
@@ -214,6 +216,8 @@ __all__ = [
     "SqlDemandRepository",
     "SqlEmergencyDemandRepository",
     "SqlEmployeeSyncRepository",
+    "SqlErpUserDirectoryRepository",
+    "ErpUserDirectoryEntry",
     "SqlIdentityResourceLinkRepository",
     "SqlOperationalContactRepository",
     "SqlRequestOperationalChoiceRepository",

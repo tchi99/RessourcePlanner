@@ -70,18 +70,37 @@ class SqlEmployeeSyncRepository(EmployeeSyncRepositoryPort):
                     external_id=external_id,
                     name=display_name,
                     email=_optional_text(employee.email),
-                    active=bool(employee.active),
+                    # ERP discovery never authorizes a resource locally.
+                    active=False,
+                    erp_status=_optional_text(employee.erp_status),
+                    erp_active=bool(employee.erp_active),
+                    erp_department_description=_optional_text(employee.department_description),
+                    erp_department_code=_optional_text(employee.department_code),
+                    erp_employee_class=_optional_text(employee.employee_class),
+                    erp_supervisor_external_id=_optional_text(employee.supervisor_external_id),
+                    erp_phone=_optional_text(employee.telephone),
+                    erp_branch_code=_optional_text(employee.branch_code),
+                    erp_contact_id=employee.contact_id,
                 )
             )
             self._session.flush()
             return "created"
 
-        # ERP owns only these organizational fields. Resource class, competencies,
-        # note, sort order and availability stay local to RessourcePlanner.
+        # ERP owns only these organizational fields. Local activation (active),
+        # resource class, competencies, note, sort order and availability stay local
+        # to RessourcePlanner and are never overwritten by synchronization.
         values = {
             "name": display_name,
             "email": _optional_text(employee.email),
-            "active": bool(employee.active),
+            "erp_status": _optional_text(employee.erp_status),
+            "erp_active": bool(employee.erp_active),
+            "erp_department_description": _optional_text(employee.department_description),
+            "erp_department_code": _optional_text(employee.department_code),
+            "erp_employee_class": _optional_text(employee.employee_class),
+            "erp_supervisor_external_id": _optional_text(employee.supervisor_external_id),
+            "erp_phone": _optional_text(employee.telephone),
+            "erp_branch_code": _optional_text(employee.branch_code),
+            "erp_contact_id": employee.contact_id,
         }
         changed = False
         for field, value in values.items():

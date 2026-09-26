@@ -33,6 +33,15 @@ def _resource_model(row: Resource, competency_ids: tuple[str, ...] = ()) -> Reso
         active=bool(row.active),
         sort_order=int(row.sort_order or 0),
         external_id=_optional_text(row.external_id),
+        erp_status=_optional_text(row.erp_status),
+        erp_active=bool(row.erp_active),
+        erp_department_description=_optional_text(row.erp_department_description),
+        erp_department_code=_optional_text(row.erp_department_code),
+        erp_employee_class=_optional_text(row.erp_employee_class),
+        erp_supervisor_external_id=_optional_text(row.erp_supervisor_external_id),
+        erp_phone=_optional_text(row.erp_phone),
+        erp_branch_code=_optional_text(row.erp_branch_code),
+        erp_contact_id=row.erp_contact_id,
     )
 
 
@@ -88,7 +97,10 @@ class SqlResourceAdminRepository(ResourceAdminRepositoryPort):
     def list_resources(self, *, active_only: bool = False) -> tuple[ResourceReadModel, ...]:
         statement = select(Resource)
         if active_only:
-            statement = statement.where(Resource.active.is_(True))
+            statement = statement.where(
+                Resource.active.is_(True),
+                Resource.erp_active.is_(True),
+            )
         rows = self._session.scalars(statement.order_by(Resource.sort_order, Resource.name)).all()
         competency_ids = self._competency_ids_by_resource(tuple(row.id for row in rows))
         return tuple(

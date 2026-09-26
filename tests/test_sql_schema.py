@@ -32,6 +32,7 @@ EXPECTED_TABLES = {
     "asset_requirements",
     "asset_allocations",
     "app_users",
+    "erp_user_directory",
     "business_contacts",
     "auth_login_transactions",
     "auth_sessions",
@@ -93,6 +94,7 @@ class SqlSchemaTests(unittest.TestCase):
         availability = Base.metadata.tables["resource_availability_rules"].c
         idempotency = Base.metadata.tables["command_idempotency_receipts"].c
         users = Base.metadata.tables["app_users"].c
+        erp_users = Base.metadata.tables["erp_user_directory"].c
         login_transactions = Base.metadata.tables["auth_login_transactions"].c
         auth_sessions = Base.metadata.tables["auth_sessions"].c
         communication_contacts = Base.metadata.tables["communication_contacts"].c
@@ -227,6 +229,12 @@ class SqlSchemaTests(unittest.TestCase):
         self.assertFalse(idempotency.idempotency_key.nullable)
         self.assertFalse(idempotency.request_fingerprint.nullable)
         self.assertFalse(idempotency.response_json.nullable)
+        self.assertFalse(erp_users.user_id.nullable)
+        self.assertFalse(erp_users.employee_external_id.nullable)
+        self.assertFalse(erp_users.display_name.nullable)
+        self.assertFalse(erp_users.erp_user_active.nullable)
+        self.assertFalse(erp_users.local_active.nullable)
+        self.assertFalse(erp_users.roles_json.nullable)
         self.assertFalse(users.issuer.nullable)
         self.assertFalse(users.subject.nullable)
         self.assertFalse(users.display_name.nullable)

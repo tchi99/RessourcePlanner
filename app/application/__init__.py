@@ -81,6 +81,15 @@ from .competency_catalog import (
     CompetencyReadModel,
     CompetencyUpdateCommand,
 )
+from .erp_user_directory import (
+    ErpUserDirectoryRecord,
+    ErpUserDirectoryRepositoryPort,
+    ErpUserDirectoryService,
+    ErpUserSourcePort,
+    ErpUserSyncResult,
+    ErpUserSyncService,
+    ExternalErpUserRecord,
+)
 from .employee_sync import (
     EmployeeSourcePort,
     EmployeeSyncRepositoryPort,
@@ -347,6 +356,13 @@ __all__ = [
     "DemandUpdateCommand",
     "EmergencyApplicationFacade",
     "EmergencyDemandService",
+    "ErpUserDirectoryRecord",
+    "ErpUserDirectoryRepositoryPort",
+    "ErpUserDirectoryService",
+    "ErpUserSourcePort",
+    "ErpUserSyncResult",
+    "ErpUserSyncService",
+    "ExternalErpUserRecord",
     "EmployeeSourcePort",
     "EmployeeSyncRepositoryPort",
     "EmployeeSyncResult",

@@ -1,7 +1,7 @@
 """Add RP_ProjectTasks identity, workforce budgets and per-project sync state.
 
-Revision ID: 0042_project_task_odata
-Revises: 0041_resource_class_configuration
+Revision ID: 0044_project_task_odata
+Revises: 0043_erp_user_directory
 """
 
 from __future__ import annotations
@@ -12,8 +12,8 @@ from alembic import op
 import sqlalchemy as sa
 
 
-revision: str = "0042_project_task_odata"
-down_revision: Union[str, Sequence[str], None] = "0041_resource_class_configuration"
+revision: str = "0044_project_task_odata"
+down_revision: Union[str, Sequence[str], None] = "0043_erp_user_directory"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
