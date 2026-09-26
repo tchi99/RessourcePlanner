@@ -52,6 +52,21 @@ Les temps de performance SQLite de #252 ne sont toujours pas interprétés comme
 
 Les messages ne réimpriment pas la chaîne de connexion ni les exceptions DBAPI susceptibles de contenir un hôte, un utilisateur ou un secret.
 
+## Baseline pré-production et initialisation propre (#457)
+
+La chaîne Alembic actuelle est une chaîne de **développement**. Avant le premier go-live production, et seulement lorsque le schéma pré-go-live est suffisamment gelé, #457 prévoit de la remplacer par une **baseline V2 unique**.
+
+Cette opération ne retire pas Alembic :
+
+- l'historique pré-production devenu inutile est supprimé/squashé;
+- une migration baseline représente le schéma canonique complet;
+- `alembic upgrade head` doit créer le produit depuis une base vide;
+- toutes les évolutions postérieures redeviennent des migrations additives normales.
+
+La validation SQL Server réelle doit être répétée après cette baseline avant le go-live.
+
+La base production ne reçoit aucun seed de développement. L'administrateur initial est créé par un bootstrap explicite et séparé, avec un accès break-glass indépendant d'OIDC tel que défini dans #457.
+
 ## Jour du branchement SQL Server (#162)
 
 L'ordre recommandé est volontairement strict.
