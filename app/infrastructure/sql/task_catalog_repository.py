@@ -1,12 +1,19 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from decimal import Decimal
 
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
-from ...application.task_catalog import TaskCatalogItem, TaskCatalogRepositoryPort
-from .models import TaskCatalogEntry
+from ...application.errors import ApplicationConflictError
+from ...application.task_catalog import (
+    TaskCatalogItem,
+    TaskCatalogProjectSyncMetadata,
+    TaskCatalogProjectSyncMetadataRepositoryPort,
+    TaskCatalogRepositoryPort,
+)
+from .models import TaskCatalogEntry, TaskCatalogProjectSyncState
 
 
 def _text(value: object) -> str:
@@ -18,8 +25,16 @@ def _optional_text(value: object) -> str | None:
     return normalized or None
 
 
-class SqlTaskCatalogRepository(TaskCatalogRepositoryPort):
-    """SQL-backed durable task catalog keyed by project number + ERP task code."""
+class SqlTaskCatalogRepository(
+    TaskCatalogRepositoryPort,
+    TaskCatalogProjectSyncMetadataRepositoryPort,
+):
+    """SQL-backed durable task catalog with legacy and ERP identities.
+
+    Existing #271 rows remain keyed locally by their stable row id. When an OData
+    record first arrives, matching (project_number, task_code) rows adopt TaskID in
+    place so RequestLine/approval-history foreign keys never need to be rewritten.
+    """
 
     def __init__(self, session: Session) -> None:
         self._session = session
@@ -45,6 +60,13 @@ class SqlTaskCatalogRepository(TaskCatalogRepositoryPort):
             cv_enabled=row.cv_enabled,
             time_entry_enabled=row.time_entry_enabled,
             expenses_enabled=row.expenses_enabled,
+            erp_task_id=row.erp_task_id,
+            account_group=row.account_group,
+            cost_code=row.cost_code,
+            inventory_id=row.inventory_id,
+            budget_amount_cad=row.budget_amount_cad,
+            budget_actual_cad=row.budget_actual_cad,
+            budget_diagnostic=row.budget_diagnostic,
             id=row.id,
             operational_responsible_contact_id=row.operational_responsible_contact_id,
             coordinator_contact_id=row.coordinator_contact_id,
@@ -53,14 +75,37 @@ class SqlTaskCatalogRepository(TaskCatalogRepositoryPort):
     def upsert(self, item: TaskCatalogItem) -> str:
         project_number = _text(item.project_number)
         task_code = _text(item.code)
-        row = self._session.scalar(
+        erp_task_id = _optional_text(item.erp_task_id)
+
+        business_row = self._session.scalar(
             select(TaskCatalogEntry).where(
                 TaskCatalogEntry.project_number == project_number,
                 TaskCatalogEntry.task_code == task_code,
             )
         )
+        erp_row = None
+        if erp_task_id is not None:
+            erp_row = self._session.scalar(
+                select(TaskCatalogEntry).where(
+                    TaskCatalogEntry.erp_task_id == erp_task_id,
+                )
+            )
+            if (
+                erp_row is not None
+                and business_row is not None
+                and erp_row.id != business_row.id
+            ):
+                raise ApplicationConflictError(
+                    "L'identité ERP TaskID entre en conflit avec une tâche locale existante.",
+                    code="task_catalog_erp_identity_conflict",
+                    context={
+                        "project_number": project_number,
+                        "task_code": task_code,
+                    },
+                )
 
-        values = {
+        row = erp_row or business_row
+        values: dict[str, object] = {
             "project_number": project_number,
             "task_code": task_code,
             "label": _text(item.label),
@@ -80,6 +125,21 @@ class SqlTaskCatalogRepository(TaskCatalogRepositoryPort):
             "time_entry_enabled": item.time_entry_enabled,
             "expenses_enabled": item.expenses_enabled,
         }
+
+        # File fallback rows do not own OData identity/budget fields and therefore
+        # must never clear them when #271 is replayed after an OData sync.
+        if erp_task_id is not None:
+            values.update(
+                {
+                    "erp_task_id": erp_task_id,
+                    "account_group": _optional_text(item.account_group),
+                    "cost_code": _optional_text(item.cost_code),
+                    "inventory_id": _optional_text(item.inventory_id),
+                    "budget_amount_cad": item.budget_amount_cad,
+                    "budget_actual_cad": item.budget_actual_cad,
+                    "budget_diagnostic": _optional_text(item.budget_diagnostic),
+                }
+            )
 
         if row is None:
             self._session.add(TaskCatalogEntry(**values))
@@ -127,3 +187,57 @@ class SqlTaskCatalogRepository(TaskCatalogRepositoryPort):
         ).limit(max(1, min(int(limit), 500)))
         rows = self._session.scalars(statement).all()
         return tuple(self._item(row) for row in rows)
+
+    def record_project_sync_success(
+        self,
+        *,
+        project_number: str,
+        source_rows: int,
+        task_count: int,
+        rejected_rows: int,
+        duration_ms: int | None,
+    ) -> None:
+        project = _text(project_number)
+        now = datetime.now(timezone.utc)
+        row = self._session.get(TaskCatalogProjectSyncState, project)
+        if row is None:
+            row = TaskCatalogProjectSyncState(
+                project_number=project,
+                last_attempt_at=now,
+                last_success_at=now,
+                source_rows=max(0, int(source_rows)),
+                task_count=max(0, int(task_count)),
+                rejected_rows=max(0, int(rejected_rows)),
+                duration_ms=duration_ms,
+                last_error_code=None,
+            )
+            self._session.add(row)
+        else:
+            row.last_attempt_at = now
+            row.last_success_at = now
+            row.source_rows = max(0, int(source_rows))
+            row.task_count = max(0, int(task_count))
+            row.rejected_rows = max(0, int(rejected_rows))
+            row.duration_ms = duration_ms
+            row.last_error_code = None
+        self._session.flush()
+
+    def get_project_sync_metadata(
+        self,
+        project_number: str,
+    ) -> TaskCatalogProjectSyncMetadata | None:
+        project = _text(project_number)
+        if not project:
+            return None
+        row = self._session.get(TaskCatalogProjectSyncState, project)
+        if row is None:
+            return None
+        return TaskCatalogProjectSyncMetadata(
+            project_number=row.project_number,
+            last_success_at=row.last_success_at,
+            source_rows=int(row.source_rows),
+            task_count=int(row.task_count),
+            rejected_rows=int(row.rejected_rows),
+            duration_ms=row.duration_ms,
+            last_error_code=row.last_error_code,
+        )

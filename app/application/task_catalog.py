@@ -3,6 +3,8 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
+from decimal import Decimal
+from time import perf_counter
 from typing import Protocol
 
 from .errors import ApplicationValidationError
@@ -12,9 +14,10 @@ from .errors import ApplicationValidationError
 class TaskCatalogItem:
     """Transport-neutral ERP task reference.
 
-    The ERP export does not expose a globally unique task row identifier. The stable
-    business identity is therefore the pair (project_number, code). A future Acumatica
-    source can feed this same contract without changing consumers.
+    The historical #271 file source identifies tasks with (project_number, code).
+    OData sources may additionally provide erp_task_id (RP_ProjectTasks.TaskID),
+    which is the authoritative ERP identity while the local catalog row id remains
+    stable for existing request-line/history references.
     """
 
     project_number: str
@@ -31,19 +34,57 @@ class TaskCatalogItem:
     cv_enabled: bool | None = None
     time_entry_enabled: bool | None = None
     expenses_enabled: bool | None = None
+    erp_task_id: str | None = None
+    account_group: str | None = None
+    cost_code: str | None = None
+    inventory_id: str | None = None
+    budget_amount_cad: Decimal | None = None
+    budget_actual_cad: Decimal | None = None
+    budget_diagnostic: str | None = None
     id: str | None = None
     operational_responsible_contact_id: str | None = None
     coordinator_contact_id: str | None = None
 
     @property
     def external_key(self) -> tuple[str, str]:
+        """Historical #271 identity retained for file-import compatibility."""
+
         return (self.project_number, self.code)
+
+    @property
+    def synchronization_key(self) -> tuple[str, ...]:
+        """Prefer stable ERP TaskID without breaking legacy file-backed rows."""
+
+        erp_task_id = str(self.erp_task_id or "").strip()
+        if erp_task_id:
+            return ("erp_task_id", erp_task_id)
+        return (
+            "legacy_project_task",
+            str(self.project_number or "").strip(),
+            str(self.code or "").strip(),
+        )
 
 
 class TaskCatalogSourcePort(Protocol):
-    """Read-only source of a task-catalog snapshot."""
+    """Read-only source of the historical/global task-catalog snapshot."""
 
     def list_tasks(self) -> Sequence[TaskCatalogItem]: ...
+
+
+@dataclass(frozen=True, slots=True)
+class TaskCatalogProjectSnapshot:
+    """Complete transport snapshot for one explicitly targeted ERP project."""
+
+    project_number: str
+    source_rows: int
+    rejected_rows: int
+    items: tuple[TaskCatalogItem, ...]
+
+
+class ProjectTaskCatalogSourcePort(Protocol):
+    """Source contract for targeted RP_ProjectTasks synchronization."""
+
+    def fetch_project_snapshot(self, project_number: str) -> TaskCatalogProjectSnapshot: ...
 
 
 class TaskCatalogRepositoryPort(Protocol):
@@ -59,6 +100,34 @@ class TaskCatalogRepositoryPort(Protocol):
         active_only: bool = True,
         limit: int = 200,
     ) -> Sequence[TaskCatalogItem]: ...
+
+
+@dataclass(frozen=True, slots=True)
+class TaskCatalogProjectSyncMetadata:
+    project_number: str
+    last_success_at: datetime
+    source_rows: int
+    task_count: int
+    rejected_rows: int
+    duration_ms: int | None = None
+    last_error_code: str | None = None
+
+
+class TaskCatalogProjectSyncMetadataRepositoryPort(Protocol):
+    def record_project_sync_success(
+        self,
+        *,
+        project_number: str,
+        source_rows: int,
+        task_count: int,
+        rejected_rows: int,
+        duration_ms: int | None,
+    ) -> None: ...
+
+    def get_project_sync_metadata(
+        self,
+        project_number: str,
+    ) -> TaskCatalogProjectSyncMetadata | None: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -79,20 +148,60 @@ class TaskCatalogSyncResult:
         }
 
 
+@dataclass(frozen=True, slots=True)
+class TaskCatalogProjectSyncResult:
+    project_number: str
+    source_rows: int
+    task_count: int
+    rejected_rows: int
+    created: int
+    updated: int
+    unchanged: int
+    deactivated: int
+    duration_ms: int | None = None
+
+    def to_dict(self) -> dict[str, str | int | None]:
+        return {
+            "project_number": self.project_number,
+            "source_rows": self.source_rows,
+            "task_count": self.task_count,
+            "rejected_rows": self.rejected_rows,
+            "created": self.created,
+            "updated": self.updated,
+            "unchanged": self.unchanged,
+            "deactivated": self.deactivated,
+            "duration_ms": self.duration_ms,
+        }
+
+
 class TaskCatalogSyncService:
-    """Idempotently synchronize one source snapshot into the durable catalog."""
+    """Idempotently synchronize task snapshots into the durable local catalog.
+
+    synchronize preserves the historical #271 global/file path.
+    synchronize_project is the targeted OData path introduced by #452. Neither
+    path infers deactivation from an absent row; only an explicit source status can
+    deactivate an existing catalog item.
+    """
 
     def __init__(
         self,
-        source: TaskCatalogSourcePort,
+        source: TaskCatalogSourcePort | ProjectTaskCatalogSourcePort,
         repository: TaskCatalogRepositoryPort,
+        *,
+        sync_metadata_repository: TaskCatalogProjectSyncMetadataRepositoryPort | None = None,
     ) -> None:
         self._source = source
         self._repository = repository
+        self._sync_metadata_repository = sync_metadata_repository
 
-    def synchronize(self) -> TaskCatalogSyncResult:
-        rows = tuple(self._source.list_tasks())
-        seen: set[tuple[str, str]] = set()
+    def _synchronize_rows(
+        self,
+        rows: Sequence[TaskCatalogItem],
+        *,
+        expected_project_number: str | None = None,
+    ) -> TaskCatalogSyncResult:
+        expected_project = str(expected_project_number or "").strip()
+        seen: set[tuple[str, ...]] = set()
         counts = {
             "created": 0,
             "updated": 0,
@@ -113,12 +222,26 @@ class TaskCatalogSyncService:
                         "task_code": code or None,
                     },
                 )
-            key = (project_number, code)
+            if expected_project and project_number != expected_project:
+                raise ApplicationValidationError(
+                    "La synchronisation ciblée contient une tâche d'un autre projet.",
+                    code="task_catalog_project_mismatch",
+                    context={
+                        "expected_project_number": expected_project,
+                        "project_number": project_number,
+                    },
+                )
+
+            key = item.synchronization_key
             if key in seen:
                 raise ApplicationValidationError(
-                    "La même tâche ERP apparaît plus d'une fois pour un projet.",
+                    "La même identité de tâche ERP apparaît plus d'une fois dans le snapshot.",
                     code="task_catalog_duplicate_key",
-                    context={"project_number": project_number, "task_code": code},
+                    context={
+                        "project_number": project_number,
+                        "task_code": code,
+                        "identity_kind": key[0],
+                    },
                 )
             seen.add(key)
             action = self._repository.upsert(item)
@@ -133,3 +256,66 @@ class TaskCatalogSyncService:
             unchanged=counts["unchanged"],
             deactivated=counts["deactivated"],
         )
+
+    def synchronize(self) -> TaskCatalogSyncResult:
+        list_tasks = getattr(self._source, "list_tasks", None)
+        if not callable(list_tasks):
+            raise ApplicationValidationError(
+                "Cette source de tâches exige une synchronisation ciblée par projet.",
+                code="task_catalog_project_sync_required",
+            )
+        return self._synchronize_rows(tuple(list_tasks()))
+
+    def synchronize_project(self, project_number: str) -> TaskCatalogProjectSyncResult:
+        project = str(project_number or "").strip()
+        if not project:
+            raise ApplicationValidationError(
+                "Un projet est requis pour synchroniser RP_ProjectTasks.",
+                code="task_catalog_project_required",
+            )
+
+        fetch_snapshot = getattr(self._source, "fetch_project_snapshot", None)
+        if not callable(fetch_snapshot):
+            raise ApplicationValidationError(
+                "Cette source ne supporte pas la synchronisation ciblée par projet.",
+                code="task_catalog_project_sync_unsupported",
+                context={"project_number": project},
+            )
+
+        started_at = perf_counter()
+        snapshot = fetch_snapshot(project)
+        snapshot_project = str(snapshot.project_number or "").strip()
+        if snapshot_project != project:
+            raise ApplicationValidationError(
+                "Le snapshot de tâches ne correspond pas au projet demandé.",
+                code="task_catalog_project_mismatch",
+                context={
+                    "expected_project_number": project,
+                    "project_number": snapshot_project or None,
+                },
+            )
+
+        base = self._synchronize_rows(
+            snapshot.items,
+            expected_project_number=project,
+        )
+        result = TaskCatalogProjectSyncResult(
+            project_number=project,
+            source_rows=int(snapshot.source_rows),
+            task_count=base.received,
+            rejected_rows=int(snapshot.rejected_rows),
+            created=base.created,
+            updated=base.updated,
+            unchanged=base.unchanged,
+            deactivated=base.deactivated,
+            duration_ms=max(0, int((perf_counter() - started_at) * 1000)),
+        )
+        if self._sync_metadata_repository is not None:
+            self._sync_metadata_repository.record_project_sync_success(
+                project_number=project,
+                source_rows=result.source_rows,
+                task_count=result.task_count,
+                rejected_rows=result.rejected_rows,
+                duration_ms=result.duration_ms,
+            )
+        return result
