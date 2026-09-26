@@ -14,6 +14,8 @@ from ..infrastructure.acumatica import (
     ODataEmployeeSourceSettings,
     ODataProjectSource,
     ODataProjectSourceSettings,
+    ODataUserSource,
+    ODataUserSourceSettings,
 )
 from ..infrastructure.acumatica.oidc import OidcClient, OidcClientSettings
 from ..infrastructure.smtp import FernetSecretCipher, SmtpClient
@@ -421,6 +423,17 @@ def create_configured_app(settings: ServerSettings | None = None) -> FastAPI:
                 timeout_seconds=resolved.acumatica.timeout_seconds,
             )
         )
+    user_source = None
+    if resolved.acumatica is not None:
+        user_source = ODataUserSource(
+            ODataUserSourceSettings(
+                base_url=resolved.acumatica.base_url,
+                username=resolved.acumatica.username,
+                credential=resolved.acumatica.credential,
+                page_size=resolved.acumatica.page_size,
+                timeout_seconds=resolved.acumatica.timeout_seconds,
+            )
+        )
     communication_transport = (
         MicrosoftGraphCommunicationTransport(resolved.m365)
         if resolved.m365 is not None
@@ -470,6 +483,7 @@ def create_configured_app(settings: ServerSettings | None = None) -> FastAPI:
         actor_name=resolved.actor_name,
         project_source=project_source,
         employee_source=employee_source,
+        user_source=user_source,
         acumatica_info=(
             resolved.acumatica.safe_summary() if resolved.acumatica is not None else None
         ),
