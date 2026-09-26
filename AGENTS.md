@@ -104,6 +104,33 @@ For normal development work, the expected endpoint is a merged, validated change
 
 ---
 
+## 3A. Long-running and verbose commands
+
+Interactive agent sessions should avoid unnecessary terminal output and avoid making a long local command the only place where validation state exists.
+
+For commands that can produce large logs or run for a long time:
+
+- prefer `-q`, `--quiet`, or an equivalent reduced-output mode when it preserves useful warnings, errors, and a reliable exit status;
+- do not use `--silent` blindly when it would hide diagnostics needed to understand a failure;
+- avoid `--verbose` unless diagnosing a specific failure;
+- when practical, redirect full output to a temporary log and print only a concise summary on success;
+- on failure, inspect or print only the relevant tail/section first, then rerun the failing command with greater verbosity only if needed;
+- run the smallest targeted tests first instead of repeatedly running the full suite locally;
+- use GitHub Actions for complete repository validation when the equivalent local command is unusually long or noisy;
+- never treat reduced output as reduced validation: exit codes and required checks remain authoritative.
+
+For work that may span a long validation cycle:
+
+- keep the implementation on a named branch;
+- create coherent commits/checkpoints before unusually long external validation when the current change is in a valid intermediate state;
+- create or update the PR early enough that GitHub contains a recoverable record of the work;
+- do not create meaningless checkpoint commits solely to satisfy this rule;
+- if an interactive session is interrupted, resume from the branch/PR and observable CI state rather than restarting the implementation from memory.
+
+A quiet command that fails should become more verbose only for the failing scope. Do not flood the conversation with successful logs that add no diagnostic value.
+
+---
+
 ## 4. Scope discipline
 
 Implement the smallest coherent change that satisfies the GitHub Issue.
