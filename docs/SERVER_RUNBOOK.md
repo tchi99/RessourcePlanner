@@ -1,5 +1,8 @@
 # Runbook — FastAPI / SQL et runtime Web
 
+
+> **Production / premier go-live :** le runtime ne doit pas être initialisé avec les seeds de démonstration. Avant production, suivre #457 et [SQL_CUTOVER_RUNBOOK.md](SQL_CUTOVER_RUNBOOK.md) pour créer la baseline propre, la base vide et le bootstrap administrateur break-glass indépendant d'OIDC.
+
 Ce document décrit la frontière serveur canonique de RessourcePlanner. Le backend FastAPI ne dépend ni de NiceGUI, ni d'Excel. Le mode d'exploitation Web complet est détaillé dans [`WEB_RUNTIME.md`](WEB_RUNTIME.md).
 
 ## État actuel

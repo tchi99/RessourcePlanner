@@ -1,160 +1,170 @@
-# Runbook — cutover net Excel → SQL
+# Runbook — premier go-live SQL Server sur base propre
 
-Ce document décrit le basculement one-shot de RessourcePlanner V1 (Excel) vers la base SQL autoritaire.
+Ce document décrit le premier basculement de RessourcePlanner vers SQL Server autoritaire.
+
+La décision produit est de **ne pas importer l'historique Excel/V1**. La production démarre sur une base SQL Server neuve, alimentée uniquement par le schéma canonique, la configuration initiale requise, le bootstrap administrateur et les référentiels synchronisés depuis les sources réelles.
+
+Voir #457 pour la baseline de schéma, le retrait des seeds de développement et l'accès administrateur break-glass.
 
 ## Principes
 
 - aucune période hybride Excel/SQL;
 - aucune double écriture;
 - aucun fallback silencieux vers Excel;
-- le classeur V1 est gelé avant l'import final;
-- l'import final exige une base RessourcePlanner vide;
-- les quarts verrouillés sont importés tels quels, sans rebuild du moteur;
-- si le préflight ou la réconciliation échoue, SQL n'est pas déclaré autoritaire;
-- aucune correction artisanale de la base importée : corriger la source/l'importeur, recréer la base et réimporter.
+- aucune donnée `DEMO-*` ou identité `urn:resourceplanner:dev` en production;
+- aucun seed de développement dans le workflow de mise en service;
+- Alembic reste le mécanisme de migration;
+- avant le premier go-live, l'historique de migrations pré-production est remplacé par une **baseline V2 unique**;
+- après cette baseline, toute nouvelle évolution de schéma utilise de nouveau des migrations additives normales;
+- le bootstrap admin est séparé des migrations et des seeds;
+- un accès administrateur break-glass doit fonctionner sans dépendre d'Acumatica/OIDC, tant que RessourcePlanner et sa base sont accessibles.
 
-## 1. Préparer le poste de migration
+## 1. Geler le schéma pré-go-live
 
-Installer les dépendances du dépôt :
+Ne pas créer la baseline trop tôt.
 
-```bat
-python -m pip install -r requirements.txt
+Avant de squasher les migrations de développement :
+
+1. terminer les évolutions de modèle jugées nécessaires au premier go-live;
+2. confirmer que les migrations restantes ne servent encore aucune base de production;
+3. exécuter la CI complète;
+4. conserver le commit Git servant de référence à la baseline.
+
+L'objectif n'est pas de supprimer Alembic, mais de remplacer la chaîne historique de développement par un nouveau point zéro de production.
+
+## 2. Créer la baseline V2
+
+À partir du schéma canonique courant :
+
+1. retirer les anciennes révisions Alembic pré-production devenues inutiles;
+2. créer une migration baseline unique représentant le schéma complet;
+3. vérifier que `Base.metadata` et la baseline sont cohérents;
+4. exécuter `alembic upgrade head` depuis une base vide;
+5. vérifier contraintes, index, types et valeurs par défaut;
+6. exécuter les validations SQLite/offline MSSQL;
+7. répéter ensuite sur SQL Server réel.
+
+Après ce point, les migrations futures repartent normalement à partir de cette baseline.
+
+## 3. Retirer les seeds de développement du chemin production
+
+Le workflow production ne doit pas appeler ni dépendre de :
+
+- `tools/seed_demo_data.py`;
+- `Charger_Donnees_Demo.bat`;
+- identités `urn:resourceplanner:dev`;
+- projets, ressources, demandes ou autres lignes `DEMO-*`;
+- sélecteur d'identité de développement.
+
+Le seed de démonstration peut être supprimé du dépôt ou conservé uniquement dans un workflow local explicitement isolé, selon la décision finale de #336. Dans les deux cas, son exécution contre SQL Server/production doit être impossible ou explicitement refusée.
+
+## 4. Créer la base SQL Server de production
+
+Créer une base RessourcePlanner neuve et vide.
+
+Le compte de déploiement doit pouvoir :
+
+- créer/modifier le schéma via Alembic;
+- lire/écrire les tables RessourcePlanner nécessaires au bootstrap;
+- exécuter les transactions de validation.
+
+Configurer la connexion via secret/environnement; ne jamais stocker la chaîne réelle dans Git.
+
+Puis exécuter :
+
+```bash
+python -m alembic upgrade head
+python -m alembic current
 ```
 
-Le dry-run utilise `openpyxl` en lecture seule. Microsoft Excel n'est pas nécessaire pour lire le classeur gelé.
+Le `current` final doit correspondre exactement au `head` de la baseline courante.
 
-## 2. Dry-run avant le jour du cutover
+## 5. Bootstrap administrateur
 
-Exécuter contre une copie récente du classeur :
+Le premier compte administrateur n'est **pas un seed de démonstration** et ne doit pas être créé implicitement par une migration de schéma.
 
-```bat
-python tools\cutover_excel_to_sql.py --workbook "C:\chemin\RessourcePlanner.xlsm" --report "C:\temp\cutover_preflight.json"
-```
+Utiliser un bootstrap explicite, idempotent et auditable qui :
 
-Sans `--apply`, aucune connexion SQL n'est nécessaire et aucune écriture SQL n'est effectuée.
+- crée ou réconcilie l'identité administrateur réservée;
+- attribue le rôle `ADMIN`;
+- ne dépend d'aucun projet, employé ou ressource ERP;
+- n'est jamais désactivé par une synchro Acumatica;
+- protège le dernier accès administratif de secours;
+- ne journalise aucun secret.
 
-Le rapport contient notamment :
+Les credentials de secours sont configurés hors Git. Lorsqu'un secret doit être persisté, seule une empreinte/hash robuste est stockée.
 
-- SHA-256 du classeur;
-- commit Git courant si disponible;
-- nombres de projets, WorkPackages, ressources, disponibilités, demandes, historiques, segments et quarts;
-- nombre de quarts verrouillés;
-- sommes des heures prévues et des heures de quarts;
-- diagnostics bloquants et avertissements;
-- statut `ready_for_apply`.
+## 6. Valider l'accès break-glass
 
-Un exit code `0` signifie que le préflight est prêt. Un exit code `2` signifie que les données sont bloquantes. Un exit code `3` signifie une erreur technique.
+Le mode OIDC reste le chemin normal des utilisateurs.
 
-## 3. Corriger les anomalies avant le gel
+En plus, le bootstrap admin doit posséder un chemin d'authentification local **strictement réservé au secours administratif**, distinct du sélecteur dev.
 
-Les anomalies bloquantes typiques sont :
+Valider au minimum :
 
-- ID legacy dupliqué (`NoDemande`, `IDEffort`, `IDSegment`, `IDAllocation`, disponibilité);
-- projet, demande, ressource ou segment référencé mais introuvable;
-- dates/heures invalides;
-- historique sans horodatage;
-- lien `SourceEffortID` inconnu ou rattaché au mauvais projet;
-- Quick Shift/ad hoc relié à une fausse demande;
-- besoin `REQUEST` sans demande.
+1. connexion admin avec OIDC disponible;
+2. connexion break-glass avec OIDC volontairement indisponible;
+3. refus avec secret incorrect;
+4. limitation des tentatives;
+5. session/cookie protégés;
+6. CSRF sur mutations;
+7. audit connexion/action sans secret;
+8. rotation ou réinitialisation documentée.
 
-Relancer le dry-run après chaque correction jusqu'à `ready_for_apply=true`.
+Ce mécanisme n'est pas un second annuaire général.
 
-## 4. Geler la V1
+## 7. Alimenter les référentiels réels
 
-Au moment du cutover final :
+Une fois la base et l'administration validées :
 
-1. arrêter l'utilisation de RessourcePlanner V1;
-2. fermer/terminer les modifications Excel en cours;
-3. faire une copie finale du classeur;
-4. conserver le commit Git de la V1 gelée;
-5. exécuter un dernier dry-run sur **cette copie exacte**;
-6. archiver le classeur et son rapport JSON.
+1. synchroniser les projets Acumatica;
+2. synchroniser les ressources/utilisateurs lorsque leurs tranches sont prêtes;
+3. synchroniser les tâches/budgets selon les contrats validés;
+4. configurer les paramètres site nécessaires;
+5. ne jamais importer le classeur historique V1 comme étape de go-live.
 
-Exemple d'archive :
+## 8. Smokes avant autorité SQL
 
-```text
-archive/cutover/
-  RessourcePlanner_final_2026-xx-xx.xlsm
-  cutover_preflight_2026-xx-xx.json
-  version.txt
-```
+Exécuter :
 
-Ne jamais modifier cette copie après le dry-run final.
+- readiness SQL Server;
+- lecture seule;
+- transaction + rollback;
+- authentification OIDC;
+- authentification break-glass;
+- permissions ADMIN;
+- lectures/mutations métier représentatives;
+- concurrence/CAS pertinente;
+- vérification qu'aucune donnée de démonstration n'est présente.
 
-## 5. Préparer SQL Server
+SQL Server ne devient autoritaire qu'après validation explicite de ces contrôles.
 
-La base de destination doit être dédiée à RessourcePlanner. Le compte utilisé pour le cutover doit pouvoir :
+## 9. Rollback avant go-live
 
-- créer/modifier le schéma pour Alembic;
-- lire/écrire les tables RessourcePlanner;
-- exécuter une transaction complète.
+Tant que SQL n'est pas déclaré autoritaire, le rollback recommandé reste simple :
 
-Configurer l'URL SQLAlchemy dans une variable d'environnement. Ne jamais inscrire le mot de passe dans Git :
+1. arrêter le runtime Web;
+2. supprimer/recréer la base si nécessaire;
+3. corriger le code/configuration;
+4. réappliquer la baseline;
+5. relancer bootstrap + synchronisations + smokes.
 
-```bat
-set RESOURCEPLANNER_DATABASE_URL=<URL SQLAlchemy SQL Server>
-```
+Ne pas corriger manuellement la base pour contourner une baseline ou un bootstrap défectueux.
 
-Le driver SQL Server/ODBC exact sera validé sur le serveur cible avant le cutover réel.
+## 10. Après le premier go-live
 
-## 6. Import final
+Une fois SQL déclaré autoritaire :
 
-```bat
-python tools\cutover_excel_to_sql.py ^
-  --workbook "C:\archive\RessourcePlanner_final.xlsm" ^
-  --report "C:\archive\cutover_apply.json" ^
-  --apply
-```
+- ne plus modifier la baseline historique;
+- toute évolution de schéma devient une migration additive normale;
+- conserver des sauvegardes/restaurations SQL Server testées;
+- retirer progressivement le runtime et les artefacts legacy selon #336;
+- conserver le compte break-glass opérationnel, rotatable et audité.
 
-Le CLI effectue dans cet ordre :
+## Références
 
-1. SHA-256 du classeur;
-2. lecture read-only et préflight final;
-3. refus immédiat si le préflight n'est pas propre;
-4. `alembic upgrade head` explicite;
-5. ouverture d'une transaction SQL;
-6. vérification que les tables métier sont vides;
-7. import complet dans l'ordre des dépendances;
-8. réconciliation des volumes/heures/verrous;
-9. nouveau SHA-256 du classeur;
-10. commit uniquement si tout est cohérent.
-
-Aucun rebuild du planning n'est exécuté pendant cet import.
-
-## 7. Critères d'acceptation
-
-Le rapport final doit confirmer au minimum :
-
-- mêmes nombres de demandes, segments, quarts et quarts verrouillés;
-- mêmes heures prévues de WorkPackages/segments;
-- mêmes heures totales de quarts et heures verrouillées;
-- 0 shift orphelin;
-- 0 segment sans projet;
-- 0 référence demande/ressource inconnue;
-- 0 Quick Shift avec fausse demande;
-- 0 identifiant legacy dupliqué;
-- SHA-256 du classeur inchangé pendant l'opération.
-
-## 8. Échec / rollback
-
-Si l'import de données échoue dans la transaction, aucune donnée métier partielle ne doit être conservée.
-
-Alembic peut avoir créé le schéma avant l'import. Ce n'est pas considéré comme un cutover partiel tant que les tables métier sont vides. Pour le cutover final, la pratique recommandée reste :
-
-1. supprimer/recréer la base de destination si nécessaire;
-2. corriger la cause;
-3. relancer Alembic + l'import depuis le même classeur gelé;
-4. générer un nouveau rapport.
-
-Ne pas éditer directement les lignes SQL pour faire « balancer » le rapport.
-
-## 9. Déclarer SQL autoritaire
-
-SQL devient autoritaire seulement après :
-
-- import `--apply` réussi;
-- rapport de réconciliation acceptable;
-- test fonctionnel des workflows critiques;
-- validation explicite du nouveau runtime SQL.
-
-À partir de ce moment, le classeur gelé reste une archive/porte de retour d'urgence. Il ne doit plus recevoir de modifications normales.
+- #162 — validation SQL Server réelle;
+- #208 — mise en service SQL autoritaire;
+- #218/#224 — identité, RBAC et administration utilisateurs;
+- #336 — nettoyage post-cutover;
+- #457 — baseline propre, retrait seeds dev et admin break-glass.
