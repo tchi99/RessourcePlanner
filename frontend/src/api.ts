@@ -168,6 +168,15 @@ export type ResourceReadModel = {
   active: boolean;
   sort_order: number;
   external_id: string | null;
+  erp_status: string | null;
+  erp_active: boolean;
+  erp_department_description: string | null;
+  erp_department_code: string | null;
+  erp_employee_class: string | null;
+  erp_supervisor_external_id: string | null;
+  erp_phone: string | null;
+  erp_branch_code: string | null;
+  erp_contact_id: number | null;
 };
 
 export type ResourceWrite = {

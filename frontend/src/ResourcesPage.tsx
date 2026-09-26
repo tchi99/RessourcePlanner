@@ -1,5 +1,6 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 
+import { syncAcumaticaEmployees } from "./acumaticaIntegrationApi";
 import {
   ApiError,
   AvailabilityRuleWrite,
@@ -243,6 +244,8 @@ export default function ResourcesPage() {
   const [error, setError] = useState<string | null>(null);
   const [pendingProfile, setPendingProfile] = useState(false);
   const [pendingCoordinator, setPendingCoordinator] = useState(false);
+  const [pendingEmployeeSync, setPendingEmployeeSync] = useState(false);
+  const [employeeSyncNotice, setEmployeeSyncNotice] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
   const profileIdempotency = useRef(mutationKey("resource"));
 
@@ -345,6 +348,24 @@ export default function ResourcesPage() {
     profileIdempotency.current = mutationKey("resource");
   }
 
+  async function synchronizeEmployees() {
+    if (pendingEmployeeSync) return;
+    setPendingEmployeeSync(true);
+    setError(null);
+    setEmployeeSyncNotice(null);
+    try {
+      const result = await syncAcumaticaEmployees();
+      setEmployeeSyncNotice(
+        `RP_Employees : ${result.received} reçus, ${result.created} créés, ${result.updated} modifiés, ${result.unchanged} inchangés, ${result.errors} erreurs.`,
+      );
+      setRefreshKey((value) => value + 1);
+    } catch (reason) {
+      setError(apiMessage(reason, "Impossible de synchroniser RP_Employees."));
+    } finally {
+      setPendingEmployeeSync(false);
+    }
+  }
+
   async function saveProfile(event: FormEvent) {
     event.preventDefault();
     if (pendingProfile) return;
@@ -443,6 +464,25 @@ export default function ResourcesPage() {
         </button>
       </div>
 
+      <div className="admin-card">
+        <div className="panel-heading">
+          <div>
+            <span className="eyebrow">Acumatica</span>
+            <h2>RP_Employees</h2>
+            <p>Synchronise l’annuaire ERP sans activer automatiquement les ressources dans RessourcePlanner.</p>
+          </div>
+          <button
+            className="secondary-button"
+            type="button"
+            disabled={pendingEmployeeSync}
+            onClick={() => void synchronizeEmployees()}
+          >
+            {pendingEmployeeSync ? "Synchronisation…" : "Synchroniser RP_Employees"}
+          </button>
+        </div>
+        {employeeSyncNotice && <div className="subtle-status" aria-live="polite">{employeeSyncNotice}</div>}
+      </div>
+
       <div className="metric-grid resource-metrics">
         <article><span>Ressources actives</span><strong>{activeResources}</strong><small>Planifiables selon leur horaire</small></article>
         <article><span>Ressources inactives</span><strong>{resources.length - activeResources}</strong><small>Historique conservé</small></article>
@@ -497,6 +537,15 @@ export default function ResourcesPage() {
                   </div>
                   {!creatingResource && selected && <span className={`status-chip ${selected.active ? "active" : "inactive"}`}>{selected.active ? "Active" : "Inactive"}</span>}
                 </div>
+
+                {!creatingResource && selected?.external_id && (
+                  <div className="form-grid two-columns">
+                    <label>EmployeID<input value={selected.external_id} readOnly /></label>
+                    <label>Statut ERP<input value={selected.erp_status ?? (selected.erp_active ? "Actif" : "Inactif")} readOnly /></label>
+                    <label>Département<input value={selected.erp_department_description ?? selected.erp_department_code ?? "—"} readOnly /></label>
+                    <label>Division / succursale<input value={selected.erp_branch_code ?? "—"} readOnly /></label>
+                  </div>
+                )}
 
                 <div className="form-grid two-columns">
                   <label>Nom<input value={profile.name} onChange={(event) => profileField("name", event.target.value)} required /></label>
