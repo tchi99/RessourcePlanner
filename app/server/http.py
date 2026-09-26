@@ -21,6 +21,8 @@ from ..application import (
     ApplicationNotFoundError,
     ApplicationOperationError,
     ApplicationValidationError,
+    EmployeeSourcePort,
+    ErpUserSourcePort,
     IdempotentCommandExecutor,
     OperationalContactService,
     PlannerQueryPort,
@@ -79,6 +81,7 @@ from .routes_competencies import build_competency_router
 from .routes_communications import build_communication_router
 from .routes_project_communications import build_project_communication_router
 from .routes_dev_user_switcher import build_dev_user_switcher_router
+from .routes_erp_users import build_erp_user_admin_router
 from .routes_integrations import build_integration_router
 from .routes_me import build_me_router
 from .routes_reads import build_read_router
@@ -451,6 +454,8 @@ def create_api_app(
     *,
     actor_name: str = "api",
     project_source: ProjectSourcePort | None = None,
+    employee_source: EmployeeSourcePort | None = None,
+    user_source: ErpUserSourcePort | None = None,
     acumatica_info: dict[str, Any] | None = None,
     auth_resolver: AuthResolver | None = None,
     api_docs_enabled: bool = True,
@@ -656,6 +661,7 @@ def create_api_app(
     if dev_user_switcher_runtime is not None:
         app.include_router(build_dev_user_switcher_router(dev_user_switcher_runtime))
     app.include_router(build_user_admin_router(user_admin_dependency))
+    app.include_router(build_erp_user_admin_router(session_dependency))
     app.include_router(build_admin_settings_router(smtp_settings_dependency))
     app.include_router(build_approval_scope_router(approval_scope_dependency))
     app.include_router(build_resource_class_router(session_dependency))
@@ -699,6 +705,8 @@ def create_api_app(
         build_integration_router(
             session_dependency,
             project_source=project_source,
+            employee_source=employee_source,
+            user_source=user_source,
             acumatica_info=acumatica_info,
         )
     )

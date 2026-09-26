@@ -10,11 +10,16 @@ import httpx
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
-from app.application import ApplicationOperationError, ExternalProjectRecord
+from app.application import (
+    ApplicationOperationError,
+    ExternalEmployeeRecord,
+    ExternalProjectRecord,
+)
 from app.infrastructure.acumatica import ODataProjectSource, ODataProjectSourceSettings
 from app.infrastructure.sql import (
     Base,
     Project,
+    Resource,
     create_session_factory,
     create_sql_engine,
     transactional_session,
@@ -42,6 +47,29 @@ class StubProjectSource:
         ]
 
     def list_projects(self):
+        return tuple(self.rows)
+
+
+class StubEmployeeSource:
+    def __init__(self) -> None:
+        self.rows = [
+            ExternalEmployeeRecord(
+                external_id="EMP-100",
+                display_name="Employé Acumatica",
+                email="employee100" + chr(64) + "example.invalid",
+                erp_status="Actif",
+                erp_active=True,
+                department_description="Automatisation",
+                department_code="AUTO",
+                employee_class="GENERAL",
+                supervisor_external_id=None,
+                telephone=None,
+                branch_code="210",
+                contact_id=900100,
+            )
+        ]
+
+    def list_employees(self):
         return tuple(self.rows)
 
 
@@ -82,11 +110,17 @@ class ServerAcumaticaRouteTests(unittest.TestCase):
             with TestClient(app) as client:
                 status = client.get("/api/v1/integrations/acumatica")
                 sync = client.post("/api/v1/integrations/acumatica/projects/sync")
+                employee_sync = client.post("/api/v1/integrations/acumatica/employees/sync")
 
             self.assertEqual(status.status_code, 200)
             self.assertEqual(status.json(), {"configured": False})
             self.assertEqual(sync.status_code, 503)
             self.assertEqual(sync.json()["error"]["code"], "acumatica_not_configured")
+            self.assertEqual(employee_sync.status_code, 503)
+            self.assertEqual(
+                employee_sync.json()["error"]["code"],
+                "acumatica_employee_not_configured",
+            )
 
     def test_configured_sync_persists_projects_and_is_idempotent(self) -> None:
         with TemporaryDirectory() as directory:
@@ -144,6 +178,83 @@ class ServerAcumaticaRouteTests(unittest.TestCase):
                 self.assertGreater(sample["db_query_count"], 0)
                 self.assertGreaterEqual(sample["external_seconds"], 0.0)
                 self.assertGreaterEqual(sample["compute_seconds"], 0.0)
+
+    def test_employee_sync_requires_local_activation_and_respects_erp_state(self) -> None:
+        with TemporaryDirectory() as directory:
+            database_url = self._database(directory)
+            source = StubEmployeeSource()
+            app = create_api_app(database_url, employee_source=source)
+
+            with TestClient(app) as client:
+                first = client.post("/api/v1/integrations/acumatica/employees/sync")
+                second = client.post("/api/v1/integrations/acumatica/employees/sync")
+                hidden = client.get("/api/v1/resources")
+                all_resources = client.get("/api/v1/resources?active_only=false")
+
+                self.assertEqual(
+                    first.json(),
+                    {
+                        "received": 1,
+                        "created": 1,
+                        "updated": 0,
+                        "unchanged": 0,
+                        "errors": 0,
+                    },
+                )
+                self.assertEqual(
+                    second.json(),
+                    {
+                        "received": 1,
+                        "created": 0,
+                        "updated": 0,
+                        "unchanged": 1,
+                        "errors": 0,
+                    },
+                )
+                self.assertEqual(hidden.json(), [])
+                imported = all_resources.json()[0]
+                self.assertFalse(imported["active"])
+                self.assertTrue(imported["erp_active"])
+                self.assertEqual(imported["erp_status"], "Actif")
+                self.assertEqual(imported["erp_department_code"], "AUTO")
+                self.assertEqual(imported["erp_branch_code"], "210")
+
+                activation = client.patch(
+                    f"/api/v1/resources/{imported['id']}",
+                    json={"active": True},
+                )
+                self.assertEqual(activation.status_code, 200, activation.text)
+                visible = client.get("/api/v1/resources")
+                self.assertEqual(len(visible.json()), 1)
+
+                source.rows[0] = ExternalEmployeeRecord(
+                    external_id="EMP-100",
+                    display_name="Employé Acumatica",
+                    email="employee100" + chr(64) + "example.invalid",
+                    erp_status="Inactif",
+                    erp_active=False,
+                    department_description="Automatisation",
+                    department_code="AUTO",
+                    employee_class="GENERAL",
+                    branch_code="210",
+                    contact_id=900100,
+                )
+                changed = client.post("/api/v1/integrations/acumatica/employees/sync")
+                self.assertEqual(changed.json()["updated"], 1)
+                self.assertEqual(client.get("/api/v1/resources").json(), [])
+
+            engine = create_sql_engine(database_url)
+            factory = create_session_factory(engine)
+            try:
+                with factory() as session:
+                    row = session.scalar(
+                        select(Resource).where(Resource.external_id == "EMP-100")
+                    )
+                    assert row is not None
+                    self.assertTrue(row.active)
+                    self.assertFalse(row.erp_active)
+            finally:
+                engine.dispose()
 
     def test_failed_external_read_keeps_external_metrics_coherent(self) -> None:
         with TemporaryDirectory() as directory:

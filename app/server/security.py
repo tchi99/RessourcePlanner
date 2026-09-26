@@ -58,7 +58,7 @@ def required_permission(method: str, path: str) -> str | None:
         or path.startswith("/api/v1/admin/resource-classes")
     ):
         return PERMISSION_ADMIN_SETTINGS
-    if path.startswith("/api/v1/admin/users"):
+    if path.startswith("/api/v1/admin/users") or path.startswith("/api/v1/admin/erp-users"):
         return PERMISSION_ADMIN_USERS
     if path.startswith("/api/v1/communications"):
         return PERMISSION_MANAGE_COMMUNICATIONS
@@ -107,7 +107,11 @@ def required_permission(method: str, path: str) -> str | None:
         or path.startswith("/api/v1/planning/")
     ):
         return PERMISSION_MANAGE_PLANNING
-    if path == "/api/v1/integrations/acumatica/projects/sync":
+    if path in {
+        "/api/v1/integrations/acumatica/projects/sync",
+        "/api/v1/integrations/acumatica/employees/sync",
+        "/api/v1/integrations/acumatica/users/sync",
+    }:
         return PERMISSION_SYNC_PROJECTS
     return "__unassigned_mutation__"
 

@@ -112,7 +112,20 @@ class Resource(TimestampMixin, Base):
     resource_class: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
     competencies: Mapped[str | None] = mapped_column(Text, nullable=True)
     note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Local RessourcePlanner activation, controlled by administrators.
     active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=true(), index=True)
+    # ERP employment state is deliberately separate from local authorization.
+    erp_status: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    erp_active: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=true(), index=True
+    )
+    erp_department_description: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    erp_department_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    erp_employee_class: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    erp_supervisor_external_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    erp_phone: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    erp_branch_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    erp_contact_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
 
 
